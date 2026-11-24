@@ -1,27 +1,39 @@
 // Contract of package 6c (D68): mirror and pattern in a sketch as derived geometry. A draft for
-// review, only type-checked (`npx tsc -p docs/d36/tsconfig.json`). It imports the real types of the
-// engine and the vocabulary of 6a (docs/d36/6a-sketch-prep/contract.ts), and states what 6c adds
-// or changes; the design is design.md, the calls are calls.ts.
+// review, only type-checked (`npx tsc -p docs/d36/tsconfig.json`). Revised 2026-11-24: it imports
+// the types of the engine and of the app as 6a implemented them (packages/engine/src/references,
+// sketch.ts, packages/app/src/references), not 6a's contract, and states what 6c adds or changes;
+// the design is design.md, the calls are calls.ts.
 //
 // What changes:
 // 1. A kind of entry of `external`, the first derived one: `pattern`, with three kinds of transform
 //    (`mirror`, `linear` with an optional second direction, `circular`), the shapes of D53 in the
 //    plane of a sketch. Its numeric fields live at `external/<id>/transform/...` and take
 //    expressions. `ExternalRef` becomes a union; the commands take its input form.
-// 2. The copies are computed after the solver from the solved own geometry, under the IDs
+// 2. The registry of kinds is typed in two halves (a reference kind has a stored value, a derived
+//    kind has none), and the copies travel in a record of their own, which the solver's input, the
+//    stamp and the stored values never see.
+// 3. The copies are computed after the solver from the solved own geometry, under the IDs
 //    `<entry>/<copy>/<source>`, form regions as their source does, their ends join the curve ends
-//    at their place (without welding two own vertices), and are never operands of a constraint of their own sketch.
-// 3. The slots of 6a that 6c is the first user of: the fields of an entry and their expressions,
-//    the pairs of the joins beyond the coincidents, the check of a change of source, the derived stage of the sketch step,
-//    the mark of a derived entity, the face key of a text field with a slash, the row of a derived
-//    kind in the app.
-// 4. A warning `brokenCopies`. No command, no query, no feature type, no face role, no schema step.
+//    at their place (without welding two own vertices, and with nothing of the source's
+//    coincidences carried), and are never operands of a constraint of their own sketch. The ends
+//    that stay open are named in the result.
+// 4. A broad phase in the profile: curves are tested against each other only when their boxes meet.
+// 5. The slots of 6a that 6c is the first user of: the fields of an entry and their expressions,
+//    the check of a change of source, the stage of the sketch step after the solver, the mark of
+//    a derived entity, the face key of a text field with a slash, the row of a derived kind in the
+//    app.
+// 6. A warning `brokenCopies`. No command, no query, no feature type, no face role, no schema step.
 
-import type { CurveShape, Expr, FaceName, Id, Input, IssueCode, LinearSpan, Point2, SketchFeature } from '../../../packages/engine/src/index';
+import type { SketchToolName } from '../../../packages/app/src/sketch-tools';
+import type { ReferenceUi } from '../../../packages/app/src/references/spec';
+import type { SketchPlaceTool } from '../../../packages/app/src/sketch-tools/spec';
 import type { EntityKind } from '../../../packages/engine/src/catalog';
+import type { CurveShape, EdgeName, Expr, ExternalRef, FaceName, Id, Input, IssueCode, LinearSpan, Point2, ProjectionKind, RegionRef, SketchFeature, SketchResult, Vec2 } from '../../../packages/engine/src/index';
+import { edge } from '../../../packages/engine/src/references/edge';
+import type { EntryGeometry, ReferenceKindSpec, ReferenceValues, ResolvedReference } from '../../../packages/engine/src/references/spec';
+import { type SketchCurve, type SketchGeometry, solverSetup } from '../../../packages/engine/src/sketch';
 import type { Entity } from '../../../packages/engine/src/sketch-content';
 import type { IssueCodes } from '../00-prep/contract';
-import type { DerivedKindSpec, EntryGeometry, ReferenceUi, SketchHostStandIn, SketchModeStandIn, SketchPlaceTool, SolvedOwn } from '../6a-sketch-prep/contract';
 
 // ================================================================ 1. the entry
 
@@ -47,12 +59,12 @@ import type { DerivedKindSpec, EntryGeometry, ReferenceUi, SketchHostStandIn, Sk
 //   there under its ID. A half circle whose ends lie on the axis is not such a copy: its image is the
 //   other half.
 // - The ends of the copied curves join the ends of curves at their place (within 1e-6 mm): the ends
-//   of other copies, of this entry or another, and the end of an own or projected curve that forms
-//   regions, unless two such ends there are not one point already (then none). A copy keeps the
-//   joins of its source: a copied end takes along the own points a coincident joins it with. So a half drawn up to the axis of a mirror closes with its
-//   image into one region, a chain whose end the pattern carries onto its own start closes into
-//   a ring, and two mirrors about one axis close with each other. Put the ends of a mirrored half on
-//   the axis by a constraint.
+//   of other copies, of this entry or another, and the end of an own curve that forms regions,
+//   unless two such ends there are not one point already (then none). So a half drawn up to the axis
+//   of a mirror closes with its image into one region, a chain whose end the pattern carries onto
+//   its own start closes into a ring, and two mirrors about one axis close with each other. Put the
+//   ends of a mirrored half on the axis by a constraint; an end that stays open is named in the
+//   result of the sketch (`openEnds`).
 // - A feature that should follow the count names a region the copies lie in: a region is named by
 //   its outer loop, so copies inside it are its holes and follow the count. A feature that names
 //   the region of a copy names that copy.
@@ -64,14 +76,16 @@ export interface SketchPattern {
 
 // How the copies of a sketch pattern stand: the transforms of D53 in the plane of the sketch.
 // - `mirror`: one copy, the mirror image about the line `axis` (its whole length, both ways): a line
-//   of the sketch, own, projected, or an axis of the origin (`origin/x`, `origin/y`).
+//   of the sketch, own, projected, or an axis of the origin (`origin/x`, `origin/y`). (A pattern of
+//   features has `plane` here; a sketch names a line.)
 // - `linear`: `count − 1` copies shifted along the line `direction` (from its `a` to its `b`;
 //   a line of the sketch as for a mirror) by `spacing` between neighbours or over `length` between
 //   the source and the last copy; a negative span runs the other way. `second` makes a grid (at most
 //   200 places, the source included, no two in one place).
 // - `circular`: `count − 1` copies turned about the point `center` (own, `origin` or projected),
 //   counter-clockwise in the sketch: over the full circle, or within `angle` between the source and
-//   the last copy (a negative angle turns clockwise).
+//   the last copy (a negative angle turns clockwise). (A pattern of features has `axis` here; a
+//   sketch names a point.)
 // - The numeric fields, with the ranges of D53: `transform/count` (an integer from 1 to 200, the
 //   source included), `transform/span/spacing` and `transform/span/length` (mm, not zero),
 //   `transform/span/angle` (radians, −2π to 2π, not zero), and the same under `transform/second/`.
@@ -85,21 +99,22 @@ export type SketchTransform =
   | { type: 'linear'; direction: Id; count: number; span: LinearSpan; second?: { direction: Id; count: number; span: LinearSpan } }
   | { type: 'circular'; center: Id; count: number; span: { type: 'full' } | { type: 'angle'; angle: number } };
 
-// `ExternalRef` becomes a union (6a: "a member of the union", the edge's interface given a name).
-// In types.ts the comment of the union says that an entry is reference geometry (computed before
-// the solver, fixed for it, constrainable) or derived geometry (computed after it, not
-// constrainable).
+// `ExternalRef` becomes a union; the edge's interface gets a name. In types.ts the comment of the
+// union says that an entry is reference geometry (computed before the solver, fixed for it,
+// constrainable) or derived geometry (computed after it, not constrainable).
 export interface EdgeProjection {
   type: 'edge';
   body: Id;
-  edge: import('../../../packages/engine/src/index').EdgeName;
-  kind: import('../../../packages/engine/src/index').ProjectionKind;
+  edge: EdgeName;
+  kind: ProjectionKind;
 }
+// today's `ExternalRef` is the edge
+export const edgeIsTodaysEntry: EdgeProjection = {} as ExternalRef;
 export type ExternalRefAfter = EdgeProjection | SketchPattern;
 // The commands take the input form, so a numeric field of an entry may be an expression
 // (`Input` leaves the edge as it is: it has a `kind`).
 export type ExternalInput = Input<ExternalRefAfter>;
-export const ventsInput: ExternalInput = { type: 'pattern', sources: ['g1', 'e1'], transform: { type: 'linear', direction: 'c1', count: 'vents', span: { type: 'spacing', spacing: 'ventPitch' } } };
+export const ventsInput: ExternalInput = { type: 'pattern', sources: ['g1', 'e1'], transform: { type: 'linear', direction: 'origin/x', count: 'vents', span: { type: 'spacing', spacing: 'ventPitch' } } };
 declare module '../00-prep/contract' {
   interface Commands {
     // `addExternal` and `updateExternal` of today with the input form of a sketch pattern
@@ -117,52 +132,157 @@ declare module '../00-prep/contract' {
     brokenCopies: true;
   }
 }
-
-// The registry of 6a gets the kind: `pattern`, the first derived kind.
+// The registry of 6a's contract gets the kind too, for the contracts that read that file.
 declare module '../6a-sketch-prep/contract' {
   interface DerivedKinds {
     pattern: { ref: SketchPattern };
   }
 }
 
-// ================================================================ 2. the kind
+// ================================================================ 2. the registry, in two halves
 
-// What 6c adds to 6a's `DerivedKindSpec` (in the code: members of that interface, optional for
-// a later derived kind):
-// - `commandProblem`: what `addExternal` and `updateExternal` refuse beyond the form, read from the
-//   sketch as it is: a source that is not an own curve or point (or `origin`); an axis or a direction
-//   that is not a line of the sketch, own, reference or an axis of the origin; a centre that is not
-//   a point of the sketch, own, `origin` or reference; a copy in any of these roles. The validator
-//   (also on `load`, `addFeature` and `setField`) checks the form only, so a document whose source
-//   curve was removed loads, and the step reports it (`brokenCopies`).
+// The code of 6a has one shape of kind, `ReferenceKindSpec<R, V>` with `source: 'reference'`, and
+// types the registry `{ [T in ExternalRef['type']]: ReferenceKindSpec<…, ReferenceValues[T]> }`.
+// A member of the union without a value in `ReferenceValues` does not fit it. After 6c
+// (packages/engine/src/references/spec.ts):
+// - `KindBase<R>`: what every kind says on the side of the document (the members of today), and
+//   what the description for the AI reads: `summary` and `example`, an `addExternal` over the
+//   fixture of the MCP tests (a box, a sketch on its top with a rectangle and a centre line).
+// - a reference kind is the base with `compute`, `value`, `geometry`; a derived kind the base with
+//   `entity`, `commandProblem`, `derive`.
+// - a kind is a reference kind exactly when `ReferenceValues` has a value for its name.
+export type KindBase<R> = Pick<ReferenceKindSpec<R, never>, 'title' | 'validate' | 'refs' | 'faces' | 'entities'> & KindInfo<R>;
+export interface KindInfo<R> {
+  summary: string;
+  example: Input<R>;
+}
+export type ReferenceKindSpecAfter<R, V> = ReferenceKindSpec<R, V> & KindInfo<R>;
+
+// What a derived kind reads: the sketch, its curves own and reference (the axes of the origin of
+// 6a2 among them), every used position after the solver, and the vertices of the sketch by its
+// joins before the derived entries (the coincidents; 6b's keys if they stay).
+export interface SolvedOwn {
+  sketch: SketchFeature;
+  curves: ReadonlyMap<Id, SketchCurve>;
+  geometry: SketchGeometry;
+  joins: (id: Id) => Id;
+}
+// The failure of a derive: a warning of the sketch, which may come with the geometry that could be
+// made (a source gone, the rest copied). Its code is one of the codes after the packages.
+export type IssueCodeAfter = IssueCode | keyof IssueCodes;
+export interface DerivedFailure {
+  code: IssueCodeAfter;
+  refs: unknown[];
+  detail?: string;
+  geometry?: EntryGeometry;
+}
+// A kind of derived geometry: computed after the solver from the solved own geometry. Nothing of
+// it is stored, stamped or handed to the solver.
 // - `entity`: what one ID under the entry is, from the document alone: `<entry>/<n>/<s>` with `n`
 //   a number the transform may have (a mirror 1; a row and a circle 1 to 199; a grid i + 1000 · j,
 //   i and j from 0 to 199, not both 0), written in decimal without leading zeros, and `s` a listed
 //   own curve (its kind), a listed own point or `origin`, or a point of a listed own curve (a point).
 //   As D53 accepts every copy number of a pattern of a body, because the count may be an expression,
 //   so a batch that raises the parameter and names copy 6 is valid; the copy is a broken reference
-//   until the count reaches it. `entities` (6a) lists the copies the count of the document makes,
-//   which is what `get_sketch`, the pickers of the app and the list of entries show.
-// - `derive` changes its failure (6a: `{ code; refs: Id[] }`, no geometry): a warning may come with
-//   the geometry that could be made (a source gone, the rest copied), and its code is one of the
-//   codes after the packages (`brokenCopies`).
-// - `commandProblem` is asked only of what an update brings in (`before` the entry as it was): an ID
-//   the entry had already, gone since, is kept with its warning, as `updateFeature` verifies only
-//   references the feature did not have.
-export type DerivedFailure = { code: IssueCodeAfter; refs: unknown[]; detail?: string; geometry?: EntryGeometry };
-export type IssueCodeAfter = IssueCode | keyof IssueCodes;
-export interface DerivedKindSpecAfter<R> extends Omit<DerivedKindSpec<R>, 'derive'> {
+//   until the count reaches it. `entities` (the base) lists the copies the count of the document
+//   makes, which is what the app's list of entries and its index of entities read.
+// - `commandProblem`: what `addExternal` and `updateExternal` refuse beyond the form, read from the
+//   sketch as it is: a source that is not an own curve or point (or `origin`); an axis or a direction
+//   that is not a line of the sketch, own, reference or an axis of the origin; a centre that is not
+//   a point of the sketch, own, `origin` or reference; a copy in any of these roles. It is asked only
+//   of what an update brings in (`before` the entry as it was): an ID the entry had already, gone
+//   since, is kept with its warning, as `updateFeature` verifies only references the feature did
+//   not have. The validator (also on `load`, `addFeature` and `setField`) checks the form only, so
+//   a document whose source curve was removed loads, and the step reports it (`brokenCopies`).
+// - `derive`: the copies of one entry, or the failure.
+export interface DerivedKindSpec<R> extends KindBase<R> {
+  source: 'derived';
+  entity(id: Id, ref: R, sketch: SketchFeature, derived: Id): EntityKind | undefined;
+  commandProblem(sketch: SketchFeature, ref: R, before?: R): string | undefined;
   derive(id: Id, ref: R, solved: SolvedOwn): EntryGeometry | DerivedFailure;
-  commandProblem?(sketch: SketchFeature, ref: R, before?: R): string | undefined;
-  entity?(id: Id, ref: R, sketch: SketchFeature, derived: Id): EntityKind | undefined;
 }
+
+export type EntryKindName = ExternalRefAfter['type'];
+export type ReferenceKindName = keyof ReferenceValues & EntryKindName;
+export type DerivedKindName = Exclude<EntryKindName, ReferenceKindName>;
+export type EntryOf<T extends EntryKindName> = Extract<ExternalRefAfter, { type: T }>;
+export type KindOf<T extends EntryKindName> = T extends ReferenceKindName ? ReferenceKindSpecAfter<EntryOf<T>, ReferenceValues[T]> : DerivedKindSpec<EntryOf<T>>;
+export const derivedNames: DerivedKindName[] = ['pattern'];
+// @ts-expect-error the edge has a value, so it is no derived kind
+export const notDerived: DerivedKindName = 'edge';
 
 // The kind, in packages/engine/src/references/pattern.ts:
 // - `validate`: the form; the numeric fields through `context.fields` at `external/<id>/transform/…`
-//   with the specs of D53, which move from features/pattern.ts to a leaf both modules import.
+//   with the specs of D53, which move from features/pattern.ts to a leaf both modules import; a
+//   field of another kind of transform is refused, `plane` of a mirror and `axis` of a circular
+//   pattern (the names of D53) with the name the sketch has for it.
 // - `refs`: none (only entities of its own sketch); `faces`: none.
-// - `derive`: below.
-export declare const PATTERN_KIND: DerivedKindSpecAfter<SketchPattern>;
+export declare const PATTERN_KIND: DerivedKindSpec<SketchPattern>;
+
+// The registry after 6c. The edge of today fits the reference half as it is (here with the two
+// members of the description added); a member of the union without an entry of its half does not
+// compile.
+export const KINDS_AFTER: { readonly [T in EntryKindName]: KindOf<T> } = {
+  edge: { ...edge, summary: 'The projection of a straight or a circular edge of a body.', example: { type: 'edge', body: 'box', edge: { a: { feature: 'box', role: 'endCap' }, b: { feature: 'box', role: 'side', curve: 'r1' } }, kind: 'line' } },
+  pattern: PATTERN_KIND,
+};
+// `kindOf` answers the union of the two shapes, so a caller that wants `compute` or `value` asks
+// `source` first: the compiler then stops at `resolveReferences` and at the reader of
+// `solved.external` (design.md, "Measured").
+export type AnyKind = ReferenceKindSpecAfter<ExternalRefAfter, ReferenceValues[ReferenceKindName]> | DerivedKindSpec<ExternalRefAfter>;
+export declare function kindOf(ref: ExternalRefAfter): AnyKind;
+export const computedOnlyForAReference = (ref: ExternalRefAfter): boolean => {
+  const kind = kindOf(ref);
+  // @ts-expect-error a kind may be derived: it has no `compute`
+  void kind.compute;
+  return kind.source === 'reference' ? typeof kind.compute === 'function' : typeof kind.derive === 'function';
+};
+
+// ================================================================ 3. the copies, a record of their own
+
+// An end of a copy that stayed open: an end of a copy that keeps regions and, after every join, is
+// the end of no other curve that forms regions.
+// - `twoVertices`: the ends of other curves at its place are two vertices, so it joined none of
+//   them (`near` names them, `distance` is to the nearest); a `coincident` between them cures it.
+// - `apart`: nothing is at its place; `near` is the nearest end of another curve that forms regions
+//   and `distance` how far it is, in mm.
+export interface OpenEnd {
+  end: Id;
+  reason: 'twoVertices' | 'apart';
+  near: Id[];
+  distance: number;
+}
+// `count`: how many ends are open; `ends`: at most 20 of them, those of `twoVertices` first, then
+// by `distance`, the nearest first.
+export interface OpenEnds {
+  count: number;
+  ends: OpenEnd[];
+}
+// What the stage after the solver gives: the copies of each derived entry (`regions` as the
+// occupation pass left them), the pairs of the position stage, the warnings, the open ends.
+export interface DerivedGeometry {
+  entries: Record<Id, EntryGeometry>;
+  joins: [Id, Id][];
+  warnings: DerivedFailure[];
+  openEnds?: OpenEnds;
+}
+// It is not the record of the resolved references and no part of it is one: a resolved reference
+// without a value is the slot that enters the input of the solver (the axes of 6a2), and the copies
+// must never be there. Against the real `solverSetup`:
+export function copiesNeverReachTheSolver(sketch: SketchFeature, copies: DerivedGeometry, references: Record<Id, ResolvedReference>): void {
+  solverSetup(sketch, references);
+  // @ts-expect-error the copies are not resolved references
+  solverSetup(sketch, copies);
+  // @ts-expect-error nor are the copies of the entries
+  solverSetup(sketch, copies.entries);
+}
+
+// The result of a sketch (`SketchResult` of types.ts) after 6c: `curves` has the copies
+// (`source: 'derived'`), `points` and `radii` their positions, and `openEnds` is there when ends of
+// copies stayed open (why an outline of copies did not close).
+export interface SketchResultAfter extends SketchResult {
+  openEnds?: OpenEnds;
+}
 
 // A transform of the plane of a sketch: a map of points and whether it reflects (a mirror turns the
 // sense of an arc: its image runs from the image of `end` to the image of `start`).
@@ -173,99 +293,106 @@ export interface PlaneMap {
 // The copies of an entry in the order of their numbers, or why there are none.
 export declare function copiesOf(id: Id, transform: SketchTransform, solved: SolvedOwn): { copy: number; map: PlaneMap }[] | DerivedFailure;
 
-// The derive of one entry over the solved own geometry (6a's `SolvedOwn`: the sketch, its curves
-// own and reference with the axes of the origin, every used position, the vertices by the joins
-// before the derived entries):
+// The derive of one entry over the solved own geometry:
 // - points: every copy of every point of the listed curves and every listed point;
 // - curves: every copy of every listed curve that is there, over the copies of its points; a circle
 //   gets the radius of its source; a reflected arc swaps its ends;
-// - points also: the own points that the coincidents of the sketch join with a copied end (its
-//   vertex class), so that a corner joined through a point between two ends stays one; such a point
-//   that is neither listed nor a point of a listed curve is `hidden` (6a's `EntryGeometry.hidden`):
-//   it is no entity, no constraint, feature or picker names it, and it may come and go with the
-//   coincidents;
 // - regions: a copy of a curve that is not a construction curve; the occupation pass of `deriveAll`
-//   may take them away (`occupies`);
-// - joins (6a's `EntryGeometry.joins`): the coincidents of the sketch between two points it copies,
-//   copy by copy (the source's joins carried); no keys. The joins by position are one stage after
-//   every entry (`imageJoins`), which an entry cannot do alone (two entries about one axis).
+//   may take them away (`occupies`).
 // A source that is not an own curve or point is skipped and named in the warning, with the copies
-// of the rest made. Nothing is stored or stamped.
+// of the rest made. Nothing of the source's coincidences is carried (the owner's answer 14).
 export declare function derivePattern(id: Id, ref: SketchPattern, solved: SolvedOwn): EntryGeometry | DerivedFailure;
-export const patternKind: Pick<DerivedKindSpecAfter<SketchPattern>, 'derive'> = { derive: derivePattern };
+export const patternDerives: Pick<DerivedKindSpec<SketchPattern>, 'derive'> = { derive: derivePattern };
 
-// The occupation pass, inside `deriveAll` (so the tools' in-memory path has it too) after every
-// entry, in the order of `external` and within an entry by copy number; it returns the copies it
-// takes the regions from. A copy that kept `regions` loses them when it occupies a curve that forms
-// regions and comes before it (an own curve that is not construction, a reference curve with
-// `regions`, a copy that kept them). Construction curves, projected edges and the axes do not
-// count: they bound nothing. Found through a grid of cells by the midpoint, not all against all.
-//
-// The join stage after the occupation pass (in the step, before the joins of the whole sketch):
-// - only ends of curves take part (a line's `a`, `b`, an arc's `start`, `end`): a copied point alone
-//   and a centre join nothing by position, since they are no vertex of a profile;
-// - the ends of copies that keep `regions` after the occupation pass (and the points such an end
-//   shares), of every entry, are paired with each other when within the length tolerance (each pair
-//   as found, so every pair is within it), through a grid of cells; a copy that forms no regions
-//   takes no part, as an own curve that forms none;
-// - a group (those pairs and the joins the entries carry from their sources, transitively: a lone
-//   point carried between two ends connects their groups) is paired with the ends of the curves that are
-//   not copies and form regions (own not construction, reference with `regions`) within the
-//   tolerance of one of its members, each pair from the member it is near, when those ends are one
-//   vertex already by the joins before the derived stage (`SolvedOwn.joins`), and with none of them
-//   otherwise. Ends of curves that form no regions (a construction axis, a projected edge, the axes
-//   of the origin) neither join nor prevent a join.
-// So two own points that are two vertices today stay two (a copy never welds them), and a profile
-// can change only where the ends of copies are. The pairs go to 6a's `joinPairs` with the others.
-export declare function imageJoins(copies: ReadonlyMap<Id, EntryGeometry>, solved: SolvedOwn): [Id, Id][];
-export declare function occupation(copies: ReadonlyMap<Id, EntryGeometry>, solved: SolvedOwn): Set<Id>;
+// The order of the entries: the keys of `external` as the document holds them (the order they were
+// added in, except that a key that is a whole number comes before every other, in numeric order).
+// The stage after the solver, the occupation pass, the result's curves, the sketch tools,
+// `get_sketch` and the app's list read this one function.
+export declare function entryOrder(sketch: SketchFeature): Id[];
 
 // What a curve occupies, compared within the length tolerance: a line its segment (either way),
 // a circle its centre and radius, an arc its centre and its two ends in order (both run
-// counter-clockwise). A copy that occupies what a curve before it that forms regions occupies forms
-// none.
+// counter-clockwise).
 export declare function occupies(a: CurveShape, b: CurveShape, at: (point: Id) => Point2, radius: (curve: Id) => number, idA: Id, idB: Id): boolean;
+// The occupation pass, inside `deriveAll` after every entry, in the order of the entries and within
+// an entry by copy number; it returns the copies it takes the regions from. A copy that kept
+// `regions` loses them when it occupies a curve that forms regions and comes before it (an own
+// curve that is not construction, a reference curve with `regions`, a copy that kept them).
+// Construction curves, projected edges and the axes do not count: they bound nothing. A curve is
+// filed under one place (a line's middle, an arc's start, a circle's centre) in a grid of cells of
+// the tolerance, and compared with those of its cell and the eight around it.
+export declare function occupation(copies: Record<Id, EntryGeometry>, solved: SolvedOwn): Set<Id>;
 
-// The sketch step after 6c (6a's slot "the derived source in the code of the step"):
-// 1. the references resolved, the solver set up and run, as 6a;
-// 2. `SolvedOwn` from the curves of 6a's list, the solved geometry and `joinsOf(joinPairs(...))`
-//    over the coincidents and the references;
-// 3. every derived entry in the order of `external`: its geometry added to the geometry, its curves
-//    to the list (`source: 'derived'`, `regions` from the entry); a failure a warning `brokenCopies`
-//    with the entry first in `refs` (and the geometry it could make);
-// 4. (inside `deriveAll`) `occupation`; then `imageJoins`, the joins of the whole sketch, the profile, the result
-//    (`SketchResult.curves` with the copies, `points` and `radii` with their positions).
-// The solver runs at every recompute, as today; the copies are not in its input, so the stamp does
-// not change with the count, the stored positions stay, and only the number of the count is written
-// back. The analysis of freedom does not see the copies.
-// A sketch tool (the fillet, 6e) that follows regions in memory builds `SolvedOwn` without the
-// solver: the positions of `context.result` with the tool's new points, the reference curves from
-// `result.curves`, the counts as the document holds them.
-export declare function deriveAll(feature: SketchFeature, solved: SolvedOwn): { geometry: Map<Id, EntryGeometry>; joins: [Id, Id][]; warnings: DerivedFailure[] };
+// The position stage, after the occupation pass, over a predicate: which curves that are not own
+// join by position. In 6c: the copies. (Pending the owner: the review of 6b's design asks that
+// flagged reference curves join the same way in place of join keys; 6b then widens the predicate
+// to every curve that is not own and forms regions, and nothing else changes.)
+// 1. only ends of curves take part (a line's `a`, `b`, an arc's `start`, `end`): a copied point alone
+//    and a centre join nothing by position, since they are no vertex of a profile;
+// 2. the ends of the curves of the predicate that keep `regions`, of every entry, are paired with
+//    each other when within the length tolerance (each pair as found), through a grid of cells;
+// 3. a group (those pairs, transitively) is paired with the ends of the other curves that form
+//    regions within the tolerance of one of its members, each pair from the member it is near, when
+//    those ends are one vertex already by the joins before the stage (`SolvedOwn.joins`), and with
+//    none of them otherwise. Ends of curves that form no regions neither join nor prevent a join.
+// So two own points that are two vertices today stay two, and a profile can change only where the
+// ends of copies are. It also answers the open ends.
+export type JoinsByPosition = (curve: SketchCurve) => boolean;
+export const COPIES_JOIN_BY_POSITION: JoinsByPosition = (curve) => curve.source === 'derived';
+export const PENDING_NOT_OWN_JOINS_BY_POSITION: JoinsByPosition = (curve) => curve.source !== 'own';
+export declare function positionJoins(curves: ReadonlyMap<Id, SketchCurve>, geometry: SketchGeometry, before: (id: Id) => Id, byPosition: JoinsByPosition): { joins: [Id, Id][]; openEnds?: OpenEnds };
 
-// ================================================================ 3. the slots of 6a that 6c writes
+// The stage after the solver: every derived entry in the order of the entries, the occupation
+// pass, the position stage.
+export declare function deriveAll(feature: SketchFeature, solved: SolvedOwn): DerivedGeometry;
 
-// An entity is derived (6a: "6c adds to `Entity` that an entity is derived"). `own` stays false for
-// it. The validator of a constraint refuses an operand that is derived, with the text below; the
-// check of a reference with `notProjected` (a hole's point, a wall's curve) names a copy as a copy.
+// The curves, the positions and the joins of a whole sketch with its derived entries: `SolvedOwn`
+// from the resolved references and the positions, `deriveAll`, then the curves with the copies
+// (`source: 'derived'`), the positions with theirs, and the joins of the coincidents and of the
+// position stage. The sketch step calls it after the solver; a sketch tool that computes a profile
+// in memory (the fillet, 6e's cuts) calls it with the positions of the result and its new points,
+// so the two cannot disagree about which ends are joined. In packages/engine/src/references/derive.ts.
+export interface SketchWithDerived {
+  curves: Map<Id, SketchCurve>;
+  geometry: SketchGeometry;
+  joins: (id: Id) => Id;
+  derived: DerivedGeometry;
+}
+export declare function withDerived(feature: SketchFeature, references: Record<Id, ResolvedReference>, geometry: SketchGeometry): SketchWithDerived;
+
+// The broad phase of the profile (packages/engine/src/sketch.ts): the pairs of shapes whose
+// bounding boxes, each widened by the tolerance, overlap, in the order (i, j) of the double loop
+// they replace; `profileOf` and `touchingCurves` test `compatible` on these alone. The box of an
+// arc holds its two ends as given, the point where it ends on the circle of its first end, and the
+// ends of that circle's diameters along the axes that it passes (in a sketch that is not solved the
+// second end lies off the circle). `Shape` is the profile's own union.
+export type Box = [minX: number, minY: number, maxX: number, maxY: number];
+export declare function nearPairs<Shape>(shapes: readonly Shape[], box: (shape: Shape) => Box): [number, number][];
+
+// ================================================================ 4. the slots of 6a that 6c writes
+
+// An entity is derived. `own` stays false for it. `entityOf` asks the kind's `entity` for one ID.
+// The validator of a constraint refuses an operand that is derived, with the text below; the check
+// of a reference with `notProjected` (a hole's point, a wall's curve) names a copy as a copy.
 export interface EntityAfter extends Entity {
   derived?: true;
 }
 export const COPY_IN_CONSTRAINT = (operand: Id, entry: Id, source: Id): string =>
   `"${operand}" is a copy of the mirror or pattern "${entry}": a copy cannot be constrained in its own sketch, it is computed after the sketch is solved; constrain its source "${source}", or project the copy in a later sketch`;
 
-// The numeric fields of an entry (6a, part 1): `validate` reads them through the reader of fields
-// at `external/<id>/...`; `addExternal` validates with a fresh reader over no expressions and hands
-// the expressions it read on; `updateExternal` first sets every address under `external/<id>/` to
-// null; `withConstraints` keeps an expression under `external/<id>/` while the entry is there and
-// reads the address (learnt by validating the entry once); `removeExternal` drops them. So
-// `fieldsOf(sketch)` lists them, `setField { feature: <sketch>, path: 'external/v/transform/count' }`
-// changes one, `renameParameter` renames in them, and the recompute substitutes their values.
+// The numeric fields of an entry: `validate` reads them through the reader of fields at
+// `external/<id>/...`; `addExternal` validates with a fresh reader over no expressions
+// (`entryContext`) and hands the expressions it read on; `updateExternal` first sets every address
+// under `external/<id>/` to null; `withConstraints` keeps an expression under `external/<id>/`
+// while the entry is there and reads the address (learnt by validating the entry once);
+// `removeExternal` drops them. So `fieldsOf(sketch)` lists them,
+// `setField { feature: <sketch>, path: 'external/v/transform/count' }` changes one,
+// `renameParameter` renames in them, and the recompute substitutes their values.
 export type EntryFieldPath = `external/${string}/transform/${'count' | 'span/spacing' | 'span/length' | 'span/angle' | `second/${'count' | 'span/spacing' | 'span/length'}`}`;
 export const countOfVents: EntryFieldPath = 'external/v/transform/count';
 export const exprOfVents: Record<EntryFieldPath, Expr> = { 'external/v/transform/count': 'vents' };
 
-// The check of an update (6a's `updateProblem`, the part 6c writes): an update may not turn an entry
+// The check of an update (`updateProblem`, the part 6c writes): an update may not turn an entry
 // from reference to derived geometry or back ("updateExternal: an entry of reference geometry
 // cannot become derived geometry, or the other way; remove it and add the other"). Within the
 // derived kind everything may change: the sources, the kind of transform, the count. No constraint
@@ -279,77 +406,129 @@ export declare function sourceChangeProblem(before: ExternalRefAfter, after: Ext
 // evaluated again), as `updateFeature` does, so an entry whose expression no longer evaluates can
 // still be patched.
 export declare function entryInput(sketch: SketchFeature, id: Id): Input<ExternalRefAfter>;
+// Two entries have the same transform when the `transform` of their input forms is equal field by
+// field, an expression compared as its text (`count: 'vents'` and `count: 5` are not the same).
+export declare function sameTransform(sketch: SketchFeature, a: Id, b: Id): boolean;
 
-// The face key (6a, "Face names"; `faceKey` of face-roles.ts): a text field of a role that holds
-// a slash is written as a JSON string. No face of today has one, so no key of today changes; the
-// two expectations of face-roles.test.ts with `rim/center` change (`H/holeBore/"rim/center"`).
+// The face key (`faceKey` of face-roles.ts): a text field of a role that holds a slash or starts
+// with a quotation mark is written as a JSON string. No face a feature makes today has a slash in
+// such a field; a face whose curve or point ID starts with a quotation mark gets another key (keys
+// are never stored). With the second condition no two names share a key.
+export const quotedInKey = (part: string): boolean => part.includes('/') || part.startsWith('"');
 export const SIDE_OF_A_COPY: Extract<FaceName, { role: 'side' }> = { feature: 'lid', role: 'side', curve: 'm/1/c2' };
 export const KEY_OF_SIDE_OF_A_COPY = 'lid/side/"m/1/c2"'; // faceKey(SIDE_OF_A_COPY) after 6c
+export const KEYS_THAT_CHANGE = { 'H/holeBore/rim/center': 'H/holeBore/"rim/center"', 'H/holeFlat/2/rim/center': 'H/holeFlat/2/"rim/center"', 'ring/side/outer/@p:1': 'ring/side/"outer/@p:1"' } as const; // the hypothetical names of face-roles.test.ts and of the two insert tests
 
-// ================================================================ 4. what reads the copies
-
-// `derivedPoints(id, ref)` of the engine reads `ref.kind` of an edge; with the union it narrows to
-// the edge (`EdgeProjection`), and leaves the exports of the engine (nothing outside the engine calls
-// it after 6a's part 5).
-export declare function derivedPoints(id: Id, ref: EdgeProjection): Id[];
+// ================================================================ 5. the sketch tools and copies
 
 // The sketch tools of D52 and 6e (packages/engine/src/sketch-tools.ts, sketch-cut.ts) and copies:
-// - A copy is no curve, corner or point to cut, extend or fillet: refused with
-//   `COPY_IN_TOOL` (the tools ask for own curves and points already; the text says why).
+// - A copy is no curve, corner or point to cut, extend or fillet, no `with` curve, and no snap of
+//   an anchor: every kind of input refuses it with `COPY_IN_TOOL`, through one check.
 // - A source changed by a tool: the batch also patches every derived entry that lists a curve the
-//   tool changes, with `updateExternal` of `entryInput` (its expressions kept): the pieces a split
-//   or a trim leaves are listed in the place of the cut curve, in the entries that listed it only;
-//   a curve the batch makes (a new curve, or a piece of a curve it cuts that was not listed: the
-//   arc of a fillet, the arc a notch circle becomes) is added to an entry that lists a curve at each
-//   of its two ends, and, when the curves at its ends are listed by two different entries, to both
-//   only when their transforms are the same (two mirrors about one axis), else to none (an own curve
-//   the batch only re-points or extends is never added);
-//   a curve removed whole leaves the list (an entry left with no source keeps its last one). So the
-//   copies keep the shape of their source.
+//   tool changes, with `updateExternal` of `entryInput` (its expressions kept), after the new
+//   pieces and the removals and before the `updateFeature` patches:
+//   - the pieces a split or a trim leaves of a listed curve are listed in its place;
+//   - a curve removed whole leaves the list (an entry left with no source keeps its last one);
+//   - a curve that takes the place of a stretch the batch removes joins the entry: an own curve the
+//     entry does not list, with the construction flag of the stretch, whose two ends are the two
+//     bounds of a stretch of listed curves that the batch removes (`RemovedStretch`). It may be one
+//     the batch makes (the arc of a fillet, the arcs a notch circle becomes) or one that was there;
+//   - nothing else joins: a split removes nothing, so it adds nothing but pieces;
+//   - when the stretch belongs to curves of two entries, the curve joins the first of them in the
+//     order of the entries when the two have the same transform, and neither otherwise.
 // - An end a trim cuts off stays when an entry names it (a listed point, the centre of a circular
 //   pattern), as when a constraint names it (6e's rule of old ends), so no batch removes a centre;
 //   an entry whose axis or direction line the batch removes whole is in `entries` (it has no copies
 //   afterwards), and the features that name copies of what the batch removes are in `broken`.
-// - The regions of features over copies follow. By names, for the fillet, and for 6e's tools in
-//   a region of a copy the count does not make now: a stored region that holds the copies with one
-//   number `n` of the curves at both ends of a curve added to an entry gets `<entry>/<n>/<curve>`
-//   (the numbers read from the region, whatever the count, so it is right when the count comes
-//   back); when the two copies belong to two entries with the same transform, the copy of the entry
-//   first in `external` (the one the occupation pass keeps). 6e's tools follow the regions of the
-//   copies that are made by the face rule over the profile with the derived entries (`deriveAll`
-//   over the sketch as the batch leaves it, and as it was), with the counts of the document, so
-//   a region of copies is followed as a region of own curves is.
+// - The regions of features over copies follow: by the face rule of 6e over profiles computed with
+//   `withDerived`, with the counts of the document; and by names, for the fillet, and for 6e's
+//   tools in a stored region of a copy the count does not make now (the pieces in the place of a cut
+//   curve's copy; `<entry>/<n>/<curve>` of the curve that took the place of a stretch, where the
+//   region holds the copies with one number `n` of the curves at both bounds).
 // - `moved` and `shortened` name a feature on a side face of a copy of a changed line as they name
 //   one on a side face of the line (a copy of a line starts at the copy of its `a`).
 // - `ids.entries` lists the entries patched, and those left without their axis or direction.
-export const COPY_IN_TOOL = (curve: Id, entry: Id, source: Id): string => `"${curve}" is a copy of the mirror or pattern "${entry}"; change its source "${source}", and the copies follow`;
+// - An own curve that crosses a copy leaves the profile invalid and cannot be cut there; `split`
+//   without a curve reports it with the copy and its entry named.
+export const COPY_IN_TOOL = (id: Id, entry: Id, source: Id): string => `"${id}" is a copy of the mirror or pattern "${entry}"; change its source "${source}", and the copies follow`;
+export const COPY_AS_SNAP = (id: Id, entry: Id, source: Id): string => `"${id}" is a copy of the mirror or pattern "${entry}": a new point cannot be tied to a copy; snap to its source "${source}", or place the point by its coordinates`;
+export declare function copyProblem(sketch: SketchFeature, id: Id, as: 'curve' | 'point' | 'snap'): string | undefined;
+// What 6c reads of the plan of a batch (6e) and of the fillet: a stretch the batch removes from the
+// sketch: the curve it belonged to, by its ID before the batch, and its two bounds, points of the
+// sketch after the batch (the two cuts of a trimmed piece, the ends of a piece removed whole, the
+// two tangent points of a fillet, whose stretch runs over two curves through the corner).
+export interface RemovedStretch {
+  curves: Id[];
+  bounds: [Id, Id];
+}
 export interface CopyPatchIds {
   entries: Id[];
 }
 
-// ================================================================ 5. the app
+// ================================================================ 6. MCP
 
-// The row of the kind in the list of entries of the sketch panel (6a's `REFERENCE_UI`), with one
-// member 6c adds to `ReferenceUi`: `edit`, the form of the entry opened from its row.
+// `get_sketch` of a derived entry (packages/mcp/src/tools.ts): its input form, then where its
+// copies are, in place of 6a's listing of every entity.
+// - `copies`: the copy numbers made, as ranges `[from, to]`; those of the last recompute.
+// - `step`: where copy k stands: a row the shift of one step (and of one step of `second`), a circle
+//   its centre and the angle of one step in radians, a mirror the two points of its axis.
+// - `first`: the entities of the first copy made: a curve with its kind, a point with its position.
+export type PatternDetail = Input<SketchPattern> & {
+  id: Id;
+  source: 'derived';
+  copies: [number, number][];
+  step: { shift: Vec2; second?: Vec2 } | { center: Vec2; angle: number } | { axis: [Vec2, Vec2] } | null;
+  first: Record<Id, CurveShape['type'] | Vec2>;
+};
+// A region of `get_sketch`; with `copies`, one row for the same region of every copy number listed
+// (the reference is that of the first, the others have their number in its place).
+export interface RegionDetail {
+  ref: RegionRef;
+  area: number;
+  holes: number;
+  copies?: { entry: Id; numbers: [number, number][] };
+}
+
+// ================================================================ 7. the app
+
+// The row of the kind in the list of entries of the sketch panel (`REFERENCE_UI`), with what 6c
+// adds to `ReferenceUi`, all of it data (a function over the sketch mode would make the rows import
+// the mode, which imports the rows):
+// - `form`: the controls of the entry's form, each with the path of its field in the input form of
+//   the entry; the panel draws them and sends `updateExternal` with `entryInput` and the change.
+// - `repair` may depend on the entry (a mirror is picked again with the tool Mirror, a row with
+//   Linear pattern), so it may be a function of the entry that returns the data.
 // - `title`: "Mirror", "Linear pattern" (with `second`: "Grid"), "Circular pattern"; `detail`: the
-//   number of sources and the axis, direction or centre with the count ("3 curves about origin/y",
-//   "4 curves, 5 along c1"); `tag`: "copy"; no `repair`.
-// - The form: the sources (the list, and a button that takes the current selection of own curves
-//   and points and `origin`), the kind of the transform, its line or point (picked in the view from the lines or
-//   points that may serve, not copies), and its numeric fields as text inputs that take expressions;
-//   it sends `updateExternal` with the input form.
-export interface ReferenceUiAfter<R> extends ReferenceUi<R> {
-  edit?: { title: string; start(host: SketchHostStandIn, m: SketchModeStandIn, id: Id): void };
+//   number of sources and the axis, direction or centre with the count ("5 curves about origin/y",
+//   "4 curves, 5 along origin/x"); `tag`: "copy".
+export type EntryControl =
+  | { kind: 'sources'; path: string; title: string }
+  | { kind: 'choice'; path: string; title: string; options: readonly string[] }
+  | { kind: 'entity'; path: string; title: string; accepts: 'line' | 'point' } // a select of the entities that may serve, not copies
+  | { kind: 'number'; path: string; title: string; unit: 'mm' | 'angle' | 'count' } // text that may be an expression
+  | { kind: 'switch'; path: string; title: string };
+type Repair = NonNullable<ReferenceUi<unknown>['repair']>;
+export interface ReferenceUiAfter<R> extends Omit<ReferenceUi<R>, 'repair'> {
+  repair?: Repair | ((ref: R) => Repair | undefined);
+  form?(ref: Input<R>): EntryControl[];
 }
 export declare const PATTERN_UI: ReferenceUiAfter<SketchPattern>;
+// The names of the three tools join `SketchToolName` of the app.
+export type SketchToolNameAfter = SketchToolName | 'mirror' | 'linearPattern' | 'circularPattern';
 
-// Three tools of the sketch bar (6a's `SKETCH_TOOL_UI`, after `fillet`): `mirror`, `linearPattern`,
-// `circularPattern`. Each takes the own curves and points (and `origin`) selected before it as the sources (none
-// selected: the tool says so and does nothing). `mirror` and `linearPattern` pick a line
-// (`picks: 'curve'`, `eligible`: a line that is not a copy); `circularPattern` picks a point (a snap
-// to a point that is not a copy). One click adds the entry with `addExternal`; the options of the
-// pattern tools (the count, and the spacing or the angle, as text that may be an expression) are
-// their panel while they are active. The new entry's form opens, which is where a grid is made.
+// The entities of every entry of a sketch, built once per sketch object (the document is
+// immutable): the pickers, the tags, the hover and the row of the panel read it, where they ask
+// the engine for the entities of an entry once per ID today.
+export declare function entityIndex(sketch: SketchFeature): ReadonlyMap<Id, { kind: EntityKind; entry: Id; derived: boolean }>;
+
+// Three tools of the sketch bar (`SKETCH_TOOL_UI`, after `fillet` and 6e's three): `mirror`,
+// `linearPattern`, `circularPattern`. Each takes the own curves and points (and `origin`) selected
+// before it as the sources (none selected: the tool says so and does nothing). `mirror` and
+// `linearPattern` pick a line (`picks: 'curve'`, `eligible`: a line that is not a copy; an axis of
+// the origin is one); `circularPattern` picks a point (a snap to a point that is not a copy). One
+// click adds the entry with `addExternal`, or with an entry to repair replaces its axis, direction
+// or centre with `updateExternal`; the options of the pattern tools (the count, and the spacing or
+// the angle, as text that may be an expression) are their panel while they are active.
 export interface PatternToolOptions {
   count: string;
   span: string;
@@ -358,8 +537,9 @@ export declare const MIRROR_TOOL: SketchPlaceTool<undefined>;
 export declare const LINEAR_PATTERN_TOOL: SketchPlaceTool<PatternToolOptions>;
 export declare const CIRCULAR_PATTERN_TOOL: SketchPlaceTool<PatternToolOptions>;
 // - The copies are drawn from `SketchResult.curves` in the style of derived geometry (dashed, the
-//   colour of projections), their points without handles; the hover of the row marks them.
+//   colour of projections), their points without handles, marked as derived in the view; the hover
+//   of the row marks them.
 // - No place snaps to a copy while drawing (a curve may only run over own points; a coincident with
-//   a copy would be refused), and the constraint buttons stay off for a selection with a copy.
+//   a copy would be refused), and the constraint offers skip a selection with a copy.
 // - The regions of copies are picked for an extrusion as any region (they are in `regions` of the
 //   result).

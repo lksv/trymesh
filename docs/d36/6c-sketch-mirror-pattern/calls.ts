@@ -6,31 +6,32 @@
 // origin; the mirrored half closes into one region with the original. Step 5: vents, one slot and
 // a linear pattern with the count `vents`: a row in the lid's own sketch, whose copies are holes of
 // the lid's region and follow the count with no patch, and a row in a sketch of its own, of which
-// a cut takes the regions of copies 1 and 3. Step 7, the part of 6c: `vents` from 5 to 7 keeps the
-// cut's region references; 3 makes copy 3 a broken reference, and 5 brings it back. Then the
-// rest of the mechanism: a circular pattern (the bolt circle the Onshape converter lost), a grid,
-// a copy that lies on its source, the fillet of a source corner, and the refusals.
+// a cut takes the regions of copies 1 and 3. Step 6, the second notch: a circle across the top line
+// of the lid's source half, trimmed in either order; the entry of the mirror is patched and its copy
+// follows. Step 7, the part of 6c: `vents` from 5 to 7 keeps the cut's region references; 3 makes
+// copy 3 a broken reference, and 5 brings it back. Then the rest of the mechanism: a circular
+// pattern (the bolt circle the Onshape converter lost), a grid, a copy that lies on its source, the
+// fillet of a source corner, a split by a rib the mirror does not list, an end that stays open,
+// and the refusals.
 //
-// Written as 6c's own test runs it, before 6b: the axes `origin/x` and `origin/y` are 6b's, so the
-// mirror is about a vertical construction line `ay` from the origin (with a length, so the sketch is
-// fully determined), row A runs along the bottom line `c1`, and row B along a horizontal
-// construction line `dir` of its sketch. The test of the whole scenario, after 6b, uses `origin/y`
-// and `origin/x` in their places, and the refusal `p8` (a mirror about `origin/y`, refused before
-// 6b) goes. The numbers in the comments were measured
-// so (design.md, "Measured": the derive prototyped in the scratchpad, the copies put into the real
-// `detectProfile`, the sketches solved by the real planegcs adapter).
+// Written after 6a2 (the axes of the origin, implemented before 6c: the owner's answer 1): the
+// mirror is about `origin/y`, the rows run along `origin/x`, the grid's second direction is
+// `origin/y`. The numbers in the comments were measured (design.md, "Measured": the stage after the
+// solver prototyped outside the repository, the copies put into the real `profileOf`, the sketches
+// solved by the real planegcs adapter); the half was measured with a construction line through the
+// origin in the place of `origin/y`, which stands at the same place.
 // The grip flank of step 4 is a spline of 6d; here it is a line, so that the volume can be computed
-// by hand, and 6d puts the spline in (design.md, "Later kinds").
+// by hand, and 6d puts the spline in (design.md, "Later kinds"). The second row of vents is
+// dimensioned without a projection of a copy, which 6b adds.
 
 import type { Id, SketchFeature } from '../../../packages/engine/src/index';
 import { faceKey } from '../../../packages/engine/src/index';
 import type { CommandAfter, StateAfter } from '../00-prep/contract';
 import { done, engine, fail, run } from '../2a-offset/calls';
-import type { SketchResultAfter } from '../6a-sketch-prep/contract';
 import { contextOf } from '../6e-trim-extend-split/calls';
 import { freshIds, sketchTool } from '../6e-trim-extend-split/contract';
-import type { SketchPattern } from './contract';
-import { COPY_IN_CONSTRAINT, KEY_OF_SIDE_OF_A_COPY, SIDE_OF_A_COPY } from './contract';
+import type { CopyPatchIds, SketchPattern, SketchResultAfter } from './contract';
+import { COPY_AS_SNAP, COPY_IN_CONSTRAINT, KEY_OF_SIDE_OF_A_COPY, SIDE_OF_A_COPY } from './contract';
 
 const XY = { kind: 'base', plane: 'XY' } as const;
 const near = (value: number | undefined, expected: number, tolerance: number): boolean => value !== undefined && Math.abs(value - expected) < tolerance;
@@ -88,8 +89,8 @@ export function stand(): StateAfter {
 
 // The right half, drawn off its place and solved: `c1` along the bottom from the origin, the corner
 // arc `r1`, the flank `c2` (6d: a spline), the corner arc `r2`, the top `c3`, which ends at `a5` on
-// the Y axis by a constraint. Fully determined (measured: 0 degrees of freedom; `a5` solved to
-// x = 0 exactly).
+// the Y axis by a constraint (`pointOnCurve` with `origin/y`). Fully determined (measured: 0 degrees
+// of freedom; `a5` solved to x = 0 exactly).
 export function lidHalf(): StateAfter {
   const s = 'lidSketch';
   run({ type: 'addFeature', feature: { id: s, name: 'Lid', suppressed: false, type: 'sketch', plane: XY, points: {}, radii: {}, curves: {}, constraints: {}, external: {}, solved: { inputs: '', external: {} } } });
@@ -101,13 +102,11 @@ export function lidHalf(): StateAfter {
     point(s, 'q2', 37.3, 48.8),
     point(s, 'a4', 36.8, 54.3),
     point(s, 'a5', 0.7, 53.8),
-    point(s, 'py', 0.4, 60.5),
     line(s, 'c1', 'origin', 'a1'),
     arc(s, 'r1', 'q1', 'a1', 'a2'),
     line(s, 'c2', 'a2', 'a3'),
     arc(s, 'r2', 'q2', 'a3', 'a4'),
     line(s, 'c3', 'a4', 'a5'),
-    line(s, 'ay', 'origin', 'py', true),
   );
   return run(
     constrain(s, 'k1', { type: 'horizontal', line: 'c1' }),
@@ -121,11 +120,8 @@ export function lidHalf(): StateAfter {
     constrain(s, 'k9', { type: 'equalRadius', a: 'r1', b: 'r2' }),
     constrain(s, 'k10', { type: 'horizontalDistance', a: 'origin', b: 'a2', value: 'W / 2', driving: true }),
     constrain(s, 'k11', { type: 'verticalDistance', a: 'origin', b: 'a4', value: 'H', driving: true }),
-    // the Y axis: a vertical construction line from the origin, 60 long (after 6b: `origin/y`, and
-    // `ay`, `py`, k13 and k14 go)
-    constrain(s, 'k12', { type: 'pointOnCurve', point: 'a5', curve: 'ay' }),
-    constrain(s, 'k13', { type: 'vertical', line: 'ay' }),
-    constrain(s, 'k14', { type: 'distance', a: 'origin', b: 'py', value: 60, driving: true }),
+    // the end of the top on the Y axis of the origin (6a2)
+    constrain(s, 'k12', { type: 'pointOnCurve', point: 'a5', curve: 'origin/y' }),
   );
 }
 
@@ -136,14 +132,15 @@ export function mirrored(): StateAfter {
   parameters();
   stand();
   lidHalf();
-  return run(addPattern('lidSketch', 'm', { type: 'pattern', sources: ['c1', 'r1', 'c2', 'r2', 'c3'], transform: { type: 'mirror', axis: 'ay' } }));
+  return run(addPattern('lidSketch', 'm', { type: 'pattern', sources: ['c1', 'r1', 'c2', 'r2', 'c3'], transform: { type: 'mirror', axis: 'origin/y' } }));
 }
 export const LID_REGION: Id[] = ['c1', 'c2', 'c3', 'm/1/c1', 'm/1/c2', 'm/1/c3', 'm/1/r1', 'm/1/r2', 'r1', 'r2'];
 
 // One region whose outer loop holds both halves (measured: its polygon 4514.3488 mm², by hand
 // 4514.5398); the arcs of the copy run counter-clockwise from the image of the source's end
 // (`m/1/r1` from the image of `a2` to the image of `a1`); the copies are in the result as curves
-// that are not own; the solver saw none of them (the freedom of the half, 0).
+// that are not own; the solver saw none of them (the freedom of the half, 0), and no end of a copy
+// is open.
 export function oneRegion(state: StateAfter): boolean {
   const result = resultOf(state, 'lidSketch');
   return (
@@ -152,6 +149,7 @@ export function oneRegion(state: StateAfter): boolean {
     same(result.curves['m/1/r1'], { shape: { type: 'arc', center: 'm/1/q1', start: 'm/1/a2', end: 'm/1/a1' }, source: 'derived', regions: true }) &&
     near(result.points['m/1/a2']?.x, -W / 2, 1e-9) &&
     result.degreesOfFreedom === 0 &&
+    result.openEnds === undefined &&
     state.evaluation.features['lidSketch'].status === 'ok'
   );
 }
@@ -177,7 +175,7 @@ export const wider = (): boolean => {
 
 // Row A, in the lid's sketch: one slot at x = −12, y = 14 (the centres `o1`, `o2` 9 apart, the ends
 // `s1` … `s4`; dimensioned in the code of the scenario, placed here), and a linear pattern along the
-// bottom line `c1` (after 6b: `origin/x`) with the count `vents` and the spacing `ventPitch`. The copies lie inside
+// X axis of the origin with the count `vents` and the spacing `ventPitch`. The copies lie inside
 // the outline, so they are holes of the lid's region, which is named by its outer loop alone: the
 // lid has the vents, and more vents need no patch.
 function slot(sketch: Id, p: string, x: number, y: number): CommandAfter[] {
@@ -196,7 +194,7 @@ function slot(sketch: Id, p: string, x: number, y: number): CommandAfter[] {
 }
 export function rowA(): StateAfter {
   run(...slot('lidSketch', 'v', -12, 14));
-  return run(addPattern('lidSketch', 'va', { type: 'pattern', sources: ['vg1', 've1', 'vg2', 've2'], transform: { type: 'linear', direction: 'c1', count: 'vents', span: { type: 'spacing', spacing: 'ventPitch' } } }));
+  return run(addPattern('lidSketch', 'va', { type: 'pattern', sources: ['vg1', 've1', 'vg2', 've2'], transform: { type: 'linear', direction: 'origin/x', count: 'vents', span: { type: 'spacing', spacing: 'ventPitch' } } }));
 }
 // Measured: 6 regions (the lid with 5 holes, the slot, copies 1 to 4); the lid's region unchanged.
 export const rowAChecks = (state: StateAfter): boolean =>
@@ -210,8 +208,8 @@ export const rowAChecks = (state: StateAfter): boolean =>
 export function rowB(): StateAfter {
   const s = 'ventSketch';
   run({ type: 'addFeature', feature: { id: s, name: 'Vents', suppressed: false, type: 'sketch', plane: XY, points: {}, radii: {}, curves: {}, constraints: {}, external: {}, solved: { inputs: '', external: {} } } });
-  run(...slot(s, 'w', -12, 40), point(s, 'd1', 0, -5), point(s, 'd2', 10, -5), line(s, 'dir', 'd1', 'd2', true));
-  run(addPattern(s, 'vb', { type: 'pattern', sources: ['wg1', 'we1', 'wg2', 'we2'], transform: { type: 'linear', direction: 'dir', count: 'vents', span: { type: 'spacing', spacing: 'ventPitch' } } }));
+  run(...slot(s, 'w', -12, 40));
+  run(addPattern(s, 'vb', { type: 'pattern', sources: ['wg1', 'we1', 'wg2', 'we2'], transform: { type: 'linear', direction: 'origin/x', count: 'vents', span: { type: 'spacing', spacing: 'ventPitch' } } }));
   return run(extrudeRegions('ventCut', s, [copyRegion(1), copyRegion(3)], 'T', 'cut', ['lid']));
 }
 const copyRegion = (copy: number): Id[] => ['wg1', 'we1', 'wg2', 'we2'].map((curve) => `vb/${copy}/${curve}`);
@@ -227,7 +225,10 @@ export function sevenVents(): boolean {
   const state = run({ type: 'setParameter', name: 'vents', expr: '7' });
   const cut = state.document.features.find((f) => f.id === 'ventCut');
   const cutBefore = before.document.features.find((f) => f.id === 'ventCut');
+  // the copies are in no input of the solver: the stamp of the sketch is what it was
+  const stamp = (of: StateAfter): string => sketchOf(of, 'lidSketch').solved.inputs;
   return (
+    stamp(state) === stamp(before) &&
     regionsOf(state, 'lidSketch').length === 8 &&
     near(volumeOf(state, 'lid'), (LID - 9 * SLOT) * T, lidAllowance(9)) && // from the measured areas 8416.528, by hand 8415.845
     same(cut, cutBefore) &&
@@ -262,6 +263,8 @@ export function refusals(): (string | undefined)[] {
     return result.ok ? undefined : result.error.message;
   };
   const tool = sketchTool('trim', contextOf(engine.getState(), 'lidSketch'), { curve: 'm/1/c2', at: [-42, 27] }, freshIds(engine.getState().document, 'x_'));
+  // a rectangle whose first corner snaps to a copied point: the batch would tie a new point to the copy
+  const snapped = sketchTool('rectangle', contextOf(engine.getState(), 'lidSketch'), { first: { at: [-42, 5], snap: { kind: 'point', id: 'm/1/a2' } }, opposite: { at: [-30, 12] } }, freshIds(engine.getState().document, 'x_'));
   return [
     refused(constrain('lidSketch', 'kx', { type: 'horizontal', line: 'm/1/c3' })), // COPY_IN_CONSTRAINT('m/1/c3', 'm', 'c3')
     refused(line('lidSketch', 'lx', 'm/1/a1', 'a1')), // a curve runs over own points and the origin only
@@ -269,16 +272,19 @@ export function refusals(): (string | undefined)[] {
     refused({ type: 'dragPoint', sketch: 'lidSketch', point: 'm/1/a2', x: 0, y: 0 }),
     refused(addPattern('lidSketch', 'p2', { type: 'pattern', sources: ['m/1/c2'], transform: { type: 'mirror', axis: 'c1' } })), // a pattern of a copy (deferred)
     refused(addPattern('lidSketch', 'p3', { type: 'pattern', sources: ['c2'], transform: { type: 'mirror', axis: 'r1' } })), // an arc is no axis
-    refused(addPattern('lidSketch', 'p4', { type: 'pattern', sources: ['nothing'], transform: { type: 'mirror', axis: 'ay' } })),
+    refused(addPattern('lidSketch', 'p4', { type: 'pattern', sources: ['nothing'], transform: { type: 'mirror', axis: 'origin/y' } })),
     refused(addPattern('lidSketch', 'p5', { type: 'pattern', sources: ['c2'], transform: { type: 'linear', direction: 'm/1/c1', count: 3, span: { type: 'spacing', spacing: 5 } } })), // a copy as the direction
     refused(addPattern('lidSketch', 'p6', { type: 'pattern', sources: ['c2'], transform: { type: 'circular', center: 'origin', count: 201, span: { type: 'full' } } })),
-    refused(addPattern('lidSketch', 'p7', { type: 'pattern', sources: ['c2', 'c2'], transform: { type: 'mirror', axis: 'ay' } })),
-    refused(addPattern('lidSketch', 'p8', { type: 'pattern', sources: ['c2'], transform: { type: 'mirror', axis: 'origin/y' } })), // before 6b `origin/y` is no line
+    refused(addPattern('lidSketch', 'p7', { type: 'pattern', sources: ['c2', 'c2'], transform: { type: 'mirror', axis: 'origin/y' } })),
+    refused(addPattern('lidSketch', 'p8', { type: 'pattern', sources: ['origin/y'], transform: { type: 'mirror', axis: 'c1' } })), // an axis of the origin is no source
+    refused({ type: 'addExternal', sketch: 'lidSketch', id: 'p9', ref: { type: 'pattern', sources: ['c2'], transform: { type: 'mirror', plane: 'origin/y' } } } as unknown as CommandAfter), // D53's name: "a mirror in a sketch is about a line: `axis`, not `plane`"
     refused({ type: 'updateExternal', sketch: 'lidSketch', id: 'm', ref: { type: 'edge', body: 'stand', edge: { a: { feature: 'stand', role: 'endCap' }, b: { feature: 'stand', role: 'side', curve: 'bl1' } }, kind: 'line' } }), // derived to reference
     tool.ok ? undefined : tool.message, // COPY_IN_TOOL('m/1/c2', 'm', 'c2')
+    snapped.ok ? undefined : snapped.message, // first: COPY_AS_SNAP('m/1/a2', 'm', 'a2')
   ];
 }
 export const constraintText = COPY_IN_CONSTRAINT('m/1/c3', 'm', 'c3');
+export const snapText = COPY_AS_SNAP('m/1/a2', 'm', 'a2');
 
 // A source removed by hand: the entry stays valid (the document saves and loads), the copies of the
 // rest are made, and the sketch warns which source is gone.
@@ -338,7 +344,7 @@ export function ring(): boolean {
 // Square vents in rows and columns: copy i along the first direction and j along the second is
 // `<entry>/<i + 1000 · j>/<source>`, as in a grid of features (D53); 14 × 14 places at most 200.
 export const gridCopy = (i: number, j: number, source: Id): Id => `g/${i + 1000 * j}/${source}`;
-// A square of side 2 at (−20, −10) in the vents sketch, with a vertical construction line `up`.
+// A square of side 2 at (−20, −10) in the vents sketch; the second direction is the Y axis.
 export const grid = (): StateAfter =>
   run(
     point('ventSketch', 'q1', -20, -10),
@@ -349,10 +355,7 @@ export const grid = (): StateAfter =>
     line('ventSketch', 'sq2', 'q2', 'q3'),
     line('ventSketch', 'sq3', 'q3', 'q4'),
     line('ventSketch', 'sq4', 'q4', 'q1'),
-    point('ventSketch', 'u1', -30, -40),
-    point('ventSketch', 'u2', -30, -30),
-    line('ventSketch', 'up', 'u1', 'u2', true),
-    addPattern('ventSketch', 'g', { type: 'pattern', sources: ['sq1', 'sq2', 'sq3', 'sq4'], transform: { type: 'linear', direction: 'dir', count: 14, span: { type: 'spacing', spacing: 3 }, second: { direction: 'up', count: 14, span: { type: 'spacing', spacing: -3 } } } }),
+    addPattern('ventSketch', 'g', { type: 'pattern', sources: ['sq1', 'sq2', 'sq3', 'sq4'], transform: { type: 'linear', direction: 'origin/x', count: 14, span: { type: 'spacing', spacing: 3 }, second: { direction: 'origin/y', count: 14, span: { type: 'spacing', spacing: -3 } } } }),
   );
 export const gridTooLarge = (): string | undefined => {
   const state = done(engine.preview({ type: 'setField', feature: 'ventSketch', path: 'external/g/transform/second/count', value: 15 }));
@@ -368,14 +371,15 @@ export const gridTooLarge = (): string | undefined => {
 export function dShapeSketch(): StateAfter {
   const s = 'half';
   run({ type: 'addFeature', feature: { id: s, name: 'D', suppressed: false, type: 'sketch', plane: XY, points: {}, radii: {}, curves: {}, constraints: {}, external: {}, solved: { inputs: '', external: {} } } });
-  return run(point(s, 'top', 0, 10), point(s, 'bot', 0, -10), arc(s, 'h', 'origin', 'bot', 'top'), line(s, 'dia', 'top', 'bot'), point(s, 'yb', 0, 30), line(s, 'ax', 'origin', 'yb', true), addPattern(s, 'm', { type: 'pattern', sources: ['h', 'dia'], transform: { type: 'mirror', axis: 'ax' } }));
+  return run(point(s, 'top', 0, 10), point(s, 'bot', 0, -10), arc(s, 'h', 'origin', 'bot', 'top'), line(s, 'dia', 'top', 'bot'), addPattern(s, 'm', { type: 'pattern', sources: ['h', 'dia'], transform: { type: 'mirror', axis: 'origin/y' } }));
 }
 export const dShape = (state: StateAfter): boolean =>
   same(regionsOf(state, 'half'), [['dia', 'h'], ['dia', 'm/1/h']]) && resultOf(state, 'half').curves['m/1/dia']?.regions === false;
 
 // ================================================================ the fillet of a source corner
 
-// A corner of two source lines filleted (D52): the arc joins every entry that lists a line at each of its ends, by
+// A corner of two source lines filleted (D52): the arc takes the place of the stretch through the
+// corner, which the fillet removes from two listed lines, so it joins the entry that lists them, by
 // `updateExternal` of the entry's input form, so the count stays the expression `copies`; the copy
 // of the arc joins every stored region that holds the copies of both lines, read from the region,
 // so the region of copy 2, which the count 2 does not make now, is patched too and is right when
@@ -406,11 +410,100 @@ export function filletOfSource(): boolean {
   const three = run({ type: 'setParameter', name: 'copies', expr: '3' });
   return (
     before === 'noProfile' &&
-    same(made.ids.entries, ['tr']) &&
+    same((made.ids as unknown as CopyPatchIds).entries, ['tr']) &&
     entry.sources.includes(arc) &&
     sketchOf(after, 'tri').expressions?.['external/tr/transform/count'] === 'copies' &&
     regionOf('triangles').every((loop) => loop.includes(arc) || loop.includes(`tr/1/${arc}`)) &&
     regionOf('third').every((loop) => loop.includes(`tr/2/${arc}`)) &&
     three.evaluation.features['third'].status === 'ok'
   );
+}
+
+// ================================================================ step 6: the second notch
+
+// A cable notch in the top line `c3` of the lid's source half: a circle `nk` of radius 4 whose
+// centre lies on the line at x = 20 crosses it at x = 16 and x = 24. Two trims leave the notch:
+// the piece of the line inside the circle, and the arc of the circle outside the outline. In either
+// order the entry of the mirror ends with the two pieces of `c3` and the arc inside in the place of
+// `c3`, the copy has the notch at x = −20, and the lid keeps one region and loses two half discs.
+// - `lineFirst`: the first trim removes the stretch of `c3` between the two cuts; both arcs of the
+//   circle take its place (each runs from one bound to the other) and join the entry; the second
+//   trim removes the outer arc whole, and it leaves the list.
+// - the other order: the first trim removes the outer arc, which nothing lists, so the entry gets
+//   only the three pieces of `c3`; the second removes the middle piece whole, and the inner arc,
+//   which was there already, takes its place and joins the entry.
+const NOTCH_R = 4;
+export function secondNotch(lineFirst: boolean): boolean {
+  run({ type: 'addPoint', sketch: 'lidSketch', id: 'nc', x: 20, y: H }, { type: 'addCurve', sketch: 'lidSketch', id: 'nk', curve: { type: 'circle', center: 'nc' }, radius: NOTCH_R });
+  const trim = (curve: Id, at: [number, number], prefix: string): CopyPatchIds => {
+    const state = engine.getState();
+    const made = sketchTool('trim', contextOf(state, 'lidSketch'), { curve, at }, freshIds(state.document, prefix));
+    if (!made.ok) return fail(made.message);
+    run(...made.commands);
+    return made.ids as unknown as CopyPatchIds;
+  };
+  const [inLine, outside]: [number, number][] = [[20, H], [20, H + NOTCH_R]];
+  const first = lineFirst ? trim('c3', inLine, 'n1_') : trim('nk', outside, 'n1_');
+  const second = lineFirst ? trim('nk', outside, 'n2_') : trim('c3', inLine, 'n2_');
+  const state = engine.getState();
+  const sketch = sketchOf(state, 'lidSketch');
+  const entry = sketch.external['m'] as unknown as SketchPattern;
+  // the arc of the notch: under the ID of the circle when the circle was trimmed first, under a new
+  // ID when the line was (the first arc of a split circle keeps the ID, and that one is trimmed away)
+  const arcs = entry.sources.filter((id) => sketch.curves[id]?.type === 'arc' && id !== 'r1' && id !== 'r2');
+  const lid = regionsOf(state, 'lidSketch').find((loop) => loop.includes('c1')) ?? [];
+  return (
+    same(first.entries, ['m']) &&
+    same(second.entries, ['m']) &&
+    entry.sources.includes('c3') &&
+    arcs.length === 1 &&
+    (lineFirst || arcs[0] === 'nk') &&
+    entry.sources.length === 7 && // c1, r1, c2, r2, the two pieces of c3, the arc
+    lid.includes(arcs[0]) &&
+    lid.includes(`m/1/${arcs[0]}`) &&
+    resultOf(state, 'lidSketch').valid &&
+    resultOf(state, 'lidSketch').openEnds === undefined &&
+    state.evaluation.features['lid'].status === 'ok' &&
+    // two half discs of radius 4 gone, within the chord tolerance (run on the lid of `lid()`, before the vents)
+    near(volumeOf(state, 'lid'), (LID - Math.PI * NOTCH_R * NOTCH_R) * T, lidAllowance(2))
+  );
+}
+
+// A split by a rib the mirror does not list (run on the lid of `lid()`, before the notch and the
+// vents): a line from below the bottom `c1` to above the top `c3` of the source half, cut where it
+// meets them by `split` without a curve. The batch removes nothing, so the entry gets the pieces of
+// `c1` and `c3` in their place and nothing of the rib; the lid's extrusion is patched to the two
+// regions the rib makes of it, and its body is the same.
+export function ribSplit(): boolean {
+  const before = volumeOf(engine.getState(), 'lid');
+  run(point('lidSketch', 'rb0', 30, -3), point('lidSketch', 'rb1', 30, H + 3), line('lidSketch', 'rib', 'rb0', 'rb1'));
+  const state = engine.getState();
+  const made = sketchTool('split', contextOf(state, 'lidSketch'), {}, freshIds(state.document, 'r_'));
+  if (!made.ok) return false;
+  const after = run(...made.commands);
+  const sketch = sketchOf(after, 'lidSketch');
+  const entry = sketch.external['m'] as unknown as SketchPattern;
+  // the pieces of the rib: `rib` and the new lines that stand at x = 30
+  const ofRib = ['rib', ...made.ids.added.filter((id) => { const c = sketch.curves[id]; return c?.type === 'line' && near(resultOf(after, 'lidSketch').points[c.a]?.x, 30, 1e-9) && near(resultOf(after, 'lidSketch').points[c.b]?.x, 30, 1e-9); })];
+  return (
+    same((made.ids as unknown as CopyPatchIds).entries, ['m']) &&
+    ofRib.length === 3 &&
+    ofRib.every((id) => !entry.sources.includes(id)) &&
+    entry.sources.length === 7 && // c1 and c3 in two pieces each, r1, c2, r2
+    regionsOf(after, 'lidSketch').length === 2 &&
+    near(volumeOf(after, 'lid'), before, 1e-6)
+  );
+}
+
+// ================================================================ an end that stays open
+
+// A half whose top ends 0.01 mm off the axis, with no constraint that holds it there: the outline
+// of the copies does not close, the sketch has no region, and the result says which end is open and
+// how far it is from what (measured: `m/1/e5`, nearest `e5`, 0.02 mm).
+export function openEnd(): boolean {
+  const s = 'open';
+  run({ type: 'addFeature', feature: { id: s, name: 'Open', suppressed: false, type: 'sketch', plane: XY, points: {}, radii: {}, curves: {}, constraints: {}, external: {}, solved: { inputs: '', external: {} } } });
+  const state = run(point(s, 'e1', 10, 0), point(s, 'e2', 10, 8), point(s, 'e5', 0.01, 8), line(s, 'o1', 'origin', 'e1'), line(s, 'o2', 'e1', 'e2'), line(s, 'o3', 'e2', 'e5'), addPattern(s, 'm', { type: 'pattern', sources: ['o1', 'o2', 'o3'], transform: { type: 'mirror', axis: 'origin/y' } }));
+  const open = resultOf(state, s).openEnds;
+  return resultOf(state, s).valid && regionsOf(state, s).length === 0 && open?.count === 1 && same(open.ends.map((end) => [end.end, end.reason, end.near]), [['m/1/e5', 'apart', ['e5']]]) && near(open.ends[0].distance, 0.02, 1e-9) && state.evaluation.features[s].warnings.length === 0;
 }

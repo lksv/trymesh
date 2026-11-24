@@ -11,7 +11,6 @@ export {
   constraintPath,
   CURVE_POINTS,
   curvePoints,
-  derivedPoints,
   documentIds,
   duplicateOf,
   emptyDocument,

@@ -51,12 +51,6 @@ export function referenceEntities(sketch: SketchFeature, id: Id): Record<Id, Ent
   return kindOf(ref).entities(id, ref, sketch);
 }
 
-// The derived points of a projected edge: `<id>/a`, `<id>/b` of a line, `<id>/center` of a circle.
-// Right for the kinds whose entities follow from the entry alone.
-export function derivedPoints(id: Id, ref: ExternalRef): Id[] {
-  return ref.kind === 'line' ? [`${id}/a`, `${id}/b`] : [`${id}/center`];
-}
-
 // What an ID is in a sketch: `origin`, an own point or curve, or an entity of an entry of
 // `external` (the entry itself or `<entry>/<local>`), by the kind of the entry.
 export function entityOf(sketch: SketchFeature, id: Id): Entity | undefined {

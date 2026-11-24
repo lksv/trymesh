@@ -777,7 +777,7 @@ export class App implements SketchHost, SceneHost {
     } else if ((event.key === 'Delete' || event.key === 'Backspace') && m.kind === 'sketch') {
       event.preventDefault();
       deleteSelection(this, m);
-    } else if (event.key === 'Enter' && m.kind === 'sketch') sketchFinish(this, m);
+    } else if (event.key === 'Enter' && m.kind === 'sketch' && sketchFinish(this, m)) event.preventDefault(); // not also a click of the button in focus
   }
 
   // ---------------------------------------------------------------- nová skica a rovina

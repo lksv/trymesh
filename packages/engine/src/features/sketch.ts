@@ -2,8 +2,7 @@
 // document.ts call as well) and the step that projects, solves and analyses it.
 import { SketchAnalysis } from '../analysis';
 import { CONSTRAINTS, type EntityKind } from '../catalog';
-import { type ResolvedReference, externalRef, kindOf, resolveReferences, storedValue } from '../references/index';
-import { derivedPoints, entityOf } from '../references/index';
+import { type ResolvedReference, entityOf, externalRef, kindOf, referenceEntities, resolveReferences, storedValue } from '../references/index';
 import { frame as frameOf, issue } from '../recompute/services';
 import type { SolvedSketch, Step, StepContext } from '../recompute/state';
 import { type SketchGeometry, joinPairs, joinsOf, measure, ownVariables, profileOf, sketchCurves, solverSetup } from '../sketch';
@@ -44,8 +43,10 @@ export function curve(sketch: SketchFeature, v: unknown, what: string): Curve {
 // The own rule of a constraint in the catalog (`check` of CONSTRAINTS), which reads the points of
 // the curves it names: `constraint` asks it when a constraint is validated, and the command
 // setCurvePoint asks it again for every constraint on the curve it changes (D52).
+// The points of an entry are its point entities, by its kind (an edge: `a` and `b`, or `center`).
 function ruleProblem(sketch: SketchFeature, type: Constraint['type'], operands: Id[], kinds: EntityKind[]): string | undefined {
-  const pointsOf = (id: Id): Id[] => (has(sketch.curves, id) ? curvePoints(sketch.curves[id]) : has(sketch.external, id) ? derivedPoints(id, sketch.external[id]) : []);
+  const entryPoints = (id: Id): Id[] => Object.entries(referenceEntities(sketch, id)).flatMap(([entity, kind]) => (kind === 'point' ? [entity] : []));
+  const pointsOf = (id: Id): Id[] => (has(sketch.curves, id) ? curvePoints(sketch.curves[id]) : has(sketch.external, id) ? entryPoints(id) : []);
   return CONSTRAINTS[type].check?.(kinds, operands, pointsOf);
 }
 export function constraintRuleProblem(sketch: SketchFeature, c: Constraint): string | undefined {

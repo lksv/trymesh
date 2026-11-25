@@ -5,11 +5,12 @@
 // in sketch-tools.ts, which calls `projectSketch`.
 import { entryOrder, occupies } from './references/derive';
 import { entityIndex, kindOf } from './references/index';
-import { type ProjectedKind, projectFromSketch, sketchMap } from './references/projection';
+import { type ProjectedKind, degreesText, projectFromSketch, sketchMap } from './references/projection';
+import { sketchWorld, toolBase } from './references/world';
 import { type SketchCurve, type SketchGeometry, solvedCurves } from './sketch';
 import { curvePoints } from './sketch-content';
 import type { NewId, SketchToolCall, SketchToolResult } from './sketch-tools';
-import type { Command, Constraint, Id, Projected, SketchFeature, SketchProjection, Vec2 } from './types';
+import type { Command, Constraint, CurveShape, Id, Projected, SketchFeature, SketchProjection, SketchResult, Vec2 } from './types';
 import { LENGTH_TOLERANCE, ORIGIN, has, underOrigin, unreachable } from './util';
 
 export interface ProjectSketchInput {
@@ -20,17 +21,18 @@ export interface ProjectSketchInput {
 
 // What the tool returns in `ids`, in this order; what it leaves out is one list per reason.
 export const PROJECT_SKETCH_IDS = {
-  entries: 'the new entries of external, one per projected entity, in the order of `sources`',
+  entries: 'the entries of external, one per projected entity, in the order of `sources`: the new ones, and with `as: "own"` those in `taken`',
   sources: 'the entity of the source sketch each entry projects',
-  skipped: 'entities of the source this sketch projects already; nothing was made for them',
+  skipped: 'entities of the source this sketch projects already; nothing was made for them (with `as: "own"`, see `taken` for an entry with the flag `regions`)',
   doubled: 'with `as: "own"`: curves of the source at the place of a curve before them in the list, or of an own curve that forms regions in this sketch already (one own curve is drawn per place); nothing was made for them',
+  taken: 'with `as: "own"`: the entries of this sketch that projected a listed curve with the flag `regions` already (they are not cut); their flag is switched off and an own curve is drawn over each and held on it',
   curves: 'with `as: "own"`: the own curves, `curves[i]` over the i-th entry that is a curve',
   points: 'with `as: "own"`: the own points (the ends, one per place, then the centres)',
   helpers: 'with `as: "own"`: the construction lines from the centre of each own arc to its start',
   constraints: 'with `as: "own"`: the constraints that hold the own curves on the projected ones',
 } as const;
 
-export const TILTED = (sketch: Id, degrees: number): string => `the plane of ${sketch} is at ${degrees.toFixed(1)}° to this sketch; only a sketch on a parallel plane is projected`;
+export const TILTED = (sketch: Id, degrees: number): string => `the plane of ${sketch} is at ${degreesText(degrees)} to this sketch; only a sketch on a parallel plane is projected`;
 export const LYING = (a: Id, b: Id, sketch: Id): string => `${a} and ${b} of ${sketch} lie on each other: projected with regions both would bound the same regions; name the entities, or use as: "source"`;
 
 const failed = (message: string): SketchToolResult => ({ ok: false, message });
@@ -142,9 +144,14 @@ export function projectSketch(context: SketchToolCall, input: ProjectSketchInput
       break;
     }
   }
-  // then the skip: what this sketch projects already
-  const projected = new Set(Object.values(target.external).flatMap((ref) => (ref.type === 'sketch' && ref.sketch === from ? [ref.entity] : [])));
-  const skipped = items.filter((item) => projected.has(item.id) && !doubled.has(item.id)).map((item) => item.id);
+  // then the skip: what this sketch projects already; with own, an entry of the same kind with the
+  // flag is taken over (its flag switched off, an own curve drawn over it), not skipped
+  const projected = new Map(Object.entries(target.external).flatMap(([id, ref]) => (ref.type === 'sketch' && ref.sketch === from ? [[ref.entity, { id, ref }] as const] : [])));
+  const takes = (item: Item): boolean => {
+    const entry = projected.get(item.id);
+    return as === 'own' && entry !== undefined && entry.ref.regions && entry.ref.kind === item.kind;
+  };
+  const skipped = items.filter((item) => projected.has(item.id) && !doubled.has(item.id) && !takes(item)).map((item) => item.id);
   // the values, as the projection gives them (a degenerate one refused)
   const values = new Map<Id, Projected>();
   for (const item of items) {
@@ -172,17 +179,49 @@ export function projectSketch(context: SketchToolCall, input: ProjectSketchInput
 
   const sketch = target.id;
   const commands: Command[] = [];
-  const out = { entries: [] as Id[], sources: [] as Id[], skipped, doubled: items.filter((item) => doubled.has(item.id)).map((item) => item.id), curves: [] as Id[], points: [] as Id[], helpers: [] as Id[], constraints: [] as Id[] };
+  const out = { entries: [] as Id[], sources: [] as Id[], skipped, doubled: items.filter((item) => doubled.has(item.id)).map((item) => item.id), taken: [] as Id[], curves: [] as Id[], points: [] as Id[], helpers: [] as Id[], constraints: [] as Id[] };
   const entryOf = new Map<Id, Id>();
   for (const item of made) {
-    const id = newId('x');
+    const ref: SketchProjection = { type: 'sketch', sketch: from, entity: item.id, kind: item.kind, regions: as === 'own' ? false : role(item) };
+    const taken = takes(item) ? projected.get(item.id)?.id : undefined;
+    const id = taken ?? newId('x');
     entryOf.set(item.id, id);
     out.entries.push(id);
     out.sources.push(item.id);
-    commands.push({ type: 'addExternal', sketch, id, ref: { type: 'sketch', sketch: from, entity: item.id, kind: item.kind, regions: as === 'own' ? false : role(item) } });
+    if (taken === undefined) commands.push({ type: 'addExternal', sketch, id, ref });
+    else {
+      // the same source: the update keeps the entry's last values and checks no reference
+      out.taken.push(taken);
+      commands.push({ type: 'updateExternal', sketch, id, ref });
+    }
   }
-  if (as === 'own') commands.push(...ownOutline(sketch, made, values, entryOf, out, newId));
+  if (as === 'own') commands.push(...ownOutline(sketch, made, values, entryOf, out, newId, heldEnds(target, targetResult.sketch)));
   return { ok: true, commands, ids: out };
+}
+
+// The ends of a shape: a line's `a` and `b`, an arc's `start` and `end`; a circle has none.
+const endsOf = (shape: CurveShape): Id[] => (shape.type === 'line' ? [shape.a, shape.b] : shape.type === 'arc' ? [shape.start, shape.end] : []);
+
+// The own vertices this sketch has where an own outline may end: for a place, the own point there
+// that ends an own curve forming regions, when the own ends there are one vertex (by the joins of
+// the sketch); undefined when there is none, or two vertices (which the outline cannot join).
+// The tool reuses that point, with no constraint added: it is how a second run meets the outline of
+// the first, whose ends are held on their projections already.
+function heldEnds(sketch: SketchFeature, result: SketchResult | undefined): (at: Vec2) => Id | undefined {
+  if (!result) return () => undefined;
+  const world = sketchWorld(toolBase(sketch, result));
+  const ends: { at: Vec2; point: Id; vertex: Id }[] = [];
+  for (const curve of world.curves.values()) {
+    if (curve.source !== 'own' || !curve.regions) continue;
+    for (const point of endsOf(curve.shape)) {
+      const p = world.geometry.points[point];
+      if (p) ends.push({ at: [p.x, p.y], point, vertex: world.joins(point) });
+    }
+  }
+  return (at) => {
+    const here = ends.filter((end) => Math.hypot(end.at[0] - at[0], end.at[1] - at[1]) <= LENGTH_TOLERANCE);
+    return here.length > 0 && here.every((end) => end.vertex === here[0].vertex) ? here[0].point : undefined;
+  };
 }
 
 // The own outline over the projected curves: one own point per place where ends of the projected
@@ -191,7 +230,7 @@ export function projectSketch(context: SketchToolCall, input: ProjectSketchInput
 // a centre of its own started at the projected centre, a construction line from that centre to its
 // start, and the projected centre on that line (pointOnCurve): the ends put the centre on the
 // bisector of the chord, the line crosses it once, at the projected centre.
-function ownOutline(sketch: Id, made: Item[], values: Map<Id, Projected>, entryOf: Map<Id, Id>, out: { curves: Id[]; points: Id[]; helpers: Id[]; constraints: Id[] }, newId: NewId): Command[] {
+function ownOutline(sketch: Id, made: Item[], values: Map<Id, Projected>, entryOf: Map<Id, Id>, out: { curves: Id[]; points: Id[]; helpers: Id[]; constraints: Id[] }, newId: NewId, held: (at: Vec2) => Id | undefined): Command[] {
   const points: Command[] = [];
   const centres: Command[] = [];
   const curves: Command[] = [];
@@ -203,8 +242,11 @@ function ownOutline(sketch: Id, made: Item[], values: Map<Id, Projected>, entryO
     out.constraints.push(id);
     constraints.push({ type: 'addConstraint', sketch, id, constraint });
   };
-  // the own point at the place of a projected end, made once per place
+  // the own point at the place of a projected end: the own vertex this sketch has there, or one
+  // made once per place
   const end = (at: Vec2, projected: Id): Id => {
+    const mine = held(at);
+    if (mine !== undefined) return mine;
     const known = places.find((place) => Math.hypot(place.at[0] - at[0], place.at[1] - at[1]) <= LENGTH_TOLERANCE);
     if (known) return known.point;
     const point = newId('p');

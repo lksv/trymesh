@@ -24,7 +24,10 @@ export const UNDER_ORIGIN = (entity: Id, sketch: Id): string => `${entity} of ${
 export const REGIONS_ON_A_POINT = 'a projected point forms no regions; regions is for a line, a circle or an arc';
 export const DUPLICATE = (entity: Id, sketch: Id, entry: Id): string => `${entity} of ${sketch} is projected already as ${entry}`;
 export const SOURCE_NOT_EVALUATED = (sketch: Id): string => `${sketch} is not evaluated before this sketch: removed, suppressed, in error, or later on the timeline`;
-export const NOT_PARALLEL = (sketch: Id, degrees: number): string => `the plane of ${sketch} is at ${degrees.toFixed(1)}° to this sketch; only a parallel plane is projected`;
+// An angle in degrees as the texts say it: three significant digits, so a tilt just above the
+// tolerance (1e-4 rad) does not read "0.0°".
+export const degreesText = (degrees: number): string => `${Number(degrees.toPrecision(3))}°`;
+export const NOT_PARALLEL = (sketch: Id, degrees: number): string => `the plane of ${sketch} is at ${degreesText(degrees)} to this sketch; only a parallel plane is projected`;
 export const ENTITY_GONE = (sketch: Id, entity: Id, kind: ProjectedKind): string => `${sketch} has no ${kind} ${entity}`;
 const article = (kind: string): string => `${/^[aeiou]/.test(kind) ? 'an' : 'a'} ${kind}`;
 export const KIND_CHANGED = (sketch: Id, entity: Id, now: string, kind: ProjectedKind): string => `${entity} of ${sketch} is ${article(now)} now, not ${article(kind)}`;
@@ -119,13 +122,41 @@ export function projectFromSketch(ref: SketchProjection, source: ProjectionSourc
       const [first, second] = [position(shape.start), position(shape.end)];
       const [start, end] = map.flips ? [second, first] : [first, second];
       if (!center || !start || !end || !finitePair(center) || !finitePair(start) || !finitePair(end)) return flat;
-      const [rs, re] = [distance(start, center), distance(end, center)];
-      if (!(rs >= LENGTH_TOLERANCE) || !(re >= LENGTH_TOLERANCE)) return flat;
-      const exact: Vec2 = [center[0] + (rs * (end[0] - center[0])) / re, center[1] + (rs * (end[1] - center[1])) / re];
-      return { kind: 'arc', center, start, end: exact };
+      return exactArc(center, start, end) ?? flat;
     }
     default:
       return unreachable(shape, 'curve');
+  }
+}
+
+// An arc with its end put on the circle of its start, or undefined when its start or end is within
+// the length tolerance of its centre (no extent: the division would give NaN).
+function exactArc(center: Vec2, start: Vec2, end: Vec2): Projected | undefined {
+  const [rs, re] = [distance(start, center), distance(end, center)];
+  if (!(rs >= LENGTH_TOLERANCE) || !(re >= LENGTH_TOLERANCE)) return undefined;
+  return { kind: 'arc', center, start, end: [center[0] + (rs * (end[0] - center[0])) / re, center[1] + (rs * (end[1] - center[1])) / re] };
+}
+
+// A stored value read back: the stored object itself when it is of the entry's kind and has the
+// extent `compute` requires of a fresh one, so a hand-written value is never a fixed curve the
+// solver rejects. A line with no length or an arc with no extent does not fit the entry (load
+// refuses it; no command writes one); an arc whose end is off the circle of its start is made exact.
+function storedValue(stored: unknown, ref: SketchProjection, what: string): Projected | undefined {
+  const value = projected(stored, what);
+  if (value.kind !== ref.kind) return undefined;
+  switch (value.kind) {
+    case 'point':
+    case 'circle':
+      return stored as Projected;
+    case 'line':
+      return distance(value.a, value.b) >= LENGTH_TOLERANCE ? (stored as Projected) : undefined;
+    case 'arc': {
+      const exact = exactArc(value.center, value.start, value.end);
+      if (exact?.kind !== 'arc') return undefined;
+      return exact.end[0] === value.end[0] && exact.end[1] === value.end[1] ? (stored as Projected) : exact;
+    }
+    default:
+      return unreachable(value, 'projected value');
   }
 }
 
@@ -190,8 +221,7 @@ export const projection: ReferenceKindSpec<SketchProjection, Projected> = {
   faces: () => [],
   entities: (id, ref) => projectionEntities(id, ref.kind),
   compute: (ref, { state, frame }) => projectFromSketch(ref, lookup(state.sketches, ref.sketch), frame),
-  // the stored object itself, once its form is checked: it is what load made of it
-  value: (stored, ref, what) => (projected(stored, what).kind === ref.kind ? (stored as Projected) : undefined),
+  value: storedValue,
   geometry,
   keepsValue: (before, after) => before.sketch === after.sketch && before.entity === after.entity && before.kind === after.kind,
 };

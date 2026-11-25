@@ -627,7 +627,8 @@ describe('a mirrored copy in other packages (D53)', () => {
       expect(s.document.bodyProperties['R/2']).toEqual({ color: '#ff0000' });
       expect(s.evaluation.bodies['R/2']).toBeUndefined();
     }
-    // the commands of a sketch verify the whole reference every time: they refuse to repeat it
+    // setSketchPlane verifies the whole reference every time: it refuses to repeat it (D53 said this
+    // of updateExternal too; 6b, D69, changed that on 2026-11-25, below)
     expect(engine.preview({ type: 'setSketchPlane', sketch: 'onTwo', plane: onFace('R/2', tag(cap('pad'), ['R', 2])) }).ok).toBe(false);
     // except an update that keeps the source of an entry (D69): the same edge sent again is no change
     // and checks nothing, and the projection keeps its last place; another edge is checked whole

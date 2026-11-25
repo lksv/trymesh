@@ -4,7 +4,7 @@
 // parallel planes, where a projection would put them, drawn dashed while the tool is active. With
 // one projection from a sketch selected, or one being repaired from its row, a pick replaces its
 // source and keeps its ID.
-import { type Id, type SketchSource, type SourceEntity, type Vec2, sketchTool } from '@trymesh/engine';
+import { type Id, type SketchSource, type SourceEntity, type Vec2, degreesText, sketchTool } from '@trymesh/engine';
 import { h } from '../dom';
 import { PICK_REACH } from '../host';
 import type { SketchContext, SketchHost } from '../sketch-mode';
@@ -98,6 +98,10 @@ export function candidateAt(candidates: readonly Candidate[], p: Vec2, reach: nu
 }
 
 const optionsOf = (host: SketchHost): ProjectSketchOptions => (host.sketching.tools.projectSketch as ProjectSketchOptions | undefined) ?? INITIAL;
+// The option *From* as it holds for the open sketch: a sketch that is no parallel source of it (the
+// option was set in another sketch, or the source is gone, tilted or not evaluated now) is "any",
+// as the select shows it.
+export const fromOf = (sources: readonly SketchSource[], from: Id | undefined): Id | undefined => (from !== undefined && sources.some((source) => source.sketch === from && source.status === 'parallel') ? from : undefined);
 const INITIAL: ProjectSketchOptions = { regions: false, whole: false, as: 'source' };
 
 export const projectSketch: SketchPlaceTool<ProjectSketchOptions> = {
@@ -108,7 +112,8 @@ export const projectSketch: SketchPlaceTool<ProjectSketchOptions> = {
     pick: (host, event, context) => {
       const p = host.planePoint(event, context.frame)?.at;
       if (!p) return undefined;
-      const found = candidateAt(candidatesOf(host, context).entities, p, PICK_REACH * host.pixelSize(), optionsOf(host).from);
+      const candidates = candidatesOf(host, context);
+      const found = candidateAt(candidates.entities, p, PICK_REACH * host.pixelSize(), fromOf(candidates.sources, optionsOf(host).from));
       return found ? { at: found.at, snap: { kind: 'foreign', sketch: found.candidate.sketch, id: found.candidate.id } } : { at: p };
     },
   },
@@ -124,9 +129,11 @@ export const projectSketch: SketchPlaceTool<ProjectSketchOptions> = {
     }
     const candidate = candidatesOf(host, context).entities.find((c) => c.sketch === snap.sketch && c.id === snap.id);
     if (!candidate) return;
-    const ref = { type: 'sketch' as const, sketch: snap.sketch, entity: snap.id, kind: candidate.kind, regions: options.regions && candidate.kind !== 'point' };
     const selected = m.selection.length === 1 && context.feature.external[m.selection[0]]?.type === 'sketch' ? m.selection[0] : undefined;
     const repaired = m.repair ?? selected;
+    // a repair keeps the flag of the entry it repairs (a curve's); a new entry takes the option
+    const old = repaired === undefined ? undefined : context.feature.external[repaired];
+    const ref = { type: 'sketch' as const, sketch: snap.sketch, entity: snap.id, kind: candidate.kind, regions: (old?.type === 'sketch' ? old.regions : options.regions) && candidate.kind !== 'point' };
     if (repaired) {
       if (host.run({ type: 'updateExternal', sketch: m.id, id: repaired, ref }, 'Projection repaired.')) m.repair = undefined;
     } else host.run({ type: 'addExternal', sketch: m.id, id: host.newId('x'), ref }, `${snap.id} of ${host.nameOf(snap.sketch)} projected.`);
@@ -134,13 +141,15 @@ export const projectSketch: SketchPlaceTool<ProjectSketchOptions> = {
   draw: (_places, _cursor, context, options) => {
     const known = asked.get(context);
     if (!known) return [];
-    return known.entities.filter((c) => c.shape && (options.from === undefined || c.sketch === options.from)).map((c) => polyline(c.shape as Shape));
+    const from = fromOf(known.sources, options.from);
+    return known.entities.filter((c) => c.shape && (from === undefined || c.sketch === from)).map((c) => polyline(c.shape as Shape));
   },
   options: {
     initial: INITIAL,
     panel: (host, value, store) => {
       const context = host.sketchContext();
       const sources = context ? candidatesOf(host, context).sources : [];
+      const chosen = fromOf(sources, value.from);
       const set = (next: ProjectSketchOptions): void => {
         store(next);
         host.renderPanel();
@@ -158,9 +167,9 @@ export const projectSketch: SketchPlaceTool<ProjectSketchOptions> = {
       const from = h(
         'select',
         { onchange: () => set({ ...value, from: from.value === '' ? undefined : from.value }) },
-        h('option', { value: '', selected: value.from === undefined }, 'any earlier sketch'),
+        h('option', { value: '', selected: chosen === undefined }, 'any earlier sketch'),
         ...sources.map((source) =>
-          h('option', { value: source.sketch, selected: source.sketch === value.from, disabled: source.status !== 'parallel' }, source.status === 'parallel' ? source.name : source.status === 'tilted' ? `${source.name} (at ${((source.angle * 180) / Math.PI).toFixed(1)}°)` : `${source.name} (not evaluated)`),
+          h('option', { value: source.sketch, selected: source.sketch === chosen, disabled: source.status !== 'parallel' }, source.status === 'parallel' ? source.name : source.status === 'tilted' ? `${source.name} (at ${degreesText((source.angle * 180) / Math.PI)})` : `${source.name} (not evaluated)`),
         ),
       );
       return [

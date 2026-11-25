@@ -49,11 +49,17 @@ describe('the projection from a sketch through MCP (D69)', () => {
     expect(added.problems ?? []).toEqual([]);
     const answer = ok(engine, 'get_sketch', { sketch: 'top' });
     expect(answer.external[0]).toMatchObject({ id: 'x1', type: 'sketch', sketch: 'base', entity: 'c1', kind: 'line', regions: false });
+    // its entities and the positions of its points; a circle with its radius
+    expect(answer.external[0]).toMatchObject({ entities: ['x1', 'x1/a', 'x1/b'], at: [line.a, line.b] });
     const made = ok(engine, 'sketch_tool', { sketch: 'top', tool: 'projectSketch', input: { sketch: 'base', as: 'own' } });
     expect(made.ids.skipped).toEqual(['c1']);
     expect(made.ids.entries).toHaveLength(3);
     // c1 is projected already and gets no own curve: the outline stays open
     expect(made.ids.curves).toHaveLength(3);
     expect(made.sketches.find((s: { id: string }) => s.id === 'top')).toMatchObject({ solved: true });
+    // a circle: its entities, the position of its centre and its radius
+    ok(engine, 'execute', { command: { type: 'batch', commands: [{ type: 'addPoint', sketch: 'base', id: 'k0', x: 20, y: 15 }, { type: 'addCurve', sketch: 'base', id: 'k', curve: { type: 'circle', center: 'k0' }, radius: 5 }] } });
+    ok(engine, 'execute', { command: { type: 'addExternal', sketch: 'top', id: 'xk', ref: { type: 'sketch', sketch: 'base', entity: 'k', kind: 'circle', regions: true } } });
+    expect(ok(engine, 'get_sketch', { sketch: 'top' }).external.find((e: { id: string }) => e.id === 'xk')).toEqual({ id: 'xk', type: 'sketch', sketch: 'base', entity: 'k', kind: 'circle', regions: true, entities: ['xk', 'xk/center'], at: [[20, 15]], radius: 5 });
   });
 });

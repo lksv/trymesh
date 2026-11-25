@@ -29,7 +29,7 @@ import { DOCUMENT_SECTIONS, namedBySections } from './sections/index';
 import { type ContactKind, type CurveContacts, type Profile, type Region, type SketchCurve, type SketchGeometry, type TightPlace, curveContacts, curvesTouch, joinsOf, lineExtent, profileOf, profileProblem, sameRegion } from './sketch';
 import { constraintKey, constraintOperands, constraintPath, curvePoints, isDimension, isDriving } from './sketch-content';
 import type { NewId, SketchToolCall, SketchToolContext, SketchToolResult } from './sketch-tools';
-import type { Command, Constraint, Curve, CurvePointName, CurveShape, Document, EdgeName, Expr, FaceName, Feature, FeaturePatch, Id, ParameterResult, PlaneRef, Point2, ProfileSource, RegionRef, SketchFeature, SketchPattern, SketchResult, Vec2 } from './types';
+import type { Command, Constraint, Curve, CurvePointName, CurveShape, Document, EdgeName, Expr, FaceName, Feature, FeaturePatch, Id, ParameterResult, PlaneRef, Point2, ProfileSource, RegionRef, SketchFeature, SketchPattern, SketchProjection, SketchResult, Vec2 } from './types';
 import { LENGTH_TOLERANCE, ORIGIN, dist2, has, isOriginAxis, unreachable } from './util';
 
 // ---------------------------------------------------------------- what reads a profile (D52)
@@ -193,7 +193,8 @@ export function curvePredicates(document: Document, sketch: SketchFeature): Curv
 // What split without a curve does at a contact, for the tools and for the query alike: `cut`,
 // `join`, or `none` with the reason (design.md, "Plug-in points"). A circle with one point only
 // is decided by the caller, once every contact is found. Undefined: not listed (6e never answers
-// it; 6c does for the image of a contact of two sources).
+// it; 6c does for the image of a contact of two sources, 6b for the ends of an own curve and a
+// projection that forms regions).
 export type ContactFix = { fix: 'cut' | 'join' } | { fix: 'none'; why: string } | undefined;
 export function contactFix(a: SketchCurve, b: SketchCurve, kind: ContactKind | 'ends', predicates: CurvePredicates, sketch: SketchFeature): ContactFix {
   // copies of a mirror or pattern (D68): never cut
@@ -212,7 +213,16 @@ export function contactFix(a: SketchCurve, b: SketchCurve, kind: ContactKind | '
   const stuck = [a, b].find((curve) => !predicates.mayCut(curve));
   // a projection from a sketch that forms regions (D69): the way is an own outline over it
   const flagged = [a, b].find((curve) => curve.source === 'reference' && curve.regions && sketch.external[curve.id]?.type === 'sketch');
-  if (flagged) return { fix: 'none', why: flaggedNotCut(flagged.id) };
+  if (flagged) {
+    // Ends of it and of another curve that stay apart: the other is own (two flagged ends, or one
+    // and a copy's, join by position), with a second own vertex at that place. Nothing needs a cut,
+    // and a coincident with the projected end could be redundant: joining the own ends there,
+    // which is listed with them, makes them one vertex, and the joins by position take the
+    // projection's end in. Not listed.
+    if (kind === 'ends') return undefined;
+    const ref = sketch.external[flagged.id] as SketchProjection;
+    return { fix: 'none', why: flaggedNotCut(flagged.id, ref.sketch, ref.entity) };
+  }
   if (stuck) {
     const why = stuck.source === 'own' ? `the circle "${stuck.id}" is an operand of a generated profile, which takes a whole circle` : `"${stuck.id}" is ${stuck.source === 'reference' ? 'reference' : 'derived'} geometry, which no tool cuts`;
     return { fix: 'none', why };
@@ -232,8 +242,8 @@ export function contactFix(a: SketchCurve, b: SketchCurve, kind: ContactKind | '
 }
 
 // The reason of a contact with a projection from a sketch that forms regions (D69).
-export const flaggedNotCut = (entry: Id): string =>
-  `${entry} is a projection that forms regions and is not cut: draw an own outline over it (the sketch tool projectSketch with as: "own") and take the flag off, or remove the curve that meets it`;
+export const flaggedNotCut = (entry: Id, source: Id, entity: Id): string =>
+  `${entry} is a projection that forms regions and is not cut: draw an own curve over it with the sketch tool projectSketch { sketch: "${source}", entities: ["${entity}"], as: "own" }, which also switches its flag off, then cut that; or remove the curve that meets it`;
 
 // ---------------------------------------------------------------- copies of a mirror or pattern (D68)
 

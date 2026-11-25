@@ -1853,9 +1853,10 @@ export type Command =
   // `expressions` at `external/<id>/…`; setField with the sketch as the feature reaches one). An
   // update replaces the whole entry: send the entry with its expressions as strings, or a number
   // removes the expression; a string equal to the expression the field has counts as unchanged. An
-  // update may not turn reference geometry into derived geometry or back. An update checks only the
-  // references it brings in, and an update of a projection from a sketch that keeps its `sketch`,
-  // `entity` and `kind` (its flag switched) keeps its last values, also when its source is gone.
+  // update may not turn reference geometry into derived geometry or back. An update that keeps the
+  // source (a projection from a sketch with the same `sketch`, `entity` and `kind`, its flag
+  // switched; an edge projection to the same edge) checks no reference and keeps the last values,
+  // also when the source is gone; any other update checks every reference of the new entry.
   | { type: 'addExternal'; sketch: Id; id: Id; ref: ExternalInput }
   | { type: 'updateExternal'; sketch: Id; id: Id; ref: ExternalInput }
   | { type: 'removeExternal'; sketch: Id; id: Id }

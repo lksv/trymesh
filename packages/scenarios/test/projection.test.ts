@@ -361,7 +361,7 @@ describe('a projection at the plug-in points of 6e (D69)', () => {
       expect.objectContaining({
         curves: ['own', 'pl'],
         fix: 'none',
-        why: 'pl is a projection that forms regions and is not cut: draw an own outline over it (the sketch tool projectSketch with as: "own") and take the flag off, or remove the curve that meets it',
+        why: 'pl is a projection that forms regions and is not cut: draw an own curve over it with the sketch tool projectSketch { sketch: "src", entities: ["l"], as: "own" }, which also switches its flag off, then cut that; or remove the curve that meets it',
       }),
     ]);
   });

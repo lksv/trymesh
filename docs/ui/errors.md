@@ -8,12 +8,12 @@ Part of [ui.md](../ui.md); how to read the tables is said there. Errors of featu
 |---|---|---|
 | `brokenReference` na rovinu skici | vybrat novou rovinu nebo stěnu | `setSketchPlane` |
 | `brokenReference` na základ vlastní roviny | vybrat nový základ | `updateFeature` |
-| `brokenProjection` (varování, hrana zmrazená na poslední hodnotě) | vybrat novou hranu, nebo promítnutí zrušit | `updateExternal`, `removeExternal` |
+| `brokenProjection` (a warning; the projected edge or entity frozen at its last values, the detail in the message for a projection from a sketch) | pick a new edge (*Project*), or a new point or curve of an earlier sketch (↻ in the row, then *From sketch*; the flag `regions` of the entry is kept), or remove the projection | `updateExternal`, `removeExternal` |
 | `brokenReference` na cílové těleso | vybrat jiné těleso | `updateFeature` |
 | `brokenReference` na zdrojovou skicu extrude | vybrat jinou skicu a její oblasti; ID extrude zůstane | `updateFeature` (`profile.sketch`, `profile.regions`) |
 | `noProfile` | vybrat oblasti znovu, nebo opravit skicu | `updateFeature` |
 | `nonPlanarFace` | vybrat jinou stěnu | `setSketchPlane` |
-| `degenerateProjection`, `unsupportedProjection` (varování) | vybrat jinou hranu stejného druhu, nebo promítnutí zrušit a založit nové | `updateExternal`, `removeExternal` |
+| `degenerateProjection`, `unsupportedProjection` (warnings; for a projection from a sketch the message says why: a source curve with no extent, or the angle of a plane that is not parallel) | pick another edge, or another entity of a sketch on a parallel plane (↻ and *From sketch*), of the same kind; or remove the projection and make a new one | `updateExternal`, `removeExternal` |
 | `invalidProfile` | otevřít skicu a odstranit křížení křivek | příkazy skici |
 | `noEffect` (varování) | upravit vzdálenost, oblasti nebo cíl | `updateFeature` |
 | `emptyResult` | upravit vzdálenost nebo oblasti | `updateFeature` |

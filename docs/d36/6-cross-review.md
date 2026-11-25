@@ -342,6 +342,16 @@ The reviews of the designs of 6b and 6d (on their branches), and a second round 
 | 35 | 6b | `projectSketch` with `as: 'own'` draws one own curve per place and lists the rest as `doubled`, while `as: 'regions'` refuses curves lying on each other; a warning of a frozen projection is not passed down a chain of projections | Both as designed; the chain of warnings is a backlog row | 6b's design; [../backlog.md](../backlog.md) |
 | 36 | 4c | One pocket case of the larger run-out fuzz (40 of each, seed 1: a fillet of 0.281 at a chord tolerance of 0.05) is 3.74 % from its reference against a bound of 2.5 % | A known limit, recorded; not fixed now | `docs/architecture/verification.md`; D67 |
 
+### Later answers: the designs of 6f and 6h
+
+The design of 6f (on its branch, reviewed in three rounds) asked two questions (37 and 38), and the design of 6h (on its branch, in review) one (39). All three were answered on 2026-11-25, 37 and 38 "yes" to their recommendation.
+
+| # | About | Question | Answer (2026-11-25) | Where it lands |
+|---|---|---|---|---|
+| 37 | 6f | Where an imported outline is stored: the plan says "stored in the document (like a stored mesh of D55)" and expects a section with a schema step | In the entry of `external` that places it: one place, no section, no schema step (`SCHEMA_PENDING` stays 0); the options of the import stored in the entry. An outline two sketches need is projected, or stored twice | [6f-outline-import/design.md](6f-outline-import/design.md), "The stored outline: in its entry"; D72 |
+| 38 | 6f | What the MCP tool `import_outline` does: the plan says it answers with the batch, which would carry every curve through the caller and back | It sends the command itself, as `import_mesh` stores its mesh; without a sketch named it only reports, and a refusal still answers with the report | [6f-outline-import/design.md](6f-outline-import/design.md), "MCP"; D72 |
+| 39 | 6h | Whether the converter's `summary.json` files from before and after the change are committed | No: they stay with the dump of the Onshape model, which is not in the repository | 6h's design |
+
 ## What the designs leave out
 
 Against CLAUDE.md and "A package" of the README. The three designs have what a design of this project has: the cheap variant and what is deferred, measurements with a recipe, decisions and rejected alternatives, a contract and calls that compile, the tests owed, the rows for the indexes, the reviews. What is missing:

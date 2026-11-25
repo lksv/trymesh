@@ -103,3 +103,5 @@ export { AXIS_CURVES, type SketchCurve, type SketchGeometry, type SolvedCurves, 
 export { DUPLICATE, type ProjectedKind, REGIONS_ON_A_POINT, type SketchMap, UNDER_ORIGIN, degreesText, projectionEntities, sketchMap } from './references/projection';
 export { PROJECT_SKETCH_IDS, type ProjectSketchInput } from './sketch-project';
 export type { SketchSource, SketchSourcesResult, SourceEntity } from './query/sketch-sources';
+// The geometry of a spline (D70): its Bezier pieces, its polyline, where it runs.
+export { MAX_SPLINE_POINTS, MIN_SPLINE_POINTS, bsplineBeziers, splineBeziers, splineBox, splinePolyline, splineThrough } from './spline';

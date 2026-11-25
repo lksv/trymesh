@@ -1235,7 +1235,7 @@ describe('the review of the implementation of 6b (D69)', () => {
     if (typeof second === 'string') throw new Error(second);
     // the two places where the runs meet reuse the first run's points: no new point, no constraint
     expect(second.ids.points.filter((p) => first.ids.points.includes(p))).toEqual([]);
-    const ends = second.commands.flatMap((c) => (c.type === 'addCurve' && c.curve.type !== 'circle' && !('construction' in c.curve && c.curve.construction) ? (c.curve.type === 'line' ? [c.curve.a, c.curve.b] : [c.curve.start, c.curve.end]) : []));
+    const ends = second.commands.flatMap((c) => (c.type === 'addCurve' && c.curve.type !== 'circle' && !('construction' in c.curve && c.curve.construction) ? (c.curve.type === 'line' ? [c.curve.a, c.curve.b] : c.curve.type === 'arc' ? [c.curve.start, c.curve.end] : []) : []));
     expect(ends.filter((p) => first.ids.points.includes(p)).length).toBe(2);
     expect(second.commands.filter((c) => c.type === 'addConstraint' && c.constraint.type === 'coincident').length).toBe(3);
     expect([result6(engine, 'held').valid, regions6(engine, 'held').length]).toEqual([true, 1]);

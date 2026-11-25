@@ -9,21 +9,32 @@ import { entryOrder } from '../references/derive';
 import type { DerivedGeometry } from '../references/spec';
 import { sketchWorld, stepBase } from '../references/world';
 import { type SketchGeometry, measure, ownVariables, profileOf, solverSetup } from '../sketch';
+import { MAX_SPLINE_POINTS, MIN_SPLINE_POINTS } from '../spline';
 import { AXES_GEOMETRY, CURVE_KINDS, constraintOperands, constraintPath, curvePoints, emptySketch, isDriving } from '../sketch-content';
 import type { Constraint, Curve, FeatureResult, Id, Issue, Projected, ResultCurve, SketchFeature, SolveInput, SolveResult } from '../types';
 import { ORIGIN, has, isOriginAxis, unreachable } from '../util';
 import { type Dict, type Fields, type ValidationContext, boolean, fail, finite, newId, object, oneOf, plain, planeRef, planeRefs, string } from '../validation';
 import type { FeatureModule } from './module';
 
+// The texts of the refusals of a spline (D70); `what` is the path of the curve.
+export const SPLINE_REFUSALS = {
+  count: (what: string, n: number): string => `${what}.points: a spline has ${MIN_SPLINE_POINTS} to ${MAX_SPLINE_POINTS} control points, not ${n}`,
+  repeated: (what: string, point: Id): string => `${what}.points: "${point}" is listed twice; only the first point may come again, as the last, closing the spline`,
+  closedTooShort: (what: string): string => `${what}.points: a closed spline needs at least three different points`,
+};
+// The refusal of `setCurvePoint` for a spline (D52, D70).
+export const SET_CURVE_POINT_SPLINE = (id: Id): string => `setCurvePoint.id: "${id}" is a spline, which has no named points; to change its control points, remove it and add it again under its ID in one batch`;
+
 // Křivka smí odkazovat jen na vlastní body skici a na počátek.
 export function curve(sketch: SketchFeature, v: unknown, what: string): Curve {
   const o = object(v, what);
   const type = oneOf(o.type, CURVE_KINDS, `${what}.type`);
-  const point = (field: string): Id => {
-    const id = string(o[field], `${what}.${field}`);
-    if (id !== ORIGIN && !has(sketch.points, id)) fail(`${what}.${field}: "${id}" není vlastní bod skici ani počátek`);
+  const pointAt = (v: unknown, path: string): Id => {
+    const id = string(v, path);
+    if (id !== ORIGIN && !has(sketch.points, id)) fail(`${path}: "${id}" není vlastní bod skici ani počátek`);
     return id;
   };
+  const point = (field: string): Id => pointAt(o[field], `${what}.${field}`);
   const construction = o.construction === undefined ? {} : { construction: boolean(o.construction, `${what}.construction`) };
   switch (type) {
     case 'line': {
@@ -37,6 +48,18 @@ export function curve(sketch: SketchFeature, v: unknown, what: string): Curve {
       const [center, start, end] = [point('center'), point('start'), point('end')];
       if (center === start || center === end || start === end) fail(`${what}: oblouk potřebuje tři různé body`);
       return { ...construction, type, center, start, end };
+    }
+    case 'spline': {
+      if (!Array.isArray(o.points)) return fail(`${what}.points: čeká se pole ID bodů`);
+      const n = o.points.length;
+      if (n < MIN_SPLINE_POINTS || n > MAX_SPLINE_POINTS) fail(SPLINE_REFUSALS.count(what, n));
+      const points = o.points.map((v, i) => pointAt(v, `${what}.points[${i}]`));
+      const closed = points[0] === points[n - 1];
+      points.forEach((id, i) => {
+        if (points.indexOf(id) !== i && !(i === n - 1 && closed)) fail(SPLINE_REFUSALS.repeated(what, id));
+      });
+      if (closed && n < 4) fail(SPLINE_REFUSALS.closedTooShort(what));
+      return { ...construction, type, points };
     }
     default:
       return unreachable(type, `${what}.type`);

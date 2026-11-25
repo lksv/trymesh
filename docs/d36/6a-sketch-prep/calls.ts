@@ -281,6 +281,9 @@ export const plugMirror: DerivedKindSpec<PlugMirrorRef> = {
           // a mirror turns the sense: the image runs counter-clockwise from the image of `end`
           shape = { type: 'arc', center: copy(source.center), start: copy(source.end), end: copy(source.start) };
           break;
+        case 'spline': // D70, written after this draft: a copy runs over the copies of its points
+          shape = { type: 'spline', points: source.points.map(copy) };
+          break;
         default:
           return unreachable(source, 'curve');
       }
@@ -330,6 +333,8 @@ export function pointsOf(shape: CurveShape): Id[] {
       return [shape.center];
     case 'arc':
       return [shape.center, shape.start, shape.end];
+    case 'spline': // D70, written after this draft
+      return [...shape.points];
     default:
       return unreachable(shape, 'curve');
   }

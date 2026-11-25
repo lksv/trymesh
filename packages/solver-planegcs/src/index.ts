@@ -259,6 +259,11 @@ function buildPrimitives(input: SolveInput, drag?: SolveInput['drag'], without?:
         out.push({ id: `${SYNTHETIC}arcRules/${id}`, type: 'arc_rules', a_id: id });
         break;
       }
+      case 'spline':
+        // D70: the solver sees only the points of a spline; its control points are points of the
+        // input (checked as the ends of a line are), and nothing is added for the curve
+        for (const p of curve.points) point(p);
+        break;
       default: {
         const unknown: never = curve; // a kind added to Curve needs its case here
         throw new Error(`solver: neznámý druh křivky u ${id}`, { cause: unknown });
@@ -316,6 +321,11 @@ function commonEnd(line: Extract<Curve, { type: 'line' }>, arc: Extract<Curve, {
   return arcEnds.find((p) => joins.some((c) => (c.a === p && lineEnds.includes(c.b)) || (c.b === p && lineEnds.includes(c.a))));
 }
 
+// A spline is never an operand of a constraint (D70): the engine refuses it before the solver.
+const neverASpline = (id: Id): never => {
+  throw new Error(`solver: vazba ${id}: a spline is never an operand of a constraint`);
+};
+
 function translate(id: Id, c: Exclude<Constraint, { type: 'fixed' }>, curves: Record<Id, Curve>, constraints: Record<Id, Constraint>): Record<string, unknown> & { type: string } {
   const kind = (curveId: Id): Curve['type'] => {
     const curve = curves[curveId];
@@ -338,6 +348,8 @@ function translate(id: Id, c: Exclude<Constraint, { type: 'fixed' }>, curves: Re
           return { type: 'point_on_circle', p_id: c.point, c_id: c.curve };
         case 'arc':
           return { type: 'point_on_arc', p_id: c.point, a_id: c.curve };
+        case 'spline':
+          return neverASpline(id);
         default: {
           const unknown: never = k;
           throw new Error(`solver: vazba ${id}: neznámý druh křivky ${c.curve}`, { cause: unknown });
@@ -372,6 +384,7 @@ function translate(id: Id, c: Exclude<Constraint, { type: 'fixed' }>, curves: Re
             case 'arc':
               return { type: 'equal_radius_ca', c1_id: first, a2_id: second };
             case 'line':
+            case 'spline':
               return refused();
             default:
               return unknown(k2);
@@ -382,11 +395,13 @@ function translate(id: Id, c: Exclude<Constraint, { type: 'fixed' }>, curves: Re
               return { type: 'equal_radius_aa', a1_id: first, a2_id: second };
             case 'circle': // ordered circle first above
             case 'line':
+            case 'spline':
               return refused();
             default:
               return unknown(k2);
           }
         case 'line':
+        case 'spline':
           return refused();
         default:
           return unknown(k1);
@@ -394,7 +409,7 @@ function translate(id: Id, c: Exclude<Constraint, { type: 'fixed' }>, curves: Re
     }
     case 'tangent': {
       // pořadí operandů knihovny: úsečka, kružnice, oblouk
-      const rank = { line: 0, circle: 1, arc: 2 } as const;
+      const rank = { line: 0, circle: 1, arc: 2, spline: 3 } as const; // a spline is never an operand (D70): its pair throws below
       const [first, second] = rank[kind(c.a)] <= rank[kind(c.b)] ? [c.a, c.b] : [c.b, c.a];
       const pair = `${kind(first)}-${kind(second)}`;
       if (pair === 'line-circle') return { type: 'tangent_lc', l_id: first, c_id: second };
@@ -436,6 +451,8 @@ function translate(id: Id, c: Exclude<Constraint, { type: 'fixed' }>, curves: Re
       switch (k) {
         case 'arc':
           return { type: 'arc_radius', a_id: c.curve, radius: c.value };
+        case 'spline':
+          return neverASpline(id);
         case 'circle':
         case 'line': // validation lets only circles and arcs in
           return { type: 'circle_radius', c_id: c.curve, radius: c.value };
@@ -450,6 +467,8 @@ function translate(id: Id, c: Exclude<Constraint, { type: 'fixed' }>, curves: Re
       switch (k) {
         case 'arc':
           return { type: 'arc_diameter', a_id: c.curve, diameter: c.value };
+        case 'spline':
+          return neverASpline(id);
         case 'circle':
         case 'line': // validation lets only circles and arcs in
           return { type: 'circle_diameter', c_id: c.curve, diameter: c.value };

@@ -63,22 +63,28 @@ export const AXES_GEOMETRY: EntryGeometry = {
   hidden: ['origin/x/b', 'origin/y/b'],
 };
 
-// The points a curve is given by, by the kind of the curve (D52): the fields of the shape other
-// than `type`, so the table cannot name a point a curve does not have.
-export const CURVE_POINTS = { line: ['a', 'b'], circle: ['center'], arc: ['center', 'start', 'end'] } as const satisfies {
-  [T in CurveShape['type']]: readonly Exclude<keyof Extract<CurveShape, { type: T }>, 'type'>[];
+// The named points a curve is given by, by the kind of the curve (D52): the fields of the shape that
+// hold one ID, so the table cannot name a point a curve does not have. A spline has none: its
+// control points are a list (`points`), which `setCurvePoint` does not re-point (D70).
+export const CURVE_POINTS = { line: ['a', 'b'], circle: ['center'], arc: ['center', 'start', 'end'], spline: [] } as const satisfies {
+  [T in CurveShape['type']]: readonly PointFields<Extract<CurveShape, { type: T }>>[];
 };
+// The fields of a shape that hold one ID (not `type`, not a list).
+type PointFields<S> = { [K in keyof S]: K extends 'type' ? never : S[K] extends Id ? K : never }[keyof S];
 type TableName = (typeof CURVE_POINTS)[keyof typeof CURVE_POINTS][number];
 // every name of the table is a CurvePointName, and every CurvePointName is in the table
 true satisfies (TableName extends CurvePointName ? (CurvePointName extends TableName ? true : false) : false);
-// and each kind lists every point its shape has
-type Complete = { [T in CurveShape['type']]: [Exclude<keyof Extract<CurveShape, { type: T }>, 'type'>] extends [(typeof CURVE_POINTS)[T][number]] ? true : false };
-({ line: true, circle: true, arc: true }) satisfies Complete;
+// and each kind lists every point field its shape has
+type Complete = { [T in CurveShape['type']]: [PointFields<Extract<CurveShape, { type: T }>>] extends [(typeof CURVE_POINTS)[T][number]] ? true : false };
+({ line: true, circle: true, arc: true, spline: true }) satisfies Complete;
 
 // The kinds of a sketch curve the validator of a curve accepts: the keys of the table, so a kind
 // added to `CurveShape` is accepted only once the table and the validator's switch have it.
 export const CURVE_KINDS = Object.keys(CURVE_POINTS) as CurveShape['type'][];
 
+// Every point a curve is given by: a line's ends, a circle's centre, an arc's centre and ends, a
+// spline's control points in order, the closing repeat included (readers that need each point once
+// make a set).
 export function curvePoints(curve: Curve): Id[] {
   switch (curve.type) {
     case 'line':
@@ -87,6 +93,8 @@ export function curvePoints(curve: Curve): Id[] {
       return [curve.center];
     case 'arc':
       return [curve.center, curve.start, curve.end];
+    case 'spline':
+      return [...curve.points];
     default:
       return unreachable(curve, 'curve');
   }

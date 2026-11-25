@@ -37,7 +37,7 @@ import {
   sketchTool,
 } from '@trymesh/engine';
 import { entryEntities } from './references';
-import { type EntityKind, ORIGIN, type PointView, type SketchView, dist, kindOf, measure, unreachable } from './sketch-view';
+import { type EntityKind, ORIGIN, type PointView, type SketchView, dist, kindOf, measure, takesConstraint, unreachable } from './sketch-view';
 
 // The place of a click in the sketch with what it snapped to, and the supplier of new IDs: both
 // are the types of the sketch tools of the engine (D35, point 7), which the app shares with MCP.
@@ -179,6 +179,7 @@ function sort(view: SketchView, ids: Id[]): Sorted {
       case 'arc':
         out.round.push(id);
         break;
+      case 'spline': // no constraint takes a spline (D70): a selection with one is offered none
       case undefined:
         break;
       default:
@@ -192,9 +193,8 @@ function sort(view: SketchView, ids: Id[]): Sorted {
 // A constraint is offered only with an operand the solver can move: the engine refuses one between
 // fixed entities alone (the origin, its axes, projected geometry). `horizontal` and `vertical` go to
 // the own lines of the selection only.
-// A selection that holds a copy of a mirror or pattern (D68) gets no offer: a copy cannot be an
-// operand of a constraint of its own sketch.
-const holdsCopy = (view: SketchView, selection: Id[]): boolean => selection.some((id) => view.points.get(id)?.derived === true || view.curves.get(id)?.derived === true);
+// A selection that holds an entity no constraint may name gets no offer (`takesConstraint`).
+const holdsCopy = (view: SketchView, selection: Id[]): boolean => selection.some((id) => !takesConstraint(view, id));
 export function geometricFor(kind: GeometricKind, view: SketchView, selection: Id[]): Constraint[] | undefined {
   const own = (id: Id): boolean => view.points.get(id)?.own === true || view.curves.get(id)?.own === true;
   if (!selection.some(own) || holdsCopy(view, selection)) return undefined;
@@ -263,6 +263,7 @@ function roundDimension(kind: EntityKind | undefined): 'diameter' | 'radius' {
     case 'arc':
     case 'point': // `sort` puts only circles and arcs among the round entities
     case 'line':
+    case 'spline':
     case undefined:
       return 'radius';
     default:

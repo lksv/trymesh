@@ -29,7 +29,8 @@ export const sketchSourcesView: QueryView<'sketchSources'> = {
   scene(result, args, panel) {
     const frame = panel.state.evaluation.features[args.sketch]?.plane;
     const entity = panel.picked === undefined ? undefined : result.entities?.[panel.picked];
-    if (!frame || !entity || 'problem' in entity) return {};
+    // a spline has no place (D70): it is not projected
+    if (!frame || !entity || 'problem' in entity || entity.kind === 'spline') return {};
     const at = entity.kind === 'point' ? entity.at : entity.kind === 'line' ? entity.a : entity.kind === 'circle' ? entity.center : entity.start;
     return { points: [{ positions: toWorld(frame, at[0], at[1]), color: COLOR.select, size: 11 }] };
   },

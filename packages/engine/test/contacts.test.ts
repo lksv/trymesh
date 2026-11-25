@@ -101,10 +101,10 @@ describe('contacts as points to cut at', () => {
       const made = pair(next);
       if (!made) continue;
       const { curves, geometry } = made;
-      const found = curveContacts(curves[0], curves[1], joinsOf, geometry);
+      const found = curveContacts(curves[0], curves[1], joinsOf, geometry, 0.01);
       if (!found) continue;
       checked++;
-      const touch = curvesTouch(curves[0], curves[1], joinsOf, geometry);
+      const touch = curvesTouch(curves[0], curves[1], joinsOf, geometry, 0.01);
       const reported = found.points.length > 0 || found.ends.length > 0 || found.lying;
       if (touch !== reported) throw new Error(`pair ${n}: the profile says ${touch}, the contacts ${JSON.stringify(found)}: ${JSON.stringify(made)}`);
       if (touch) touching++;

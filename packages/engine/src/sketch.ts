@@ -2,6 +2,7 @@
 // Pravidla jsou v docs/architecture.md, sekce Skica, Řešení skici a Profily a oblasti.
 import type { GeometrySource, ResolvedReference } from './references/spec';
 import { AXES_GEOMETRY, constraintOperands, isDimension } from './sketch-content';
+import { bezierStartCurvature, splineBeziers, splinePolyline } from './spline';
 import type { Constraint, Curve, CurveShape, Id, Point2, Projected, RegionRef, SketchFeature, SketchResult, SolveInput, Vec2 } from './types';
 import { AXIS_REACH, LENGTH_TOLERANCE, ORIGIN, ORIGIN_AXES, cross2, dist2, dot2, fingerprint, has, isOriginAxis, len2, stableStringify, sub2, unreachable } from './util';
 
@@ -127,11 +128,14 @@ export interface CurveEnd {
 // (`curveOf` of recompute/profile.ts) and the wall read a curve through. `end` reads the position
 // of an end (the profile and the wall at the joined vertex, the side raw), `centre` the position of
 // a centre (raw everywhere); undefined when a point or the radius of a circle has no position.
-// An arc runs counter-clockwise from `a` at the angle `start` by `sweep` in (0, 2π].
+// An arc runs counter-clockwise from `a` at the angle `start` by `sweep` in (0, 2π]. A spline
+// (D70) has its ends read as a line's and its control points between them raw, as a centre is:
+// `control[0]` is `a.p` and the last is `b.p`.
 export type PlacedCurve =
   | { type: 'line'; a: CurveEnd; b: CurveEnd }
   | { type: 'circle'; center: Vec2; radius: number }
-  | { type: 'arc'; a: CurveEnd; b: CurveEnd; center: Vec2; radius: number; start: number; sweep: number };
+  | { type: 'arc'; a: CurveEnd; b: CurveEnd; center: Vec2; radius: number; start: number; sweep: number }
+  | { type: 'spline'; a: CurveEnd; b: CurveEnd; control: Vec2[] };
 export function placedCurve(curve: SketchCurve, radii: Record<Id, number>, end: (id: Id) => CurveEnd | undefined, centre: (id: Id) => Vec2 | undefined): PlacedCurve | undefined {
   const shape = curve.shape;
   switch (shape.type) {
@@ -151,18 +155,28 @@ export function placedCurve(curve: SketchCurve, radii: Record<Id, number>, end: 
       const sweep = positive(Math.atan2(b.p[1] - center[1], b.p[0] - center[0]) - start) || TAU;
       return { type: 'arc', a, b, center, radius: dist2(a.p, center), start, sweep };
     }
+    case 'spline': {
+      const n = shape.points.length;
+      const [a, b] = [end(shape.points[0]), end(shape.points[n - 1])];
+      const inner = shape.points.slice(1, n - 1).map(centre);
+      if (!a || !b || inner.some((p) => p === undefined)) return undefined;
+      return { type: 'spline', a, b, control: [a.p, ...(inner as Vec2[]), b.p] };
+    }
     default:
       return unreachable(shape, 'curve');
   }
 }
 
-// The two points a line or an arc names at its ends (`a`, `b`; `start`, `end`); a circle has none.
+// The two points a curve names at its ends: a line's `a`, `b`; an arc's `start`, `end`; a spline's
+// first and last control point (one point twice when it is closed); a circle has none.
 export function curveEnds(shape: CurveShape): [Id, Id] | undefined {
   switch (shape.type) {
     case 'line':
       return [shape.a, shape.b];
     case 'arc':
       return [shape.start, shape.end];
+    case 'spline':
+      return [shape.points[0], shape.points[shape.points.length - 1]];
     case 'circle':
       return undefined;
     default:
@@ -267,6 +281,7 @@ export function measure(sketch: SketchFeature, curves: Record<Id, Curve>, geomet
             break;
           }
           case 'line':
+          case 'spline': // a spline is never an operand (D70)
             break; // a line has no radius
           default:
             unreachable(curve, 'curve');
@@ -285,11 +300,14 @@ export function measure(sketch: SketchFeature, curves: Record<Id, Curve>, geomet
 // pochází z křivky curves[i]. Vnější smyčka jde proti směru hodin, díra po směru.
 // `exact`: the curves the polyline was divided from, in the order and direction the loop passes
 // them (the loops of a sketch and of a moved outline have them; a generated loop has none).
+// `sampled`: the curves of the loop that have no exact form, the splines (D70), in the order the
+// loop passes them; a loop with one has no `exact`.
 export interface Loop {
   xy: number[];
   keys: string[];
   curves: Id[];
   exact?: OutlineCurve[];
+  sampled?: Id[];
 }
 // One curve of a closed loop as the loop passes it; the material is on the left of the travel.
 // - `key` is what `Loop.curves` holds for its edges (the ID of the sketch curve for a region);
@@ -317,8 +335,34 @@ export interface Profile {
 type Shape =
   | { id: Id; kind: 'line'; a: string; b: string; pa: Vec2; pb: Vec2 }
   | { id: Id; kind: 'arc'; a: string; b: string; pa: Vec2; pb: Vec2; c: Vec2; r: number; start: number; sweep: number }
-  | { id: Id; kind: 'circle'; c: Vec2; r: number };
+  | { id: Id; kind: 'circle'; c: Vec2; r: number }
+  | SplineShape;
 type Open = Exclude<Shape, { kind: 'circle' }>;
+// A spline (D70): its polyline `pts` from `pa` to `pb` at the chord tolerance, computed once per
+// curve from `control` (the first and last control points are the ends at their vertices), and
+// `along`, the length of the polyline up to each of its points. The profile and the contact search
+// test it piece by piece, each piece as a line.
+interface SplineShape {
+  id: Id;
+  kind: 'spline';
+  a: string;
+  b: string;
+  pa: Vec2;
+  pb: Vec2;
+  control: Vec2[];
+  pts: Vec2[];
+  along: number[];
+}
+// A shape that is not a spline: what the exact tests of a pair read.
+type Exact = Exclude<Shape, SplineShape>;
+function splineShape(id: Id, a: CurveEnd, b: CurveEnd, control: Vec2[], chordTolerance: number): SplineShape {
+  const pts = splinePolyline(control, chordTolerance);
+  const along = [0];
+  for (let k = 1; k < pts.length; k++) along.push(along[k - 1] + dist2(pts[k - 1], pts[k]));
+  return { id, kind: 'spline', a: a.key, b: b.key, pa: a.p, pb: b.p, control, pts, along };
+}
+// A piece of the polyline of a spline as a line shape; its ends are no vertices of anything.
+const pieceOf = (s: SplineShape, k: number): LineShape => ({ id: s.id, kind: 'line', a: '\u0000piece', b: '\u0000piece', pa: s.pts[k], pb: s.pts[k + 1] });
 
 const TAU = 2 * Math.PI;
 const positive = (angle: number): number => ((angle % TAU) + TAU) % TAU;
@@ -326,6 +370,11 @@ const positive = (angle: number): number => ((angle % TAU) + TAU) % TAU;
 // Vzdálenost bodu od křivky.
 function distanceTo(p: Vec2, s: Shape): number {
   switch (s.kind) {
+    case 'spline': {
+      let best = Infinity;
+      for (let k = 0; k + 1 < s.pts.length; k++) best = Math.min(best, pointToSegment(p[0], p[1], s.pts[k][0], s.pts[k][1], s.pts[k + 1][0], s.pts[k + 1][1]));
+      return best;
+    }
     case 'line': {
       const d = sub2(s.pb, s.pa);
       const t = Math.min(1, Math.max(0, dot2(sub2(p, s.pa), d) / dot2(d, d)));
@@ -351,16 +400,26 @@ const midpoint = (s: Open): Vec2 => {
       const angle = s.start + s.sweep / 2;
       return [s.c[0] + s.r * Math.cos(angle), s.c[1] + s.r * Math.sin(angle)];
     }
+    case 'spline': {
+      // the point at half the length of the polyline
+      const half = s.along[s.along.length - 1] / 2;
+      let k = 0;
+      while (k + 2 < s.along.length && s.along[k + 1] < half) k++;
+      const length = s.along[k + 1] - s.along[k];
+      const t = length > 0 ? (half - s.along[k]) / length : 0;
+      return [s.pts[k][0] + (s.pts[k + 1][0] - s.pts[k][0]) * t, s.pts[k][1] + (s.pts[k + 1][1] - s.pts[k][1]) * t];
+    }
     default:
       return unreachable(s, 'shape');
   }
 };
 
 // A shape with a centre and a radius (a circle or an arc), or undefined for a line.
-type Round = Exclude<Shape, { kind: 'line' }>;
+type Round = Exclude<Shape, { kind: 'line' } | SplineShape>;
 function roundOf(s: Shape): Round | undefined {
   switch (s.kind) {
     case 'line':
+    case 'spline':
       return undefined;
     case 'circle':
     case 'arc':
@@ -371,7 +430,11 @@ function roundOf(s: Shape): Round | undefined {
 }
 
 // Průsečíky a body dotyku nosných křivek (přímka, kružnice), s tolerancí pro tečnost.
+// A spline has no carrier: its pieces are tested as lines (`piecePairs`) before this is asked.
 function carrierContacts(A: Shape, B: Shape, tol: number): Vec2[] {
+  const noCarrier = (): never => {
+    throw new Error('a spline has no carrier; its pieces are tested as lines');
+  };
   switch (A.kind) {
     case 'line':
       switch (B.kind) {
@@ -380,6 +443,8 @@ function carrierContacts(A: Shape, B: Shape, tol: number): Vec2[] {
         case 'circle':
         case 'arc':
           return lineRoundContacts(A, B, tol);
+        case 'spline':
+          return noCarrier();
         default:
           return unreachable(B, 'shape');
       }
@@ -391,9 +456,13 @@ function carrierContacts(A: Shape, B: Shape, tol: number): Vec2[] {
         case 'circle':
         case 'arc':
           return roundContacts(A, B, tol);
+        case 'spline':
+          return noCarrier();
         default:
           return unreachable(B, 'shape');
       }
+    case 'spline':
+      return noCarrier();
     default:
       return unreachable(A, 'shape');
   }
@@ -472,6 +541,9 @@ function shapeBox(s: Shape): Box {
       }
       return boxOf(points);
     }
+    case 'spline':
+      // the box of its control points, which holds the curve and every polyline of it (D70)
+      return boxOf(s.control);
     default:
       return unreachable(s, 'shape');
   }
@@ -524,20 +596,66 @@ export interface BroadPhase {
 }
 export const BROAD_PHASE: BroadPhase = { pairs: nearPairs, faceBoxes: true };
 
+// The reach of a vertex two curves share: a contact within it is a contact at the vertex (a tangent
+// join of a fillet lies within the tolerance for a while from its vertex).
+const vertexReach = (A: Exact, B: Exact, tol: number): number => {
+  const curved = [A, B].flatMap((s) => roundOf(s) ?? []);
+  return 10 * tol + (curved.length ? Math.sqrt(8 * Math.max(...curved.map((s) => s.r)) * tol) : 0);
+};
+
+// The vertices two curves share, at their positions in A.
+function sharedVertices(A: Shape, B: Shape): { key: string; at: Vec2 }[] {
+  if (A.kind === 'circle' || B.kind === 'circle') return [];
+  const out: { key: string; at: Vec2 }[] = [];
+  for (const [key, at] of [[A.a, A.pa], [A.b, A.pb]] as [string, Vec2][]) if ((key === B.a || key === B.b) && !out.some((v) => v.key === key)) out.push({ key, at });
+  return out;
+}
+
+// The pairs a test of two curves reads when one of them is a spline (D70): each piece of a spline as
+// a line, against the other curve or against each piece of the other spline, where the boxes of the
+// two meet (widened by the tolerance). With each pair the vertices of the two curves that excuse a
+// contact of it: a vertex the curves share excuses a contact of a piece only when the piece starts
+// within the reach of the vertex along the polyline, from the end of the spline that is the vertex.
+// So the first pieces of a spline are excused beside its neighbour however short they are, and
+// a spline that leaves the vertex, goes round and comes back to cross the neighbour is not.
+function piecePairs(A: Shape, B: Shape, tol: number): { P: Exact; Q: Exact; shared: Vec2[] }[] {
+  const shared = sharedVertices(A, B);
+  const parts = (s: Shape): { shape: Exact; k: number }[] => (s.kind === 'spline' ? s.pts.slice(1).map((_, k) => ({ shape: pieceOf(s, k), k })) : [{ shape: s, k: -1 }]);
+  const near = (s: Shape, k: number, key: string, reach: number): boolean => {
+    if (s.kind !== 'spline') return true;
+    const total = s.along[s.along.length - 1];
+    return (s.a === key && s.along[k] <= reach) || (s.b === key && total - s.along[k + 1] <= reach);
+  };
+  const [partsA, partsB] = [parts(A), parts(B)];
+  const boxesB = partsB.map((part) => shapeBox(part.shape));
+  const out: { P: Exact; Q: Exact; shared: Vec2[] }[] = [];
+  for (const pa of partsA) {
+    const box = shapeBox(pa.shape);
+    partsB.forEach((pb, j) => {
+      const other = boxesB[j];
+      if (box[0] > other[2] + 2 * tol || other[0] > box[2] + 2 * tol || box[1] > other[3] + 2 * tol || other[1] > box[3] + 2 * tol) return;
+      const reach = vertexReach(pa.shape, pb.shape, tol);
+      out.push({ P: pa.shape, Q: pb.shape, shared: shared.filter((v) => near(A, pa.k, v.key, reach) && near(B, pb.k, v.key, reach)).map((v) => v.at) });
+    });
+  }
+  return out;
+}
+
 // Smějí se dvě křivky v profilu potkat? Dotýkat se smějí jen ve spojených bodech.
 function compatible(A: Shape, B: Shape, tol: number): boolean {
+  if (A.kind === 'spline' || B.kind === 'spline') return piecePairs(A, B, tol).every(({ P, Q, shared }) => compatibleAt(P, Q, tol, shared));
+  return compatibleAt(A, B, tol, sharedVertices(A, B).map((v) => v.at));
+}
+// The test of two exact shapes, with the positions of the vertices that excuse a contact near them.
+function compatibleAt(A: Exact, B: Exact, tol: number, shared: Vec2[]): boolean {
   const curved = [A, B].flatMap((s) => roundOf(s) ?? []);
   // Soustředné kružnice nebo oblouky se stejným poloměrem leží na sobě.
   if (curved.length === 2 && dist2(curved[0].c, curved[1].c) <= tol && Math.abs(curved[0].r - curved[1].r) <= tol) {
     if (A.kind === 'circle' || B.kind === 'circle') return false;
   }
-  // Společné vrcholy. U tečného napojení (zaoblení) leží křivky pod tolerancí i kus od vrcholu,
-  // proto se dotyk bere jako dotyk ve vrcholu až do vzdálenosti dané poloměrem.
-  const shared: Vec2[] = [];
-  if (A.kind !== 'circle' && B.kind !== 'circle') {
-    for (const [ka, pa] of [[A.a, A.pa], [A.b, A.pb]] as [string, Vec2][]) if (ka === B.a || ka === B.b) shared.push(pa);
-  }
-  const reach = 10 * tol + (curved.length ? Math.sqrt(8 * Math.max(...curved.map((s) => s.r)) * tol) : 0);
+  // Společné vrcholy (`shared`). U tečného napojení (zaoblení) leží křivky pod tolerancí i kus od
+  // vrcholu, proto se dotyk bere jako dotyk ve vrcholu až do vzdálenosti dané poloměrem.
+  const reach = vertexReach(A, B, tol);
   const candidates: Vec2[] = carrierContacts(A, B, tol);
   for (const s of [A, B]) if (s.kind !== 'circle') candidates.push(s.pa, s.pb, midpoint(s));
   for (const p of candidates) {
@@ -545,6 +663,58 @@ function compatible(A: Shape, B: Shape, tol: number): boolean {
     if (!shared.some((v) => dist2(p, v) <= reach)) return false;
   }
   return true;
+}
+
+// How far apart along its polyline two places of a spline must be for a contact of the two to be
+// a touch of the curve with itself, in length tolerances: twice the reach of a vertex (D70).
+export const SPLINE_SELF_REACH = 20;
+
+// Where a spline crosses or touches itself, or undefined. A touch is a candidate point of one piece
+// (an end, its middle, or a crossing with the other piece) within the length tolerance of another
+// piece, where the two places are farther than `SPLINE_SELF_REACH` tolerances from each other along
+// the polyline (the shorter way round a closed spline). The candidates are those `compatible` has
+// for two lines, so a spline is valid where the chain of its pieces is; the reach along the curve is
+// what a chain lacks. The answer is the candidate of a touch of the first piece along the curve that
+// has one.
+export function splineSelfContact(pts: readonly Vec2[], closed: boolean): Vec2 | undefined {
+  const tol = LENGTH_TOLERANCE;
+  const n = pts.length - 1;
+  const along = [0];
+  for (let k = 1; k < pts.length; k++) along.push(along[k - 1] + dist2(pts[k - 1], pts[k]));
+  const total = along[n];
+  // the place of a point along piece k (its foot on the piece)
+  const placeOn = (p: Vec2, k: number): number => {
+    const [a, b] = [pts[k], pts[k + 1]];
+    const d = sub2(b, a);
+    const length2 = dot2(d, d);
+    const t = length2 > 0 ? Math.min(1, Math.max(0, dot2(sub2(p, a), d) / length2)) : 0;
+    return along[k] + t * Math.sqrt(length2);
+  };
+  const apart = (x: number, y: number): number => {
+    const gap = Math.abs(x - y);
+    return closed ? Math.min(gap, total - gap) : gap;
+  };
+  const order = Array.from({ length: n }, (_, k) => k).sort((p, q) => Math.min(pts[p][0], pts[p + 1][0]) - Math.min(pts[q][0], pts[q + 1][0]));
+  let found: { k: number; at: Vec2 } | undefined;
+  for (let x = 0; x < order.length; x++) {
+    const i = order[x];
+    const maxX = Math.max(pts[i][0], pts[i + 1][0]);
+    for (let y = x + 1; y < order.length; y++) {
+      const j = order[y];
+      if (Math.min(pts[j][0], pts[j + 1][0]) > maxX + tol) break;
+      if (Math.max(pts[j][1], pts[j + 1][1]) < Math.min(pts[i][1], pts[i + 1][1]) - tol || Math.min(pts[j][1], pts[j + 1][1]) > Math.max(pts[i][1], pts[i + 1][1]) + tol) continue;
+      const [P, Q] = [{ id: '', kind: 'line', a: '', b: '', pa: pts[i], pb: pts[i + 1] } as LineShape, { id: '', kind: 'line', a: '', b: '', pa: pts[j], pb: pts[j + 1] } as LineShape];
+      const candidates = [...lineContacts(P, Q), P.pa, P.pb, midpoint(P), Q.pa, Q.pb, midpoint(Q)];
+      for (const c of candidates) {
+        if (distanceTo(c, P) > tol || distanceTo(c, Q) > tol) continue;
+        if (apart(placeOn(c, i), placeOn(c, j)) <= SPLINE_SELF_REACH * tol) continue;
+        const first = Math.min(i, j);
+        if (!found || first < found.k) found = { k: first, at: c };
+        break;
+      }
+    }
+  }
+  return found?.at;
 }
 
 // ---------------------------------------------------------------- contacts as points to cut at (D65)
@@ -583,6 +753,7 @@ export interface CurveContacts {
 }
 
 function shapeContacts(A: Shape, B: Shape, tol: number): CurveContacts {
+  if (A.kind === 'spline' || B.kind === 'spline') return splineContacts(A, B, tol);
   const endsOf = (s: Shape): [string, Vec2][] => (s.kind === 'circle' ? [] : [[s.a, s.pa], [s.b, s.pb]]);
   const [endsA, endsB] = [endsOf(A), endsOf(B)];
   const ends: [number, number][] = [];
@@ -625,6 +796,44 @@ function shapeContacts(A: Shape, B: Shape, tol: number): CurveContacts {
   return { points, ends, lying: false };
 }
 
+// The contacts of two curves of which one or both are splines (D70), found piece by piece on the
+// polyline (`piecePairs`, with its rule of the shared vertices). A spline is not cut and holds no
+// point, so these are reasons, not places to cut: `end` when the point lies at an end of one of the
+// two curves (a joint of two pieces of the polyline is no end), `crossing` otherwise, never `touch`
+// (a tangency of two carriers, which a polyline does not decide). A stretch of a piece along a line
+// makes the pair `lying`; its points are the ends of either curve that lie inside the other.
+function splineContacts(A: Shape, B: Shape, tol: number): CurveContacts {
+  const endsOf = (s: Shape): [string, Vec2][] => (s.kind === 'circle' ? [] : [[s.a, s.pa], [s.b, s.pb]]);
+  const [endsA, endsB] = [endsOf(A), endsOf(B)];
+  const ends: [number, number][] = [];
+  endsA.forEach(([ka, pa], i) => endsB.forEach(([kb, pb], j) => ka !== kb && dist2(pa, pb) <= tol && ends.push([i, j])));
+  const atEnd = (p: Vec2, list: [string, Vec2][]): boolean => list.some(([, q]) => dist2(p, q) <= tol);
+  const points: ContactPoint[] = [];
+  const add = (at: Vec2, kind: ContactKind): void => {
+    if (!points.some((q) => dist2(at, q.at) <= tol)) points.push({ at, kind, tangent: false });
+  };
+  let lying = false;
+  for (const { P, Q, shared } of piecePairs(A, B, tol)) {
+    const reach = vertexReach(P, Q, tol);
+    const near = (p: Vec2): boolean => distanceTo(p, P) <= tol && distanceTo(p, Q) <= tol && !shared.some((v) => dist2(p, v) <= reach);
+    if (P.kind === 'line' && Q.kind === 'line' && lineDistance(Q.pa, P) <= tol && lineDistance(Q.pb, P) <= tol) {
+      // two pieces on one line: lying when they share a stretch
+      const overlap = [P.pa, P.pb, midpoint(P)].some((p) => distanceTo(p, Q) <= tol) || [Q.pa, Q.pb, midpoint(Q)].some((p) => distanceTo(p, P) <= tol);
+      if (overlap && [P.pa, P.pb, Q.pa, Q.pb].some((p) => near(p))) {
+        lying = true;
+        for (const [, p] of [...endsA, ...endsB]) if (distanceTo(p, A) <= tol && distanceTo(p, B) <= tol && !(atEnd(p, endsA) && atEnd(p, endsB))) add(p, 'overlap');
+      }
+      continue;
+    }
+    const candidates = [...[...endsA, ...endsB].map(([, p]) => p), ...carrierContacts(P, Q, tol), ...(P.kind !== 'circle' ? [P.pa, P.pb] : []), ...(Q.kind !== 'circle' ? [Q.pa, Q.pb] : [])];
+    for (const p of candidates) {
+      if (!near(p) || (atEnd(p, endsA) && atEnd(p, endsB))) continue; // two ends at one place: `ends`
+      add(p, atEnd(p, endsA) || atEnd(p, endsB) ? 'end' : 'crossing');
+    }
+  }
+  return { points: lying ? points.filter((p) => p.kind === 'overlap') : points, ends, lying };
+}
+
 // The distance of a point from the line (the whole line, not the segment) of a line shape.
 function lineDistance(p: Vec2, s: Extract<Shape, { kind: 'line' }>): number {
   const d = sub2(s.pb, s.pa);
@@ -635,7 +844,7 @@ function lineDistance(p: Vec2, s: Extract<Shape, { kind: 'line' }>): number {
 // The shape of a curve of a sketch with its ends at their joined vertices (as the profile reads
 // it), or undefined when it has no position or no length. A line is the stretch `lineExtent`
 // gives: an axis of the origin is a whole line, whose ends are no vertex of anything.
-function shapeOfCurve(curve: SketchCurve, joins: (id: Id) => Id, geometry: SketchGeometry): Shape | undefined {
+function shapeOfCurve(curve: SketchCurve, joins: (id: Id) => Id, geometry: SketchGeometry, chordTolerance: number): Shape | undefined {
   if (curve.shape.type === 'line' && isOriginAxis(curve.id)) {
     const extent = lineExtent(curve, geometry) as { a: Point2; b: Point2 };
     return { id: curve.id, kind: 'line', a: `\u0000${curve.id}/a`, b: `\u0000${curve.id}/b`, pa: xy(extent.a), pb: xy(extent.b) };
@@ -651,23 +860,37 @@ function shapeOfCurve(curve: SketchCurve, joins: (id: Id) => Id, geometry: Sketc
       return dist2(c.a.p, c.b.p) > LENGTH_TOLERANCE ? { id: curve.id, kind: 'line', a: c.a.key, b: c.b.key, pa: c.a.p, pb: c.b.p } : undefined;
     case 'arc':
       return dist2(c.a.p, c.b.p) > LENGTH_TOLERANCE && c.radius > LENGTH_TOLERANCE ? { id: curve.id, kind: 'arc', a: c.a.key, b: c.b.key, pa: c.a.p, pb: c.b.p, c: c.center, r: c.radius, start: c.start, sweep: c.sweep } : undefined;
+    case 'spline': {
+      const shape = splineShape(curve.id, c.a, c.b, c.control, chordTolerance);
+      return shape.along[shape.along.length - 1] > LENGTH_TOLERANCE ? shape : undefined;
+    }
     default:
       return unreachable(c, 'curve');
   }
 }
 
 // The contacts of two curves of a sketch (`CurveContacts`), with the joins of the profile (`joins`,
-// the vertex of a point). Undefined when either has no position or no length.
-export function curveContacts(a: SketchCurve, b: SketchCurve, joins: (id: Id) => Id, geometry: SketchGeometry): CurveContacts | undefined {
-  const [A, B] = [shapeOfCurve(a, joins, geometry), shapeOfCurve(b, joins, geometry)];
+// the vertex of a point). Undefined when either has no position or no length. A spline is its
+// polyline at the chord tolerance of the document (D70), as in the profile.
+export function curveContacts(a: SketchCurve, b: SketchCurve, joins: (id: Id) => Id, geometry: SketchGeometry, chordTolerance: number): CurveContacts | undefined {
+  const [A, B] = [shapeOfCurve(a, joins, geometry, chordTolerance), shapeOfCurve(b, joins, geometry, chordTolerance)];
   return A && B ? shapeContacts(A, B, LENGTH_TOLERANCE) : undefined;
 }
 
 // Whether two curves of a sketch touch apart from a vertex they share: the test of the profile
 // (`compatible`) for one pair. A curve without a position or a length touches everything.
-export function curvesTouch(a: SketchCurve, b: SketchCurve, joins: (id: Id) => Id, geometry: SketchGeometry): boolean {
-  const [A, B] = [shapeOfCurve(a, joins, geometry), shapeOfCurve(b, joins, geometry)];
+export function curvesTouch(a: SketchCurve, b: SketchCurve, joins: (id: Id) => Id, geometry: SketchGeometry, chordTolerance: number): boolean {
+  const [A, B] = [shapeOfCurve(a, joins, geometry, chordTolerance), shapeOfCurve(b, joins, geometry, chordTolerance)];
   return !A || !B || !compatible(A, B, LENGTH_TOLERANCE);
+}
+
+// The polyline of a curve of a sketch that is a spline, as the profile reads it (its ends at their
+// joined vertices), or undefined when it is no spline or has no position (D70). The contacts of the
+// query, the place a tool is given and the chain of a cut in memory read it.
+export function splinePolylineOf(curve: SketchCurve, joins: (id: Id) => Id, geometry: SketchGeometry, chordTolerance: number): Vec2[] | undefined {
+  if (curve.shape.type !== 'spline') return undefined;
+  const shape = shapeOfCurve(curve, joins, geometry, chordTolerance);
+  return shape?.kind === 'spline' ? shape.pts : undefined;
 }
 
 // Na kolik úseček se dělí oblouk. Strop brání tomu, aby obří poloměr nebo nepatrná tolerance
@@ -763,6 +986,28 @@ export function profileProblem(curves: readonly SketchCurve[], joins: (id: Id) =
   return buildProfile(curves, joins, geometry, chordTolerance, BROAD_PHASE).tight;
 }
 
+// The direction a half of a spline leaves its vertex in (D70): to the first point where its polyline,
+// walked from the vertex in the direction of the half, leaves the circle of the radius `d` about the
+// vertex (the first piece that ends on or outside the circle, cut by the circle). Every half reaches
+// `d` before it ends (`d` is at most half its reach), and what lies inside the circle of each curve
+// is one path from the vertex to the circle, so the order of the directions is the order of the
+// curves round the vertex for curves that do not cross.
+export function splineDirection(pts: readonly Vec2[], forward: boolean, d: number): number {
+  const walk = forward ? pts : [...pts].reverse();
+  const v = walk[0];
+  for (let k = 0; k + 1 < walk.length; k++) {
+    const [p, q] = [sub2(walk[k], v), sub2(walk[k + 1], v)];
+    if (len2(q) < d) continue;
+    // |p + t (q − p)| = d, the root in (0, 1]
+    const e = sub2(q, p);
+    const [a, b, c] = [dot2(e, e), 2 * dot2(p, e), dot2(p, p) - d * d];
+    const t = a > 0 ? Math.min(1, Math.max(0, (-b + Math.sqrt(Math.max(0, b * b - 4 * a * c))) / (2 * a))) : 1;
+    return positive(Math.atan2(p[1] + e[1] * t, p[0] + e[0] * t));
+  }
+  const end = sub2(walk[walk.length - 1], v);
+  return positive(Math.atan2(end[1], end[0]));
+}
+
 function buildProfile(curves: readonly SketchCurve[], joins: (id: Id) => Id, geometry: SketchGeometry, chordTolerance: number, broad: BroadPhase): { profile: Profile; tight?: TightPlace } {
   const tol = LENGTH_TOLERANCE;
   const vertex = (id: Id): CurveEnd => ({ key: joins(id), p: xy(geometry.points[joins(id)]) });
@@ -800,6 +1045,16 @@ function buildProfile(curves: readonly SketchCurve[], joins: (id: Id) => Id, geo
         }
         shapes.push({ id, kind: 'arc', a: c.a.key, b: c.b.key, pa: c.a.p, pb: c.b.p, c: c.center, r: c.radius, start: c.start, sweep: c.sweep });
         continue;
+      case 'spline': {
+        // D70: its polyline; no length, or a touch of the curve with itself, makes the profile invalid
+        const spline = splineShape(id, c.a, c.b, c.control, chordTolerance);
+        if (!(spline.along[spline.along.length - 1] > tol) || splineSelfContact(spline.pts, spline.a === spline.b) !== undefined) {
+          valid = false;
+          continue;
+        }
+        shapes.push(spline);
+        continue;
+      }
       default:
         unreachable(c, 'curve');
     }
@@ -843,6 +1098,14 @@ function buildProfile(curves: readonly SketchCurve[], joins: (id: Id) => Id, geo
           halves.push({ shape: s, forward: true, from: s.a, to: s.b, angle: s.start + Math.PI / 2, curvature: 1 / s.r, twin: index + 1, loop: -1 });
           halves.push({ shape: s, forward: false, from: s.b, to: s.a, angle: s.start + s.sweep - Math.PI / 2, curvature: -1 / s.r, twin: index, loop: -1 });
           break;
+        case 'spline': {
+          // the curvature for a tie: that of the end of its Bezier piece, signed by the direction
+          const pieces = splineBeziers(s.control);
+          const last = [...pieces[pieces.length - 1]].reverse();
+          halves.push({ shape: s, forward: true, from: s.a, to: s.b, angle: 0, curvature: bezierStartCurvature(pieces[0]), twin: index + 1, loop: -1 });
+          halves.push({ shape: s, forward: false, from: s.b, to: s.a, angle: 0, curvature: bezierStartCurvature(last), twin: index, loop: -1 });
+          break;
+        }
         default:
           unreachable(s, 'shape');
       }
@@ -853,9 +1116,22 @@ function buildProfile(curves: readonly SketchCurve[], joins: (id: Id) => Id, geo
     // ne podle tečny: úsečka a oblouk, které z vrcholu vycházejí tečně stejným směrem, mají tečny
     // shodné až na šum solveru a pořadí by určovala náhoda. Vzdálenost je polovina nejkratší
     // křivky ve vrcholu; tětiva oblouku je od tečny odkloněná o asin(křivost · vzdálenost / 2).
+    // D70: how far a curve surely gets from the vertex (its reach) is for a line and an arc the
+    // distance of its ends, for a spline the largest distance of its polyline from the vertex (for
+    // a closed spline its farthest point, not its length); a spline leaves towards the first point
+    // where its polyline leaves the circle of that distance about the vertex.
+    const reachOf = (h: Half): number => {
+      const s = h.shape;
+      if (s.kind !== 'spline') return dist2(s.pa, s.pb);
+      const v = h.forward ? s.pa : s.pb;
+      return Math.max(...s.pts.map((p) => dist2(p, v)));
+    };
     for (const list of outgoing.values()) {
-      const distance = Math.min(...list.map((i) => dist2(halves[i].shape.pa, halves[i].shape.pb))) / 2;
-      for (const i of list) halves[i].angle = positive(halves[i].angle + Math.asin(Math.max(-1, Math.min(1, (halves[i].curvature * distance) / 2))));
+      const distance = Math.min(...list.map((i) => reachOf(halves[i]))) / 2;
+      for (const i of list) {
+        const h = halves[i];
+        h.angle = h.shape.kind === 'spline' ? splineDirection(h.shape.pts, h.forward, distance) : positive(h.angle + Math.asin(Math.max(-1, Math.min(1, (h.curvature * distance) / 2))));
+      }
       list.sort((p, q) => halves[p].angle - halves[q].angle || halves[p].curvature - halves[q].curvature || p - q);
     }
     // Další půlhrana kolem stěny (stěna vlevo): ve vrcholu první po směru hodin od protisměrné půlhrany.
@@ -887,14 +1163,22 @@ function buildProfile(curves: readonly SketchCurve[], joins: (id: Id) => Id, geo
     let area = 0;
     for (const i of loop) {
       const h = halves[i];
-      area += cross2(position.get(h.from) as Vec2, position.get(h.to) as Vec2) / 2;
       const s = h.shape;
       switch (s.kind) {
         case 'line':
+          area += cross2(position.get(h.from) as Vec2, position.get(h.to) as Vec2) / 2;
           break;
         case 'arc':
+          area += cross2(position.get(h.from) as Vec2, position.get(h.to) as Vec2) / 2;
           area += ((h.forward ? 1 : -1) * s.r * s.r * (s.sweep - Math.sin(s.sweep))) / 2; // the segment of the arc
           break;
+        case 'spline': {
+          // its polyline in the direction the loop passes it, in place of the chord
+          let along = 0;
+          for (let k = 0; k + 1 < s.pts.length; k++) along += cross2(s.pts[k], s.pts[k + 1]) / 2;
+          area += h.forward ? along : -along;
+          break;
+        }
         default:
           unreachable(s, 'shape');
       }
@@ -905,6 +1189,7 @@ function buildProfile(curves: readonly SketchCurve[], joins: (id: Id) => Id, geo
   // Lomená čára smyčky. Dělení oblouku nezávisí na směru průchodu, takže sousední oblasti sdílejí vrcholy.
   const polyline = (loop: number[]): Loop => {
     const exact: OutlineCurve[] = [];
+    const sampled: Id[] = [];
     const out: Loop = { xy: [], keys: [], curves: [], exact };
     for (const i of loop) {
       const h = halves[i];
@@ -920,6 +1205,19 @@ function buildProfile(curves: readonly SketchCurve[], joins: (id: Id) => Id, geo
           continue;
         case 'arc':
           break;
+        case 'spline': {
+          // the points of its polyline between the ends, keyed by their index in the polyline and
+          // in reverse for the backward half, so that regions on both sides share them
+          if (!sampled.includes(s.id)) sampled.push(s.id);
+          const last = s.pts.length - 1;
+          for (let step = 1; step < last; step++) {
+            const k = h.forward ? step : last - step;
+            out.xy.push(s.pts[k][0], s.pts[k][1]);
+            out.keys.push(`c:${s.id}:${k}`);
+            out.curves.push(s.id);
+          }
+          continue;
+        }
         default:
           unreachable(s, 'shape');
       }
@@ -933,7 +1231,10 @@ function buildProfile(curves: readonly SketchCurve[], joins: (id: Id) => Id, geo
         out.curves.push(s.id);
       }
     }
-    return out;
+    if (sampled.length === 0) return out;
+    // a loop through a spline has no exact curves (D70)
+    const { exact: _exact, ...rest } = out;
+    return { ...rest, sampled };
   };
   const circleLoop = (s: Extract<Shape, { kind: 'circle' }>, clockwise: boolean): Loop => {
     const n = segments(TAU, s.r, chordTolerance);
@@ -965,6 +1266,9 @@ function buildProfile(curves: readonly SketchCurve[], joins: (id: Id) => Id, geo
           break;
         case 'arc':
           points.push(s.pa, s.pb, [s.c[0] - s.r, s.c[1] - s.r], [s.c[0] + s.r, s.c[1] + s.r]);
+          break;
+        case 'spline':
+          points.push(...s.control); // the box of its control points holds its polyline
           break;
         default:
           unreachable(s, 'shape');
@@ -1003,6 +1307,12 @@ function buildProfile(curves: readonly SketchCurve[], joins: (id: Id) => Id, geo
           break;
         case 'arc':
           arcPieces(s.c, s.r, s.start, s.sweep, s.pa, s.pb);
+          break;
+        case 'spline':
+          for (let k = 0; k + 1 < s.pts.length; k++) {
+            const [from, to] = [s.pts[k], s.pts[k + 1]];
+            piece(from, to, () => from[0] + ((p[1] - from[1]) / (to[1] - from[1])) * (to[0] - from[0]));
+          }
           break;
         default:
           unreachable(s, 'shape');

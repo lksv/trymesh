@@ -70,6 +70,9 @@ describe('what a picture draws', () => {
     (state.evaluation as { bodyProperties: object }).bodyProperties = { b0: { name: 'b0', use: 'part', color: '#00ff00' }, b2: { name: 'b2', use: 'part', color: '#00ff00' } };
     const legend = pictureModel(request({ state, colors: 'model' })).bodies;
     expect(legend.map((entry) => [entry.body, entry.sharedWith])).toEqual([['b0', ['b2']], ['b1', undefined], ['b2', ['b0']]]);
+    // the second round of the review: one colour by name, as the palette leaves colours out
+    (state.evaluation as { bodyProperties: object }).bodyProperties = { b0: { name: 'b0', use: 'part', color: '#ff0000' }, b2: { name: 'b2', use: 'part', color: '#fe0101' } };
+    expect(pictureModel(request({ state, colors: 'model' })).bodies.map((entry) => [entry.body, entry.colorName, entry.sharedWith])).toEqual([['b0', 'red', ['b2']], ['b1', 'orange', undefined], ['b2', 'red', ['b0']]]);
     // only the bodies drawn count
     expect(pictureModel(request({ state, colors: 'model', bodies: ['b0', 'b1'] })).bodies.every((entry) => entry.sharedWith === undefined)).toBe(true);
     // the palette over: the twelfth body has the colour of the second

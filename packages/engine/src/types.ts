@@ -2037,7 +2037,7 @@ export type Command =
   // `expressions` at `external/<id>/…`; setField with the sketch as the feature reaches one). An
   // update (updateExternal) replaces the whole entry: send the entry with its expressions as strings, or a number
   // removes the expression; a string equal to the expression the field has counts as unchanged
-  // (an imported outline is the exception: fields left out keep what it has, SketchOutline). An
+  // (an imported outline is the exception: fields left out keep what it has, `SketchOutline`). An
   // update may not turn reference geometry into derived geometry or back. An update that keeps the
   // source (a projection from a sketch with the same `sketch`, `entity` and `kind`, its flag
   // switched; an edge projection to the same edge) checks no reference and keeps the last values,
@@ -2068,6 +2068,7 @@ export type Command =
   //   null` removes the name. A body that is in another link is an invalid command: take it out
   //   there first, in the same batch. Only bodies the link did not have before are checked.
   // - removeLink is refused while a joint names the link.
+  // - removeJoint removes the joint `id`.
   // - setJoint creates the joint `id` or replaces it in the input form: a numeric field takes
   //   a number or an expression, which has to evaluate now. A string equal to the expression the
   //   field already has is kept without evaluation. Only an axis the joint did not have before is

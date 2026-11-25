@@ -845,6 +845,29 @@ describe('the bridge to the running app', () => {
     await session.close();
   });
 
+  // the second review of D73: a new_document in the app erased the record of the server's own emptied document
+  it('new_document in the app leaves alone the file the server keeps for its own emptied document', async () => {
+    const file = join(dir, 'server-emptied.json');
+    const session = await connect({ bridge });
+    await session.call('execute', { command: { type: 'setParameter', name: 'w', expr: '1' } });
+    await session.call('save_document', { path: file });
+    expect(await session.call('new_document', { discard: true })).toMatchObject({ ok: true, discarded: { parameters: 1 } });
+    // the app connects and its document is emptied too
+    const app = newEngine();
+    expect(app.execute({ type: 'setParameter', name: 'a', expr: '2' }).ok).toBe(true);
+    let status: BridgeStatus = 'off';
+    const connection = connectBridge(app, { url: `http://127.0.0.1:${bridge.port}`, retryMs: 20, onStatus: (next) => (status = next) });
+    await until(() => status === 'connected' && bridge.connected(), 'the app connected');
+    expect(await session.call('new_document', { discard: true })).toMatchObject({ ok: true, discarded: { parameters: 1 } });
+    expect(app.getState().document.parameters).toEqual([]);
+    connection.stop();
+    await until(() => !bridge.connected(), 'the app disconnected');
+    // the undo of the server's own document still brings its file back
+    await session.call('undo');
+    expect(await session.call('session_status')).toMatchObject({ engine: 'server', file });
+    await session.close();
+  });
+
   it('a port in use: the bridge does not open and the server can run without it', async () => {
     await expect(startBridge(bridge.port)).rejects.toThrow();
   });
@@ -893,14 +916,14 @@ describe('the bridge and the document (D73)', () => {
     await until(() => status === 'connected' && mine.current()?.connected() === true, 'the app connected');
     const switched = await texts('execute', { command: { type: 'setParameter', name: 'w', expr: '5' } });
     expect(switched).toHaveLength(2);
-    expect(switched[1]).toMatch(/^Note: the app connected through the bridge\. This tool worked on the document open in the app; the answers before were about the server's own document/);
+    expect(switched[1]).toMatch(/^Note: the app connected through the bridge\. The tools now work on the document open in the app; the answers before were about the server's own document/);
     expect(app.getState().document.parameters.map((parameter) => parameter.name)).toEqual(['w']);
     expect(await texts('get_parameters')).toHaveLength(1);
     // and back
     connection.stop();
     await until(() => mine.current()?.connected() === false, 'the app disconnected');
     const back = await texts('get_parameters');
-    expect(back[1]).toMatch(/^Note: the app is no longer connected\. This tool worked on the server's own document/);
+    expect(back[1]).toMatch(/^Note: the app is no longer connected\. The tools now work on the server's own document/);
     expect(await texts('get_parameters')).toHaveLength(1);
     await session.close();
     // the end of the process closes the bridge it opened late: the port is free again

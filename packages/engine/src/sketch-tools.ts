@@ -109,7 +109,7 @@ export const SKETCH_TOOLS: Record<SketchToolName, SketchToolSpec> = {
   rectangle: {
     title: 'Rectangle',
     summary:
-      'A rectangle: four lines, two horizontal and two vertical. By two opposite corners, `first` and `opposite`; or by its centre, `center` instead of `first`: the corner opposite `opposite` across the centre is then `points[0]`, and a construction diagonal from `points[0]` to `points[2]` has the centre as its midpoint. `width` and `height` (each a number or an expression) add a distance dimension between the corners of a horizontal and of a vertical side, and the rectangle is drawn at that size from `first` or `center` towards `opposite` (towards +x and +y without it; `opposite` may be left out when both are given, and may then not snap to a point, which the sizes place already; an `opposite` that snaps otherwise keeps its place). Without them the width and the height stay free. With `width`, `height` and `first` or `center` snapped to a fixed point (such as `origin`) the rectangle is fully determined; on a point that is free its two coordinates stay free.',
+      'A rectangle: four lines, two horizontal and two vertical. By two opposite corners, `first` and `opposite`; or by its centre, `center` instead of `first`: the corner opposite `opposite` across the centre is then `points[0]`, and a construction diagonal from `points[0]` to `points[2]` has the centre as its midpoint. `width` and `height` (each a number or an expression) add a distance dimension between the corners of a horizontal and of a vertical side, and the rectangle is drawn at that size from `first` or `center` towards `opposite` (towards +x and +y without it; `opposite` may be left out when both are given). Refused, because the sketch would hold a corner twice: an `opposite` that snaps (to a point or a curve) together with both sizes, and an `opposite` snapped to a point together with even one size when `first` or `center` snaps to a point too. An `opposite` that snaps otherwise keeps its place. Without them the width and the height stay free. With `width`, `height` and `first` or `center` snapped to a fixed point (such as `origin`) the rectangle is fully determined; on a point that is free its two coordinates stay free.',
     inputs: {
       first: { kind: 'anchor', optional: true },
       center: { kind: 'anchor', optional: true },
@@ -455,17 +455,24 @@ function rectangle(context: SketchToolContext, input: SketchToolInputs['rectangl
   const [width, height] = sizes as (number | undefined)[];
   const po = input.opposite && anchorPosition(context, input.opposite);
   if (!po && (width === undefined || height === undefined)) return failed('`opposite` is needed unless `width` and `height` are both given');
-  // Both sizes place the opposite corner already; snapped to a point as well, the sketch would ask
-  // for it at two places (a conflict whenever `first` or `center` is held).
-  if (input.opposite?.snap?.kind === 'point' && width !== undefined && height !== undefined) {
-    return failed(`\`opposite\` snaps to the point "${input.opposite.snap.id}", but \`width\` and \`height\` place that corner already: leave out \`opposite\` (drawn towards +x and +y) or give it without \`snap\` (only the direction counts), or leave out one of the sizes`);
+  // Both sizes place the opposite corner already; snapped as well, the sketch would ask for it at
+  // two places (a conflict whenever `first` or `center` is held, or the curve is).
+  const snap = input.opposite?.snap;
+  if (snap && width !== undefined && height !== undefined) {
+    return failed(`\`opposite\` snaps to the ${snap.kind} "${snap.id}", but \`width\` and \`height\` place that corner already: leave out \`opposite\` (drawn towards +x and +y) or give it without \`snap\` (only the direction counts), or leave out one of the sizes`);
+  }
+  // Both corners (or the centre and a corner) on points: their distance holds the sizes already,
+  // and a dimension of even one side is a second hold on it (a conflict when the points are fixed).
+  const fromName = byCenter ? 'center' : 'first';
+  if (snap?.kind === 'point' && from.snap?.kind === 'point' && (width !== undefined || height !== undefined)) {
+    return failed(`\`opposite\` snaps to the point "${snap.id}" and \`${fromName}\` to the point "${from.snap.id}", which hold the size of the rectangle already: leave out \`width\` and \`height\`, or one of the snaps`);
   }
   // The corner `opposite` as drawn: where it snaps, else at the given size (half of it from the
   // centre) towards where it was given, else where it was given.
   const reach = byCenter ? 0.5 : 1;
   const towards = (axis: 0 | 1): number => (po && po[axis] < pf[axis] ? -1 : 1);
   const sized = (axis: 0 | 1, size: number | undefined): number => (size !== undefined ? pf[axis] + towards(axis) * size * reach : (po as Vec2)[axis]);
-  const pc: Vec2 = po && input.opposite?.snap ? po : [sized(0, width), sized(1, height)];
+  const pc: Vec2 = po && snap ? po : [sized(0, width), sized(1, height)];
   const pa: Vec2 = byCenter ? [2 * pf[0] - pc[0], 2 * pf[1] - pc[1]] : pf;
   if (Math.abs(pa[0] - pc[0]) <= SAME_PLACE || Math.abs(pa[1] - pc[1]) <= SAME_PLACE) return failed(byCenter ? 'the centre and the corner must differ in both coordinates' : 'the two corners must differ in both coordinates');
   if ([pa, pc].some((q) => Math.abs(q[0]) > MAX_NUMBER || Math.abs(q[1]) > MAX_NUMBER)) return failed(`the rectangle reaches out of the range ±${MAX_NUMBER}`);

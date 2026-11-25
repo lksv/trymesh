@@ -533,9 +533,9 @@ export function createTrymeshServer(options: TrymeshServerOptions): Server {
     const before = target;
     target = now;
     if (before === undefined || before === now) return undefined;
-    if (session === undefined) return 'Note: the app is no longer connected. This tool worked on the server\'s own document, not on the app\'s, which the answers before were about (see session_status).';
-    if (before === 'server') return 'Note: the app connected through the bridge. This tool worked on the document open in the app; the answers before were about the server\'s own document (see session_status).';
-    return 'Note: the app connected anew (another connection of the bridge). This tool worked on the document open in the app now connected, which may be another one than before (see session_status).';
+    if (session === undefined) return 'Note: the app is no longer connected. The tools now work on the server\'s own document, not on the app\'s, which the answers before were about (see session_status).';
+    if (before === 'server') return 'Note: the app connected through the bridge. The tools now work on the document open in the app; the answers before were about the server\'s own document (see session_status).';
+    return 'Note: the app connected anew (another connection of the bridge). The tools now work on the document open in the app now connected, which may be another one than before (see session_status).';
   };
   const respond = async (name: string, args: Record<string, unknown>) => {
     const fileTool = fileTools.find((tool) => tool.name === name);
@@ -559,7 +559,8 @@ export function createTrymeshServer(options: TrymeshServerOptions): Server {
       if (name === 'new_document' && (outcome.result as { discarded?: object }).discarded && Object.keys((outcome.result as { discarded: object }).discarded).length > 0) {
         const file = fileOf(session);
         forget(session);
-        emptied = own && file !== undefined ? { path: file, before: own, after: engine.getState().document } : undefined;
+        // the record is of the server's own document: emptying the app's leaves it alone (review)
+        if (own) emptied = file !== undefined ? { path: file, before: own, after: engine.getState().document } : undefined;
       }
       // a note beside the result (the pose a query answered for, D49) is a second text
       return outcome.about === undefined ? reply(outcome.result) : { content: [...reply(outcome.result).content, { type: 'text' as const, text: print(outcome.about) }] };

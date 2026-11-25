@@ -1783,12 +1783,50 @@ describe('the review of the implementation of D73: the rectangle tool', () => {
     const engine = sketched();
     const both = rect(engine, { center: origin, opposite: { at: [50, 40], snap: { kind: 'point', id: 'q' } }, width: 10, height: 10 });
     expect(both).toEqual({ ok: false, message: '`opposite` snaps to the point "q", but `width` and `height` place that corner already: leave out `opposite` (drawn towards +x and +y) or give it without `snap` (only the direction counts), or leave out one of the sizes' });
-    expect(rect(engine, { first: origin, opposite: { at: [50, 40], snap: { kind: 'point', id: 'q' } }, width: 50 }).ok).toBe(true);
+    // one size with `opposite` on a point is drawn when `first` does not snap to a point (second round below)
+    expect(rect(engine, { first: { at: [0, 0] }, opposite: { at: [50, 40], snap: { kind: 'point', id: 'q' } }, width: 50 }).ok).toBe(true);
     const free = rect(engine, { first: origin, opposite: { at: [-5, 5] }, width: 10, height: 10 });
     expect(free.ok).toBe(true);
     if (!free.ok) return;
     run(engine, batch(...free.commands));
     expect(engine.diagnoseSketch(S)).toMatchObject({ status: 'solved', redundant: [] });
+  });
+
+  // second round, finding 1: a point snap with one size, or a curve snap with both, still ended in a conflict
+  it('`opposite` snapped with sizes that would hold a corner twice is refused; what is determinable is drawn and solved', () => {
+    const engine = sketched();
+    run(
+      engine,
+      { type: 'addPoint', sketch: S, id: 'l1', x: -100, y: 30 },
+      { type: 'addPoint', sketch: S, id: 'l2', x: 100, y: 30 },
+      { type: 'addCurve', sketch: S, id: 'L', curve: { type: 'line', a: 'l1', b: 'l2' } },
+      constrain(S, 'f1', { type: 'fixed', point: 'l1', x: -100, y: 30 }),
+      constrain(S, 'f2', { type: 'fixed', point: 'l2', x: 100, y: 30 }),
+    );
+    const onQ = { at: [50, 40], snap: { kind: 'point', id: 'q' } };
+    const onL = { at: [10, 30], snap: { kind: 'curve', id: 'L' } };
+    const message = (input: Record<string, unknown>): string => {
+      const made = rect(engine, input);
+      return made.ok ? 'drawn' : made.message;
+    };
+    const held = (from: string) => `\`opposite\` snaps to the point "q" and \`${from}\` to the point "origin", which hold the size of the rectangle already: leave out \`width\` and \`height\`, or one of the snaps`;
+    expect(message({ first: origin, opposite: onQ, width: 10 })).toBe(held('first'));
+    expect(message({ center: origin, opposite: onQ, height: 10 })).toBe(held('center'));
+    const onCurve = '`opposite` snaps to the curve "L", but `width` and `height` place that corner already: leave out `opposite` (drawn towards +x and +y) or give it without `snap` (only the direction counts), or leave out one of the sizes';
+    expect(message({ first: origin, opposite: onL, width: 10, height: 10 })).toBe(onCurve);
+    expect(message({ center: origin, opposite: onL, width: 10, height: 10 })).toBe(onCurve);
+    // determinable: one size with `opposite` on a curve, or `first` on a curve and `opposite` on a point
+    for (const input of [
+      { first: origin, opposite: onL, width: 10 },
+      { first: { at: [0, 30], snap: { kind: 'curve', id: 'L' } }, opposite: onQ, width: 10 },
+    ]) {
+      const made = rect(engine, input);
+      expect(made.ok).toBe(true);
+      if (!made.ok) return;
+      run(engine, batch(...made.commands));
+      expect(engine.diagnoseSketch(S)).toMatchObject({ status: 'solved', degreesOfFreedom: 0, redundant: [], conflicting: [] });
+      engine.undo();
+    }
   });
 
   // finding 3: an expression of a size was not checked, so the batch failed later or the message misled

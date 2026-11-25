@@ -95,8 +95,10 @@ export function pictureModel(request: ImageRequest, pose: Pose = poseOf(request.
     ...(clip ? { clip } : {}),
   };
   const cut = new Set(regions.map((region) => region.body));
-  // bodies drawn in one colour cannot be told apart in the picture: the legend says so (D73, review)
-  const sharing = (id: Id): Id[] => drawn.filter((other) => other !== id && colorOf(other).color === colorOf(id).color);
+  // bodies drawn in one colour cannot be told apart in the picture: the legend says so (D73,
+  // review). One colour by name, as the palette leaves out colours by name: #ff0000 and #fe0101
+  // are both red to whoever reads the legend
+  const sharing = (id: Id): Id[] => drawn.filter((other) => other !== id && colorOf(other).name === colorOf(id).name);
   return {
     model,
     bodies: drawn.map((id) => ({

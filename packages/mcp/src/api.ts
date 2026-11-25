@@ -715,9 +715,15 @@ function declarations(): Map<string, { text: string; section: string }> {
   return found;
 }
 
-// The names of declared types the code of a text mentions, but `exclude`; its comments are left
-// out, which name types in passing (`Input` in a word about the input form, `Mechanism` in a rule).
-const typesNamed = (text: string, known: Map<string, unknown>, exclude: string): string[] => [...new Set(text.replace(/\/\/.*$/gm, '').match(/\b[A-Z]\w+\b/g) ?? [])].filter((name) => name !== exclude && known.has(name));
+// The names of declared types the code of a text mentions, but `exclude`. Of its comments only
+// what is in backticks counts (`Mechanism` in "see `Mechanism`" is named on purpose); the rest
+// of a comment names types in passing ("Command input" about the input form).
+const typesNamed = (text: string, known: Map<string, unknown>, exclude: string): string[] => {
+  const comments = text.match(/\/\/.*$/gm) ?? [];
+  const quoted = comments.flatMap((comment) => comment.match(/`[^`]*`/g) ?? []);
+  const code = text.replace(/\/\/.*$/gm, '');
+  return [...new Set([code, ...quoted].flatMap((part) => part.match(/\b[A-Z]\w+\b/g) ?? []))].filter((name) => name !== exclude && known.has(name));
+};
 
 // The lines of the union Command in the types.
 function commandLines(): string[] {

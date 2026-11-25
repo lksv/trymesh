@@ -170,8 +170,10 @@ describe('the review of D73', () => {
       },
     });
     expect(Object.keys(built.facts)).toEqual(['rv']);
-    // a parameter of the sketch: the command touches no feature, the recompute changes the revolve
-    const moved = ok(engine, 'execute', { command: { type: 'setParameter', name: 'ang', expr: 'deg(180)' } });
+    // a parameter of the sketch: the command replaces the sketch, not the revolve, and the recompute
+    // moves the circle away from the axis, so the revolve takes more steps (by the old identity of
+    // the feature objects the answer had no facts)
+    const moved = ok(engine, 'execute', { command: { type: 'setParameter', name: 'x', expr: '30' } });
     expect(Object.keys(moved.facts ?? {})).toEqual(['rv']);
     expect(moved.facts.rv.steps).toBeGreaterThan(built.facts.rv.steps);
     // a rename changes no fact, a parameter nothing uses changes none either
@@ -200,14 +202,17 @@ describe('the review of D73', () => {
   });
 
   // finding B4: the types a lookup lists came from its comments as well
-  it('describe_api: the types a lookup names are those of its code, not of its comments', () => {
+  it('describe_api: the types a lookup names are those of its code and of backticks in its comments, not of the rest of its comments', () => {
     const named = (args: { command?: string; type?: string }): string => {
       const found = apiLookup(args);
       if (!found.ok) throw new Error(found.error);
       return /Types it names[^:]*: (.*)$/m.exec(found.text)?.[1] ?? '';
     };
     expect(named({ type: 'Input' }).split(', ')).not.toContain('Command');
-    expect(named({ command: 'removeLink' }).split(', ')).not.toContain('Mechanism');
+    // second round, finding 4: a type a comment names in backticks is named on purpose
+    expect(named({ command: 'removeLink' }).split(', ')).toContain('Mechanism');
+    expect(named({ command: 'removeJoint' }).split(', ')).toContain('Mechanism');
+    expect(named({ command: 'addExternal' }).split(', ')).toContain('SketchOutline');
     expect(named({ command: 'addConstraint' }).split(', ')).toEqual(expect.arrayContaining(['Constraint', 'FixedInput']));
   });
 

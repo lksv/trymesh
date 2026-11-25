@@ -47,7 +47,7 @@ function rounded(radius: number): EngineState {
   box(engine);
   for (const corner of ['r1', 'r2', 'r3', 'r4']) {
     const state = engine.getState();
-    const context = { sketch: state.document.features.find((f) => f.id === 's') as SketchFeature, result: state.evaluation.features.s.sketch!, parameters: state.evaluation.parameters, document: state.document };
+    const context = { sketch: state.document.features.find((f) => f.id === 's') as SketchFeature, result: state.evaluation.features.s.sketch!, parameters: state.evaluation.parameters, document: state.document, features: state.evaluation.features };
     const made = sketchTool('fillet', context, { corner, radius }, freshIds(state.document, `f${corner}_`));
     if (!made.ok) throw new Error(made.message);
     run(engine, batch(...made.commands));

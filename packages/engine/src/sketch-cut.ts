@@ -29,8 +29,8 @@ import { DOCUMENT_SECTIONS, namedBySections } from './sections/index';
 import { type ContactKind, type CurveContacts, type Profile, type Region, type SketchCurve, type SketchGeometry, type TightPlace, curveContacts, curvesTouch, joinsOf, lineExtent, profileOf, profileProblem, sameRegion } from './sketch';
 import { constraintKey, constraintOperands, constraintPath, curvePoints, isDimension, isDriving } from './sketch-content';
 import type { NewId, SketchToolCall, SketchToolContext, SketchToolResult } from './sketch-tools';
-import type { Command, Constraint, Curve, CurvePointName, CurveShape, Document, EdgeName, Expr, FaceName, Feature, FeaturePatch, Id, ParameterResult, PlaneRef, Point2, ProfileSource, RegionRef, SketchFeature, SketchPattern, SketchResult, Vec2 } from './types';
-import { LENGTH_TOLERANCE, ORIGIN, dist2, has, isOriginAxis, unreachable } from './util';
+import type { Command, Constraint, Curve, CurvePointName, CurveShape, Document, EdgeName, Expr, FaceName, Feature, FeaturePatch, Id, ParameterResult, PlaneRef, Point2, ProfileSource, RegionRef, SketchFeature, SketchPattern, SketchProjection, SketchResult, Vec2 } from './types';
+import { LENGTH_TOLERANCE, ORIGIN, canonicalEdge, dist2, has, isOriginAxis, unreachable } from './util';
 
 // ---------------------------------------------------------------- what reads a profile (D52)
 
@@ -143,9 +143,9 @@ export const CUT_IDS = {
   reshaped: 'features with a region that keeps its name while the batch changed the holes inside it: a trim opened the outline of a hole (the hole is filled, or smaller), or an extension closed a loop inside the region (a new hole). The reference does not change and the body does; in the order of the timeline',
   moved: 'sketches and plane features on a side face of a line whose start `a` was re-pointed: their plane moved along the line; in the order of the timeline',
   shortened:
-    'features that read a face of a changed curve directly and are not in `moved`: walls along a curve that lost a piece and chamfers and fillets whose edge lost a piece (both also in `patched`), sketches that project an edge of such a face, chamfers and fillets of an edge of such a face with a face of another feature (which piece meets that face is not known from the sketch, so the edge is left as it is), features that name the face of a chamfer or a fillet whose edge was rewritten; in the order of the timeline',
+    'features that read a face of a changed curve directly and are not in `moved`: walls along a curve that lost a piece and chamfers and fillets whose edge lost a piece (both also in `patched`), sketches that project an edge of such a face, sketches that project a changed curve that keeps its ID (only the piece that kept it is projected), chamfers and fillets of an edge of such a face with a face of another feature (which piece meets that face is not known from the sketch, so the edge is left as it is), features that name the face of a chamfer or a fillet whose edge was rewritten; in the order of the timeline',
   broken:
-    'features and sections that name what the batch removes or renames: a removed curve or a face of it, an axis on it (also of a joint), a copy of a removed curve (a mirror or pattern of the sketch) or a face of it, a wall left with no curve, the straight end of a wall (wallEnd) whose chain no longer ends at that point, a chamfer or a fillet with an edge that no piece has any more and that is left in its list because something names a face of the blend at its place or a later one (a face is named by the place of its edge, so taking the edge out would hand those names to other faces), or because it is the only edge and a list may not be empty; features in the order of the timeline, then the IDs of section entries',
+    'features and sections that name what the batch removes or renames: a removed curve or a face of it, a sketch that projects a removed curve or point or a circle that became an arc (its projection keeps its last place, brokenProjection), an axis on it (also of a joint), a copy of a removed curve (a mirror or pattern of the sketch) or a face of it, a wall left with no curve, the straight end of a wall (wallEnd) whose chain no longer ends at that point, a chamfer or a fillet with an edge that no piece has any more and that is left in its list because something names a face of the blend at its place or a later one (a face is named by the place of its edge, so taking the edge out would hand those names to other faces), or because it is the only edge and a list may not be empty; features in the order of the timeline, then the IDs of section entries',
   entries: ENTRIES_LIST,
 } as const;
 export type CutIds = { [K in keyof typeof CUT_IDS]: Id[] };
@@ -193,7 +193,8 @@ export function curvePredicates(document: Document, sketch: SketchFeature): Curv
 // What split without a curve does at a contact, for the tools and for the query alike: `cut`,
 // `join`, or `none` with the reason (design.md, "Plug-in points"). A circle with one point only
 // is decided by the caller, once every contact is found. Undefined: not listed (6e never answers
-// it; 6c does for the image of a contact of two sources).
+// it; 6c does for the image of a contact of two sources, 6b for the ends of an own curve and a
+// projection that forms regions).
 export type ContactFix = { fix: 'cut' | 'join' } | { fix: 'none'; why: string } | undefined;
 export function contactFix(a: SketchCurve, b: SketchCurve, kind: ContactKind | 'ends', predicates: CurvePredicates, sketch: SketchFeature): ContactFix {
   // copies of a mirror or pattern (D68): never cut
@@ -210,6 +211,18 @@ export function contactFix(a: SketchCurve, b: SketchCurve, kind: ContactKind | '
     return { fix: 'none', why: copiesCross(a.id, b.id) };
   }
   const stuck = [a, b].find((curve) => !predicates.mayCut(curve));
+  // a projection from a sketch that forms regions (D69): the way is an own outline over it
+  const flagged = [a, b].find((curve) => curve.source === 'reference' && curve.regions && sketch.external[curve.id]?.type === 'sketch');
+  if (flagged) {
+    // Ends of it and of another curve that stay apart: the other is own (two flagged ends, or one
+    // and a copy's, join by position), with a second own vertex at that place. Nothing needs a cut,
+    // and a coincident with the projected end could be redundant: joining the own ends there,
+    // which is listed with them, makes them one vertex, and the joins by position take the
+    // projection's end in. Not listed.
+    if (kind === 'ends') return undefined;
+    const ref = sketch.external[flagged.id] as SketchProjection;
+    return { fix: 'none', why: flaggedNotCut(flagged.id, ref.sketch, ref.entity) };
+  }
   if (stuck) {
     const why = stuck.source === 'own' ? `the circle "${stuck.id}" is an operand of a generated profile, which takes a whole circle` : `"${stuck.id}" is ${stuck.source === 'reference' ? 'reference' : 'derived'} geometry, which no tool cuts`;
     return { fix: 'none', why };
@@ -227,6 +240,10 @@ export function contactFix(a: SketchCurve, b: SketchCurve, kind: ContactKind | '
       return unreachable(kind, 'contact');
   }
 }
+
+// The reason of a contact with a projection from a sketch that forms regions (D69).
+export const flaggedNotCut = (entry: Id, source: Id, entity: Id): string =>
+  `${entry} is a projection that forms regions and is not cut: draw an own curve over it with the sketch tool projectSketch { sketch: "${source}", entities: ["${entity}"], as: "own" }, which also switches its flag off, then cut that; or remove the curve that meets it`;
 
 // ---------------------------------------------------------------- copies of a mirror or pattern (D68)
 
@@ -439,10 +456,12 @@ export function copiesByNames(region: RegionRef, changes: CurveChanges, after: S
 }
 
 // Whether a trim or an extend without `repair` repairs: a feature of the document reads regions of
-// the sketch (an extrusion or a revolve over its regions, suppressed or not). 6b adds a sketch that
-// projects a curve of this sketch with the region flag.
+// the sketch (an extrusion or a revolve over its regions, suppressed or not), or a sketch projects
+// a curve of this sketch with the region flag (D69): its outline is made of this sketch's curves,
+// and a T left here is a T there, where nothing can cut it.
 export function repairsByDefault(document: Document, sketch: Id): boolean {
   return document.features.some((feature) => {
+    if (feature.type === 'sketch') return Object.values(feature.external).some((ref) => ref.type === 'sketch' && ref.sketch === sketch && ref.regions && ref.kind !== 'point');
     const source = profileSourceOf(feature);
     return source?.type === 'regions' && source.sketch === sketch;
   });
@@ -2311,6 +2330,10 @@ function middleOf(world: World, spec: CutSpec, plan: Plan): { curve: Id; at: Vec
   return undefined;
 }
 
+// The outer loop of a region rewritten by names: each curve read through `piecesOf`, sorted and
+// without duplicates as a region is named.
+const loopByNames = (loop: readonly Id[], changes: CurveChanges, sketch: SketchFeature): Id[] => [...new Set(loop.flatMap((id) => piecesOf(changes, sketch, id) ?? [id]))].sort();
+
 interface Patches {
   commands: Command[];
   patched: Id[];
@@ -2390,7 +2413,7 @@ function patchFeatures(world: World, plan: Plan, spec: CutSpec, changes: CurveCh
             continue;
           }
           pending = true;
-          const outerLoop = [...new Set(region.outerLoop.flatMap((id) => piecesOf(changes, afterSketch, id) ?? [id]))].sort();
+          const outerLoop = loopByNames(region.outerLoop, changes, afterSketch);
           if (outerLoop.length > 0) regions.push({ ...region, outerLoop });
           else dropped = true;
         }
@@ -2668,6 +2691,139 @@ function patchBlends(world: World, plan: Plan, changes: CurveChanges, afterDoc: 
   }
 }
 
+// ---------------------------------------------------------------- curves renamed one for one
+
+// A value with the face names `face` renames replaced, at any depth; the value itself when none is.
+function withFaces<T>(value: T, face: (name: FaceName) => FaceName | undefined): T {
+  if (Array.isArray(value)) {
+    let changed = false;
+    const items = value.map((item) => {
+      const next = withFaces(item, face);
+      if (next !== item) changed = true;
+      return next;
+    });
+    return (changed ? items : value) as T;
+  }
+  if (typeof value !== 'object' || value === null) return value;
+  const o = value as Record<string, unknown>;
+  const base = (typeof o.feature === 'string' && typeof o.role === 'string' ? face(o as unknown as FaceName) : undefined) ?? o;
+  let out: Record<string, unknown> | undefined;
+  for (const [key, item] of Object.entries(base)) {
+    const next = withFaces(item, face);
+    if (next !== item) (out ??= { ...base })[key] = next;
+  }
+  return (out ?? base) as T;
+}
+
+// What reads curves of a sketch renamed one for one (6b's takeover, D69: the flag `regions` of a
+// projection switched off and an own curve drawn over it at the same place, so that every region
+// along it and every side face of it is named by the own curve after the batch), patched in the
+// same batch as the cuts patch theirs: the regions rewritten by names (`piecesOf`, one piece per
+// curve) and the side faces by the face rule (`sideOf`, of the features over the sketch).
+// - the regions of the features over the sketch (`updateFeature` of `profile.regions`);
+// - the edges of chamfers and fillets (`updateFeature` of `edges`; a face of a blend is named by the
+//   place of its edge, which stays; an edge whose faces swap their order under the new name is
+//   patched too, since a blend is symmetric in them);
+// - the plane of a sketch (`setSketchPlane`) and the edges it projects (`updateExternal`);
+// - the base and the midplane of a plane feature (`updateFeature`).
+// A side face named anywhere else (an extent up to it, an axis, a frame, a split, a section entry),
+// or a projected edge whose two faces would change their order under the new name (its line is
+// oriented by them, so `<id>/a` would become `<id>/b`), is not patched: `unpatched` lists those
+// readers (features in the order of the timeline, then the keys of section entries), and the
+// caller refuses the rename. A wall names own curves only, so it never reads a projection.
+export interface RenamePatches {
+  commands: Command[];
+  patched: Id[];
+  unpatched: Id[];
+}
+export function renamePatches(document: Document, sketch: SketchFeature, renames: Readonly<Record<Id, Id>>): RenamePatches {
+  const renamed = Object.keys(renames);
+  const changes: CurveChanges = { changed: [], restarted: [], rekinded: [], removed: [], removedPoints: [], added: [], span: [], pieces: Object.fromEntries(renamed.map((id) => [id, [renames[id]]])), stretches: [] };
+  const over = new Set(document.features.filter((f) => profileSourceOf(f)?.sketch === sketch.id).map((f) => f.id));
+  const face = (name: FaceName): FaceName | undefined => {
+    if (!over.has(name.feature) || !sideOf(name, renamed)) return undefined;
+    const side = name as Extract<FaceName, { curve: Id }>;
+    return { ...side, curve: (piecesOf(changes, sketch, side.curve) as Id[])[0] };
+  };
+  const names = (value: unknown): boolean => facesIn(value).some((name) => face(name) !== undefined);
+  // a projected edge keeps the order of its faces under the new names
+  const keepsOrder = (edge: EdgeName): boolean => {
+    const c = canonicalEdge(edge);
+    const next = { a: face(c.a) ?? c.a, b: face(c.b) ?? c.b };
+    return canonicalEdge(next) === next;
+  };
+  const out: RenamePatches = { commands: [], patched: [], unpatched: [] };
+  for (const feature of document.features) {
+    if (feature.id === sketch.id) continue;
+    const commands: Command[] = [];
+    const patch: Record<string, unknown> = {};
+    // the fields patched below; a renamed face in any other is not patched
+    let handled: string[] = [];
+    let unpatched = false;
+    const source = profileSourceOf(feature);
+    if (source?.type === 'regions' && source.sketch === sketch.id) {
+      handled = ['profile'];
+      const regions = source.regions.map((region) => ({ ...region, outerLoop: loopByNames(region.outerLoop, changes, sketch) }));
+      if (JSON.stringify(regions) !== JSON.stringify(source.regions)) patch.profile = { regions };
+    }
+    switch (feature.type) {
+      case 'sketch': {
+        handled = ['plane', 'external'];
+        const plane = withFaces(feature.plane, face);
+        if (plane !== feature.plane) commands.push({ type: 'setSketchPlane', sketch: feature.id, plane });
+        for (const [id, ref] of Object.entries(feature.external)) {
+          const next = withFaces(ref, face);
+          if (next === ref) continue;
+          if (ref.type === 'edge' && !keepsOrder(ref.edge)) unpatched = true;
+          else commands.push({ type: 'updateExternal', sketch: feature.id, id, ref: next });
+        }
+        break;
+      }
+      case 'chamfer':
+      case 'fillet': {
+        // a blend is symmetric in the two faces of its edge (one distance or radius) and pairs them
+        // with the body's edge by the same canonical order, so an edge whose faces swap under the
+        // new name is patched too, written canonically as a command would store it
+        handled = ['edges'];
+        const edges = withFaces(feature.edges, face);
+        if (edges !== feature.edges) patch.edges = edges.map((edge, i) => (edge === feature.edges[i] ? edge : canonicalEdge(edge)));
+        break;
+      }
+      case 'plane': {
+        handled = ['base', 'midplaneWith'];
+        for (const key of handled as ('base' | 'midplaneWith')[]) {
+          const next = withFaces(feature[key], face);
+          if (next !== feature[key]) patch[key] = next;
+        }
+        break;
+      }
+      default:
+        break;
+    }
+    if (Object.entries(feature).some(([key, value]) => !handled.includes(key) && names(value))) unpatched = true;
+    if (unpatched) {
+      out.unpatched.push(feature.id);
+      continue;
+    }
+    if (Object.keys(patch).length > 0) commands.push({ type: 'updateFeature', id: feature.id, patch: patch as FeaturePatch });
+    if (commands.length === 0) continue;
+    out.commands.push(...commands);
+    out.patched.push(feature.id);
+  }
+  // the entries of the sections that name such a face
+  const entries: Id[] = [];
+  for (const name of Object.keys(DOCUMENT_SECTIONS) as (keyof typeof DOCUMENT_SECTIONS)[]) {
+    const section = document[name] as unknown;
+    if (typeof section !== 'object' || section === null) continue;
+    for (const group of Object.values(section as Record<string, unknown>)) {
+      if (typeof group !== 'object' || group === null || Array.isArray(group)) continue;
+      for (const [key, entry] of Object.entries(group as Record<string, unknown>)) if (names(entry)) entries.push(key);
+    }
+  }
+  out.unpatched.push(...[...new Set(entries)].sort());
+  return out;
+}
+
 // ---------------------------------------------------------------- what reads a changed curve
 
 // `moved`, `shortened` and `broken` of a batch, from its plan (design.md, "Walls, edges and what
@@ -2676,8 +2832,10 @@ function patchBlends(world: World, plan: Plan, changes: CurveChanges, afterDoc: 
 // entries (walls, blends) to these lists.
 // - `moved`: sketches and plane features on a side face of a line whose start was re-pointed.
 // - `shortened`: sketches that project an edge of a side face of a changed curve (a circle that
-//   became an arc included), not in `moved`.
+//   became an arc included), or that project a changed curve itself from this sketch (D69, by the
+//   entity references of their entries), not in `moved`.
 // - `broken`: features and sections that name a removed curve or a face of it, an axis on it, a
+//   sketch that projects a removed curve or point or a circle that became an arc (D69), a
 //   point (a `sketchPoint`, a generator's operand) that is no longer an entity of the sketch (an
 //   own point removed, a copy no entry makes now), or the straight end of a wall whose chain no
 //   longer ends there.
@@ -2722,11 +2880,16 @@ export function readersOf(document: Document, sketch: Id, changes: CurveChanges,
     // profile
     const source = profileSourceOf(feature);
     const points = [...sketchPointsIn(feature, sketch), ...(source?.type === 'generated' && source.sketch === sketch ? Object.values(source.operands) : [])];
-    if (faces.some((face) => onSide(face, [...removed])) || sketchLinesIn(feature, sketch).some((line) => removed.has(sourceOf(line))) || points.some(lost) || (after?.type === 'sketch' && wallEndBroken(document, after, changes, faces))) {
+    // the entities of this sketch an entry of another sketch reads (a projection from a sketch,
+    // D69), found by the references of its entries: broken when it is removed or of another kind
+    // now, shortened when it is a curve that keeps its ID with another extent
+    const projected = feature.type === 'sketch' ? Object.entries(feature.external).flatMap(([id, ref]) => kindOf(ref).refs(ref, `external/${id}`)).flatMap((ref) => (ref.kind === 'entity' && ref.sketch === sketch ? [ref.id] : [])) : [];
+    const projectionBroken = projected.some((id) => removed.has(sourceOf(id)) || changes.rekinded.includes(sourceOf(id)) || lost(id));
+    if (projectionBroken || faces.some((face) => onSide(face, [...removed])) || sketchLinesIn(feature, sketch).some((line) => removed.has(sourceOf(line))) || points.some(lost) || (after?.type === 'sketch' && wallEndBroken(document, after, changes, faces))) {
       broken.push(feature.id);
       continue;
     }
-    if (feature.type === 'sketch' && read.some((face) => onSide(face, changed)) && !moved.includes(feature.id)) shortened.push(feature.id);
+    if (feature.type === 'sketch' && (read.some((face) => onSide(face, changed)) || projected.some((id) => changed.includes(sourceOf(id)))) && !moved.includes(feature.id)) shortened.push(feature.id);
   }
   // the entries of the sections that name what goes: an axis on a removed line, a removed point
   const entries: Id[] = [];

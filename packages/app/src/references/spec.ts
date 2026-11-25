@@ -36,10 +36,17 @@ export type EntryControl =
 //   pick again.
 // - `form`: the controls of the entry, by its input form (a numeric field may hold an expression); absent where the entry has no fields to
 //   change in the panel.
+// - `flag` (D69): a checkbox in the row: its label, its state for an entry (undefined: no checkbox
+//   for that entry, a projected point), and the entry with it switched, sent by `updateExternal`.
+// - `inModel` (D69): the curves of such an entry are drawn with the own curves of their sketch in
+//   the model view, outside the sketch mode (a sketch of projections alone is seen); a projected
+//   edge is not, the edge of the body lies there.
 export interface ReferenceUi<R> {
   title(ref: R): string;
-  detail(ref: R, host: { bodyName(id: Id): string }): string;
+  detail(ref: R, host: { bodyName(id: Id): string; nameOf(id: Id): string }): string;
   tag: string;
   repair?(ref: R): EntryRepair | undefined;
   form?(input: Input<R>): EntryControl[];
+  flag?: { label: string; title: string; get(ref: R): boolean | undefined; set(ref: R, on: boolean): R };
+  inModel?: boolean;
 }

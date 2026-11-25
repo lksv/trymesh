@@ -636,7 +636,7 @@ export function faceFrame(body: BodyData, id: number, info: FaceInfo): Frame | I
 // Promítne hranu tělesa do roviny skici. Přímka hrany se počítá analyticky z rovin obou stěn,
 // ze sítě se bere jen rozsah; kružnice celá analyticky.
 // `chordTolerance`: as for `analyzeBody`, to choose among two circles by the points of the edge.
-export function projectEdge(body: BodyData, name: EdgeName, kind: ProjectionKind, frame: Frame, faceInfos: FaceInfo[], chordTolerance: number): Projected | IssueCode {
+export function projectEdge(body: BodyData, name: EdgeName, kind: ProjectionKind, frame: Frame, faceInfos: FaceInfo[], chordTolerance: number): Extract<Projected, { kind: 'line' | 'circle' }> | IssueCode {
   const edge = body.edges.get(edgeKey(name));
   if (!edge || !sameEdgeName(edge.name, name)) return 'brokenProjection';
   if (edge.kind !== kind) return 'unsupportedProjection'; // coplanar, other, nebo jiný druh, než se uložilo

@@ -770,17 +770,26 @@ export function applyCommand(doc: Document, command: Command): Document {
             given[path] = expr;
           }
         }
-        const context = { ...refContext(doc, index), fields: new Fields('update', given, () => evaluateParameters(doc.parameters)) };
-        const ref = externalRef(context, s, id, input, 'updateExternal.ref');
+        // The form of the new entry first, with no reference checked. An update that keeps the
+        // source of the entry (`keepsValue` of its kind: a projection from a sketch with its flag
+        // switched, D69) brings in no reference and checks none, so it is taken also when the source
+        // is gone; any other is validated again with every reference.
+        const before = s.external[id];
+        const fieldsOf = () => new Fields('update', given, () => evaluateParameters(doc.parameters));
+        const form = { ...refContext(doc, undefined), fields: fieldsOf() };
+        const shaped = externalRef(form, s, id, input, 'updateExternal.ref');
+        const keeps = kindOf(shaped).source === 'reference' && before.type === shaped.type && ((kindOf(shaped) as { keepsValue?: (a: ExternalRef, b: ExternalRef) => boolean }).keepsValue?.(before, shaped) ?? false);
+        const context = keeps ? form : { ...refContext(doc, index), fields: fieldsOf() };
+        const ref = keeps ? shaped : externalRef(context, s, id, input, 'updateExternal.ref');
         // Změna druhu by změnila odvozená ID; kdo chce jiný druh, promítnutí smaže a založí nové.
-        const problem = updateProblem(s, id, s.external[id], ref);
+        const problem = updateProblem(s, id, before, ref);
         if (problem) fail(`updateExternal: ${problem}`);
         // of a derived entry only what the update brings in is checked against the sketch
         const kind = kindOf(ref);
-        const brought = kind.source === 'derived' ? kind.commandProblem(s, ref, s.external[id], (entity) => entityOf(s, entity)) : undefined;
+        const brought = kind.source === 'derived' ? kind.commandProblem(s, ref, before, (entity) => entityOf(s, entity)) : undefined;
         if (brought) fail(`updateExternal.ref: ${brought}`);
-        // Zmrazené hodnoty patřily původní hraně.
-        const next = { ...s, external: { ...s.external, [id]: ref }, solved: { ...s.solved, external: without(s.solved.external, (e) => e === id) } };
+        // The stored value belonged to the source replaced, unless the update keeps the source.
+        const next = { ...s, external: { ...s.external, [id]: ref }, solved: keeps ? s.solved : { ...s.solved, external: without(s.solved.external, (e) => e === id) } };
         return withEntryExpressions(next, id, context.fields.expressions('updateExternal.ref') ?? {});
       });
 

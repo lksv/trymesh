@@ -47,7 +47,7 @@ export function sketchContextOf(state: EngineState, id: Id): SketchContext | und
   const result = state.evaluation.features[id];
   if (feature?.type !== 'sketch' || !result?.sketch || !result.plane) return undefined;
   const view = sketchView(feature, result.sketch);
-  return { feature, result: result.sketch, frame: result.plane, view, tool: { ...view.source, parameters: state.evaluation.parameters, document: state.document } };
+  return { feature, result: result.sketch, frame: result.plane, view, tool: { ...view.source, parameters: state.evaluation.parameters, document: state.document, features: state.evaluation.features } };
 }
 
 // What the mode remembers beyond one sketch. The app holds it; the mode and its panel read and write it.

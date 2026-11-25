@@ -10,7 +10,7 @@ import { XY, addExtrude, addSketch, batch, cap, circle, constrain, dimension, ne
 type CutTool = 'trim' | 'extend' | 'split';
 const sketchOf = (state: EngineState, id = 's'): SketchFeature => state.document.features.find((f) => f.id === id) as SketchFeature;
 const solved = (state: EngineState, sketch = 's'): SketchResult => state.evaluation.features[sketch].sketch as SketchResult;
-const contextOf = (state: EngineState, sketch: Id) => ({ sketch: sketchOf(state, sketch), result: solved(state, sketch), parameters: state.evaluation.parameters, document: state.document });
+const contextOf = (state: EngineState, sketch: Id) => ({ sketch: sketchOf(state, sketch), result: solved(state, sketch), parameters: state.evaluation.parameters, document: state.document, features: state.evaluation.features });
 function cut<K extends CutTool>(engine: Engine, name: K, input: SketchToolInputs[K], sketch = 's', prefix = 'x_'): CutIds {
   const state = engine.getState();
   const made = sketchTool(name, contextOf(state, sketch), input, freshIds(state.document, prefix));

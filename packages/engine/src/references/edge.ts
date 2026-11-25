@@ -3,28 +3,12 @@
 // `<id>/center` of a circle.
 import { lookup } from '../recompute/services';
 import { analyzeBody, projectEdge } from '../solid';
-import type { EdgeProjection, Projected } from '../types';
-import { edgeName, faceRefs, fail, finite, object, oneOf, requireFace, string } from '../validation';
-import type { ReferenceKindSpec } from './spec';
+import type { EdgeProjection } from '../types';
+import { edgeKey } from '../util';
+import { edgeName, faceRefs, oneOf, requireFace, string } from '../validation';
+import { type ReferenceKindSpec, type ReferenceValues, projected } from './spec';
 
-// A stored value of a projection by its form: a line or a circle, whatever the entry it belongs to.
-export function projected(v: unknown, what: string): Projected {
-  const o = object(v, what);
-  const vec2 = (value: unknown, name: string): [number, number] => {
-    if (!Array.isArray(value) || value.length !== 2) fail(`${what}.${name}: čeká se dvojice čísel`);
-    const pair = value as unknown[];
-    return [finite(pair[0], `${what}.${name}`), finite(pair[1], `${what}.${name}`)];
-  };
-  if (o.kind === 'line') return { kind: 'line', a: vec2(o.a, 'a'), b: vec2(o.b, 'b') };
-  if (o.kind === 'circle') {
-    const radius = finite(o.radius, `${what}.radius`);
-    if (radius <= 0) fail(`${what}.radius: poloměr musí být kladný`);
-    return { kind: 'circle', center: vec2(o.center, 'center'), radius };
-  }
-  return fail(`${what}.kind: čeká se line nebo circle`);
-}
-
-export const edge: ReferenceKindSpec<EdgeProjection, Projected> = {
+export const edge: ReferenceKindSpec<EdgeProjection, ReferenceValues['edge']> = {
   source: 'reference',
   title: 'Projection of an edge',
   summary:
@@ -45,7 +29,9 @@ export const edge: ReferenceKindSpec<EdgeProjection, Projected> = {
     return solid ? projectEdge(analyzeBody(solid, state.faceNames, state.faceInfos, state.chordTolerance), ref.edge, ref.kind, frame, state.faceInfos, state.chordTolerance) : 'brokenProjection';
   },
   // the stored object itself, once its form is checked: it is what load made of it
-  value: (stored, ref, what) => (projected(stored, what).kind === ref.kind ? (stored as Projected) : undefined),
+  value: (stored, ref, what) => (projected(stored, what).kind === ref.kind ? (stored as ReferenceValues['edge']) : undefined),
+  // an update to the same edge as the same kind is no change and keeps the last place (D69)
+  keepsValue: (before, after) => before.body === after.body && before.kind === after.kind && edgeKey(before.edge) === edgeKey(after.edge),
   geometry: (id, _ref, value) =>
     value.kind === 'line'
       ? { points: { [`${id}/a`]: { x: value.a[0], y: value.a[1] }, [`${id}/b`]: { x: value.b[0], y: value.b[1] } }, curves: { [id]: { type: 'line', a: `${id}/a`, b: `${id}/b` } }, radii: {}, regions: [] }

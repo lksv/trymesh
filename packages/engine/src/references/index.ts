@@ -9,16 +9,17 @@ import { AXES_GEOMETRY, type Entity, constraintOperands } from '../sketch-conten
 import type { ExternalRef, Id, IssueCode, SketchFeature } from '../types';
 import { ORIGIN, has, isOriginAxis } from '../util';
 import { type ValidationContext, fail, object } from '../validation';
-import { edge, projected } from './edge';
+import { edge } from './edge';
 import { pattern } from './pattern';
-import type { AnyKind, EntryKindName, KindOf, ReferenceContext, ResolvedReference, StoredValue } from './spec';
+import { projection } from './projection';
+import { type AnyKind, type EntryKindName, type KindOf, type ReferenceContext, type ResolvedReference, type StoredValue, projected } from './spec';
 
 export type { DerivedGeometry, EntryGeometry, GeometrySource, ReferenceContext, ResolvedReference, StoredValue } from './spec';
 
 // One entry per member of `ExternalRef`, of the shape its name gives it (a reference kind when it
 // has a value in `ReferenceValues`, else a derived kind): a member without an entry does not
 // compile.
-export const REFERENCE_KINDS: { readonly [T in EntryKindName]: KindOf<T> } = { edge, pattern };
+export const REFERENCE_KINDS: { readonly [T in EntryKindName]: KindOf<T> } = { edge, pattern, sketch: projection };
 
 // The kind of an entry (one cast, as `specOf` of the registry of feature types has). It may be
 // a reference or a derived kind: a caller that wants `compute` or `derive` asks `source` first.
@@ -27,7 +28,7 @@ export const kindOf = (ref: ExternalRef): AnyKind => REFERENCE_KINDS[ref.type] a
 // The validator of an entry of `external`: reads `type` and hands the entry to its kind.
 export function externalRef(context: ValidationContext, sketch: SketchFeature, id: Id, entry: unknown, what: string): ExternalRef {
   const o = object(entry, what);
-  if (typeof o.type !== 'string' || !has(REFERENCE_KINDS, o.type)) return fail(`${what}: an entry of a sketch is the projection of an edge (\`edge\`) or a mirror or pattern of the sketch (\`pattern\`)`);
+  if (typeof o.type !== 'string' || !has(REFERENCE_KINDS, o.type)) return fail(`${what}: an entry of a sketch is the projection of an edge (\`edge\`), a mirror or pattern of the sketch (\`pattern\`) or the projection of an entity of an earlier sketch (\`sketch\`)`);
   return (REFERENCE_KINDS[o.type as EntryKindName] as unknown as AnyKind).validate(context, sketch, id, o, what);
 }
 
@@ -126,25 +127,26 @@ export const axesNamed = (feature: SketchFeature): boolean => Object.values(feat
 
 // The first stage of the step: every entry of reference geometry in the order of its ID, its value from `compute`, else
 // the last valid one stored (through `value`), else none. `lost` names the entries whose value is
-// not fresh, with the code of the warning. When a constraint names an axis of the origin, the axes
+// not fresh, with the code of the warning and the detail `compute` gave, if any (D69). When a constraint names an axis of the origin, the axes
 // come under the key `origin`, without a value: the solver gets them fixed, and the stamp of a
 // sketch whose constraints name no axis stays what it was before the axes (D71).
-export function resolveReferences(feature: SketchFeature, context: ReferenceContext): { resolved: Record<Id, ResolvedReference>; lost: [Id, IssueCode][] } {
+export function resolveReferences(feature: SketchFeature, context: ReferenceContext): { resolved: Record<Id, ResolvedReference>; lost: [Id, IssueCode, string?][] } {
   const resolved: Record<Id, ResolvedReference> = axesNamed(feature) ? { [ORIGIN]: { geometry: AXES_GEOMETRY } } : {};
-  const lost: [Id, IssueCode][] = [];
+  const lost: [Id, IssueCode, string?][] = [];
   for (const id of Object.keys(feature.external).sort()) {
     const ref = feature.external[id];
     const kind = kindOf(ref);
     // derived geometry is made after the solver (references/derive.ts): nothing of it is resolved
     if (kind.source !== 'reference') continue;
     const computed = kind.compute(ref, context);
-    if (typeof computed !== 'string') resolved[id] = { value: computed, geometry: kind.geometry(id, ref, computed) };
+    const failure: { code: IssueCode; detail?: string } | undefined = typeof computed === 'string' ? { code: computed } : 'code' in computed ? computed : undefined;
+    if (!failure) resolved[id] = { value: computed as StoredValue, geometry: kind.geometry(id, ref, computed as StoredValue) };
     else {
       // A reference that cannot be computed does not fail the sketch: it keeps its last valid value.
       const stored = lookup(feature.solved.external, id);
       const frozen = stored === undefined ? undefined : kind.value(stored, ref, `solved.external.${id}`);
       if (frozen) resolved[id] = { value: frozen, geometry: kind.geometry(id, ref, frozen) };
-      lost.push([id, computed]);
+      lost.push(failure.detail === undefined ? [id, failure.code] : [id, failure.code, failure.detail]);
     }
   }
   return { resolved, lost };

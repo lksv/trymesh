@@ -303,7 +303,7 @@ describe('the axes of the origin: what takes a line of a sketch', () => {
     for (const [axis, click, expected] of cases) {
       const first: Anchor = { at: click, snap: { kind: 'curve', id: axis } };
       const opposite: Anchor = { at: [click[0] + 20, click[1] + 15] };
-      const context = { sketch: sketchOf(engine, 'S'), result: resultOf(engine, 'S'), document: engine.getState().document };
+      const context = { sketch: sketchOf(engine, 'S'), result: resultOf(engine, 'S'), document: engine.getState().document, features: engine.getState().evaluation.features };
       const made = sketchTool('rectangle', context, { first, opposite }, freshIds(engine.getState().document, `${axis.slice(-1)}${click[0] > 0 ? 'p' : 'n'}`));
       if (!made.ok) throw new Error(made.message);
       const added = made.commands.find((command) => command.type === 'addPoint' && command.id === made.ids.points[0]);
@@ -319,7 +319,7 @@ describe('the axes of the origin: what takes a line of a sketch', () => {
     const engine = newEngine();
     run(engine, addSketch('S', XY), rectangle('S', 'r', 3, 0, 10, 5, null));
     run(engine, constrain('S', 'on', { type: 'pointOnCurve', point: 'r2', curve: 'origin/x' }));
-    const context = { sketch: sketchOf(engine, 'S'), result: resultOf(engine, 'S'), document: engine.getState().document };
+    const context = { sketch: sketchOf(engine, 'S'), result: resultOf(engine, 'S'), document: engine.getState().document, features: engine.getState().evaluation.features };
     const made = sketchTool('fillet', context, { corner: 'r3', radius: 1 }, freshIds(engine.getState().document));
     if (!made.ok) throw new Error(made.message);
     expect(made.ids).toMatchObject({ lines: ['rb', 'rc'], patched: [], moved: [], shortened: [] });

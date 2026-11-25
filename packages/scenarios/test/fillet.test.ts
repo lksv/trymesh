@@ -9,7 +9,7 @@ type Made = Extract<SketchToolResult, { ok: true }>;
 const sketchOf = (state: EngineState, id: Id): SketchFeature => state.document.features.find((f) => f.id === id) as SketchFeature;
 // The tool as the app and MCP call it: the sketch, its solved state, the parameters and the document.
 function tool(state: EngineState, sketch: Id, corner: Id, radius: number | string, prefix = 'f_'): SketchToolResult {
-  const context = { sketch: sketchOf(state, sketch), result: state.evaluation.features[sketch].sketch, parameters: state.evaluation.parameters, document: state.document };
+  const context = { sketch: sketchOf(state, sketch), result: state.evaluation.features[sketch].sketch, parameters: state.evaluation.parameters, document: state.document, features: state.evaluation.features };
   return sketchTool('fillet', context, { corner, radius }, freshIds(state.document, prefix));
 }
 function fillet(engine: Engine, sketch: Id, corner: Id, radius: number | string, prefix = 'f_'): Made {
@@ -99,7 +99,7 @@ describe('the fillet tool: the batch', () => {
     const engine = plate();
     run(engine, { type: 'setParameter', name: 'R', expr: '4' });
     const state = engine.getState();
-    const blind = sketchTool('fillet', { sketch: sketchOf(state, 's'), result: state.evaluation.features.s.sketch, document: state.document }, { corner: 'o3', radius: 'R' }, freshIds(state.document));
+    const blind = sketchTool('fillet', { sketch: sketchOf(state, 's'), result: state.evaluation.features.s.sketch, document: state.document, features: state.evaluation.features }, { corner: 'o3', radius: 'R' }, freshIds(state.document));
     expect(blind).toEqual({ ok: false, message: 'radius: the expression cannot be evaluated without the values of the parameters' });
     expect(refusal(engine, 's', 'o3', 'nothing * 2')).toMatch(/^radius: .*nothing/);
     expect(refusal(engine, 's', 'o3', 'R - 5')).toBe('radius: the value must be positive');
@@ -124,7 +124,7 @@ describe('the fillet tool: the batch', () => {
     // the rectangle of the app from the origin: the corner is `origin` itself
     const origin = newEngine();
     run(origin, addSketch('s', XY));
-    const rect = sketchTool('rectangle', { sketch: sketchOf(origin.getState(), 's'), result: origin.getState().evaluation.features.s.sketch, document: origin.getState().document }, { first: { at: [0, 0], snap: { kind: 'point', id: 'origin' } }, opposite: { at: [40, 30] } }, freshIds(origin.getState().document));
+    const rect = sketchTool('rectangle', { sketch: sketchOf(origin.getState(), 's'), result: origin.getState().evaluation.features.s.sketch, document: origin.getState().document, features: origin.getState().evaluation.features }, { first: { at: [0, 0], snap: { kind: 'point', id: 'origin' } }, opposite: { at: [40, 30] } }, freshIds(origin.getState().document));
     if (!rect.ok) throw new Error(rect.message);
     run(origin, batch(...rect.commands));
     const atOrigin = fillet(origin, 's', 'origin', 3);

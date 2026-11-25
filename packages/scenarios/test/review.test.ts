@@ -2,7 +2,7 @@
 import type { Command, EngineState, FaceName, SketchFeature } from '@trymesh/engine';
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { XY, addExtrude, addSketch, batch, cap, circle, constrain, dimension, expectAllOk, faceBox, faceNames, newEngine, onFace, rectLoop, rectangle, run, side, status, volume } from './kit';
+import { XY, addExtrude, addSketch, batch, cap, circle, constrain, dimension, expectAllOk, extrude, faceBox, faceNames, newEngine, onFace, rectLoop, rectangle, run, side, status, volume } from './kit';
 import { createManifoldKernel } from '@trymesh/kernel-manifold';
 import { booleanOfBodies, sheetTriangles } from '../../engine/src/recompute/body-boolean';
 import { isMoveProblem, movedOutwards } from '../../engine/src/recompute/moved-body';
@@ -10,6 +10,7 @@ import { volumeOf as volumeOf56 } from '../../engine/src/solid';
 import { box as box56, cylinder as cylinder56, faceNumber as faceNumber56, infosOf as infosOf56, solidOf as solidOf56 } from './combine-kit';
 import { faceKey, freshIds, readersOf, sketchTool } from '@trymesh/engine';
 import { canonicalEdge } from '../../engine/src/util';
+import { projection } from '../../engine/src/references/projection';
 import { STEPPED, box, chamfer, edge, fillet, profileXZ } from './blend-kit';
 
 const kernel56 = await createManifoldKernel();
@@ -890,7 +891,7 @@ describe('the review of the implementation of 6c (D68): copies under the sketch 
   type Made = { ids: Record<string, string[]>; state: EngineState };
   const tool = (engine: ReturnType<typeof newEngine>, name: 'trim' | 'extend' | 'split' | 'fillet', input: object, prefix: string): Made | string => {
     const state = engine.getState();
-    const made = sketchTool(name, { sketch: sketchOf6c(state), result: state.evaluation.features[S].sketch, parameters: state.evaluation.parameters, document: state.document }, input as never, freshIds(state.document, prefix));
+    const made = sketchTool(name, { sketch: sketchOf6c(state), result: state.evaluation.features[S].sketch, parameters: state.evaluation.parameters, document: state.document, features: state.evaluation.features }, input as never, freshIds(state.document, prefix));
     return made.ok ? { ids: made.ids as Record<string, string[]>, state: run(engine, batch(...made.commands)) } : made.message;
   };
   const pulley = (center: string): Command => ({ type: 'addFeature', feature: { id: 'G', name: 'G', suppressed: false, type: 'extrude', profile: { type: 'generated', generator: 'gt2Pulley', sketch: S, operands: { center }, params: { teeth: 12 } }, extent: { type: 'distance', start: 0, distance: 5 }, operation: 'new' } } as Command);
@@ -1033,3 +1034,540 @@ describe('the review of the implementation of 6c (D68): copies under the sketch 
     expect(refused).toContain('would meet "a/1/Z" at [-8, 5]');
   });
 });
+
+describe('the design review of D69 (6b): planes parallel only within the tolerance', () => {
+  const pt6 = (s: string, id: string, x: number, y: number): Command => ({ type: 'addPoint', sketch: s, id, x, y });
+  const fix6 = (s: string, p: string, x: number, y: number): Command => constrain(s, `f${p}`, { type: 'fixed', point: p, x, y });
+  const tiltedPlane = (id: string, axis: 'X' | 'Y', angle: number): Command => ({ type: 'addFeature', feature: { id, name: id, suppressed: false, type: 'plane', base: XY, offset: 5, tilt: { axis: { kind: 'base', axis }, angle } } }) as Command;
+  const projectOf = (s: string, id: string, source: string, entity: string, kind: 'line' | 'arc'): Command => ({ type: 'addExternal', sketch: s, id, ref: { type: 'sketch', sketch: source, entity, kind, regions: true } }) as Command;
+
+  // the second round, finding 3: every point projected along the normal and the arc's end then put
+  // on its circle opened a quarter disc of radius 300 at 9e-5 rad by 1.2e-6 mm, the sketch `ok` and
+  // `valid` with no region; the rigid map keeps its joints, its lengths and its radii
+  it('a closed chain of lines and an arc keeps its joints and its region at tilts of 5e-5 and 9e-5 rad about each axis', () => {
+    for (const radius of [300, 1000]) {
+      const engine = newEngine();
+      const s = 'disc';
+      run(engine, addSketch(s, XY), pt6(s, 'c', 0, 0), pt6(s, 'a', radius, 0), pt6(s, 'b', 0, radius), { type: 'addCurve', sketch: s, id: 'q', curve: { type: 'arc', center: 'c', start: 'a', end: 'b' } }, { type: 'addCurve', sketch: s, id: 'l1', curve: { type: 'line', a: 'b', b: 'c' } }, { type: 'addCurve', sketch: s, id: 'l2', curve: { type: 'line', a: 'c', b: 'a' } }, fix6(s, 'c', 0, 0), fix6(s, 'a', radius, 0), fix6(s, 'b', 0, radius));
+      for (const axis of ['X', 'Y'] as const) {
+        for (const angle of [5e-5, 9e-5]) {
+          const t = `t${axis}${angle}`.replace(/[.-]/g, '_');
+          const state = run(engine, tiltedPlane(`${t}Pl`, axis, angle), addSketch(t, { kind: 'plane', feature: `${t}Pl` }), projectOf(t, `${t}q`, s, 'q', 'arc'), projectOf(t, `${t}1`, s, 'l1', 'line'), projectOf(t, `${t}2`, s, 'l2', 'line'));
+          const r = state.evaluation.features[t].sketch as SketchResult6;
+          expect(r.regions.map((region) => region.ref.outerLoop), `${radius} ${axis} ${angle}`).toEqual([[`${t}1`, `${t}2`, `${t}q`]]);
+          const p = (id: string): [number, number] => [r.points[id.replace(/^x/, t)].x, r.points[id.replace(/^x/, t)].y];
+          const d = (a: string, b: string): number => Math.hypot(p(a)[0] - p(b)[0], p(a)[1] - p(b)[1]);
+          expect(d('xq/start', 'xq/center')).toBeCloseTo(radius, 9);
+          expect(d('xq/end', 'xq/center')).toBeCloseTo(radius, 9);
+          expect(d('x2/a', 'x2/b')).toBeCloseTo(radius, 9);
+          expect(d('xq/end', 'x1/a')).toBe(0);
+        }
+      }
+      const beyond = run(engine, tiltedPlane('farPl', 'X', 1.5e-4), addSketch('far', { kind: 'plane', feature: 'farPl' }), projectOf('far', 'farq', s, 'q', 'arc'));
+      expect(beyond.evaluation.features.far.warnings.map((w) => w.code)).toEqual(['unsupportedProjection']);
+    }
+  });
+
+  // the light read of the fixes, a nit: a projected edge goes along the normal, a projection from
+  // a sketch by the rigid map; 1 m from the origin at 9e-5 rad they are d · θ² / 2 apart, more than
+  // the joins take, and openEnds says so (a known limit)
+  it('a projected edge and a projection from a sketch of one corner, 1 m out at 9e-5 rad, stay apart and openEnds says how far', () => {
+    const engine = newEngine();
+    run(engine, addSketch('S1', XY), rectangle('S1', 'r', 1000, 0, 10, 10, null), addExtrude('E1', 'S1', [rectLoop('r')], 5));
+    run(engine, tiltedPlane('tPl', 'Y', 9e-5), addSketch('T', { kind: 'plane', feature: 'tPl' }));
+    run(engine, { type: 'addExternal', sketch: 'T', id: 'e', ref: { type: 'edge', body: 'E1', edge: { a: cap('E1', 'startCap'), b: side('E1', 'ra') }, kind: 'line' } } as Command);
+    run(engine, ...['rb', 'rc', 'rd'].map((l) => projectOf('T', `x${l}`, 'S1', l, 'line')));
+    const [a, b] = ['e/a', 'e/b'].map((id) => (engine.getState().evaluation.features.T.sketch as SketchResult6).points[id]);
+    const state = run(engine, pt6('T', 'n1', a.x, a.y), pt6('T', 'n2', b.x, b.y), { type: 'addCurve', sketch: 'T', id: 'n', curve: { type: 'line', a: 'n1', b: 'n2' } }, constrain('T', 'k1', { type: 'coincident', a: 'n1', b: 'e/a' }), constrain('T', 'k2', { type: 'coincident', a: 'n2', b: 'e/b' }));
+    const r = state.evaluation.features.T.sketch as SketchResult6;
+    expect(r.regions).toEqual([]);
+    const apart = r.openEnds?.ends.filter((end) => end.reason === 'apart') ?? [];
+    expect(apart.length).toBeGreaterThan(0);
+    for (const end of apart) {
+      expect(end.distance).toBeGreaterThan(1e-6);
+      expect(end.distance).toBeLessThan((1010 * 9e-5 * 9e-5) / 2 + 1e-7);
+    }
+  });
+});
+
+describe('the design review of D69 (6b): the own outline of projectSketch', () => {
+  const pt6 = (s: string, id: string, x: number, y: number): Command => ({ type: 'addPoint', sketch: s, id, x, y });
+  const plane6 = (id: string, offset: number): Command => ({ type: 'addFeature', feature: { id, name: id, suppressed: false, type: 'plane', base: XY, offset } }) as Command;
+  const result6 = (engine: ReturnType<typeof newEngine>, s: string): SketchResult6 => engine.getState().evaluation.features[s].sketch as unknown as SketchResult6;
+  const project6 = (engine: ReturnType<typeof newEngine>, target: string, input: object, prefix: string): { commands: number; ids: Record<string, string[]> } | string => {
+    const state = engine.getState();
+    const made = sketchTool('projectSketch', { sketch: state.document.features.find((f) => f.id === target) as SketchFeature, result: state.evaluation.features[target].sketch, parameters: state.evaluation.parameters, document: state.document, features: state.evaluation.features }, input as never, freshIds(state.document, prefix));
+    if (!made.ok) return made.message;
+    run(engine, batch(...made.commands));
+    return { commands: made.commands.length, ids: made.ids };
+  };
+  // a rounded rectangle 60 × 40 R 3 of fixed points, and `held` on a plane above it: the outline
+  // projected without the flag and an own outline over it
+  function rounded(engine: ReturnType<typeof newEngine>): string[] {
+    const s = 'src';
+    const commands: Command[] = [addSketch(s, XY)];
+    const corners = [[27, 17], [-27, 17], [-27, -17], [27, -17]];
+    corners.forEach(([cx, cy], i) => {
+      const t = (i * Math.PI) / 2;
+      const [sx, sy] = [cx + 3 * Math.round(Math.cos(t)), cy + 3 * Math.round(Math.sin(t))];
+      const [ex, ey] = [cx + 3 * Math.round(Math.cos(t + Math.PI / 2)), cy + 3 * Math.round(Math.sin(t + Math.PI / 2))];
+      commands.push(pt6(s, `c${i}`, cx, cy), pt6(s, `s${i}`, sx, sy), pt6(s, `e${i}`, ex, ey), { type: 'addCurve', sketch: s, id: `a${i}`, curve: { type: 'arc', center: `c${i}`, start: `s${i}`, end: `e${i}` } });
+      for (const [p, x, y] of [[`c${i}`, cx, cy], [`s${i}`, sx, sy], [`e${i}`, ex, ey]] as const) commands.push(constrain(s, `f${p}`, { type: 'fixed', point: p, x, y }));
+    });
+    for (let i = 0; i < 4; i++) commands.push({ type: 'addCurve', sketch: s, id: `l${i}`, curve: { type: 'line', a: `e${i}`, b: `s${(i + 1) % 4}` } });
+    run(engine, ...commands);
+    return ['a0', 'l0', 'a1', 'l1', 'a2', 'l2', 'a3', 'l3'];
+  }
+
+  // the second round, finding 1: an own curve over every projected curve of a sketch that holds an
+  // own outline over its projections gave 72 commands, two outlines on each other, the sketch `ok`
+  // and determined, `valid: false` and no region; one own curve per place gives one outline
+  it('the whole of a sketch that holds an own outline over its projections, as own: one outline, and again from the result; run again it makes nothing', () => {
+    const engine = newEngine();
+    const outline = rounded(engine);
+    run(engine, plane6('p1', 3), addSketch('held', { kind: 'plane', feature: 'p1' }));
+    const first = project6(engine, 'held', { sketch: 'src', entities: outline, as: 'own' }, 'o');
+    expect(typeof first === 'object' && first.commands).toBe(44);
+    for (const [source, target, prefix] of [['held', 'copyO', 'g'], ['copyO', 'copyP', 'j']]) {
+      run(engine, plane6(`${target}Pl`, 6), addSketch(target, { kind: 'plane', feature: `${target}Pl` }));
+      const answer = project6(engine, target, { sketch: source, as: 'own' }, prefix);
+      if (typeof answer === 'string') throw new Error(answer);
+      expect(answer.commands).toBe(44);
+      expect([answer.ids.entries.length, answer.ids.curves.length, answer.ids.doubled.length]).toEqual([8, 8, 8]);
+      const held = engine.getState().document.features.find((f) => f.id === source) as SketchFeature;
+      expect(answer.ids.sources.every((id) => id in held.curves)).toBe(true);
+      expect([engine.diagnoseSketch(target).degreesOfFreedom, engine.diagnoseSketch(target).redundant]).toEqual([0, []]);
+      expect(result6(engine, target).regions.map((region) => region.ref.outerLoop)).toEqual([[...answer.ids.curves].sort()]);
+    }
+    // run again: the doubles are decided before the skip, so nothing is drawn twice
+    expect(project6(engine, 'copyO', { sketch: 'held', as: 'own' }, 'k')).toBe('nothing to project: of held 8 entities are projected already, 8 at a place another curve has');
+    // an outline from another source at the places this sketch holds is not drawn twice
+    expect(project6(engine, 'copyO', { sketch: 'src', entities: outline, as: 'own' }, 'l')).toBe('nothing to project: of src 0 entities are projected already, 8 at a place another curve has');
+  });
+
+  // the hold of an own arc on a projected one (owner, answer 29): by its ends and a construction line
+  // from its centre to its start with the projected centre on it; `equalRadius` there has a second
+  // solution that a change of the sweep from 170° to 204° reaches (8.3 mm off, the sketch `ok`), and
+  // a double root at a half turn (1 freedom and 1 redundant constraint)
+  it('an own arc stays on its projection while the sweep of the source goes from 170° through 204° and 119°, turns, a half turn and 216°', () => {
+    const engine = newEngine();
+    const s = 'arcSrc';
+    for (const [name, expr] of [['acx', '23'], ['acy', '7'], ['ar', '10'], ['at', '15'], ['aw', '170']]) run(engine, { type: 'setParameter', name, expr });
+    run(
+      engine,
+      addSketch(s, XY),
+      pt6(s, 'c', 23, 7),
+      pt6(s, 's', 32.66, 9.59),
+      pt6(s, 'e', 13.04, 6.13),
+      { type: 'addCurve', sketch: s, id: 'a', curve: { type: 'arc', center: 'c', start: 's', end: 'e' } },
+      constrain(s, 'kc', { type: 'fixed', point: 'c', x: 'acx', y: 'acy' } as never),
+      constrain(s, 'ks', { type: 'fixed', point: 's', x: 'acx + ar * cos(deg(at))', y: 'acy + ar * sin(deg(at))' } as never),
+      constrain(s, 'ke', { type: 'fixed', point: 'e', x: 'acx + ar * cos(deg(at + aw))', y: 'acy + ar * sin(deg(at + aw))' } as never),
+      plane6('arcPl', 5),
+      addSketch('arcOwn', { kind: 'plane', feature: 'arcPl' }),
+    );
+    const answer = project6(engine, 'arcOwn', { sketch: s, as: 'own' }, 'h');
+    if (typeof answer === 'string') throw new Error(answer);
+    const [own, entry] = [answer.ids.curves[0], answer.ids.entries[0]];
+    const held = (label: string): void => {
+      const diagnosis = engine.diagnoseSketch('arcOwn');
+      expect(engine.getState().evaluation.features.arcOwn.status, label).toBe('ok');
+      expect([diagnosis.degreesOfFreedom, diagnosis.redundant], label).toEqual([0, []]);
+      const r = result6(engine, 'arcOwn');
+      const curve = (engine.getState().document.features.find((f) => f.id === 'arcOwn') as SketchFeature).curves[own] as { center: string; start: string; end: string };
+      const off = Math.max(...([[curve.center, 'center'], [curve.start, 'start'], [curve.end, 'end']] as const).map(([p, name]) => Math.hypot(r.points[p].x - r.points[`${entry}/${name}`].x, r.points[p].y - r.points[`${entry}/${name}`].y)));
+      expect(off, label).toBeLessThan(1e-7);
+    };
+    held('170');
+    for (const [name, expr] of [['aw', '204'], ['aw', '119'], ['at', '75'], ['ar', '20'], ['acx', '60'], ['at', '195'], ['aw', '180'], ['at', '15'], ['aw', '216'], ['ar', '10']]) {
+      run(engine, { type: 'setParameter', name, expr });
+      held(`${name} ${expr}`);
+    }
+  });
+});
+describe('the review of the implementation of 6b (D69)', () => {
+  type E = ReturnType<typeof newEngine>;
+  const pt6 = (s: string, id: string, x: number, y: number): Command => ({ type: 'addPoint', sketch: s, id, x, y });
+  const ln6 = (s: string, id: string, a: string, b: string): Command => ({ type: 'addCurve', sketch: s, id, curve: { type: 'line', a, b } });
+  const fix6 = (s: string, p: string, x: number, y: number): Command => constrain(s, `f${p}`, { type: 'fixed', point: p, x, y });
+  const plane6 = (id: string, offset: number, tilt?: number): Command => ({ type: 'addFeature', feature: { id, name: id, suppressed: false, type: 'plane', base: XY, offset, ...(tilt === undefined ? {} : { tilt: { axis: { kind: 'base', axis: 'X' }, angle: tilt } }) } }) as Command;
+  const project6 = (s: string, id: string, source: string, entity: string, kind: 'line' | 'arc', regions: boolean): Command => ({ type: 'addExternal', sketch: s, id, ref: { type: 'sketch', sketch: source, entity, kind, regions } }) as Command;
+  const sketch6 = (engine: E, s: string): SketchFeature => engine.getState().document.features.find((f) => f.id === s) as SketchFeature;
+  const result6 = (engine: E, s: string): SketchResult6 => engine.getState().evaluation.features[s].sketch as unknown as SketchResult6;
+  const regions6 = (engine: E, s: string): string[][] => result6(engine, s).regions.map((region) => region.ref.outerLoop);
+  const tool6 = (engine: E, target: string, name: 'projectSketch' | 'split', input: object, prefix: string): { commands: Command[]; ids: Record<string, string[]> } | string => {
+    const state = engine.getState();
+    const made = sketchTool(name, { sketch: sketch6(engine, target), result: state.evaluation.features[target].sketch, parameters: state.evaluation.parameters, document: state.document, features: state.evaluation.features }, input as never, freshIds(state.document, prefix));
+    if (!made.ok) return made.message;
+    run(engine, batch(...made.commands));
+    return { commands: made.commands, ids: made.ids };
+  };
+  const contacts6 = (engine: E, s: string) => {
+    const outcome = engine.query('sketchContacts', { sketch: s });
+    if (!outcome.ok) throw new Error(outcome.error.message);
+    return outcome.result as { contacts: { curves: string[]; kind: string; fix: string; why?: string }[]; reason?: string };
+  };
+  // a rounded rectangle 60 × 40 R 3 of fixed points in `src`
+  function rounded(engine: E): void {
+    const s = 'src';
+    const commands: Command[] = [addSketch(s, XY)];
+    [[27, 17], [-27, 17], [-27, -17], [27, -17]].forEach(([cx, cy], i) => {
+      const t = (i * Math.PI) / 2;
+      const [sx, sy] = [cx + 3 * Math.round(Math.cos(t)), cy + 3 * Math.round(Math.sin(t))];
+      const [ex, ey] = [cx + 3 * Math.round(Math.cos(t + Math.PI / 2)), cy + 3 * Math.round(Math.sin(t + Math.PI / 2))];
+      commands.push(pt6(s, `c${i}`, cx, cy), pt6(s, `s${i}`, sx, sy), pt6(s, `e${i}`, ex, ey), { type: 'addCurve', sketch: s, id: `a${i}`, curve: { type: 'arc', center: `c${i}`, start: `s${i}`, end: `e${i}` } });
+      commands.push(fix6(s, `c${i}`, cx, cy), fix6(s, `s${i}`, sx, sy), fix6(s, `e${i}`, ex, ey));
+    });
+    for (let i = 0; i < 4; i++) commands.push(ln6(s, `l${i}`, `e${i}`, `s${(i + 1) % 4}`));
+    run(engine, ...commands);
+  }
+
+  // finding 1 (P1): only the ends made by the current run were pooled, so the second run of an
+  // outline as own made new own points at the ends of the first, two vertices: no region
+  it('projectSketch as own in two runs meets the own outline of the first run: the region of one run, determined, no redundancy', () => {
+    const engine = newEngine();
+    rounded(engine);
+    run(engine, plane6('p1', 3), addSketch('held', { kind: 'plane', feature: 'p1' }), addSketch('once', { kind: 'plane', feature: 'p1' }));
+    const first = tool6(engine, 'held', 'projectSketch', { sketch: 'src', entities: ['a0', 'l0', 'a1', 'l1'], as: 'own' }, 'o');
+    if (typeof first === 'string') throw new Error(first);
+    expect(regions6(engine, 'held')).toEqual([]);
+    const second = tool6(engine, 'held', 'projectSketch', { sketch: 'src', entities: ['a2', 'l2', 'a3', 'l3'], as: 'own' }, 'q');
+    if (typeof second === 'string') throw new Error(second);
+    // the two places where the runs meet reuse the first run's points: no new point, no constraint
+    expect(second.ids.points.filter((p) => first.ids.points.includes(p))).toEqual([]);
+    const ends = second.commands.flatMap((c) => (c.type === 'addCurve' && c.curve.type !== 'circle' && !('construction' in c.curve && c.curve.construction) ? (c.curve.type === 'line' ? [c.curve.a, c.curve.b] : [c.curve.start, c.curve.end]) : []));
+    expect(ends.filter((p) => first.ids.points.includes(p)).length).toBe(2);
+    expect(second.commands.filter((c) => c.type === 'addConstraint' && c.constraint.type === 'coincident').length).toBe(3);
+    expect([result6(engine, 'held').valid, regions6(engine, 'held').length]).toEqual([true, 1]);
+    expect([engine.diagnoseSketch('held').degreesOfFreedom, engine.diagnoseSketch('held').redundant]).toEqual([0, []]);
+    const once = tool6(engine, 'once', 'projectSketch', { sketch: 'src', entities: ['a0', 'l0', 'a1', 'l1', 'a2', 'l2', 'a3', 'l3'], as: 'own' }, 'w');
+    if (typeof once === 'string') throw new Error(once);
+    expect(regions6(engine, 'once').length).toBe(1);
+    expect(once.ids.points.length).toBe(first.ids.points.length + second.ids.points.length);
+  });
+
+  // finding 3 (P2): an own end that is a second own vertex at the end of a flagged projection was
+  // `fix: 'none'` with the reason of a crossing, and the reason of the profile said no cut could
+  // repair it; joining the own ends (split without a curve) does
+  it('two own vertices at the end of a flagged projection: only the join of the own ends is listed, the reason is not the flagged one, and split repairs it', () => {
+    const engine = newEngine();
+    run(engine, addSketch('edgeSk', XY), pt6('edgeSk', 'a', 0, 60), pt6('edgeSk', 'b', 20, 60), ln6('edgeSk', 's1', 'a', 'b'), fix6('edgeSk', 'a', 0, 60), fix6('edgeSk', 'b', 20, 60));
+    run(engine, addSketch('loopSk', XY), project6('loopSk', 'x', 'edgeSk', 's1', 'line', true));
+    run(engine, pt6('loopSk', 'u1', 0, 60), pt6('loopSk', 'u2', 20, 60), pt6('loopSk', 'u3', 10, 72), ln6('loopSk', 'n1', 'u1', 'u3'), ln6('loopSk', 'n2', 'u3', 'u2'), fix6('loopSk', 'u1', 0, 60), fix6('loopSk', 'u2', 20, 60), fix6('loopSk', 'u3', 10, 72));
+    run(engine, pt6('loopSk', 'u4', 0, 60), pt6('loopSk', 'u5', -5, 68), ln6('loopSk', 'n3', 'u4', 'u5'), fix6('loopSk', 'u4', 0, 60), fix6('loopSk', 'u5', -5, 68));
+    expect(result6(engine, 'loopSk').valid).toBe(false);
+    const found = contacts6(engine, 'loopSk');
+    expect(found.contacts.map((c) => [c.curves, c.kind, c.fix])).toEqual([[['n1', 'n3'], 'ends', 'join']]);
+    expect(found.reason ?? '').not.toContain('is a projection that forms regions');
+    const split = tool6(engine, 'loopSk', 'split', {}, 's');
+    if (typeof split === 'string') throw new Error(split);
+    expect(split.commands.filter((c) => c.type === 'addConstraint').length).toBe(1);
+    expect(regions6(engine, 'loopSk')).toEqual([['n1', 'n2', 'x']]);
+  });
+
+  // finding 2 (P8): the advice said to run projectSketch as own, which skipped the entity as
+  // projected already; now the tool takes a flagged entry over (its flag off, an own curve on it),
+  // and the advice names the call
+  it('the advice of a flagged projection that is not cut can be followed: projectSketch as own takes the entry over, and the crossing is cut', () => {
+    const engine = newEngine();
+    run(engine, addSketch('src', XY), ...([['p0', 0, 0], ['p1', 20, 0], ['p2', 20, 10], ['p3', 0, 10]] as const).flatMap(([p, x, y]) => [pt6('src', p, x, y), fix6('src', p, x, y)]));
+    run(engine, ...[0, 1, 2, 3].map((i) => ln6('src', `l${i}`, `p${i}`, `p${(i + 1) % 4}`)));
+    run(engine, plane6('dstPl', 3), addSketch('dst', { kind: 'plane', feature: 'dstPl' }), ...[0, 1, 2, 3].map((i) => project6('dst', `x${i}`, 'src', `l${i}`, 'line', true)));
+    expect(regions6(engine, 'dst').length).toBe(1);
+    run(engine, pt6('dst', 'q1', 5, -5), pt6('dst', 'q2', 5, 5), ln6('dst', 'cross', 'q1', 'q2'), fix6('dst', 'q1', 5, -5), fix6('dst', 'q2', 5, 5));
+    const before = contacts6(engine, 'dst');
+    expect(before.contacts.map((c) => [c.curves, c.fix, c.why])).toEqual([[['cross', 'x0'], 'none', 'x0 is a projection that forms regions and is not cut: draw an own curve over it with the sketch tool projectSketch { sketch: "src", entities: ["l0"], as: "own" }, which also switches its flag off, then cut that; or remove the curve that meets it']]);
+    // the call the advice names
+    const taken = tool6(engine, 'dst', 'projectSketch', { sketch: 'src', entities: ['l0'], as: 'own' }, 'o');
+    if (typeof taken === 'string') throw new Error(taken);
+    expect([taken.ids.entries, taken.ids.sources, taken.ids.taken, taken.ids.skipped, taken.ids.curves.length]).toEqual([['x0'], ['l0'], ['x0'], [], 1]);
+    expect(taken.commands[0]).toEqual({ type: 'updateExternal', sketch: 'dst', id: 'x0', ref: { type: 'sketch', sketch: 'src', entity: 'l0', kind: 'line', regions: false } });
+    expect((sketch6(engine, 'dst').external.x0 as { regions: boolean }).regions).toBe(false);
+    expect([engine.getState().evaluation.features.dst.status, engine.diagnoseSketch('dst').redundant]).toEqual(['ok', []]);
+    const own = taken.ids.curves[0];
+    const after = contacts6(engine, 'dst');
+    expect(after.contacts.map((c) => [c.curves, c.fix])).toEqual([[['cross', own], 'cut']]);
+    const split = tool6(engine, 'dst', 'split', {}, 's');
+    expect(typeof split).toBe('object');
+    // run again as own, nothing is left to take over or draw
+    expect(tool6(engine, 'dst', 'projectSketch', { sketch: 'src', entities: ['l0'], as: 'own' }, 'r')).toBe('nothing to project: of src 1 entity is projected already');
+  });
+
+  // gap D of the engine's report: a removed point a later sketch projects. The tools never remove it
+  // (a projected point is a name, so the rule of old ends keeps it), so the case is the function's
+  // alone, given the changes by hand
+  it('readersOf lists a sketch that projects a removed point in broken', () => {
+    const engine = newEngine();
+    run(engine, addSketch('src', XY), pt6('src', 'a', 0, 0), pt6('src', 'b', 10, 0), ln6('src', 'l', 'a', 'b'), pt6('src', 'p', 5, 5));
+    run(engine, plane6('up', 3), addSketch('dst', { kind: 'plane', feature: 'up' }), { type: 'addExternal', sketch: 'dst', id: 'xp', ref: { type: 'sketch', sketch: 'src', entity: 'p', kind: 'point' } } as Command);
+    const changes = { changed: [], restarted: [], rekinded: [], removed: [], removedPoints: ['p'], added: [], span: [], pieces: {}, stretches: [] };
+    expect(readersOf(engine.getState().document, 'src', changes)).toEqual({ moved: [], shortened: [], broken: ['dst'] });
+    expect(readersOf(engine.getState().document, 'src', { ...changes, removedPoints: ['a'] }).broken).toEqual([]);
+  });
+
+  // nit 5: the angle of a tilt just above the tolerance read "0.0°"
+  it('a tilt just above the tolerance is said with three significant digits', () => {
+    const engine = newEngine();
+    run(engine, addSketch('src', XY), pt6('src', 'a', 0, 0), pt6('src', 'b', 10, 0), ln6('src', 'l', 'a', 'b'), fix6('src', 'a', 0, 0), fix6('src', 'b', 10, 0));
+    run(engine, plane6('tPl', 3, 1.5e-4), addSketch('t', { kind: 'plane', feature: 'tPl' }));
+    expect(tool6(engine, 't', 'projectSketch', { sketch: 'src' }, 'o')).toBe('the plane of src is at 0.00859° to this sketch; only a sketch on a parallel plane is projected');
+    run(engine, project6('t', 'x', 'src', 'l', 'line', false));
+    expect(engine.getState().evaluation.features.t.warnings[0].message).toContain('the plane of src is at 0.00859° to this sketch');
+  });
+
+  // nit 6: a stored arc was read without the checks compute makes; one whose end is off its circle
+  // loaded as a fixed arc the solver may reject, one with no extent loaded at all
+  it('a stored arc read back is made exact, and one with no extent is refused on load', () => {
+    const engine = newEngine();
+    run(engine, addSketch('src', XY), pt6('src', 'c', 0, 0), pt6('src', 's', 10, 0), pt6('src', 'e', 0, 10), { type: 'addCurve', sketch: 'src', id: 'q', curve: { type: 'arc', center: 'c', start: 's', end: 'e' } }, fix6('src', 'c', 0, 0), fix6('src', 's', 10, 0), fix6('src', 'e', 0, 10));
+    run(engine, plane6('up', 3), addSketch('dst', { kind: 'plane', feature: 'up' }), project6('dst', 'x', 'src', 'q', 'arc', false));
+    run(engine, pt6('dst', 'k', 7, 7), constrain('dst', 'on', { type: 'pointOnCurve', point: 'k', curve: 'x' }));
+    // the source gone: the projection is frozen at its stored value, which a hand moved off the circle
+    const saved = JSON.parse(engine.save());
+    const doc = saved.document ?? saved;
+    doc.features = doc.features.filter((f: { id: string }) => f.id !== 'src');
+    const dst = doc.features.find((f: { id: string }) => f.id === 'dst');
+    dst.solved.external.x.end = [0, 10 + 1e-6];
+    const other = newEngine();
+    const loaded = other.load(JSON.stringify(saved));
+    if (!loaded.ok) throw new Error(loaded.error.message);
+    const r = loaded.state.evaluation.features.dst.sketch as unknown as SketchResult6;
+    expect(Math.hypot(r.points['x/end'].x, r.points['x/end'].y)).toBeCloseTo(10, 12);
+    expect(loaded.state.evaluation.features.dst.warnings.map((w) => w.code)).toEqual(['brokenProjection']);
+    dst.solved.external.x.end = [0, 0];
+    const refused = newEngine().load(JSON.stringify(saved));
+    expect(refused.ok).toBe(false);
+  });
+});
+describe('the second review of the implementation of 6b (D69)', () => {
+  type E = ReturnType<typeof newEngine>;
+  const pt7 = (s: string, id: string, x: number, y: number): Command => ({ type: 'addPoint', sketch: s, id, x, y });
+  const ln7 = (s: string, id: string, a: string, b: string): Command => ({ type: 'addCurve', sketch: s, id, curve: { type: 'line', a, b } });
+  const fix7 = (s: string, p: string, x: number, y: number): Command => constrain(s, `f${p}`, { type: 'fixed', point: p, x, y });
+  const plane7 = (id: string, offset: number): Command => ({ type: 'addFeature', feature: { id, name: id, suppressed: false, type: 'plane', base: XY, offset } }) as Command;
+  const project7 = (s: string, id: string, source: string, entity: string, kind: 'line' | 'arc' | 'circle', regions: boolean): Command => ({ type: 'addExternal', sketch: s, id, ref: { type: 'sketch', sketch: source, entity, kind, regions } }) as Command;
+  const sketch7 = (engine: E, s: string): SketchFeature => engine.getState().document.features.find((f) => f.id === s) as SketchFeature;
+  const regions7 = (engine: E, s: string): string[][] => (engine.getState().evaluation.features[s].sketch as unknown as SketchResult6).regions.map((region) => region.ref.outerLoop);
+  const volume7 = (engine: E, body: string): number => volume(engine.getState().evaluation.bodies[body].solid);
+  const tool7 = (engine: E, target: string, input: object, prefix: string): { commands: Command[]; ids: Record<string, string[]> } | string => {
+    const state = engine.getState();
+    const made = sketchTool('projectSketch', { sketch: sketch7(engine, target), result: state.evaluation.features[target].sketch, parameters: state.evaluation.parameters, document: state.document, features: state.evaluation.features }, input as never, freshIds(state.document, prefix));
+    if (!made.ok) return made.message;
+    run(engine, batch(...made.commands));
+    return { commands: made.commands, ids: made.ids };
+  };
+  // a fixed 20 × 10 rectangle `l0`–`l3` in `src`, projected with the flag into `dst` as `x0`–`x3`
+  // on a plane 3 above, and an extrusion `ex` of its region
+  function flagged(engine: E): void {
+    run(engine, addSketch('src', XY), ...([['p0', 0, 0], ['p1', 20, 0], ['p2', 20, 10], ['p3', 0, 10]] as const).flatMap(([p, x, y]) => [pt7('src', p, x, y), fix7('src', p, x, y)]));
+    run(engine, ...[0, 1, 2, 3].map((i) => ln7('src', `l${i}`, `p${i}`, `p${(i + 1) % 4}`)));
+    run(engine, plane7('dstPl', 3), addSketch('dst', { kind: 'plane', feature: 'dstPl' }), ...[0, 1, 2, 3].map((i) => project7('dst', `x${i}`, 'src', `l${i}`, 'line', true)));
+    run(engine, addExtrude('ex', 'dst', [['x0', 'x1', 'x2', 'x3']], 5));
+  }
+
+  // S1 (T1): a takeover renamed the region along the entry and its side face to the own curve, and
+  // the features that read them ended in noProfile or with a face that is gone, in silence
+  it('a takeover renames the region and the side face in what reads them in the same batch: the extrusion, a chamfer of its edge, a sketch on the face and a projected edge stay ok', () => {
+    const engine = newEngine();
+    flagged(engine);
+    run(engine, { type: 'addFeature', feature: { id: 'ch', name: 'ch', suppressed: false, type: 'chamfer', body: 'ex', edges: [{ a: cap('ex'), b: side('ex', 'x0') }], distance: 1 } } as Command);
+    run(engine, addSketch('onSide', onFace('ex', side('ex', 'x0'))));
+    run(engine, addSketch('proj', XY), { type: 'addExternal', sketch: 'proj', id: 'e', ref: { type: 'edge', body: 'ex', edge: { a: side('ex', 'x0'), b: cap('ex', 'startCap') }, kind: 'line' } } as Command);
+    expectAllOk(engine.getState());
+    const before = volume7(engine, 'ex');
+    // a run over the whole sketch takes nothing over: every entity is projected already
+    expect(tool7(engine, 'dst', { sketch: 'src', as: 'own' }, 'w')).toBe('nothing to project: of src 4 entities are projected already');
+    const taken = tool7(engine, 'dst', { sketch: 'src', entities: ['l0'], as: 'own' }, 'o');
+    if (typeof taken === 'string') throw new Error(taken);
+    const own = taken.ids.curves[0];
+    expect([taken.ids.taken, taken.ids.patched]).toEqual([['x0'], ['ex', 'ch', 'onSide', 'proj']]);
+    expectAllOk(engine.getState());
+    expect(regions7(engine, 'dst')).toEqual([[own, 'x1', 'x2', 'x3']]);
+    const features = engine.getState().document.features;
+    const of = <T>(id: string): T => features.find((f) => f.id === id) as T;
+    expect(of<{ profile: { regions: { outerLoop: string[] }[] } }>('ex').profile.regions).toEqual([{ outerLoop: [own, 'x1', 'x2', 'x3'] }]);
+    expect(of<{ edges: unknown[] }>('ch').edges).toEqual([{ a: cap('ex'), b: side('ex', own) }]);
+    expect(of<SketchFeature>('onSide').plane).toEqual(onFace('ex', side('ex', own)));
+    expect((of<SketchFeature>('proj').external.e as { edge: unknown }).edge).toEqual({ a: side('ex', own), b: cap('ex', 'startCap') });
+    expect(volume7(engine, 'ex')).toBeCloseTo(before, 9);
+    expect([engine.diagnoseSketch('dst').degreesOfFreedom, engine.diagnoseSketch('dst').redundant]).toEqual([0, []]);
+    // one undo restores the flag and every reader
+    engine.undo();
+    expect([(sketch7(engine, 'dst').external.x0 as { regions: boolean }).regions, (engine.getState().document.features.find((f) => f.id === 'ch') as { edges: unknown[] }).edges]).toEqual([true, [{ a: cap('ex'), b: side('ex', 'x0') }]]);
+  });
+
+  // S1 (T2): the rounded rectangle with a hole, its arc, the circle and a line taken over
+  it('a takeover of an arc, a circle and a line of a rounded rectangle with a hole keeps the extrusion of its region ok and its volume', () => {
+    const engine = newEngine();
+    const s = 'src';
+    const commands: Command[] = [addSketch(s, XY)];
+    [[27, 17], [-27, 17], [-27, -17], [27, -17]].forEach(([cx, cy], i) => {
+      const t = (i * Math.PI) / 2;
+      const [sx, sy] = [cx + 3 * Math.round(Math.cos(t)), cy + 3 * Math.round(Math.sin(t))];
+      const [ex, ey] = [cx + 3 * Math.round(Math.cos(t + Math.PI / 2)), cy + 3 * Math.round(Math.sin(t + Math.PI / 2))];
+      commands.push(pt7(s, `c${i}`, cx, cy), pt7(s, `s${i}`, sx, sy), pt7(s, `e${i}`, ex, ey), { type: 'addCurve', sketch: s, id: `a${i}`, curve: { type: 'arc', center: `c${i}`, start: `s${i}`, end: `e${i}` } });
+      commands.push(fix7(s, `c${i}`, cx, cy), fix7(s, `s${i}`, sx, sy), fix7(s, `e${i}`, ex, ey));
+    });
+    for (let i = 0; i < 4; i++) commands.push(ln7(s, `l${i}`, `e${i}`, `s${(i + 1) % 4}`));
+    commands.push(pt7(s, 'hc', 0, 0), { type: 'addCurve', sketch: s, id: 'h', curve: { type: 'circle', center: 'hc' }, radius: 5 }, fix7(s, 'hc', 0, 0));
+    run(engine, ...commands, plane7('dstPl', 3), addSketch('dst', { kind: 'plane', feature: 'dstPl' }));
+    const all = tool7(engine, 'dst', { sketch: 'src' }, 'x');
+    if (typeof all === 'string') throw new Error(all);
+    const outer = regions7(engine, 'dst').find((loop) => loop.length === 8) as string[];
+    run(engine, addExtrude('ex', 'dst', [outer], 5));
+    const before = volume7(engine, 'ex');
+    const taken = tool7(engine, 'dst', { sketch: 'src', entities: ['a0', 'h', 'l1'], as: 'own' }, 'o');
+    if (typeof taken === 'string') throw new Error(taken);
+    expect([taken.ids.taken.length, taken.ids.patched]).toEqual([3, ['ex']]);
+    expectAllOk(engine.getState());
+    expect(volume7(engine, 'ex')).toBeCloseTo(before, 6);
+    expect([engine.diagnoseSketch('dst').degreesOfFreedom, engine.diagnoseSketch('dst').redundant]).toEqual([0, []]);
+  });
+
+  // S1: what the takeover cannot rename is refused, naming the readers, rather than broken
+  it('a takeover is refused when a projected edge would swap its faces under the new name or a feature names the face elsewhere', () => {
+    const engine = newEngine();
+    flagged(engine);
+    // a projected vertical edge of x0 and x1; an own curve `zc1` sorts after x1, so its ends would swap
+    run(engine, addSketch('proj', { kind: 'base', plane: 'XZ' }), { type: 'addExternal', sketch: 'proj', id: 'e', ref: { type: 'edge', body: 'ex', edge: { a: side('ex', 'x0'), b: side('ex', 'x1') }, kind: 'line' } } as Command);
+    expectAllOk(engine.getState());
+    expect(tool7(engine, 'dst', { sketch: 'src', entities: ['l0'], as: 'own' }, 'z')).toBe('x0 is not taken over: the own curve would rename its side face, which proj names where the takeover cannot rename it (for example an extent up to the face, an axis or a frame on it, a section entry, or a projected edge whose faces would swap); make it name another face first');
+    // with `oc1`, which sorts before x1, the edge keeps its order and is patched
+    const taken = tool7(engine, 'dst', { sketch: 'src', entities: ['l0'], as: 'own' }, 'o');
+    if (typeof taken === 'string') throw new Error(taken);
+    expect(taken.ids.patched).toEqual(['ex', 'proj']);
+    expectAllOk(engine.getState());
+    engine.undo();
+    // an extrusion up to the side face: its extent is not patched
+    run(engine, { type: 'removeFeature', id: 'proj' } as Command, addSketch('up', XY), rectangle('up', 'u', 5, -20, 4, 4), { type: 'addFeature', feature: { ...extrude('far', 'up', [rectLoop('u')], 1), extent: { type: 'upTo', plane: onFace('ex', side('ex', 'x0')), start: 0 } } } as Command);
+    expect(tool7(engine, 'dst', { sketch: 'src', entities: ['l0'], as: 'own' }, 'o')).toMatch(/^x0 is not taken over: .* which far names /);
+  });
+
+  // M3 (T5): an own curve drawn by hand over a flagged entry left the advice of the crossing naming
+  // a call that refused with nothing to say
+  it('a takeover where an own curve lies over the entry already says how to switch its flag off', () => {
+    const engine = newEngine();
+    flagged(engine);
+    run(engine, pt7('dst', 'h1', 0, 0), pt7('dst', 'h2', 20, 0), ln7('dst', 'own0', 'h1', 'h2'), constrain('dst', 'k1', { type: 'coincident', a: 'h1', b: 'x0/a' }), constrain('dst', 'k2', { type: 'coincident', a: 'h2', b: 'x0/b' }));
+    expect(tool7(engine, 'dst', { sketch: 'src', entities: ['l0'], as: 'own' }, 'o')).toBe(
+      'nothing to project: of src 0 entities are projected already, 1 at a place another curve has; x0 has the own curve own0 over it already: switch the flag of x0 off instead, updateExternal { sketch: "dst", id: "x0", ref: { type: "sketch", sketch: "src", entity: "l0", kind: "line", regions: false } }; the regions along it and its side face are then named by own0, so rename them in ex',
+    );
+    run(engine, { type: 'updateExternal', sketch: 'dst', id: 'x0', ref: { type: 'sketch', sketch: 'src', entity: 'l0', kind: 'line', regions: false } } as Command);
+    expect(regions7(engine, 'dst')).toEqual([['own0', 'x1', 'x2', 'x3']]);
+  });
+
+  // M1 (U2): exactArc is not idempotent in floating point, so a frozen arc read back through it
+  // flipped by an ulp at each recompute, and a document saved, loaded and saved changed
+  it('a frozen arc keeps its stored value bit for bit over commands, and save, load, save gives the same text', () => {
+    let seed = 777;
+    const rnd = (): number => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+    for (let trial = 0; trial < 6; trial++) {
+      const engine = newEngine();
+      const [cx, cy, r] = [rnd() * 40 - 20, rnd() * 40 - 20, rnd() * 20 + 1];
+      const [t0, t1] = [rnd() * 3, 3 + rnd() * 3];
+      const [sx, sy, ex, ey] = [cx + r * Math.cos(t0), cy + r * Math.sin(t0), cx + r * Math.cos(t1), cy + r * Math.sin(t1)];
+      run(engine, addSketch('src', XY), pt7('src', 'c', cx, cy), pt7('src', 's', sx, sy), pt7('src', 'e', ex, ey), { type: 'addCurve', sketch: 'src', id: 'q', curve: { type: 'arc', center: 'c', start: 's', end: 'e' } }, fix7('src', 'c', cx, cy), fix7('src', 's', sx, sy), fix7('src', 'e', ex, ey));
+      run(engine, plane7('up', 3), addSketch('dst', { kind: 'plane', feature: 'up' }), project7('dst', 'x', 'src', 'q', 'arc', false));
+      run(engine, pt7('dst', 'k', cx + r * Math.cos((t0 + t1) / 2) + 0.3, cy + r * Math.sin((t0 + t1) / 2)), constrain('dst', 'on', { type: 'pointOnCurve', point: 'k', curve: 'x' }));
+      const stored = (): string => JSON.stringify((sketch7(engine, 'dst').solved.external as Record<string, unknown>).x);
+      const first = stored();
+      run(engine, { type: 'removeEntity', sketch: 'src', id: 'q' } as Command);
+      expect(engine.getState().evaluation.features.dst.warnings.map((w) => w.code)).toEqual(['brokenProjection']);
+      for (let i = 0; i < 4; i++) {
+        run(engine, pt7('dst', `z${i}`, i, i));
+        expect(stored()).toBe(first);
+      }
+      const saved = engine.save();
+      const other = newEngine();
+      const loaded = other.load(saved);
+      if (!loaded.ok) throw new Error(loaded.error.message);
+      expect(other.save()).toBe(saved);
+    }
+  });
+
+  // M5: a stored circle with a radius under the length tolerance was read back as it was
+  it('a stored circle with a radius under the length tolerance is refused on load', () => {
+    const engine = newEngine();
+    run(engine, addSketch('src', XY), circle('src', 'h', 0, 0, 5));
+    run(engine, plane7('up', 3), addSketch('dst', { kind: 'plane', feature: 'up' }), project7('dst', 'x', 'src', 'h', 'circle', false));
+    const saved = JSON.parse(engine.save());
+    const doc = saved.document ?? saved;
+    doc.features = doc.features.filter((f: { id: string }) => f.id !== 'src');
+    const dst = doc.features.find((f: { id: string }) => f.id === 'dst');
+    dst.solved.external.x.radius = 1e-6;
+    expect(newEngine().load(JSON.stringify(saved)).ok).toBe(true);
+    dst.solved.external.x.radius = 1e-7;
+    expect(newEngine().load(JSON.stringify(saved)).ok).toBe(false);
+  });
+});
+describe('the third review of the implementation of 6b (D69)', () => {
+  type E = ReturnType<typeof newEngine>;
+  const pt8 = (s: string, id: string, x: number, y: number): Command => ({ type: 'addPoint', sketch: s, id, x, y });
+  const fix8 = (s: string, p: string, x: number, y: number): Command => constrain(s, `f${p}`, { type: 'fixed', point: p, x, y });
+  const sketch8 = (engine: E, s: string): SketchFeature => engine.getState().document.features.find((f) => f.id === s) as SketchFeature;
+  const tool8 = (engine: E, target: string, input: object, prefix: string): { ids: Record<string, string[]> } | string => {
+    const state = engine.getState();
+    const made = sketchTool('projectSketch', { sketch: sketch8(engine, target), result: state.evaluation.features[target].sketch, parameters: state.evaluation.parameters, document: state.document, features: state.evaluation.features }, input as never, freshIds(state.document, prefix));
+    if (!made.ok) return made.message;
+    run(engine, batch(...made.commands));
+    return { ids: made.ids };
+  };
+
+  // S1: a chamfer of an edge whose two faces swapped their order under the new name refused the
+  // takeover, though a blend is symmetric in them; with the default prefix (entries x1…x4, own
+  // curves c…) every entry but the first of a chamfered rectangle was refused
+  it('with the default prefix each of the four entries of a rectangle with four chamfered vertical edges is taken over, the chamfer renamed and the volume kept', () => {
+    for (const which of ['l0', 'l1', 'l2', 'l3']) {
+      const engine = newEngine();
+      run(engine, addSketch('src', XY), ...([['p0', 0, 0], ['p1', 20, 0], ['p2', 20, 10], ['p3', 0, 10]] as const).flatMap(([p, x, y]) => [pt8('src', p, x, y), fix8('src', p, x, y)]));
+      run(engine, ...[0, 1, 2, 3].map((i): Command => ({ type: 'addCurve', sketch: 'src', id: `l${i}`, curve: { type: 'line', a: `p${i}`, b: `p${(i + 1) % 4}` } })));
+      run(engine, { type: 'addFeature', feature: { id: 'dstPl', name: 'dstPl', suppressed: false, type: 'plane', base: XY, offset: 3 } } as Command, addSketch('dst', { kind: 'plane', feature: 'dstPl' }));
+      const all = tool8(engine, 'dst', { sketch: 'src', as: 'regions' }, '');
+      if (typeof all === 'string') throw new Error(all);
+      const xs = all.ids.entries;
+      const loop = (engine.getState().evaluation.features.dst.sketch as unknown as SketchResult6).regions[0].ref.outerLoop;
+      run(engine, addExtrude('ex', 'dst', [loop], 5));
+      run(engine, { type: 'addFeature', feature: { id: 'ch', name: 'ch', suppressed: false, type: 'chamfer', body: 'ex', edges: [0, 1, 2, 3].map((i) => ({ a: side('ex', xs[i]), b: side('ex', xs[(i + 1) % 4]) })), distance: 1 } } as Command);
+      expectAllOk(engine.getState());
+      const before = volume(engine.getState().evaluation.bodies.ex.solid);
+      const taken = tool8(engine, 'dst', { sketch: 'src', entities: [which], as: 'own' }, '');
+      if (typeof taken === 'string') throw new Error(`${which}: ${taken}`);
+      expect(taken.ids.patched).toEqual(['ex', 'ch']);
+      expectAllOk(engine.getState());
+      const own = taken.ids.curves[0];
+      const edges = (engine.getState().document.features.find((f) => f.id === 'ch') as { edges: { a: FaceName; b: FaceName }[] }).edges;
+      expect(edges.filter((edge) => [edge.a, edge.b].some((f) => 'curve' in f && f.curve === own))).toHaveLength(2);
+      expect(edges.every((edge) => canonicalEdge(edge) === edge)).toBe(true);
+      expect(volume(engine.getState().evaluation.bodies.ex.solid)).toBeCloseTo(before, 9);
+    }
+  });
+
+  // M1: the tolerance relative to the radius flipped a small arc far from the origin by an ulp,
+  // since the error of making an arc exact scales with its coordinates
+  it('a stored arc as compute writes it is read back bit for bit, a small one far from the origin too', () => {
+    let seed = 4242;
+    const rnd = (): number => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+    const ref = { type: 'sketch', sketch: 's', entity: 'q', kind: 'arc', regions: false } as const;
+    let replaced = 0;
+    for (const [far, radius] of [[20, 10], [2000, 0.1], [10000, 0.5], [1e6, 1]] as const) {
+      for (let i = 0; i < 2000; i++) {
+        const c: [number, number] = [(rnd() * 2 - 1) * far, (rnd() * 2 - 1) * far];
+        const r = radius * (0.5 + rnd());
+        const [t0, t1] = [rnd() * 6, rnd() * 6];
+        const s: [number, number] = [c[0] + r * Math.cos(t0), c[1] + r * Math.sin(t0)];
+        const e: [number, number] = [c[0] + r * Math.cos(t1) * (1 + 1e-9 * (rnd() - 0.5)), c[1] + r * Math.sin(t1)];
+        // the end put on the circle of the start, as `compute` writes it
+        const [rs, re] = [Math.hypot(s[0] - c[0], s[1] - c[1]), Math.hypot(e[0] - c[0], e[1] - c[1])];
+        const stored = { kind: 'arc', center: c, start: s, end: [c[0] + (rs * (e[0] - c[0])) / re, c[1] + (rs * (e[1] - c[1])) / re] };
+        const read = projection.value(JSON.parse(JSON.stringify(stored)), ref, 'x') as { end: [number, number] };
+        if (read.end[0] !== stored.end[0] || read.end[1] !== stored.end[1]) replaced++;
+      }
+    }
+    expect(replaced).toBe(0);
+    // a hand-written end off the circle is still made exact, far from the origin too
+    const off = projection.value({ kind: 'arc', center: [5000, -5000], start: [5000.5, -5000], end: [5000, -5000 + 0.5 + 1e-6] }, ref, 'x') as { end: [number, number] };
+    expect(off.end[1]).toBeCloseTo(-5000 + 0.5, 9);
+    expect(off.end[1]).not.toBe(-5000 + 0.5 + 1e-6);
+  });
+});
+type SketchResult6 = { valid: boolean; points: Record<string, { x: number; y: number }>; regions: { ref: { outerLoop: string[] } }[]; openEnds?: { ends: { end: string; reason: string; distance: number }[] } };

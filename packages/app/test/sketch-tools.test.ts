@@ -66,7 +66,7 @@ function setup(): { engine: Engine; newId: (prefix: string) => Id; run: (command
     },
     view: () => sketchView(sketch(), result()),
     // what the sketch tools of the engine take, as the app makes it (sketchContextOf)
-    tool: () => ({ sketch: sketch(), result: result(), parameters: engine.getState().evaluation.parameters, document: engine.getState().document }),
+    tool: () => ({ sketch: sketch(), result: result(), parameters: engine.getState().evaluation.parameters, document: engine.getState().document, features: engine.getState().evaluation.features }),
     sketch,
     result,
   };

@@ -627,9 +627,14 @@ describe('a mirrored copy in other packages (D53)', () => {
       expect(s.document.bodyProperties['R/2']).toEqual({ color: '#ff0000' });
       expect(s.evaluation.bodies['R/2']).toBeUndefined();
     }
-    // the commands of a sketch verify the whole reference every time: they refuse to repeat it
+    // setSketchPlane verifies the whole reference every time: it refuses to repeat it (D53 said this
+    // of updateExternal too; 6b, D69, changed that on 2026-11-25, below)
     expect(engine.preview({ type: 'setSketchPlane', sketch: 'onTwo', plane: onFace('R/2', tag(cap('pad'), ['R', 2])) }).ok).toBe(false);
-    expect(engine.preview({ type: 'updateExternal', sketch: 'Top', id: 'e', ref: { type: 'edge', body: 'R/2', edge: { a: tag(cap('pad'), ['R', 2]), b: tag(side('pad', 'ql0'), ['R', 2]) }, kind: 'line' } }).ok).toBe(false);
+    // except an update that keeps the source of an entry (D69): the same edge sent again is no change
+    // and checks nothing, and the projection keeps its last place; another edge is checked whole
+    const again = engine.preview({ type: 'updateExternal', sketch: 'Top', id: 'e', ref: { type: 'edge', body: 'R/2', edge: { a: tag(cap('pad'), ['R', 2]), b: tag(side('pad', 'ql0'), ['R', 2]) }, kind: 'line' } });
+    expect(again.ok && again.state.document.features.find((f) => f.id === 'Top')).toEqual(engine.getState().document.features.find((f) => f.id === 'Top'));
+    expect(engine.preview({ type: 'updateExternal', sketch: 'Top', id: 'e', ref: { type: 'edge', body: 'R/2', edge: { a: tag(cap('pad'), ['R', 2]), b: tag(side('pad', 'ql1'), ['R', 2]) }, kind: 'line' } }).ok).toBe(false);
     // a face tagged as copy 2 of the mirror, as a plane: a valid command and an issue of the recompute
     const tagged = engine.preview(addSketch('two', onFace('R/1', tag(cap('pad'), ['R', 2]))));
     expect(tagged.ok && status(tagged.state).two).toBe('error:brokenReference');

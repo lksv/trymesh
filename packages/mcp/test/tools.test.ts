@@ -167,8 +167,16 @@ describe('sketch tools', () => {
           ],
         });
       }
+      // projectSketch (D69) needs an earlier sketch `base` with the rectangle of the example
+      if (entry.tool === 'projectSketch') {
+        execute(engine, { ...(sketch('base') as Extract<Command, { type: 'addFeature' }>), index: 0 });
+        ok(engine, 'sketch_tool', { sketch: 'base', tool: 'rectangle', input: catalog[0].example });
+      }
       const made = ok(engine, 'sketch_tool', { sketch: 's', tool: entry.tool, input: entry.example });
-      expect(made, entry.tool).toMatchObject({ ok: true, problems: [], sketches: [{ id: 's', solved: true }] });
+      expect(made, entry.tool).toMatchObject({ ok: true, problems: [] });
+      // the own outline of projectSketch is held: one region and no freedom (the answer lists `base` too)
+      if (entry.tool === 'projectSketch') expect(made.sketches.find((s: { id: string }) => s.id === 's'), entry.tool).toMatchObject({ solved: true, profileValid: true, regions: 1, degreesOfFreedom: 0 });
+      else expect(made.sketches, entry.tool).toMatchObject([{ id: 's', solved: true }]);
       // the cuts leave a valid profile (trim and extend with `repair: 'on'`): one region, two after the extend
       if (entry.tool === 'trim' || entry.tool === 'extend' || entry.tool === 'split') expect(made.sketches, entry.tool).toMatchObject([{ profileValid: true, regions: entry.tool === 'extend' ? 2 : 1 }]);
       // the IDs the description promises are the IDs the tool returns (`size` only with a dimension)
@@ -319,7 +327,7 @@ describe('sketch tools', () => {
       expect(error({ sketch: 's', tool: 'polygon', input: { center: { at: [x, y] }, vertex: { at: [x * (1 - 1e-9), y * (1 - 1e-9)] }, sides: 6, size: 10 } }), `${x} ${y}`).toMatch(/reaches out of the range/);
     }
     expect(error({ sketch: 's', input: hexagon })).toMatch(/argument "tool"/);
-    expect(error({ sketch: 's', tool: 'star', input: hexagon })).toBe('star: unknown sketch tool "star"; the tools are rectangle, polygon, fillet, trim, extend, split');
+    expect(error({ sketch: 's', tool: 'star', input: hexagon })).toBe('star: unknown sketch tool "star"; the tools are rectangle, polygon, fillet, trim, extend, split, projectSketch');
     expect(error({ sketch: 's', tool: 'toString', input: hexagon })).toMatch(/unknown sketch tool "toString"/);
     expect(error({ sketch: 's', tool: 'polygon' })).toMatch(/argument "input": an object/);
     expect(error({ sketch: 's', tool: 'polygon', input: [hexagon] })).toMatch(/argument "input"/);

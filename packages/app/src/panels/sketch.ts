@@ -276,6 +276,7 @@ export function sketchPanel(host: SketchHost, m: SketchMode): HTMLElement[] {
         `${ui.title(ref)} `,
         h('small', {}, `${id} · ${ui.detail(ref, host)}${state}${open.length > 0 ? ` · ${open.length} open ${open.length === 1 ? 'end' : 'ends'}` : ''}`),
       ),
+      ...flagBox(host, m, id, ref, ui),
       repair
         ? h('button', {
             className: 'icon',
@@ -295,6 +296,16 @@ export function sketchPanel(host: SketchHost, m: SketchMode): HTMLElement[] {
   });
   if (projections.length > 0) out.push(h('h2', {}, `Projections, mirrors and patterns (${projections.length})`), ...projections);
   return out;
+}
+
+// The checkbox of the flag of an entry (D69: `regions` of a projection from a sketch), which sends
+// `updateExternal` with the flag switched; none where the kind has no flag or the entry none.
+function flagBox(host: SketchHost, m: SketchMode, id: Id, ref: ExternalRef, ui: ReturnType<typeof referenceUi>): HTMLElement[] {
+  const flag = ui.flag;
+  const on = flag?.get(ref);
+  if (!flag || on === undefined) return [];
+  const box = h('input', { type: 'checkbox', checked: on, onchange: () => host.run({ type: 'updateExternal', sketch: m.id, id, ref: flag.set(ref, box.checked) as Input<ExternalRef> }, box.checked ? `${id} forms regions.` : `${id} forms no regions.`) || host.renderPanel() });
+  return [h('label', { className: 'check', title: flag.title }, box, flag.label)];
 }
 
 // The form of an entry (D68): the controls of its kind, each over the path of its field in the

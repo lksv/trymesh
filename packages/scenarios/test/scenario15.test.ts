@@ -2,7 +2,7 @@
 // points of step 6 of D36 each have a `describe` of their own; the board of step 1 is a stand-in
 // until 6f imports one, and 6c and 6b build on it.
 import { describe, expect, it } from 'vitest';
-import { type Command, type CutIds, type Engine, type EngineState, type Expr, type Id, type SketchFeature, type SketchResult, type SketchToolInputs, AXIS_CURVES, AXIS_REACH, emptySketch, faceKey, freshIds, lineExtent, profileOf, repairsByDefault, sketchTool, sketchWorld, solvedCurves, toolBase } from '@trymesh/engine';
+import { type Command, type CutIds, type Engine, type EngineState, type Expr, type Id, type SketchFeature, type SketchResult, type SketchToolInputs, AXIS_CURVES, AXIS_REACH, DUPLICATE, REGIONS_ON_A_POINT, UNDER_ORIGIN, emptySketch, faceKey, freshIds, lineExtent, profileOf, repairsByDefault, sketchTool, sketchWorld, solvedCurves, toolBase } from '@trymesh/engine';
 import { pcbByHand, point, standInBoard } from './board-kit';
 import { XY, addSketch, batch, constrain, newEngine, run } from './kit';
 
@@ -172,7 +172,7 @@ function outline(sketch: Id, p: string, width: Expr, height: Expr): Command[] {
     dim(sketch, `${p}h`, 'verticalDistance', `${p}2`, `${p}3`, height),
   ];
 }
-const toolContext = (state: EngineState, sketch: Id) => ({ sketch: sketchOf(state, sketch), result: resultOf(state, sketch), parameters: state.evaluation.parameters, document: state.document });
+const toolContext = (state: EngineState, sketch: Id) => ({ sketch: sketchOf(state, sketch), result: resultOf(state, sketch), parameters: state.evaluation.parameters, document: state.document, features: state.evaluation.features });
 function cut<K extends CutTool>(engine: Engine, name: K, sketch: Id, input: SketchToolInputs[K], prefix: string): CutIds {
   const state = engine.getState();
   const made = sketchTool(name, toolContext(state, sketch), input, freshIds(state.document, prefix));
@@ -836,5 +836,206 @@ describe('scenario 15 with the mirrored lid: what is refused, a source removed b
     expect(resultOf(grid, s).points['g/13013/q1']).toEqual({ x: expect.closeTo(-20 + 39, 9), y: expect.closeTo(-10 - 39, 9) });
     const large = previewOf(engine, { type: 'setField', feature: s, path: 'external/g/transform/second/count', value: 15 });
     expect(large.evaluation.features[s].warnings.find((w) => w.code === 'brokenCopies')?.message).toContain('14 × 15 is 210 places; a pattern has at most 200, the source included');
+  });
+});
+
+// ================================================================ 6b (D69): projection from another sketch
+
+// The board of step 1 (6a2's stand-in), the skeleton `frame` on a plane `standoffH` below it, the
+// base in three features: the floor drawn by projectSketch as an own outline over the frame's
+// outline, the rim projected with the flag, the standoffs around the projected hole circles.
+// docs/d36/6b-sketch-projection/calls.ts.
+const FRAME_OUTLINE = ['fa0', 'fl0', 'fa1', 'fl1', 'fa2', 'fl2', 'fa3', 'fl3'];
+const RIM = ['ra0', 'ra1', 'ra2', 'ra3', 'rl0', 'rl1', 'rl2', 'rl3'];
+const COVER: [string, string][] = [['standoffH', '5'], ['baseT', '2'], ['clearance', '0.5'], ['wall', '2'], ['rimH', '4'], ['standoffD', '6']];
+// A rounded rectangle W × H with corners R moved outwards by o: its area.
+const roundedArea = (W: number, H: number, R: number, o: number): number => (W + 2 * o) * (H + 2 * o) - (4 - Math.PI) * (R + o) * (R + o);
+// The base by hand: the floor (offset 2.5, 2 thick), the rim (offset 2.5 less 0.5, 4 high), four rings
+// (6 outside, 3.2 inside, 5 high); 7836.90 for W = 60.
+const baseByHand = (W: number): number => roundedArea(W, 40, 3, 2.5) * 2 + (roundedArea(W, 40, 3, 2.5) - roundedArea(W, 40, 3, 0.5)) * 4 + ((4 * Math.PI * (6 * 6 - 3.2 * 3.2)) / 4) * 5;
+const ALLOWANCE = 3; // mm³: the polygons of the arcs and circles
+const fromSketch = (sketch: Id, id: Id, source: Id, entity: Id, kind: 'point' | 'line' | 'circle' | 'arc', regions?: boolean): Command =>
+  ({ type: 'addExternal', sketch, id, ref: { type: 'sketch', sketch: source, entity, kind, ...(regions === undefined ? {} : { regions }) } }) as Command;
+const planeAt = (id: Id, offset: Expr): Command => ({ type: 'addFeature', feature: { id, name: id, suppressed: false, type: 'plane', base: XY, offset } as never });
+const extrudeOp = (id: Id, sketch: Id, regions: Id[][], distance: Expr, operation: 'new' | 'add' | 'cut', offset?: Expr, targets?: Id[]): Command => ({
+  type: 'addFeature',
+  feature: { id, name: id, suppressed: false, type: 'extrude', profile: { type: 'regions', sketch, regions: regions.map((outerLoop) => ({ outerLoop: [...outerLoop].sort() })), ...(offset === undefined ? {} : { offset }) }, extent: { type: 'distance', start: 0, distance }, operation, ...(targets ? { targets } : {}) } as never,
+});
+function projectWith(engine: Engine, sketch: Id, input: SketchToolInputs['projectSketch'], prefix: string): Record<string, Id[]> {
+  const state = engine.getState();
+  const made = sketchTool('projectSketch', toolContext(state, sketch), input, freshIds(state.document, prefix));
+  if (!made.ok) throw new Error(made.message);
+  run(engine, batch(...made.commands));
+  return made.ids;
+}
+// How far the own curves are from the projections they were drawn over (`curves[i]` over `entries[i]`).
+function offProjection(state: EngineState, s: Id, curves: Id[], entries: Id[]): number {
+  const [f, r] = [sketchOf(state, s), resultOf(state, s)];
+  const far = (own: Id, projected: Id): number => Math.hypot((r.points[own]?.x ?? NaN) - (r.points[projected]?.x ?? NaN), (r.points[own]?.y ?? NaN) - (r.points[projected]?.y ?? NaN));
+  return Math.max(
+    ...curves.map((own, i) => {
+      const curve = f.curves[own];
+      if (curve.type === 'arc') return Math.max(far(curve.center, `${entries[i]}/center`), far(curve.start, `${entries[i]}/start`), far(curve.end, `${entries[i]}/end`));
+      return curve.type === 'line' ? Math.max(far(curve.a, `${entries[i]}/a`), far(curve.b, `${entries[i]}/b`)) : far(curve.center, `${entries[i]}/center`);
+    }),
+  );
+}
+
+// Steps 2 and 3. Answers the IDs of the floor's own curves and of the entries under them.
+function skeletonAndBase(engine: Engine): { floor: Id[]; entries: Id[] } {
+  standInBoard(engine);
+  run(engine, ...COVER.map(([name, expr]): Command => ({ type: 'setParameter', name, expr })));
+  // step 2: the skeleton, the outline and the holes without the flag, the hole pair measured from origin/y
+  const f = 'frame';
+  run(engine, planeAt('framePl', '-standoffH'), addSketch(f, { kind: 'plane', feature: 'framePl' }));
+  run(engine, ...[0, 1, 2, 3].flatMap((i) => [fromSketch(f, `fa${i}`, 'board', `ba${i}`, 'arc'), fromSketch(f, `fl${i}`, 'board', `bl${i}`, 'line'), fromSketch(f, `fh${i}`, 'board', `bh${i}`, 'circle')]));
+  run(engine, constrain(f, 'm1', { type: 'distancePointLine', point: 'fh0/center', line: 'origin/y', value: 1, driving: false } as never), constrain(f, 'm2', { type: 'distancePointLine', point: 'fh1/center', line: 'origin/y', value: 1, driving: false } as never));
+  // step 3a: the floor, one call of the tool
+  run(engine, planeAt('basePl', '-(standoffH + baseT)'), addSketch('baseSk', { kind: 'plane', feature: 'basePl' }));
+  const ids = projectWith(engine, 'baseSk', { sketch: 'frame', entities: FRAME_OUTLINE, as: 'own' }, 'o');
+  run(engine, extrudeOp('base', 'baseSk', [ids.curves], 'baseT', 'new', 'clearance + wall'));
+  // 3b: the rim, the outline of the frame with the flag, added and pocketed
+  run(engine, addSketch('rimSk', { kind: 'plane', feature: 'framePl' }), ...[0, 1, 2, 3].flatMap((i) => [fromSketch('rimSk', `ra${i}`, 'frame', `fa${i}`, 'arc', true), fromSketch('rimSk', `rl${i}`, 'frame', `fl${i}`, 'line', true)]));
+  run(engine, extrudeOp('rim', 'rimSk', [RIM], 'rimH', 'add', 'clearance + wall', ['base']), extrudeOp('pocket', 'rimSk', [RIM], 'rimH', 'cut', 'clearance', ['base']));
+  // 3c: the standoffs, own circles of standoffD around the projected hole circles
+  const t = 'standSk';
+  const commands: Command[] = [addSketch(t, { kind: 'plane', feature: 'framePl' })];
+  [[1, 1], [-1, 1], [-1, -1], [1, -1]].forEach(([sx, sy], i) => {
+    commands.push(
+      fromSketch(t, `sh${i}`, 'frame', `fh${i}`, 'circle', true),
+      point(t, `sc${i}`, sx * 26.4, sy * 16.6),
+      { type: 'addCurve', sketch: t, id: `so${i}`, curve: { type: 'circle', center: `sc${i}` }, radius: 2.9 },
+      constrain(t, `sk${i}`, { type: 'coincident', a: `sc${i}`, b: `sh${i}/center` }),
+      i === 0 ? constrain(t, 'sd', { type: 'diameter', curve: 'so0', value: 'standoffD', driving: true } as never) : constrain(t, `se${i}`, { type: 'equalRadius', a: 'so0', b: `so${i}` }),
+    );
+  });
+  run(engine, ...commands);
+  run(engine, extrudeOp('standoffs', t, [['so0'], ['so1'], ['so2'], ['so3']], 'standoffH', 'add', undefined, ['base']));
+  return { floor: ids.curves, entries: ids.entries };
+}
+
+describe('scenario 15, steps 2, 3, 5 and 7: the skeleton and the base by projections (6b, D69)', () => {
+  const floorHeld = (engine: Engine, floor: Id[], entries: Id[]): void => {
+    const state = engine.getState();
+    const diagnosis = engine.diagnoseSketch('baseSk');
+    expect(diagnosis.status).toBe('solved');
+    expect(diagnosis.degreesOfFreedom).toBe(0);
+    expect(diagnosis.redundant).toEqual([]);
+    expect(resultOf(state, 'baseSk').redundant).toEqual([]);
+    expect(loopsOf(state, 'baseSk')).toEqual([[...floor].sort()]);
+    expect(offProjection(state, 'baseSk', floor, entries)).toBeLessThan(1e-7);
+  };
+
+  it('step 2: the skeleton measures the holes from origin/y; step 3: the floor held on its projections, the rim of eight entries, the standoffs; the base as by hand', () => {
+    const engine = newEngine();
+    const { floor, entries } = skeletonAndBase(engine);
+    const state = engine.getState();
+    expect(resultOf(state, 'frame').measurements.m1).toBeCloseTo(26.5, 9);
+    expect(resultOf(state, 'frame').measurements.m2).toBeCloseTo(26.5, 9);
+    expect(loopsOf(state, 'frame')).toEqual([]);
+    expect(resultOf(state, 'frame').valid).toBe(true);
+    expect((sketchOf(state, 'frame').external.fa0 as { regions: boolean }).regions).toBe(false);
+    expect(Object.keys(sketchOf(state, 'frame').solved.external.fa0).sort()).toEqual(['center', 'end', 'kind', 'start']);
+    expect(floor).toHaveLength(8);
+    floorHeld(engine, floor, entries);
+    expect(loopsOf(state, 'rimSk')).toEqual([RIM]);
+    expect(resultOf(state, 'rimSk').valid).toBe(true);
+    // four discs and four rings with the projected circle as their hole
+    expect(loopsOf(state, 'standSk')).toHaveLength(8);
+    expect(['base', 'rim', 'pocket', 'standoffs'].map((id) => state.evaluation.features[id].status)).toEqual(['ok', 'ok', 'ok', 'ok']);
+    expect(Math.abs(state.evaluation.bodies.base.volume - baseByHand(60))).toBeLessThan(ALLOWANCE);
+    // the bore of a standoff is named by the projection
+    const faces = state.evaluation.bodies.base.faces.map((face) => faceKey(state.evaluation.faceNames[face.id]));
+    expect(faces).toContain(faceKey({ feature: 'standoffs', role: 'side', curve: 'sh0' }));
+    expect(faces).toContain(faceKey({ feature: 'rim', role: 'side', curve: 'ra0' }));
+  });
+
+  it('step 7, the part of 6b: the board 2 mm wider, everything follows; the floor held through jumps of the size and the corners', () => {
+    const engine = newEngine();
+    const { floor, entries } = skeletonAndBase(engine);
+    const before = engine.getState().evaluation.bodies.base.volume;
+    const wider = set(engine, 'boardW', '62');
+    expect(allOk(wider)).toBe(true);
+    expect(wider.evaluation.bodies.base.volume - before).toBeCloseTo(baseByHand(62) - baseByHand(60), 1);
+    expect(resultOf(wider, 'frame').measurements.m1).toBeCloseTo(27.5, 9);
+    floorHeld(engine, floor, entries);
+    for (const [name, expr] of [['boardR', '6'], ['boardR', '3'], ['boardW', '80'], ['boardW', '60']] as const) {
+      expect(allOk(set(engine, name, expr)), `${name} ${expr}`).toBe(true);
+      floorHeld(engine, floor, entries);
+    }
+  });
+
+  it('step 5, the seam with 6c: a sketch projects a copy of the lid\'s mirror and places a slot from it', () => {
+    const engine = newEngine();
+    mirroredLid(engine);
+    run(engine, planeAt('rowPl', '2'), addSketch('rowSketch', { kind: 'plane', feature: 'rowPl' }), fromSketch('rowSketch', 'lf', 'lidSketch', 'm/1/c2', 'line'), ...slot('rowSketch', 'g', -25, 27));
+    const state = run(engine, constrain('rowSketch', 'lfd', { type: 'distancePointLine', point: 'gs1', line: 'lf', value: 12, driving: true } as never));
+    expect(state.evaluation.features.rowSketch.status).toBe('ok');
+    expect(resultOf(state, 'rowSketch').points['lf/a'].x).toBeCloseTo(-LW / 2, 9);
+    expect(resultOf(state, 'rowSketch').points.gs1.x).toBeCloseTo(-LW / 2 + 12, 6);
+    // the width of the lid moves the copy, the projection and the slot with it
+    const wider = set(engine, 'W', `${LW + 4}`);
+    expect(resultOf(wider, 'rowSketch').points.gs1.x).toBeCloseTo(-(LW + 4) / 2 + 12, 6);
+  });
+
+  // A known limit, pinned (calls.ts, ownAfterANotch): an own outline drawn by the tool over the
+  // frame, a rectangular notch trimmed into its bottom side, the result projected whole as own: the
+  // own bottom side is two pieces, the projection under it one whole line, which lies at the place of
+  // neither piece, so an own line is drawn over it too: 13 own curves, no region. Named by
+  // `entities` (the own curves): one region. The implementation keeps "doubled" to a curve at the
+  // same place (design.md, "To verify"); if it ever lists a curve that lies along one with regions,
+  // `whole` below turns to one region and this test says so.
+  it('the outline after a rectangular notch, projected again as own: whole leaves no region (the known limit), named by its own curves one', () => {
+    const engine = newEngine();
+    skeletonAndBase(engine);
+    const s = 'notchSk';
+    run(engine, addSketch(s, { kind: 'plane', feature: 'framePl' }));
+    const outline = projectWith(engine, s, { sketch: 'frame', entities: FRAME_OUTLINE, as: 'own' }, 'n');
+    run(engine, point(s, 'q1', -4, -23), point(s, 'q2', -4, -17), point(s, 'q3', 4, -17), point(s, 'q4', 4, -23), ln(s, 'ua', 'q1', 'q2'), ln(s, 'ub', 'q2', 'q3'), ln(s, 'uc', 'q3', 'q4'));
+    run(engine, ...(['q1', 'q2', 'q3', 'q4'] as const).map((q, i) => constrain(s, `f${q}`, { type: 'fixed', point: q, x: [-4, -4, 4, 4][i], y: [-23, -17, -17, -23][i] } as never)));
+    // the bottom side is the own curve over fl2, the sixth of the outline; the place lies as near to
+    // the projection under it as to the own line, so it is named
+    const bottom = outline.curves[5];
+    for (const [i, place] of ([[0, -20], [-4, -21.5], [4, -21.5]] as const).entries()) cut(engine, 'trim', s, { at: [...place], repair: 'on', ...(i === 0 ? { curve: bottom } : {}) }, 't');
+    const notched = engine.getState();
+    const own = Object.entries(sketchOf(notched, s).curves).filter(([, curve]) => !curve.construction).map(([id]) => id);
+    expect(resultOf(notched, s).valid).toBe(true);
+    expect(loopsOf(notched, s)).toHaveLength(1);
+    expect(own).toHaveLength(12);
+    run(engine, addSketch('notchW', { kind: 'plane', feature: 'basePl' }), addSketch('notchN', { kind: 'plane', feature: 'basePl' }));
+    const whole = projectWith(engine, 'notchW', { sketch: s, as: 'own' }, 'w');
+    const named = projectWith(engine, 'notchN', { sketch: s, entities: own, as: 'own' }, 'm');
+    const state = engine.getState();
+    expect(whole.curves).toHaveLength(13);
+    expect(resultOf(state, 'notchW').valid).toBe(false);
+    expect(loopsOf(state, 'notchW')).toEqual([]);
+    expect(named.curves).toHaveLength(12);
+    expect(resultOf(state, 'notchN').valid).toBe(true);
+    expect(loopsOf(state, 'notchN')).toHaveLength(1);
+    expect(engine.diagnoseSketch('notchN').degreesOfFreedom).toBe(0);
+  });
+
+  it('a projection repaired keeps its ID, its flag and its region; another kind and a duplicate refused; the refusals of the commands', () => {
+    const engine = newEngine();
+    skeletonAndBase(engine);
+    const kept = engine.preview({ type: 'updateExternal', sketch: 'rimSk', id: 'rl0', ref: { type: 'sketch', sketch: 'board', entity: 'bl0', kind: 'line', regions: true } });
+    expect(kept.ok && loopsOf(kept.state, 'rimSk')).toEqual([RIM]);
+    const update = (entity: Id, sketch: Id, kind: 'line' | 'arc'): Command => ({ type: 'updateExternal', sketch: 'rimSk', id: 'rl0', ref: { type: 'sketch', sketch, entity, kind, regions: true } });
+    expect(refusal(engine, update('ba1', 'board', 'arc'))).toContain('druh promítnutí změnit nejde');
+    expect(refusal(engine, update('fl1', 'frame', 'line'))).toContain(DUPLICATE('fl1', 'frame', 'rl1'));
+    // a sketch later on the timeline, and itself
+    expect(refusal(engine, fromSketch('frame', 'z1', 'rimSk', 'ra0', 'arc'))).toContain('musí ležet před odkazující feature');
+    expect(refusal(engine, fromSketch('frame', 'z2', 'frame', 'fl0', 'line'))).toContain('musí ležet před odkazující feature');
+    // the kind differs from the source's (the circle of the frame into the rim, which does not
+    // project it: a duplicate is refused before the kind is read)
+    expect(refusal(engine, fromSketch('rimSk', 'z3', 'frame', 'fh0', 'arc'))).toContain('expected arc');
+    // an axis of another sketch, and its far point
+    expect(refusal(engine, fromSketch('frame', 'z4', 'board', 'origin/x', 'line'))).toContain(UNDER_ORIGIN('origin/x', 'board'));
+    expect(refusal(engine, fromSketch('frame', 'z5', 'board', 'origin/x/b', 'point'))).toContain(UNDER_ORIGIN('origin/x/b', 'board'));
+    // a second projection of one entity, regions on a point
+    expect(refusal(engine, fromSketch('frame', 'z6', 'board', 'ba0', 'arc'))).toContain(DUPLICATE('ba0', 'board', 'fa0'));
+    expect(refusal(engine, fromSketch('frame', 'z7', 'board', 'hc0', 'point', true))).toContain(REGIONS_ON_A_POINT);
+    // a constraint between two fixed entities: an axis and a projected point
+    expect(refusal(engine, constrain('frame', 'z8', { type: 'pointOnCurve', point: 'fh0/center', curve: 'origin/x' }))).toContain('only between fixed entities');
   });
 });

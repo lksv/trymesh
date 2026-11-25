@@ -166,9 +166,11 @@ function step(feature: SketchFeature, { state, settings, deps, done, failed, dra
   const external: Record<Id, Projected> = {};
   for (const [id, reference] of Object.entries(resolved)) if (reference.value) external[id] = reference.value;
   const setup = solverSetup(feature, resolved);
-  for (const [id, code] of lost) {
+  for (const [id, code, detail] of lost) {
     const skipped = setup.skipped.filter((c) => constraintOperands(feature.constraints[c]).some((operand) => operand === id || operand.startsWith(`${id}/`)));
-    warnings.push(issue(code, [id, ...skipped], skipped.length ? 'vazby na ni se při řešení vynechaly' : undefined));
+    // the detail of the kind (D69), then what was left out of the solve
+    const said = [detail, skipped.length ? 'the constraints on it were left out of the solve' : undefined].filter((text) => text !== undefined).join('; ');
+    warnings.push(issue(code, [id, ...skipped], said || undefined));
   }
 
   // 2.–4. řešení: uložené proměnné platí, když se otisk vstupů shoduje s razítkem a netáhne se

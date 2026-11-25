@@ -8,6 +8,7 @@ import { type PanelHost, type ViewPick, pickKey } from './host';
 import { type QueryPanel, queryScene } from './panels/query';
 import { AS_MODELLED, type Pose, placedBox, placedCorners, placedSegments } from './pose';
 import type { SceneAdditions } from './queries/index';
+import { entryOf, referenceUi } from './references/index';
 import { polyline, sketchView } from './sketch-view';
 import type { HalfSpace, SceneModel } from './viewport';
 
@@ -151,8 +152,16 @@ export function modelScene(host: SceneHost, queries: QueryPanel, sketch: { id: I
     if (f.type !== 'sketch' || host.hidden.has(f.id) || !result?.sketch || !result.plane || sketch?.id === f.id) continue;
     const frame = result.plane;
     const [solid, dashed]: number[][] = [[], []];
-    // the copies of a mirror or pattern (D68) are drawn as the curves they copy
-    for (const curve of sketchView(f, result.sketch).curves.values()) if (curve.own || curve.derived) pushPolyline(curve.construction ? dashed : solid, frame, polyline(curve.shape));
+    // the copies of a mirror or pattern (D68) are drawn as the curves they copy; the curves of an
+    // entry whose row says so (a projection from a sketch, D69) solid when they form regions
+    const inModel = (id: Id): boolean => {
+      const entry = entryOf(f, id);
+      return entry !== undefined && referenceUi(f.external[entry]).inModel === true;
+    };
+    for (const curve of sketchView(f, result.sketch).curves.values()) {
+      if (curve.own || curve.derived) pushPolyline(curve.construction ? dashed : solid, frame, polyline(curve.shape));
+      else if (inModel(curve.id)) pushPolyline(result.sketch.curves[curve.id]?.regions ? solid : dashed, frame, polyline(curve.shape));
+    }
     const color = f.id === host.selectedFeature ? COLOR.select : COLOR.idle;
     model.lines.push({ segments: solid, color, width: f.id === host.selectedFeature ? 2.5 : 1.5 }, { segments: dashed, color, width: 1, dashed: true });
   }

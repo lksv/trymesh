@@ -4,7 +4,7 @@ import type { Engine } from '@trymesh/engine';
 import { HOST_OPERATIONS, type Host, type HostOperationSet, callHostOperation, hostOperationProblems, isHostOperation } from './host';
 import { MUTATING, type ToolOutcome, callProblem, callTool, tools } from './tools';
 
-export { MUTATING, changesDocument } from './tools';
+export { MUTATING, changesDocument, outlineSaid } from './tools';
 
 // Stejná hlavička jako na straně serveru (bridge.ts); tady zvlášť, aby se do prohlížeče netáhl kód pro Node.
 const BRIDGE_HEADER = 'x-trymesh-bridge';
@@ -25,7 +25,7 @@ export interface BridgeClientOptions {
   onStatus?: (status: BridgeStatus) => void;
   onDisplaced?: () => void; // k serveru se připojila jiná aplikace; tahle se už sama znovu nepřipojí
   beforeCall?: (name: string, args: Record<string, unknown>) => void; // před provedením nástroje: aplikace si může uklidit rozpracovaný stav
-  onCall?: (name: string, outcome: ToolOutcome) => void; // po každém obslouženém požadavku
+  onCall?: (name: string, outcome: ToolOutcome, args: Record<string, unknown>) => void; // po každém obslouženém požadavku (with the arguments of the call)
   // What the operations of the app need of it, with the engine that is connected (host.ts). It is
   // handed to an operation as it is. Without it an operation answers `notAvailable`.
   host?: Host;
@@ -65,7 +65,7 @@ export function connectBridge(engine: Engine, options: BridgeClientOptions = {})
       outcome = { ok: false, error: MUTATING.includes(call.name) ? `v aplikaci nastala chyba (změna už mohla být provedena, ověř stav): ${text}` : `the app failed to answer ${call.name} (nothing was changed): ${text}` };
     }
     try {
-      options.onCall?.(call.name, outcome);
+      options.onCall?.(call.name, outcome, call.args ?? {});
     } catch {
       // chyba v obsluze aplikace nesmí nechat volajícího bez odpovědi
     }

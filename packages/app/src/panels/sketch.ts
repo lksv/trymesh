@@ -9,7 +9,8 @@ import { duplicateTwins, explanationText, freeSummary, markOf } from '../sketch-
 import { type SketchHost, type SketchMode, addConstraints, contactsOf, deleteSelection, explain, setTool, toolOptions } from '../sketch-mode';
 import { SKETCH_TOOL_UI } from '../sketch-tools';
 import { measure, operandsOf } from '../sketch-view';
-import { type EntryControl, PICKER_LIMIT, referenceUi } from '../references';
+import { type EntryControl, PICKER_LIMIT, entryEntities, referenceUi } from '../references';
+import { outlineDraftPanel, outlineFileButton } from './outline-draft';
 import { selectedSources } from '../sketch-tools/pattern';
 
 // Jména vazeb jsou v katalogu enginu; nová vazba se tu objeví sama.
@@ -114,6 +115,9 @@ export function sketchPanel(host: SketchHost, m: SketchMode): HTMLElement[] {
   // the options of the active tool (the sides of the polygon, the radius of the fillet)
   const options = SKETCH_TOOL_UI[m.tool].options;
   if (options) out.push(...options.panel(host, toolOptions(host, m.tool), (value) => (host.sketching.tools[m.tool] = value)));
+  // the import of an outline (D72): a button beside the tools, and the draft while a file is open
+  if (m.outline) out.push(...outlineDraftPanel(host, m, feature));
+  else out.push(h('div', { className: 'buttons' }, ...outlineFileButton(host, m, 'Import an outline…', 'Read a DXF or SVG file into this sketch as an outline of fixed curves')));
 
   const dimension = (label: string, variant: DimensionVariant, title: string) => {
     const d = dimensionFor(variant, view, m.selection);
@@ -257,7 +261,7 @@ export function sketchPanel(host: SketchHost, m: SketchMode): HTMLElement[] {
     const entities = index.byEntry.get(id) ?? [];
     const shown = entities.some((entity) => view.points.has(entity) || view.curves.has(entity));
     const derived = kindOf(ref).source === 'derived';
-    const open = derived ? (openEnds?.ends ?? []).filter((end) => end.end.startsWith(`${id}/`)) : [];
+    const open = derived || ref.type === 'outline' ? (openEnds?.ends ?? []).filter((end) => end.end.startsWith(`${id}/`)) : [];
     const state = derived ? (entities.length === 0 ? ' · no copies' : !shown ? ' · no geometry' : '') : shown ? '' : ' · no geometry';
     const repair = ui.repair?.(ref);
     const form = ui.form;
@@ -277,6 +281,7 @@ export function sketchPanel(host: SketchHost, m: SketchMode): HTMLElement[] {
         h('small', {}, `${id} · ${ui.detail(ref, host)}${state}${open.length > 0 ? ` · ${open.length} open ${open.length === 1 ? 'end' : 'ends'}` : ''}`),
       ),
       ...flagBox(host, m, id, ref, ui),
+      ...(ui.file ? outlineFileButton(host, m, ui.file.label, ui.file.title, id) : []),
       repair
         ? h('button', {
             className: 'icon',
@@ -318,11 +323,10 @@ function entryForm(host: SketchHost, m: SketchMode, feature: SketchFeature, id: 
   };
   const names = host.doc.parameters.map((p) => p.name);
   const context = host.sketchContext();
-  // the lines or points that may serve: not copies; of each derived entry at most the first PICKER_LIMIT
-  const index = entityIndex(feature);
+  // the lines or points that may serve: not copies; of each entry at most the first PICKER_LIMIT of the kind
   const choices = (entity: 'line' | 'point'): Id[] => {
     const own = entity === 'point' ? ['origin', ...Object.keys(feature.points)] : Object.keys(feature.curves).filter((curve) => feature.curves[curve].type === 'line');
-    const entries = [...index.entities].filter(([, e]) => e.kind === entity && kindOf(feature.external[e.entry]).source !== 'derived').map(([entityId]) => entityId);
+    const entries = entryEntities(feature, (kind) => kind === entity).filter((e) => kindOf(feature.external[e.entry]).source !== 'derived').map((e) => e.id);
     return [...own, ...entries, ...(entity === 'line' ? ['origin/x', 'origin/y'] : [])];
   };
   const control = (c: EntryControl): HTMLElement => {

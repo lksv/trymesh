@@ -306,7 +306,22 @@ export interface SketchFeature extends FeatureBase {
 
 export interface SolveStamp {
   inputs: string; // otisk křivek, vazeb a hodnot promítnuté geometrie; počítá engine
-  external: Record<Id, Projected>; // poslední platné hodnoty promítnuté geometrie
+  external: Record<Id, StoredValue>; // poslední platné hodnoty promítnuté geometrie
+}
+
+// What `solved.external` holds per entry of reference geometry: positions (`Projected`), or the
+// placement of an imported outline (`PlacedOutline`, D72), whose positions are computed from its
+// entry and stored nowhere a second time.
+export type StoredValue = Projected | PlacedOutline;
+
+// The stored value of an imported outline (D72): where the origin of its file lands (`at`, after
+// the anchor), the turn, and the fingerprint of its curves. It is what the stamp of the sketch holds
+// of the outline: the sketch is solved again when the outline moves or its curves change.
+export interface PlacedOutline {
+  kind: 'outline';
+  at: Vec2;
+  turn: number;
+  data: string;
 }
 
 // The value of an entry of reference geometry in the coordinates of its sketch: the last valid one
@@ -378,7 +393,8 @@ export type ProjectionKind = 'line' | 'circle';
 // An entry of `external` of a sketch, one of two sources of geometry that is not own (D64, D68):
 // - reference geometry, computed before the solver and fixed for it; constraints of the sketch may
 //   name its entities: the projection of an edge of a body (EdgeProjection), the projection of an
-//   entity of an earlier sketch (SketchProjection, D69);
+//   entity of an earlier sketch (SketchProjection, D69), an outline imported from a file
+//   (SketchOutline, D72);
 // - derived geometry, computed after the solver from the solved own geometry; no constraint of its
 //   own sketch may name its entities: a mirror or a pattern of own curves and points
 //   (SketchPattern).
@@ -388,10 +404,10 @@ export type ProjectionKind = 'line' | 'circle';
 // its X and Y (from `origin` towards +X and +Y), fixed like projected geometry and in no entry: a
 // constraint of the sketch and an axis `{ kind: 'sketchLine', sketch, line }` may name them; they
 // are whole lines, so `midpoint` and `equalLength` do not take them (D71).
-export type ExternalRef = EdgeProjection | SketchPattern | SketchProjection;
+export type ExternalRef = EdgeProjection | SketchPattern | SketchProjection | SketchOutline;
 // The input form of an entry (`addExternal`, `updateExternal`): its numeric fields may be
 // expressions, and the flag `regions` of a projection from a sketch may be left out (false).
-export type ExternalInput = Input<EdgeProjection> | Input<SketchPattern> | (Omit<SketchProjection, 'regions'> & { regions?: boolean });
+export type ExternalInput = Input<EdgeProjection> | Input<SketchPattern> | (Omit<SketchProjection, 'regions'> & { regions?: boolean }) | OutlineInput;
 
 // The projection of an edge of a body into the sketch. kind: jako co se hrana promítá
 export interface EdgeProjection {
@@ -444,6 +460,107 @@ export interface SketchProjection {
   entity: Id;
   kind: 'point' | 'line' | 'circle' | 'arc';
   regions: boolean;
+}
+
+// A curve of an imported outline (D72), in the coordinates of its file, in millimetres. Positions
+// are pairs `[x, y]` of numbers (never an expression).
+// - `line`: from `a` to `b`, at least the length tolerance (1e-6 mm) long.
+// - `circle`: `radius` at least the length tolerance.
+// - `arc`: counter-clockwise from `start` to `end` about `center`; the two ends on one radius within
+//   1e-9 mm per mm of the largest coordinate of the arc (at least 1e-9) and never more than 1e-7 mm;
+//   `start` and `end` within 1.1e-6 mm of each other (the length tolerance and the 1e-7 an end may
+//   move) are no arc (a whole turn is a `circle`). Every number is finite and within ±1e9.
+// - `spline`: the control points of a spline of the sketch (CurveShape `spline`): 3 to 64, the first
+//   again as the last closes it (then at least 4). Control points may stand at one place (a node
+//   without a handle); the spline as a whole has an extent.
+export type ImportedCurve =
+  | { type: 'line'; a: Vec2; b: Vec2 }
+  | { type: 'circle'; center: Vec2; radius: number }
+  | { type: 'arc'; center: Vec2; start: Vec2; end: Vec2 }
+  | { type: 'spline'; points: Vec2[] };
+
+// An imported outline (D72): the curves of a drawing (a board outline, a laser-cut plate) stored in
+// the entry and placed in the sketch. Reference geometry: fixed for the solver, so constraints and
+// dimensions of the sketch may name its entities, a later sketch may project them, and nothing
+// moves it but its own fields.
+// - Usually not written by hand: the MCP tool import_outline reads a DXF or SVG file and sends the
+//   command (without `sketch` it only reports what the file holds); the app has "Import an
+//   outline…" in the panel of a sketch.
+// - `curves`: the curves by their local ID (letters, digits, underscores, at most 32, and no name
+//   every object has, such as `constructor`), 1 to 2000, their splines with at most 2000 control
+//   points together. The readers number them by the kind the file gave and its order: `l1`, `l2`, …
+//   lines, `a1` … arcs, `c1` … circles, `s1` … splines. Nothing after the reader renames a curve: one
+//   the import left out (it lay on another, or had no extent) leaves its number unused, and an arc
+//   of nearly a whole turn that was read as a circle keeps the ID of an arc (`a3` is then a circle:
+//   the `type` of the curve says what it is, the letter what the file had).
+// - IDs: the curve `<entry>/<local>` (`board/l3`); its points as an own curve of that kind names
+//   them: `<entry>/<local>/a` and `/b` of a line, `/center` of a circle, `/center`, `/start`, `/end`
+//   of an arc, and `/0`, `/1`, … the control points of a spline (a closed spline lists its first
+//   point once). The entry itself is no entity. Two curves that meet have two points at one place.
+// - `x`, `y`, `turn`: where the outline stands, numeric fields (`external/<entry>/x`, …: they take
+//   expressions, and setField with the sketch as the feature changes one). The anchor of the
+//   outline lands at (`x`, `y`) and the outline is turned about it by `turn` (rad, counter-clockwise).
+// - `anchor`: which place of the file is put at (`x`, `y`): `origin`, the origin of the file (the
+//   coordinates of the file are kept, a revised file moves nothing that did not move in it), or
+//   `center`, the centre of the box of the curves (the outline stays centred when a revised file is
+//   larger).
+// - `regions`: whether the curves bound regions of the sketch as own curves that are not
+//   construction do (default true: a board is extruded from its outline directly). Then the ends
+//   of the curves join the curve ends at their place within 1e-6 mm, each other's and that of an own
+//   curve that forms regions, and the side face of a curve is `{ feature, role: 'side', curve:
+//   '<entry>/<local>' }`. With `false` the curves are reference only, as a projected edge.
+// - A curve of an outline is never cut by the sketch tools, and a spline of it is no operand of a
+//   constraint and is not projected. An own curve that crosses an outline that forms regions makes
+//   the profile invalid for good: switch `regions` off and draw the outline as own curves in a
+//   later sketch (the sketch tool projectSketch with `as: 'own'`), then cut that.
+// - `name`: for people, the name of the file, at most 200 characters. An empty one is no name.
+// - `readWith`: what the file was read with (the format, the layers, the unit, the weld), written by
+//   the import and repeated by a replacement, so that a revised file is read as the first was; texts
+//   of at most 200 characters, at most 100 layers.
+// - A revised file: `updateExternal` with the new `curves` (the tool import_outline with
+//   `replace`); fields left out of the update keep what the entry has. An entity keeps its ID when
+//   the file lists it at the same place among the curves of its kind; nothing is matched by
+//   geometry (the tool says which IDs a file gave to other curves). Refused while a constraint of
+//   the sketch names an entity the new curves do not have, or one that changes its kind (the tool
+//   takes `remove`, the constraints to remove in the same batch before it); a mirror or pattern of
+//   the sketch, or a later feature, that names one becomes a broken reference (copies are lost with
+//   a warning, a projection keeps its last place, an extrusion has no profile).
+// - The values never fail: an outline has no source that can go away.
+export interface SketchOutline {
+  type: 'outline';
+  name?: string;
+  readWith?: OutlineReadWith;
+  curves: Record<Id, ImportedCurve>;
+  x: number;
+  y: number;
+  turn: number;
+  anchor: 'origin' | 'center';
+  regions: boolean;
+}
+// What an outline was imported with: the key of the format and its options as they were given
+// (`layers`, `unit`, `weld`; one left out was the format's default).
+export interface OutlineReadWith {
+  format: string;
+  layers?: string[];
+  unit?: string;
+  weld?: number;
+}
+// The input form of an outline in `addExternal`: the curves, and what a command may leave out with
+// its default (`x`, `y`, `turn` 0; `anchor` `origin`; `regions` true). A numeric field may be an
+// expression; `null` is no number. In `updateExternal` every field but `type` may be left out and then keeps what the
+// entry has, an expression too; `curves` given replaces the stored outline whole. So the flag is
+// switched, or the outline moved, without sending the curves again: `{ type: 'outline', regions:
+// false }`. `name: ''` and `readWith: null` clear the two optional fields.
+export interface OutlineInput {
+  type: 'outline';
+  name?: string;
+  readWith?: OutlineReadWith | null;
+  curves?: Record<Id, ImportedCurve>;
+  x?: number | Expr;
+  y?: number | Expr;
+  turn?: number | Expr;
+  anchor?: 'origin' | 'center';
+  regions?: boolean;
 }
 
 // A mirror or a pattern of own geometry of the sketch (D68), an entry of `external` computed after
@@ -1824,7 +1941,8 @@ export type CommandResult =
 // - An object with `kind` (a reference such as a plane, an axis or a face of a body, or a solved
 //   value such as a projected curve) holds no field that takes an expression and is taken as it is
 //   (the index of a copy in a face name is a number, never an expression).
-export type Input<T> = T extends number ? number | Expr : T extends readonly (infer U)[] ? Input<U>[] : T extends { kind: string } ? T : T extends object ? { [K in keyof T]: Input<T[K]> } : T;
+// - The curves of an imported outline and the options it was read with hold numbers only (D72).
+export type Input<T> = T extends number ? number | Expr : T extends readonly (infer U)[] ? Input<U>[] : T extends { kind: string } | ImportedCurve | OutlineReadWith ? T : T extends object ? { [K in keyof T]: Input<T[K]> } : T;
 
 export type Command =
   // časová osa
@@ -1895,7 +2013,8 @@ export type Command =
   // `ref` in its input form: a numeric field of an entry may be an expression (kept in the sketch's
   // `expressions` at `external/<id>/…`; setField with the sketch as the feature reaches one). An
   // update replaces the whole entry: send the entry with its expressions as strings, or a number
-  // removes the expression; a string equal to the expression the field has counts as unchanged. An
+  // removes the expression; a string equal to the expression the field has counts as unchanged
+  // (an imported outline is the exception: fields left out keep what it has, SketchOutline). An
   // update may not turn reference geometry into derived geometry or back. An update that keeps the
   // source (a projection from a sketch with the same `sketch`, `entity` and `kind`, its flag
   // switched; an edge projection to the same edge) checks no reference and keeps the last values,

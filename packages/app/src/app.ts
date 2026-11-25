@@ -24,7 +24,7 @@ import {
   printedBodies,
   takenOver,
 } from '@trymesh/engine';
-import { type BridgeConnection, type BridgeStatus, MUTATING, changesDocument, connectBridge } from '@trymesh/mcp/bridge-client';
+import { type BridgeConnection, type BridgeStatus, MUTATING, changesDocument, connectBridge, outlineSaid } from '@trymesh/mcp/bridge-client';
 import type { ViewCapability } from '@trymesh/mcp/view-image';
 import { byId, download, h } from './dom';
 import { insideFill, keptSegments } from './draw';
@@ -217,13 +217,22 @@ export class App implements SketchHost, SceneHost {
         if (!isDraft(this.mode)) return;
         if (changesDocument(this.engine, name, args)) this.setMode({ kind: 'model' });
       },
-      onCall: (name, outcome) => {
+      onCall: (name, outcome, args) => {
         // A picture is drawn off the screen: nothing shows that one was taken but this line. It
         // is a question, like the others the AI asks without a word here: one that is refused
         // says nothing (the AI has the reason), and one that is taken does not replace an error
         // the user has not dealt with.
         if (name === 'view_image') return outcome.ok && !this.note.error ? this.say('AI: a picture of the model was taken.') : undefined;
         if (!MUTATING.includes(name)) return;
+        // the import of an outline (D72) answers ok also when its command was refused, since the
+        // answer carries the report: the line reads the answer. A look at a file is a question and
+        // says nothing, also when the file cannot be read; a placement that fails is said in words,
+        // not by the name of the internal tool
+        if (name === '_outline') {
+          if (!outcome.ok) return args.sketch === undefined || args.sketch === null ? undefined : this.say(`AI: the outline was not imported: ${outcome.error}`, true);
+          const said = outlineSaid(outcome.result);
+          return said ? this.say(said.text, said.error) : undefined;
+        }
         if (name === '_load') {
           if (!outcome.ok) restore?.();
           restore = undefined;

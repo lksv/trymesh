@@ -35,12 +35,15 @@ export const KIND_CHANGED = (sketch: Id, entity: Id, now: string, kind: Projecte
 // of a command that names a spline of the source whatever `kind` says.
 export const SPLINE_KIND_NOT_PROJECTED = (what: string): string => `${what}.kind: a spline is not projected yet: project its control points as points`;
 export const SPLINE_NOT_PROJECTED = (what: string, sketch: Id, spline: Id): string => `${what}.entity: "${spline}" of ${sketch} is a spline, and a spline is not projected yet: project its control points as points`;
-// Whether an entity of a sketch is a spline: an own spline, or the copy `<entry>/<n>/<source>` of a
-// mirror or pattern whose source is one.
+// Whether an entity of a sketch is a spline: an own spline, the copy `<entry>/<n>/<source>` of a
+// mirror or pattern whose source is one, or a spline `<entry>/<local>` of an imported outline (D72).
 export function isSplineOf(sketch: SketchFeature, entity: Id): boolean {
-  if (sketch.curves[entity]?.type === 'spline') return true;
-  const [entry, , ...rest] = entity.split('/');
-  return rest.length > 0 && sketch.external[entry]?.type === 'pattern' && sketch.curves[rest.join('/')]?.type === 'spline';
+  if (has(sketch.curves, entity) && sketch.curves[entity].type === 'spline') return true;
+  const [entry, second, ...rest] = entity.split('/');
+  if (!has(sketch.external, entry)) return false;
+  const ref = sketch.external[entry];
+  if (ref.type === 'outline') return rest.length === 0 && second !== undefined && has(ref.curves, second) && ref.curves[second].type === 'spline';
+  return rest.length > 0 && ref.type === 'pattern' && has(sketch.curves, rest.join('/')) && sketch.curves[rest.join('/')].type === 'spline';
 }
 export const NO_EXTENT = (sketch: Id, entity: Id, kind: ProjectedKind): string => `the ${kind} ${entity} of ${sketch} cannot be projected as it stands: it has no length or no radius, or a position that is not a number`;
 

@@ -2,7 +2,8 @@
 // Kontrakt portu je v docs/architecture.md, sekce SketchSolver.
 import { Algorithm, DebugMode, GcsWrapper, SolveStatus, init_planegcs_module } from '@salusoft89/planegcs';
 import type { SketchPrimitive } from '@salusoft89/planegcs';
-import type { Constraint, Curve, Id, Point2, SketchSolver, SolveInput, SolveResult } from '@trymesh/engine';
+import { commonEnd } from '@trymesh/engine';
+import type { Constraint, Curve, Id, Point2, SketchSolver, SolveInput, SolveResult, TangentEnds } from '@trymesh/engine';
 
 export interface PlanegcsOptions {
   // Kde najít planegcs.wasm (v browseru); v Node se najde sám.
@@ -289,7 +290,7 @@ function buildPrimitives(input: SolveInput, drag?: SolveInput['drag'], without?:
       else if (constraint.type === 'midpoint') out.push({ id: `${SYNTHETIC}middle/${id}`, type: 'p2p_coincident', p1_id: constraint.point, p2_id: a });
       continue;
     }
-    out.push({ id, ...translate(id, constraint, input.curves, input.constraints) });
+    out.push({ id, ...translate(id, constraint, input.curves, input.constraints, { points: input.points, fixed }) });
   }
 
   if (drag) {
@@ -303,30 +304,16 @@ function buildPrimitives(input: SolveInput, drag?: SolveInput['drag'], without?:
 
 // Každá varianta vazby enginu má právě jeden protějšek v knihovně; liší se jen podle druhu křivky.
 // (A fixed point is the exception with two primitives and is translated by the caller.)
-// A tangency of a line and an arc at a common end (D52). An end of the arc (`start` or `end`) is an
-// end of the line (`a` or `b`): the same point ID, or two points that one coincident constraint of
-// the input names together. Decided from the curves and constraints, never from positions; a chain
-// of joins or an end held on the line by pointOnCurve is not read.
-function commonEnd(line: Extract<Curve, { type: 'line' }>, arc: Extract<Curve, { type: 'arc' }>, constraints: Record<Id, Constraint>): Id | undefined {
-  const lineEnds = [line.a, line.b];
-  const arcEnds = [arc.start, arc.end];
-  const shared = arcEnds.find((p) => lineEnds.includes(p));
-  if (shared !== undefined) return shared;
-  // the start before the end and the constraints by ID, so that the order of the keys of the
-  // input does not matter (a line both of whose ends are joined to the ends of the arc)
-  const joins = Object.keys(constraints)
-    .sort()
-    .map((id) => constraints[id])
-    .filter((c): c is Extract<Constraint, { type: 'coincident' }> => c.type === 'coincident');
-  return arcEnds.find((p) => joins.some((c) => (c.a === p && lineEnds.includes(c.b)) || (c.b === p && lineEnds.includes(c.a))));
-}
+// A tangency of a line and an arc at a common end (D52, D72): the rule is the engine's `commonEnd`,
+// which the analysis of the sketch reads too, so that the two never disagree about the form.
+type Ends = TangentEnds;
 
 // A spline is never an operand of a constraint (D70): the engine refuses it before the solver.
 const neverASpline = (id: Id): never => {
   throw new Error(`solver: vazba ${id}: a spline is never an operand of a constraint`);
 };
 
-function translate(id: Id, c: Exclude<Constraint, { type: 'fixed' }>, curves: Record<Id, Curve>, constraints: Record<Id, Constraint>): Record<string, unknown> & { type: string } {
+function translate(id: Id, c: Exclude<Constraint, { type: 'fixed' }>, curves: Record<Id, Curve>, constraints: Record<Id, Constraint>, ends: Ends): Record<string, unknown> & { type: string } {
   const kind = (curveId: Id): Curve['type'] => {
     const curve = curves[curveId];
     if (!curve) throw new Error(`solver: vazba ${id} odkazuje na neznámou křivku ${curveId}`);
@@ -420,7 +407,7 @@ function translate(id: Id, c: Exclude<Constraint, { type: 'fixed' }>, curves: Re
         // change. "The radius to the common end is square to the line" says the same wherever the
         // line has a length, without the double root (D52; the engine's analysis reads it so too).
         const [l, a] = [curves[first] as Extract<Curve, { type: 'line' }>, curves[second] as Extract<Curve, { type: 'arc' }>];
-        const shared = commonEnd(l, a, constraints);
+        const shared = commonEnd(l, a, constraints, ends)?.end;
         if (shared !== undefined) return { type: 'perpendicular_pppp', l1p1_id: a.center, l1p2_id: shared, l2p1_id: l.a, l2p2_id: l.b };
         return { type: 'tangent_la', l_id: first, a_id: second };
       }

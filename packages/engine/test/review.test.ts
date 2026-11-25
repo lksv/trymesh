@@ -6,6 +6,9 @@ import { type Deps, type DragTarget, type EvaluateOptions, Evaluator, type Place
 import { FEATURE_TYPE_INFO, MAX_PATTERN_COUNT, atPath, bodyOwner, constraintKey, constraintOperands, constraintPath, curvePoints, documentIds, duplicateOf, entityOf, featureInput, featureRefs, fieldsOf, isDimension, isDriving, withPath, SCHEMA_VERSION } from '../src/document';
 import type { Entity, EntityKind, FeatureRef, FeatureTypeInfo, FieldInfo, RefKind } from '../src/document';
 import { generatorOf, producesTool } from '../src/index';
+import { type OutlineOutcome, importOutline } from '../src/import/outline-formats';
+import { OUTLINE_REFUSALS, curveProblem } from '../src/imported-curve';
+import { storedCurves } from '../src/references/outline';
 import { DATA_CATALOGS, catalogTable } from '../src/data-catalogs';
 import { type Move, movedOutline, nestingOf, outlineRegions, selectionOutline, wallOutline } from '../src/recompute/outline';
 import type { Outline, ProfileProblem } from '../src/recompute/state';
@@ -1273,10 +1276,11 @@ describe('the review of the implementation of 6a (D64)', () => {
       return copy;
     };
     expect(validateDocument(JSON.parse(JSON.stringify(doc)))).toEqual(doc);
-    // the text lists the kinds (6b, D69, added `sketch`; the value of a projection from a sketch is a
-    // point, a line, a circle or an arc, and the text of an unknown form says so)
-    const unknown = 'external.x1: an entry of a sketch is the projection of an edge (`edge`), a mirror or pattern of the sketch (`pattern`) or the projection of an entity of an earlier sketch (`sketch`)';
-    expect(() => validateDocument(tampered((s) => (s.external.x1 = { type: 'outline', sketch: 'S1', entity: 'l1' })))).toThrow(unknown);
+    // the text lists the kinds (6b, D69, added `sketch`, and 6f, D72, `outline`; the value of a
+    // projection from a sketch is a point, a line, a circle or an arc, and the text of an unknown form
+    // says so)
+    const unknown = 'external.x1: an entry of a sketch is the projection of an edge (`edge`), a mirror or pattern of the sketch (`pattern`), the projection of an entity of an earlier sketch (`sketch`) or an imported outline (`outline`)';
+    expect(() => validateDocument(tampered((s) => (s.external.x1 = { type: 'ellipse', sketch: 'S1', entity: 'l1' })))).toThrow(unknown);
     expect(() => validateDocument(tampered((s) => (s.external.x1 = { body: 'E1' })))).toThrow(unknown);
     expect(() => validateDocument(tampered((s) => (s.solved.external = { x1: { kind: 'ellipse', center: [0, 0] } })))).toThrow(/solved\.external\.x1\.kind: point, line, circle or arc is expected/);
     // a stored point or arc never fits the projection of an edge
@@ -1439,5 +1443,213 @@ describe('the review of the implementation of 6d (D70)', () => {
     expect(performance.now() - started).toBeLessThan(6000);
     expect(p.valid).toBe(true);
     expect(p.regions).toHaveLength(1);
+  });
+});
+
+describe('the review of the implementation of 6f (D72): the import and the kind', () => {
+  const enc = (text: string): Uint8Array => new TextEncoder().encode(text);
+  const dxfOf = (...groups: (string | number)[]): Uint8Array => enc(`${['0', 'SECTION', '2', 'ENTITIES', ...groups.map(String), '0', 'ENDSEC', '0', 'EOF'].join('\n')}\n`);
+  const svgOf = (body: string, root = 'width="100mm" height="100mm" viewBox="0 0 100 100"'): Uint8Array => enc(`<svg xmlns="http://www.w3.org/2000/svg" ${root}>${body}</svg>`);
+  // what the import answers, the validator takes: never a throw, never ok with a refused curve
+  const taken = (outcome: OutlineOutcome): OutlineOutcome => {
+    if (outcome.ok) expect(() => storedCurves(outcome.curves, 'o')).not.toThrow();
+    return outcome;
+  };
+  const code = (outcome: OutlineOutcome): string => (outcome.ok ? 'ok' : `${outcome.error.code}: ${outcome.error.message}`);
+  const square = (bulge: number): Uint8Array => dxfOf(0, 'LWPOLYLINE', 8, '0', 90, 4, 70, 1, 10, 0, 20, 0, 42, bulge, 10, 10, 20, 0, 10, 10, 20, 10, 10, 0, 20, 10);
+
+  it('S1: a computed place that is not finite or out of range is unreadable with the line, never a throw', () => {
+    expect(code(taken(importOutline('dxf', dxfOf(0, 'ARC', 8, '0', 10, 0, 20, 0, 40, 1, 50, 0, 51, '1e308'))))).toMatch(/^unreadable: dxf: line 5: ARC gives a place or a radius of NaN mm/);
+    expect(code(taken(importOutline('dxf', dxfOf(0, 'CIRCLE', 8, '0', 10, 0, 20, 0, 40, '1e307'), { unit: 'ft' })))).toMatch(/^unreadable: dxf: line 5: CIRCLE .* Infinity mm/);
+    expect(code(taken(importOutline('dxf', dxfOf(0, 'LINE', 8, '0', 10, 0, 20, 0, 11, '1e307', 21, 1), { unit: 'ft' })))).toMatch(/^unreadable/);
+    expect(code(taken(importOutline('dxf', dxfOf(0, 'LINE', 8, '0', 10, 0, 20, 0, 11, '2e9', 21, 1))))).toMatch(/within ±1000000000/);
+    expect(code(taken(importOutline('svg', svgOf('<line x2="2e9" y2="1"/>'))))).toMatch(/^unreadable: .* beyond ±1000000000 mm/);
+  });
+
+  it('S1: a bulge or an SVG arc whose arc lies within the join of its chord is a line', () => {
+    for (const bulge of [1e-16, 1e-12, 1e-310]) {
+      const outcome = taken(importOutline('dxf', square(bulge)));
+      if (!outcome.ok) throw new Error(code(outcome));
+      expect(Object.keys(outcome.curves)).toEqual(['l1', 'l2', 'l3', 'l4']);
+      expect(outcome.report.bounds).toEqual({ min: [0, 0], max: [10, 10] });
+    }
+    // a bulge whose arc is above the join stays an arc
+    const arc = taken(importOutline('dxf', square(1e-5)));
+    expect(arc.ok && Object.keys(arc.curves)).toEqual(['a1', 'l1', 'l2', 'l3']);
+    const svg = taken(importOutline('svg', svgOf('<path d="M0 0 A1e12 1e12 0 0 1 10 0 L10 10 L0 10 Z"/>')));
+    expect(svg.ok && Object.values(svg.curves).map((curve) => curve.type)).toEqual(['line', 'line', 'line', 'line']);
+  });
+
+  it('S1: curveProblem refuses a number that is not finite or beyond the range, and is NaN-proof', () => {
+    expect(curveProblem({ type: 'line', a: [0, 0], b: [Number.NaN, 1] }, 'c')).toBe(OUTLINE_REFUSALS.range('c'));
+    expect(curveProblem({ type: 'arc', center: [0, 2.5e16], start: [0, 0], end: [10, 0] }, 'c')).toBe(OUTLINE_REFUSALS.range('c'));
+    expect(curveProblem({ type: 'circle', center: [0, 0], radius: Number.POSITIVE_INFINITY }, 'c')).toBe(OUTLINE_REFUSALS.range('c'));
+    expect(curveProblem({ type: 'spline', points: [[0, 0], [1, 1], [2, 1e10]] }, 'c')).toBe(OUTLINE_REFUSALS.range('c'));
+  });
+
+  // A bound near the cost of the fix, far under that of the code before it (the second review: the
+  // bound of 2000 ms passed on that code). Measured alone, the best of three runs at 16,000 levels:
+  // 600 to 700 ms with the copied path of names of each level, 10 to 15 ms with the layer carried
+  // down the stack. A ratio of n against 2n was tried and is not used: under the load of the whole
+  // suite the few milliseconds of the fix vary by more than the ratio tells apart. A depth the code
+  // before the fix still finishes (its memory grows with the square: 32,000 levels run it out), so
+  // that it fails on the bound and not by crashing the worker.
+  it('S2: groups nested 16,000 deep, each with an id, are read in linear time', () => {
+    const nested = (n: number): Uint8Array => svgOf(`${'<g id="g">'.repeat(n)}<circle r="1"/>${'</g>'.repeat(n)}`);
+    const best = (n: number): number => {
+      const bytes = nested(n);
+      let fastest = Number.POSITIVE_INFINITY;
+      for (let run = 0; run < 3; run++) {
+        const started = performance.now();
+        const outcome = importOutline('svg', bytes);
+        fastest = Math.min(fastest, performance.now() - started);
+        expect(outcome.ok && outcome.report.curves).toBe(1);
+      }
+      return fastest;
+    };
+    best(2000);
+    expect(best(16000)).toBeLessThan(250);
+  });
+
+  it('S3: a length and a transform of 40,000 characters are refused in linear time', () => {
+    for (const body of [`<circle r="${'1'.repeat(40000)}!"/>`, `<circle r="1" transform="${'a'.repeat(40000)}"/>`, `<circle r="1" transform="translate(1)${' a'.repeat(20000)}"/>`]) {
+      const started = performance.now();
+      expect(code(importOutline('svg', svgOf(body)))).toMatch(/^unreadable/);
+      expect(performance.now() - started).toBeLessThan(500);
+    }
+  });
+
+  it('S4: a rect whose rx and ry differ once each is clamped to its half side is left out and listed', () => {
+    const left = importOutline('svg', svgOf('<rect width="10" height="40" rx="10"/>'));
+    expect(left.ok).toBe(false);
+    expect(!left.ok && left.error.about?.skipped).toEqual({ 'rect (rx and ry differ: elliptical corners)': 1 });
+    // equal after the clamp: circular corners of 5 on a square of 10
+    const round = taken(importOutline('svg', svgOf('<rect width="10" height="10" rx="7"/>')));
+    expect(round.ok && round.report.byKind).toEqual({ line: 0, arc: 4, circle: 0, spline: 0 });
+    const radius = round.ok ? Object.values(round.curves).find((curve) => curve.type === 'arc') : undefined;
+    expect(radius?.type === 'arc' && Math.hypot(radius.start[0] - radius.center[0], radius.start[1] - radius.center[1])).toBeCloseTo(5, 9);
+  });
+
+  it('M1: a DXF that is not UTF-8 is decoded in the code page of its header, else in windows-1252, with a note', () => {
+    const bytes = (header: string): Uint8Array => {
+      const text = (s: string): number[] => Array.from(s, (c) => c.charCodeAt(0));
+      return new Uint8Array([...text(`${header}0\nSECTION\n2\nENTITIES\n0\nCIRCLE\n8\nVrstva_`), 0xe8, ...text('\n10\n0\n20\n0\n40\n1\n0\nCIRCLE\n8\nVrstva_'), 0xf8, ...text('\n10\n5\n20\n0\n40\n2\n0\nENDSEC\n0\nEOF\n')]);
+    };
+    const named = importOutline('dxf', bytes('0\nSECTION\n2\nHEADER\n9\n$DWGCODEPAGE\n3\nANSI_1250\n0\nENDSEC\n'));
+    if (!named.ok) throw new Error(code(named));
+    expect(Object.keys(named.report.about.layers)).toEqual(['Vrstva_č', 'Vrstva_ř']);
+    expect(named.report.notes.join(' ')).toContain('ANSI_1250');
+    const chosen = importOutline('dxf', bytes('0\nSECTION\n2\nHEADER\n9\n$DWGCODEPAGE\n3\nANSI_1250\n0\nENDSEC\n'), { layers: ['Vrstva_ř'] });
+    expect(chosen.ok && Object.values(chosen.curves)).toEqual([{ type: 'circle', center: [5, 0], radius: 2 }]);
+    const plain = importOutline('dxf', bytes(''));
+    if (!plain.ok) throw new Error(code(plain));
+    expect(Object.keys(plain.report.about.layers)).toHaveLength(2);
+    expect(plain.report.notes.join(' ')).toContain('windows-1252');
+  });
+
+  it('M2: the layer "" selects the shapes of an SVG outside any named group, and only them', () => {
+    const outcome = importOutline('svg', svgOf('<circle r="1"/><g><circle r="3"/></g><g id="L"><circle r="2"/></g>'), { layers: [''] });
+    expect(outcome.ok && Object.values(outcome.curves).map((curve) => curve.type === 'circle' && curve.radius)).toEqual([1, 3]);
+  });
+
+  it('M3: a root of width="100%" with a viewBox says why it gives no millimetres', () => {
+    const outcome = importOutline('svg', svgOf('<circle r="1"/>', 'width="100%" height="100%" viewBox="0 0 210 297"'));
+    expect(outcome.ok && outcome.report.notes[0]).toContain('in % is a share of the page, not a size');
+  });
+
+  it('M4, M5: a negative DXF radius and a number in hex, octal or binary are unreadable', () => {
+    expect(code(importOutline('dxf', dxfOf(0, 'ARC', 8, '0', 10, 0, 20, 0, 40, -5, 50, 0, 51, 90)))).toBe('unreadable: dxf: line 5: ARC with the radius -5 (group 40), under 0');
+    expect(code(importOutline('dxf', dxfOf(0, 'CIRCLE', 8, '0', 10, 0, 20, 0, 40, -5)))).toContain('under 0');
+    for (const written of ['0x10', '0o7', '0b1', 'Infinity', '1_0']) expect(code(importOutline('dxf', dxfOf(0, 'LINE', 8, '0', 10, written, 20, 0, 11, 1, 21, 0)))).toContain('not a number');
+    expect(code(importOutline('dxf', enc('0x0\nSECTION\n0\nEOF\n')))).toContain('a group code is expected');
+  });
+
+  it('M7, M8: CDATA before the root is unreadable; the tspans of a text are not counted on their own', () => {
+    expect(code(importOutline('svg', enc('<![CDATA[ junk ]]><svg xmlns="http://www.w3.org/2000/svg"><circle r="1"/></svg>')))).toContain('CDATA section outside the root element');
+    const outcome = importOutline('svg', svgOf('<circle r="1"/><text><tspan>a</tspan><tspan>b</tspan></text>'));
+    expect(outcome.ok && outcome.report.about.skipped).toEqual({ text: 1 });
+  });
+
+  it('nits: the name and the layers of an entry are bounded, and null is no place', () => {
+    const doc = applyCommand(emptyDocument(), { type: 'addFeature', feature: emptySketch('s', 's', { kind: 'base', plane: 'XY' }) });
+    const add = (ref: Record<string, unknown>): Command => ({ type: 'addExternal', sketch: 's', id: 'o', ref: { type: 'outline', curves: { c1: { type: 'circle', center: [0, 0], radius: 1 } }, ...ref } }) as Command;
+    expect(() => applyCommand(doc, add({ name: 'n'.repeat(201) }))).toThrow(/at most 200 characters/);
+    expect(() => applyCommand(doc, add({ name: 'n'.repeat(200) }))).not.toThrow();
+    expect(() => applyCommand(doc, add({ readWith: { format: 'dxf', layers: Array.from({ length: 101 }, (_, i) => `L${i}`) } }))).toThrow(/1 to 100 layer names/);
+    expect(() => applyCommand(doc, add({ readWith: { format: 'dxf', layers: ['x'.repeat(201)] } }))).toThrow(/at most 200 characters/);
+    for (const field of ['x', 'y', 'turn']) expect(() => applyCommand(doc, add({ [field]: null }))).toThrow();
+    const placed = applyCommand(doc, add({ x: 4 }));
+    expect(() => applyCommand(placed, { type: 'updateExternal', sketch: 's', id: 'o', ref: { type: 'outline', x: null } } as unknown as Command)).toThrow();
+    // the import refuses what the validator would
+    expect(code(importOutline('svg', svgOf('<circle r="1"/>'), { layers: ['x'.repeat(201)] }))).toMatch(/^invalidArguments/);
+    expect(code(importOutline('svg', svgOf('<circle r="1"/>'), { layers: Array.from({ length: 101 }, (_, i) => `L${i}`) }))).toMatch(/^invalidArguments/);
+  });
+});
+
+describe('the second review of the implementation of 6f (D72): the import', () => {
+  const enc = (text: string): Uint8Array => new TextEncoder().encode(text);
+  const dxfOf = (...groups: (string | number)[]): Uint8Array => enc(`${['0', 'SECTION', '2', 'ENTITIES', ...groups.map(String), '0', 'ENDSEC', '0', 'EOF'].join('\n')}\n`);
+  const svgOf = (body: string, root = 'width="100mm" height="100mm" viewBox="0 0 100 100"'): Uint8Array => enc(`<svg xmlns="http://www.w3.org/2000/svg" ${root}>${body}</svg>`);
+  const code = (outcome: OutlineOutcome): string => (outcome.ok ? 'ok' : `${outcome.error.code}: ${outcome.error.message}`);
+  // the length of what the import answers, as it goes to the AI
+  const size = (outcome: OutlineOutcome): number => JSON.stringify(outcome.ok ? outcome.report : outcome.error).length;
+
+  // 2: a sagitta just above the join on a long segment put the centre beyond the range, and the whole
+  // file was unreadable
+  it('a bulge whose centre would lie beyond the range of the engine is a line; a nearer one stays an arc', () => {
+    const rect = (w: number, bulge: number | string): Uint8Array => dxfOf(0, 'LWPOLYLINE', 8, '0', 90, 4, 70, 1, 10, 0, 20, 0, 42, bulge, 10, w, 20, 0, 10, w, 20, 100, 10, 0, 20, 100);
+    for (const [w, bulge] of [[1000, '1e-8'], [1000, '2.1e-9'], [500, '1e-8'], [1000, '-1e-8']] as const) {
+      const outcome = importOutline('dxf', rect(w, bulge));
+      if (!outcome.ok) throw new Error(code(outcome));
+      expect(Object.keys(outcome.curves)).toEqual(['l1', 'l2', 'l3', 'l4']);
+      expect(outcome.report.bounds).toEqual({ min: [0, 0], max: [w, 100] });
+      expect(() => storedCurves(outcome.curves, 'o')).not.toThrow();
+    }
+    // the centre 2.5e8 mm away, within the range: an arc as the file says
+    const near = importOutline('dxf', rect(100, '1e-7'));
+    expect(near.ok && Object.keys(near.curves)).toEqual(['a1', 'l1', 'l2', 'l3']);
+    // a centre out of range only because the chord is far out: still unreadable
+    expect(code(importOutline('dxf', dxfOf(0, 'LWPOLYLINE', 8, '0', 90, 2, 70, 0, 10, 999999999, 20, 0, 42, -0.5, 10, 999999999, 20, 1000)))).toMatch(/^unreadable: .*within ±1000000000/);
+  });
+
+  // 3: one long value of a file was echoed whole into the report, a note or an error
+  it('a value of 4 MB is echoed cut: the root size, a number, a layer, a type of entity, a name of a tag', () => {
+    const big = 4_000_000;
+    const cases: [string, OutlineOutcome][] = [
+      ['svg root width', importOutline('svg', svgOf('<circle r="1"/>', `width="${'x'.repeat(big)}" viewBox="0 0 1 1"`))],
+      ['svg root width %', importOutline('svg', svgOf('<circle r="1"/>', `width="${' '.repeat(big)}%" height="1%" viewBox="0 0 1 1"`))],
+      ['svg root no size', importOutline('svg', svgOf('<circle r="1"/>', `width="-${'1'.repeat(big)}"`))],
+      ['svg number', importOutline('svg', svgOf(`<path d="M${'1'.repeat(big)} 0"/>`))],
+      ['svg length', importOutline('svg', svgOf(`<circle r="1${'x'.repeat(big)}"/>`))],
+      ['svg layer', importOutline('svg', svgOf(`<g id="${'L'.repeat(big)}"><circle r="1"/></g>`))],
+      ['svg tag', importOutline('svg', svgOf(`<g></${'t'.repeat(big)}><circle r="1"/>`))],
+      ['dxf value', importOutline('dxf', dxfOf(0, 'LINE', 8, '0', 10, `${'1'.repeat(big)}x`, 20, 0, 11, 1, 21, 1))],
+      ['dxf layer', importOutline('dxf', dxfOf(0, 'LINE', 8, 'L'.repeat(big), 10, 0, 20, 0, 11, 1, 21, 1))],
+      ['dxf type', importOutline('dxf', dxfOf(0, 'T'.repeat(big), 8, '0', 0, 'LINE', 8, '0', 10, 0, 20, 0, 11, 1, 21, 1))],
+    ];
+    for (const [what, outcome] of cases) expect([what, size(outcome) < 3000]).toEqual([what, true]);
+    // a cut layer name is listed with what it holds; a name within the bound of an option is whole
+    const layer = importOutline('dxf', dxfOf(0, 'LINE', 8, 'L'.repeat(big), 10, 0, 20, 0, 11, 1, 21, 1, 0, 'LINE', 8, 'M'.repeat(200), 10, 0, 20, 1, 11, 1, 21, 2));
+    expect(layer.ok && layer.report.about.layers).toEqual({ [`${'L'.repeat(40)}…`]: { LINE: 1 }, ['M'.repeat(200)]: { LINE: 1 } });
+  });
+
+  // 5: with weld 0, step 0 closed an arc at JOIN and the validator refused one under JOIN + arcMost
+  it('with weld 0 an arc of nearly a whole turn with a gap just over the join is a circle, not left out', () => {
+    for (const gap of ['0.00000099', '0.00000105', '0.000001099']) {
+      const outcome = importOutline('svg', svgOf(`<path d="M10 0 A10 10 0 1 1 10 ${gap}"/>`), { weld: 0 });
+      if (!outcome.ok) throw new Error(`${gap}: ${code(outcome)}`);
+      expect(Object.values(outcome.curves).map((curve) => curve.type)).toEqual(['circle']);
+      expect(outcome.report.closed).toBe(1);
+    }
+  });
+
+  // 6: the code page was found by its first appearance in the text, so a comment before the header hid it
+  it('the code page of a DXF is the value of its header group, not the first text $DWGCODEPAGE', () => {
+    const latin = (text: string): number[] => Array.from(text, (c) => c.charCodeAt(0));
+    const bytes = new Uint8Array([...latin('999\nsee $DWGCODEPAGE\n0\nSECTION\n2\nHEADER\n9\n$DWGCODEPAGE\n3\nANSI_1250\n0\nENDSEC\n0\nSECTION\n2\nENTITIES\n0\nCIRCLE\n8\nVrstva_'), 0xe8, ...latin('\n10\n0\n20\n0\n40\n1\n0\nENDSEC\n0\nEOF\n')]);
+    const outcome = importOutline('dxf', bytes);
+    if (!outcome.ok) throw new Error(code(outcome));
+    expect(Object.keys(outcome.report.about.layers)).toEqual(['Vrstva_č']);
+    expect(outcome.report.notes.join(' ')).toContain('ANSI_1250 of its header');
   });
 });

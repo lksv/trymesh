@@ -6,7 +6,7 @@
 import type { EntityKind } from '../catalog';
 import type { Entity } from '../sketch-content';
 import type { State } from '../recompute/state';
-import type { CurveShape, ExternalRef, FaceName, Frame, Id, IssueCode, OpenEnds, Point2, Projected, ResultCurve, SketchFeature, Vec2 } from '../types';
+import type { CurveShape, ExternalRef, FaceName, Frame, Id, IssueCode, OpenEnds, PlacedOutline, Point2, Projected, ResultCurve, SketchFeature, StoredValue, Vec2 } from '../types';
 import { type Dict, type FeatureRef, type ValidationContext, fail, finite, object } from '../validation';
 import type { SketchBase } from './world';
 
@@ -80,12 +80,24 @@ export interface ReferenceFailure {
 //   goes into the stamp of the sketch.
 // - `keepsValue`: whether `updateExternal` from `before` to `after` keeps the stored value (the same
 //   source, another flag; D69). Absent: never, the value belonged to the source replaced.
+// Three optional members, which only an imported outline says (D72):
+// - `entity`: what one ID under the entry is, with one look-up, as the derived half has (an
+//   outline of 2000 curves has 5000 entities, which every validation of a constraint would
+//   otherwise list). `entityOf` asks it when it is there, and `entities` otherwise.
+// - `narrow`: the solver gets of the entry only the entities a constraint of the sketch names (a
+//   curve with its points and its radius, a point alone; `ResolvedReference.solver`); the step puts
+//   the points and the radii of the rest into its geometry after the solver.
+// - `partial`: `updateExternal` may leave fields of the entry out, which then keep what the entry
+//   has, when the command's `type` is the type of the entry it updates.
 export interface ReferenceKindSpec<R, V> extends KindBase<R> {
   source: 'reference';
   compute(ref: R, context: ReferenceContext): V | IssueCode | ReferenceFailure;
   value(stored: unknown, ref: R, what: string): V | undefined;
   geometry(id: Id, ref: R, value: V): EntryGeometry;
   keepsValue?(before: R, after: R): boolean;
+  entity?(id: Id, ref: R, sketch: SketchFeature, entry: Id): EntityKind | undefined;
+  narrow?: true;
+  partial?: true;
 }
 
 // The failure of a derive: a warning of the sketch (`refs` the entry first), which may come with
@@ -122,10 +134,13 @@ export type EntryKindName = ExternalRef['type'];
 export interface ReferenceValues {
   edge: Extract<Projected, { kind: 'line' | 'circle' }>;
   sketch: Projected;
+  outline: PlacedOutline;
 }
 export type ReferenceKindName = keyof ReferenceValues & EntryKindName;
 export type DerivedKindName = Exclude<EntryKindName, ReferenceKindName>;
-export type StoredValue = ReferenceValues[ReferenceKindName];
+// The values of the kinds are what `solved.external` may hold (`StoredValue` of types.ts).
+export type { StoredValue };
+
 export type ReferenceOf<T extends EntryKindName> = Extract<ExternalRef, { type: T }>;
 export type KindOf<T extends EntryKindName> = T extends ReferenceKindName ? ReferenceKindSpec<ReferenceOf<T>, ReferenceValues[T]> : DerivedKindSpec<ReferenceOf<T>>;
 export type AnyKind = ReferenceKindSpec<ExternalRef, StoredValue> | DerivedKindSpec<ExternalRef>;
@@ -145,9 +160,12 @@ export interface DerivedGeometry {
 // geometry. A resolved reference without a value, under a key that is no entry, enters the input
 // of the solver and is neither stamped nor stored: the axes of the origin under the key `origin`,
 // when a constraint of the sketch names one (D71).
+// `solver`: of an entry of a kind with `narrow`, what the input of the solver gets (the entities the
+// constraints name); `geometry` is whole, for the curves of the sketch, the profile and the result.
 export interface ResolvedReference {
   value?: StoredValue;
   geometry: EntryGeometry;
+  solver?: EntryGeometry;
 }
 
 // A stored value of `solved.external` by its form (`Projected`: a point, a line, a circle, an arc),

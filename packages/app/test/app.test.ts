@@ -1852,6 +1852,22 @@ describe('the app, driven as a user drives it', () => {
       expect(await ai('undo', {})).toBe('ok');
       h.record('a command of the AI and its undo: the app follows both');
 
+      // the import of an outline where the engine is (D72): the status line reads the answer
+      const square = { name: 'square.svg', base64: btoa('<svg xmlns="http://www.w3.org/2000/svg" width="10mm" height="10mm" viewBox="0 0 10 10"><rect width="10" height="10"/></svg>') };
+      expect(await ai('execute', { command: { type: 'addFeature', feature: { id: 'so', name: 'Outline', suppressed: false, type: 'sketch', plane: { kind: 'base', plane: 'XY' }, points: {}, radii: {}, curves: {}, constraints: {}, external: {}, solved: { inputs: '', external: {} } } } })).toBe('ok');
+      h.record('the AI adds a sketch for an outline');
+      expect(await ai('_outline', { file: square })).toBe('ok');
+      h.record('the AI looks at an outline file: nothing changes, and the status line says nothing new');
+      const broken = { name: 'broken.svg', base64: btoa('<svg') };
+      expect(await ai('_outline', { file: broken })).not.toBe('ok');
+      h.record('the AI looks at a file that cannot be read: a question refused, the status line says nothing new');
+      expect(await ai('_outline', { file: square, sketch: 'so', id: 'sq' })).toBe('ok');
+      h.record('the AI places the outline in a sketch: the status line names the entry and the sketch');
+      expect(await ai('_outline', { file: square, sketch: 'so', id: 'sq' })).toBe('ok');
+      h.record('a second placement under the same ID is refused inside the answer: the status line says so as an error');
+      expect(await ai('_outline', { file: broken, sketch: 'so', id: 'sq2' })).not.toBe('ok');
+      h.record('a placement of a file that cannot be read fails: the status line says it in words, as an error');
+
       h.press('toolbar', 'AI: připojeno');
       await until(() => !bridge.connected(), 'the app to disconnect');
       h.record('the connection is switched off');

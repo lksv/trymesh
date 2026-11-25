@@ -50,13 +50,13 @@ function operandChoices(host: PanelHost, sketch: Id, kinds: readonly string[]): 
     ? [
         { id: 'origin', label: 'origin' },
         ...Object.keys(f.points).map((id) => ({ id, label: id })),
-        ...entryEntities(f).filter((entity) => entity.kind === 'point').map((entity) => ({ id: entity.id, label: `${entity.id} (${entity.tag})` })),
+        ...entryEntities(f, (kind) => kind === 'point').map((entity) => ({ id: entity.id, label: `${entity.id} (${entity.tag})` })),
       ]
     : [];
   return [
     ...points,
     ...Object.entries(f.curves).filter(([, curve]) => kinds.includes(curve.type)).map(([id, curve]) => ({ id, label: `${id}${size(id)}${curve.construction ? ' (construction)' : ''}` })),
-    ...entryEntities(f).filter((entity) => entity.kind !== 'point' && kinds.includes(entity.kind)).map(({ id, tag }) => ({ id, label: `${id}${size(id)} (${tag})` })),
+    ...entryEntities(f, (kind) => kind !== 'point' && kinds.includes(kind)).map(({ id, tag }) => ({ id, label: `${id}${size(id)} (${tag})` })),
   ];
 }
 const sketchFeature = (host: PanelHost, id: Id): SketchFeature | undefined => {

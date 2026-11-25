@@ -94,6 +94,9 @@
       p.hint: "Volné (v pohledu modře): body p1, p2, p3. Skicu dourčí určení polohy bodu p1: například dvěma kótami od počátku."
       div.buttons
         button title="Vybere volné body a kružnice s volným poloměrem": "Vybrat volné"
+      div.buttons
+        button title="Read a DXF or SVG file into this sketch as an outline of fixed curves": "Import an outline…"
+        input#outline-file type=file hidden
       h2: "Výběr (0)"
       div.buttons
         button disabled title="Dva body leží na stejném místě.": "Totožné"
@@ -303,12 +306,12 @@
     -   p.badge.open: "Stupně volnosti: 2"
     + p.hint: "Volné (v pohledu modře): body p1, p2, p3, p4, p5, p6, p7."
     - p.hint: "Volné (v pohledu modře): body p1, p2, p3, p4, p5, p6. Skicu dourčí určení polohy kteréhokoli z bodů p1, p4, p5, p6: například dvěma kótami od počátku."
-    + h2: "Výběr (2)"
     - h2: "Fillet"
     - label
     -   "Radius"
     -   input.value value="50" title="mm, or an expression"
     - p.hint: "Click the point where two lines meet. The corner gets an arc tangent to both lines with a radius dimension; the lines keep their IDs and the corner point stays where the lines cross. The features that use the outline get the arc in their profile."
+    + h2: "Výběr (2)"
     - h2: "Výběr (0)"
     +   button title="Bod leží na úsečce (i na jejím prodloužení), kružnici nebo oblouku.": "Bod na křivce"
     -   button disabled title="Bod leží na úsečce (i na jejím prodloužení), kružnici nebo oblouku.": "Bod na křivce"

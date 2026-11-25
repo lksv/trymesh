@@ -107,6 +107,9 @@
       p.hint: "Volné (v pohledu modře): body p1, p2, p3, p4; poloměr c5."
       div.buttons
         button title="Vybere volné body a kružnice s volným poloměrem": "Vybrat volné"
+      div.buttons
+        button title="Read a DXF or SVG file into this sketch as an outline of fixed curves": "Import an outline…"
+        input#outline-file type=file hidden
       h2: "Výběr (0)"
       div.buttons
         button disabled title="Dva body leží na stejném místě.": "Totožné"
@@ -186,13 +189,13 @@
   panel:
     + h2: "Trim"
     + p.hint: "Up to: the nearest curves"
-    + div.buttons
     +   button disabled title="Only the contacts with the one curve selected bound the cut": "Use the selected curve"
     +   button disabled title="The nearest curves bound the cut": "Clear"
     + label.check title="Cut every other crossing of the outline curves first, so that the profile stays valid and the regions of the features follow; on by default when a feature reads regions of the sketch"
     +   input type=checkbox checked
     +   "Cut the other crossings of the outline first"
     + p.hint: "Click the piece of a curve to remove: the part between the curves that cross it. The constraints stay with the pieces they describe, and the features that use the outline follow."
+    + div.buttons
   status: Click the piece of a curve to remove.
   view: 2 scene(s) set
   scene:

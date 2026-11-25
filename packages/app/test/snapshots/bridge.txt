@@ -124,6 +124,8 @@
           option value="hardwareHole" title="The shape of a hole for a screw, a nut or a heat-set insert of a size, from the hardware catalogs: put `shape` and `label` of the answer into a feature of the type hole (and for an insert `depth` into its extent). The heads and the nut are the largest sizes the standards allow and nothing is added to them; room for the printer is the allowance, best a parameter. The catalogs are clearanceHoles, socketHeadScrews, countersunkScrews, hexNuts and heatSetInserts; the query `catalog` shows their rows and sources.": "Hole for a piece of hardware"
           option value="mechanism" title="The links and joints of the model as resolved for the state asked about: where each link stands in the pose, the numbers and the axis of each joint, and what is in error. With `beyond`, what hangs on that joint. Asked with `after: { type: "setPose", … }` it answers for a pose that is not written.": "Mechanism"
           option value="partsList" title="What to print and what to buy: the bodies of the model as rows of parts, and the hardware of the hole features. A printed part is a body with the use `part`, a bought part one with the use `reference` (body properties); auxiliary bodies are no parts. A body and its copies made by a pattern are one row with a count while they are the same part: a mirror image is another part, and so is a copy with another material, colour, mass or name, and a body that a feature changed after the pattern (so model what every copy should have before the pattern). Hardware is counted from the labels of the hole features: one piece per hole the model has, by where the holes are (a hole through several bodies is one hole, and so are holes that continue one another on one line; a copy of a body at another place has its holes too, also one further along the same line; a hole that missed or was cut away is not counted). So the label of a hole should name the piece that goes into it, with what the catalog does not know ("M3x10 countersunk screw"), and a hole that takes no piece of its own should have none. Every copy counts, also one laid out for printing. The answer is for the model as modelled, whatever the pose.": "Parts list"
+          option value="entryCurves" title="The curves of one entry of `external` of a sketch at their places, a page at a time: of an imported outline (get_sketch lists its first curves only), of a projection, or the copies of a mirror or pattern. A spline comes with its control points (`control`: `<id>/<i>` stands at `control[i]`), which constraints and projections may name, and where it runs.": "The curves of an entry of a sketch"
+          option value="sketchRegions" title="The regions of a sketch with their whole references, as an extrusion or a revolution names them (`{ outerLoop: [...] }`), a page at a time: get_sketch prints a loop of more than twenty curves short, with the `index` to ask here. `curve` keeps the regions a curve bounds (the way from a curve of an imported outline to the region to extrude); `holes` lists the curves of the holes too.": "The regions of a sketch"
         select value="" title="Export the model in a format of the engine"
           option selected value="": "Export…"
           option value="stl" title="Bodies as triangle meshes in binary STL, for a slicer. One file with the chosen bodies, or with `perBody` a folder with a file per body (one printable part per file).": "STL"
@@ -256,6 +258,8 @@
     -     option value="hardwareHole" title="The shape of a hole for a screw, a nut or a heat-set insert of a size, from the hardware catalogs: put `shape` and `label` of the answer into a feature of the type hole (and for an insert `depth` into its extent). The heads and the nut are the largest sizes the standards allow and nothing is added to them; room for the printer is the allowance, best a parameter. The catalogs are clearanceHoles, socketHeadScrews, countersunkScrews, hexNuts and heatSetInserts; the query `catalog` shows their rows and sources.": "Hole for a piece of hardware"
     -     option value="mechanism" title="The links and joints of the model as resolved for the state asked about: where each link stands in the pose, the numbers and the axis of each joint, and what is in error. With `beyond`, what hangs on that joint. Asked with `after: { type: "setPose", … }` it answers for a pose that is not written.": "Mechanism"
     -     option value="partsList" title="What to print and what to buy: the bodies of the model as rows of parts, and the hardware of the hole features. A printed part is a body with the use `part`, a bought part one with the use `reference` (body properties); auxiliary bodies are no parts. A body and its copies made by a pattern are one row with a count while they are the same part: a mirror image is another part, and so is a copy with another material, colour, mass or name, and a body that a feature changed after the pattern (so model what every copy should have before the pattern). Hardware is counted from the labels of the hole features: one piece per hole the model has, by where the holes are (a hole through several bodies is one hole, and so are holes that continue one another on one line; a copy of a body at another place has its holes too, also one further along the same line; a hole that missed or was cut away is not counted). So the label of a hole should name the piece that goes into it, with what the catalog does not know ("M3x10 countersunk screw"), and a hole that takes no piece of its own should have none. Every copy counts, also one laid out for printing. The answer is for the model as modelled, whatever the pose.": "Parts list"
+    -     option value="entryCurves" title="The curves of one entry of `external` of a sketch at their places, a page at a time: of an imported outline (get_sketch lists its first curves only), of a projection, or the copies of a mirror or pattern. A spline comes with its control points (`control`: `<id>/<i>` stands at `control[i]`), which constraints and projections may name, and where it runs.": "The curves of an entry of a sketch"
+    -     option value="sketchRegions" title="The regions of a sketch with their whole references, as an extrusion or a revolution names them (`{ outerLoop: [...] }`), a page at a time: get_sketch prints a loop of more than twenty curves short, with the `index` to ask here. `curve` keeps the regions a curve bounds (the way from a curve of an imported outline to the region to extrude); `holes` lists the curves of the holes too.": "The regions of a sketch"
     -   select value="" title="Export the model in a format of the engine"
     -     option selected value="": "Export…"
     -     option value="stl" title="Bodies as triangle meshes in binary STL, for a slicer. One file with the chosen bodies, or with `perBody` a folder with a file per body (one printable part per file).": "STL"
@@ -407,6 +411,8 @@
     +     option value="hardwareHole" title="The shape of a hole for a screw, a nut or a heat-set insert of a size, from the hardware catalogs: put `shape` and `label` of the answer into a feature of the type hole (and for an insert `depth` into its extent). The heads and the nut are the largest sizes the standards allow and nothing is added to them; room for the printer is the allowance, best a parameter. The catalogs are clearanceHoles, socketHeadScrews, countersunkScrews, hexNuts and heatSetInserts; the query `catalog` shows their rows and sources.": "Hole for a piece of hardware"
     +     option value="mechanism" title="The links and joints of the model as resolved for the state asked about: where each link stands in the pose, the numbers and the axis of each joint, and what is in error. With `beyond`, what hangs on that joint. Asked with `after: { type: "setPose", … }` it answers for a pose that is not written.": "Mechanism"
     +     option value="partsList" title="What to print and what to buy: the bodies of the model as rows of parts, and the hardware of the hole features. A printed part is a body with the use `part`, a bought part one with the use `reference` (body properties); auxiliary bodies are no parts. A body and its copies made by a pattern are one row with a count while they are the same part: a mirror image is another part, and so is a copy with another material, colour, mass or name, and a body that a feature changed after the pattern (so model what every copy should have before the pattern). Hardware is counted from the labels of the hole features: one piece per hole the model has, by where the holes are (a hole through several bodies is one hole, and so are holes that continue one another on one line; a copy of a body at another place has its holes too, also one further along the same line; a hole that missed or was cut away is not counted). So the label of a hole should name the piece that goes into it, with what the catalog does not know ("M3x10 countersunk screw"), and a hole that takes no piece of its own should have none. Every copy counts, also one laid out for printing. The answer is for the model as modelled, whatever the pose.": "Parts list"
+    +     option value="entryCurves" title="The curves of one entry of `external` of a sketch at their places, a page at a time: of an imported outline (get_sketch lists its first curves only), of a projection, or the copies of a mirror or pattern. A spline comes with its control points (`control`: `<id>/<i>` stands at `control[i]`), which constraints and projections may name, and where it runs.": "The curves of an entry of a sketch"
+    +     option value="sketchRegions" title="The regions of a sketch with their whole references, as an extrusion or a revolution names them (`{ outerLoop: [...] }`), a page at a time: get_sketch prints a loop of more than twenty curves short, with the `index` to ask here. `curve` keeps the regions a curve bounds (the way from a curve of an imported outline to the region to extrude); `holes` lists the curves of the holes too.": "The regions of a sketch"
     +   select value="" title="Export the model in a format of the engine"
     +     option selected value="": "Export…"
     +     option value="stl" title="Bodies as triangle meshes in binary STL, for a slicer. One file with the chosen bodies, or with `perBody` a folder with a file per body (one printable part per file).": "STL"
@@ -540,6 +546,8 @@
     -     option value="hardwareHole" title="The shape of a hole for a screw, a nut or a heat-set insert of a size, from the hardware catalogs: put `shape` and `label` of the answer into a feature of the type hole (and for an insert `depth` into its extent). The heads and the nut are the largest sizes the standards allow and nothing is added to them; room for the printer is the allowance, best a parameter. The catalogs are clearanceHoles, socketHeadScrews, countersunkScrews, hexNuts and heatSetInserts; the query `catalog` shows their rows and sources.": "Hole for a piece of hardware"
     -     option value="mechanism" title="The links and joints of the model as resolved for the state asked about: where each link stands in the pose, the numbers and the axis of each joint, and what is in error. With `beyond`, what hangs on that joint. Asked with `after: { type: "setPose", … }` it answers for a pose that is not written.": "Mechanism"
     -     option value="partsList" title="What to print and what to buy: the bodies of the model as rows of parts, and the hardware of the hole features. A printed part is a body with the use `part`, a bought part one with the use `reference` (body properties); auxiliary bodies are no parts. A body and its copies made by a pattern are one row with a count while they are the same part: a mirror image is another part, and so is a copy with another material, colour, mass or name, and a body that a feature changed after the pattern (so model what every copy should have before the pattern). Hardware is counted from the labels of the hole features: one piece per hole the model has, by where the holes are (a hole through several bodies is one hole, and so are holes that continue one another on one line; a copy of a body at another place has its holes too, also one further along the same line; a hole that missed or was cut away is not counted). So the label of a hole should name the piece that goes into it, with what the catalog does not know ("M3x10 countersunk screw"), and a hole that takes no piece of its own should have none. Every copy counts, also one laid out for printing. The answer is for the model as modelled, whatever the pose.": "Parts list"
+    -     option value="entryCurves" title="The curves of one entry of `external` of a sketch at their places, a page at a time: of an imported outline (get_sketch lists its first curves only), of a projection, or the copies of a mirror or pattern. A spline comes with its control points (`control`: `<id>/<i>` stands at `control[i]`), which constraints and projections may name, and where it runs.": "The curves of an entry of a sketch"
+    -     option value="sketchRegions" title="The regions of a sketch with their whole references, as an extrusion or a revolution names them (`{ outerLoop: [...] }`), a page at a time: get_sketch prints a loop of more than twenty curves short, with the `index` to ask here. `curve` keeps the regions a curve bounds (the way from a curve of an imported outline to the region to extrude); `holes` lists the curves of the holes too.": "The regions of a sketch"
     -   select value="" title="Export the model in a format of the engine"
     -     option selected value="": "Export…"
     -     option value="stl" title="Bodies as triangle meshes in binary STL, for a slicer. One file with the chosen bodies, or with `perBody` a folder with a file per body (one printable part per file).": "STL"
@@ -707,6 +715,8 @@
     +     option value="hardwareHole" title="The shape of a hole for a screw, a nut or a heat-set insert of a size, from the hardware catalogs: put `shape` and `label` of the answer into a feature of the type hole (and for an insert `depth` into its extent). The heads and the nut are the largest sizes the standards allow and nothing is added to them; room for the printer is the allowance, best a parameter. The catalogs are clearanceHoles, socketHeadScrews, countersunkScrews, hexNuts and heatSetInserts; the query `catalog` shows their rows and sources.": "Hole for a piece of hardware"
     +     option value="mechanism" title="The links and joints of the model as resolved for the state asked about: where each link stands in the pose, the numbers and the axis of each joint, and what is in error. With `beyond`, what hangs on that joint. Asked with `after: { type: "setPose", … }` it answers for a pose that is not written.": "Mechanism"
     +     option value="partsList" title="What to print and what to buy: the bodies of the model as rows of parts, and the hardware of the hole features. A printed part is a body with the use `part`, a bought part one with the use `reference` (body properties); auxiliary bodies are no parts. A body and its copies made by a pattern are one row with a count while they are the same part: a mirror image is another part, and so is a copy with another material, colour, mass or name, and a body that a feature changed after the pattern (so model what every copy should have before the pattern). Hardware is counted from the labels of the hole features: one piece per hole the model has, by where the holes are (a hole through several bodies is one hole, and so are holes that continue one another on one line; a copy of a body at another place has its holes too, also one further along the same line; a hole that missed or was cut away is not counted). So the label of a hole should name the piece that goes into it, with what the catalog does not know ("M3x10 countersunk screw"), and a hole that takes no piece of its own should have none. Every copy counts, also one laid out for printing. The answer is for the model as modelled, whatever the pose.": "Parts list"
+    +     option value="entryCurves" title="The curves of one entry of `external` of a sketch at their places, a page at a time: of an imported outline (get_sketch lists its first curves only), of a projection, or the copies of a mirror or pattern. A spline comes with its control points (`control`: `<id>/<i>` stands at `control[i]`), which constraints and projections may name, and where it runs.": "The curves of an entry of a sketch"
+    +     option value="sketchRegions" title="The regions of a sketch with their whole references, as an extrusion or a revolution names them (`{ outerLoop: [...] }`), a page at a time: get_sketch prints a loop of more than twenty curves short, with the `index` to ask here. `curve` keeps the regions a curve bounds (the way from a curve of an imported outline to the region to extrude); `holes` lists the curves of the holes too.": "The regions of a sketch"
     +   select value="" title="Export the model in a format of the engine"
     +     option selected value="": "Export…"
     +     option value="stl" title="Bodies as triangle meshes in binary STL, for a slicer. One file with the chosen bodies, or with `perBody` a folder with a file per body (one printable part per file).": "STL"
@@ -862,7 +872,65 @@
   status: AI: undo
   view: 2 scene(s) set
 
-=== 14. the connection is switched off
+=== 14. the AI adds a sketch for an outline
+  engine: execute({"type":"addFeature","feature":{"id":"so","name":"Outline","suppressed":false,"type":"sketch","plane":{"kind":"base","plane":"XY"},"points":{},"radii":{},"curves":{},"constraints":{},"external":{},"solved":{"inputs":"","external":{}}}}) -> ok
+  features: so
+  feature so:
+      {"id":"so","name":"Outline","suppressed":false,"type":"sketch","plane":{"kind":"base","plane":"XY"}}
+  toolbar:
+    +   button title="Ctrl+Z": "↶ Zpět"
+    +   button disabled title="Ctrl+Shift+Z": "↷ Znovu"
+    -   button disabled title="Ctrl+Z": "↶ Zpět"
+    -   button title="Ctrl+Shift+Z": "↷ Znovu"
+  timeline:
+    + div.row.ok
+    +   span.dot: "●"
+    +   span.name: "Outline"
+    +   button.icon title="Hide or show": "👁"
+    +   button.icon disabled title="Posunout dřív": "↑"
+    +   button.icon disabled title="Posunout později": "↓"
+    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    - p.hint: "Zatím prázdná. Nové prvky se objeví zde."
+  status: AI: execute
+  view: 1 scene(s) set
+
+=== 15. the AI looks at an outline file: nothing changes, and the status line says nothing new
+  view: 0 scene(s) set
+
+=== 16. the AI looks at a file that cannot be read: a question refused, the status line says nothing new
+  view: 0 scene(s) set
+
+=== 17. the AI places the outline in a sketch: the status line names the entry and the sketch
+  engine: execute({"type":"addExternal","sketch":"so","id":"sq","ref":{"type":"outline","curves":{"l1":{"type":"line","a":[0,0],"b":[10,0]},"l2":{"type":"line","a":[10,0],"b":[10,-10]},"l3":{"type":"line","a":[10,-10],"b":[0,-10]},"l4":{"type":"line","a":[0,-10],"b":[0,0]}},"readWith":{"format":"svg"},"name":"square"}}) -> ok
+  feature so:
+    + external sq: {"type":"outline","name":"square","readWith":{"format":"svg"},"curves":{"l1":{"type":"line","a":[0,0],"b":[10,0]},"l2":{"type":"line","a":[10,0],"b":[10,-10]},"l3":{"type":"line","a":[10,-10],"b":[0,-10]},"l4":{"type":"line","a":[0,-10],"b":[0,0]}},"x":0,"y":0,"turn":0,"anchor":"origin","regions":true}
+  status: AI: imported the outline sq into so
+  view: 1 scene(s) set
+  scene:
+    + line #8b9bb4 width 1: 24 numbers, sum 418.382
+    + line #8b9bb4 width 1: 24 numbers, sum 278.922
+    + line #8b9bb4 width 1: 24 numbers, sum 139.461
+    + line #5b7aa8 width 1.5: 24 numbers, sum 0
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 19.923
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 19.923
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 19.923
+    - line #8b9bb4 width 1: 24 numbers, sum 509.223
+    - line #8b9bb4 width 1: 24 numbers, sum 339.482
+    - line #8b9bb4 width 1: 24 numbers, sum 169.741
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 24.249
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 24.249
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 24.249
+
+=== 18. a second placement under the same ID is refused inside the answer: the status line says so as an error
+  engine: execute({"type":"addExternal","sketch":"so","id":"sq","ref":{"type":"outline","curves":{"l1":{"type":"line","a":[0,0],"b":[10,0]},"l2":{"type":"line","a":[10,0],"b":[10,-10]},"l3":{"type":"line","a":[10,-10],"b":[0,-10]},"l4":{"type":"line","a":[0,-10],"b":[0,0]}},"readWith":{"format":"svg"},"name":"square"}}) -> invalidCommand: addExternal.id: ID "sq" už v dokumentu je
+  status: AI: the outline was not imported: invalidCommand: addExternal.id: ID "sq" už v dokumentu je  [error]
+  view: 0 scene(s) set
+
+=== 19. a placement of a file that cannot be read fails: the status line says it in words, as an error
+  status: AI: the outline was not imported: unreadable: svg: the tag <svg that starts at character 0 is not closed: the file is cut short  [error]
+  view: 0 scene(s) set
+
+=== 20. the connection is switched off
   toolbar:
     +   button title="Propojit s MCP serverem (packages/mcp): AI pak čte a mění dokument otevřený v aplikaci": "AI"
     -   button.active title="Propojit s MCP serverem (packages/mcp): AI pak čte a mění dokument otevřený v aplikaci": "AI: připojeno"

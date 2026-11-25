@@ -9,7 +9,7 @@ import { jointPicksFace, takeMechanismSelection, type MechanismPanel } from '../
 import { CONTROLS, type Form } from '../src/queries/controls';
 import { FEATURE_UI } from '../src/features/index';
 import type { DraftMode } from '../src/features/draft';
-import type { Command, PatternFeature, SketchFeature } from '@trymesh/engine';
+import type { Command, PatternFeature, SketchFeature, SketchOutline } from '@trymesh/engine';
 import type { PanelHost } from '../src/host';
 import { emptyDocument, emptySketch, entryInput } from '@trymesh/engine';
 import { SKETCH_TOOL_UI, type SketchPlaceTool } from '../src/sketch-tools';
@@ -310,26 +310,27 @@ describe('mirror and pattern in the app: the review of the implementation of 6c 
   });
 
   // M4: a copy beyond the 100 a picker lists was labelled missing, and a direction offered a false repair
+  // (D72: a picker lists the first 100 of the kind it asks for, so the count is 160 lines of copies)
   it('a picker names a copy it does not list as a copy, says how many it left out, and offers no repair', () => {
     const s = emptySketch('s', 's', { kind: 'base', plane: 'XY' });
-    const feature: SketchFeature = { ...s, points: { a: { x: 0, y: 0 }, b: { x: 1, y: 0 } }, curves: { l: { type: 'line', a: 'a', b: 'b' } }, external: { r: { type: 'pattern', sources: ['l'], transform: { type: 'linear', direction: 'origin/y', count: 60, span: { type: 'spacing', spacing: 3 } } } } };
-    expect(entryEntities(feature).some((e) => e.id === 'r/40/l')).toBe(false);
-    expect(unlistedLabel(feature, 'r/40/l')).toBe('r/40/l (copy)');
-    expect(unlistedLabel(feature, 'r/70/l')).toBe('r/70/l (missing)');
+    const feature: SketchFeature = { ...s, points: { a: { x: 0, y: 0 }, b: { x: 1, y: 0 } }, curves: { l: { type: 'line', a: 'a', b: 'b' } }, external: { r: { type: 'pattern', sources: ['l'], transform: { type: 'linear', direction: 'origin/y', count: 160, span: { type: 'spacing', spacing: 3 } } } } };
+    expect(entryEntities(feature).some((e) => e.id === 'r/140/l')).toBe(false);
+    expect(unlistedLabel(feature, 'r/140/l')).toBe('r/140/l (copy)');
+    expect(unlistedLabel(feature, 'r/200/l')).toBe('r/200/l (missing)');
     const host = { feature: (id: string) => (id === 's' ? feature : undefined), nameOf: (id: string) => id } as unknown as PanelHost;
     const texts = (rows: HTMLElement[]): string[] => rows.flatMap((row) => Array.from(row.querySelectorAll('option')).map((o) => `${o.textContent}${o.disabled ? ' [disabled]' : ''}`));
-    const lineRows = texts(axisRows(host, { kind: 'sketchLine', sketch: 's', line: 'r/40/l' }, ['s'], () => undefined, ''));
-    expect(lineRows).toContain('r/40/l (copy)');
-    expect(lineRows).toContain('… 25 more copies of r, not listed [disabled]');
-    const direction = axisRows(host, { kind: 'sketchPoint', sketch: 's', point: 'r/40/a' }, ['s'], () => undefined, '', FIRST_DIRECTION);
+    const lineRows = texts(axisRows(host, { kind: 'sketchLine', sketch: 's', line: 'r/140/l' }, ['s'], () => undefined, ''));
+    expect(lineRows).toContain('r/140/l (copy)');
+    expect(lineRows).toContain('… 59 more copies of r, not listed [disabled]');
+    const direction = axisRows(host, { kind: 'sketchPoint', sketch: 's', point: 'r/140/a' }, ['s'], () => undefined, '', FIRST_DIRECTION);
     expect(direction.some((row) => row.textContent?.includes('is no longer in the sketch'))).toBe(false);
-    const gone = axisRows(host, { kind: 'sketchPoint', sketch: 's', point: 'r/70/a' }, ['s'], () => undefined, '', FIRST_DIRECTION);
+    const gone = axisRows(host, { kind: 'sketchPoint', sketch: 's', point: 'r/200/a' }, ['s'], () => undefined, '', FIRST_DIRECTION);
     expect(gone.some((row) => row.textContent?.includes('is no longer in the sketch'))).toBe(true);
     // round 2, finding 4: the line of an axis argument of a query did not say how many it left out
     const form = { host, state: { document: { features: [feature] }, evaluation: { features: { s: {} }, bodies: {} } }, armed: undefined, arm: () => undefined, set: () => undefined, get: () => undefined, title: (_spec: unknown, name: string) => name } as unknown as Form;
-    const queryLines = texts(CONTROLS.axis({ kind: 'axis' }, { kind: 'sketchLine', sketch: 's', line: 'r/40/l' }, ['about'], form, {}));
-    expect(queryLines).toContain('r/40/l (copy)');
-    expect(queryLines).toContain('… 25 more copies of r, not listed [disabled]');
+    const queryLines = texts(CONTROLS.axis({ kind: 'axis' }, { kind: 'sketchLine', sketch: 's', line: 'r/140/l' }, ['about'], form, {}));
+    expect(queryLines).toContain('r/140/l (copy)');
+    expect(queryLines).toContain('… 59 more copies of r, not listed [disabled]');
   });
 
   // M6: a full turn given as an expression was sent as an angle, the last copy on the source
@@ -383,5 +384,71 @@ describe('mirror and pattern in the app: the review of the implementation of 6c 
     h.type(h.field('Count'), '201', true);
     expect(status(h)).toMatch(/count/);
     expect((sketchOf(h).external.p as { transform: { count: number } }).transform.count).toBe(3);
+  });
+});
+
+describe('the import of an outline in the app: the review of the implementation of 6f (D72)', () => {
+  const status = (h: Harness): string => h.document.getElementById('status')?.textContent ?? '';
+  const panel = (h: Harness): string => h.document.getElementById('panel')?.textContent ?? '';
+  const sketchOf = (h: Harness): SketchFeature => h.engine.getState().document.features.find((f) => f.id === 's') as SketchFeature;
+  const until = async (condition: () => boolean, what: string): Promise<void> => {
+    for (let i = 0; i < 200 && !condition(); i++) await new Promise((done) => setTimeout(done, 5));
+    if (!condition()) throw new Error(`waited in vain for ${what}`);
+  };
+  const choose = async (h: Harness, id: string, name: string, text: string): Promise<void> => {
+    const input = h.document.getElementById(id) as HTMLInputElement;
+    const FileOf = (h.document.defaultView as unknown as { File: typeof File }).File;
+    Object.defineProperty(input, 'files', { value: [new FileOf([text], name)], configurable: true });
+    const before = panel(h);
+    h.type(input, '', true);
+    await until(() => panel(h) !== before, 'the file to be read');
+  };
+  const sketch = async (): Promise<Harness> => {
+    const h = (harness = await startApp());
+    h.engine.execute({ type: 'addFeature', feature: emptySketch('s', 'Skica 1', { kind: 'base', plane: 'XY' }) } as Command);
+    h.row('Skica 1').dispatchEvent(new (h.document.defaultView as unknown as typeof globalThis).MouseEvent('dblclick'));
+    return h;
+  };
+  const svg = (body: string): string => `<svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="100mm" viewBox="0 0 100 100">${body}</svg>`;
+
+  // M6: the checkbox read only the curves that go, so a control point of a spline with fewer points
+  // and an arc read as a circle were not offered and Replace was refused by the engine
+  it('M6: Replace file… offers the constraints on a control point that goes and on an entity that changes its kind', async () => {
+    const h = await sketch();
+    await choose(h, 'outline-file', 'part.svg', svg('<path d="M0 0 C0 10 10 10 10 0 S20 -10 20 0"/><path d="M50 0 A5 5 0 0 1 60 0"/>'));
+    h.press('panel', 'Place');
+    expect(Object.keys((sketchOf(h).external.part as SketchOutline).curves)).toEqual(['s1', 's2', 'a1']);
+    h.engine.execute({ type: 'batch', commands: [{ type: 'addPoint', sketch: 's', id: 'p', x: 0, y: 0 }, { type: 'addPoint', sketch: 's', id: 'q', x: 1, y: 1 }, { type: 'addConstraint', sketch: 's', id: 'k1', constraint: { type: 'coincident', a: 'p', b: 'part/s2/3' } }, { type: 'addConstraint', sketch: 's', id: 'k2', constraint: { type: 'pointOnCurve', point: 'q', curve: 'part/a1' } }] } as Command);
+    // the revised file: the second spline is a quadratic of three points, and the arc nearly a whole
+    // turn, its gap under the weld, read as a circle that keeps the ID `a1`
+    await choose(h, 'outline-file-part', 'part.svg', svg('<path d="M0 0 C0 10 10 10 10 0 Q15 -10 20 0"/><path d="M50 0 A5 5 0 1 1 50.001 0"/>'));
+    expect(panel(h)).toContain('1 circle');
+    expect(panel(h)).toContain('Remove the constraints that hold what goes (k1, k2)');
+  });
+
+  // M7: the weld field showed 0.01 by a literal and kept a value it did not take
+  it('M7: a weld out of its range is said, and the field shows the weld the file is read with', async () => {
+    const h = await sketch();
+    await choose(h, 'outline-file', 'sq.svg', svg('<rect width="10" height="10"/>'));
+    const weld = Array.from(h.document.querySelectorAll<HTMLInputElement>('#panel input.value')).find((input) => input.title.startsWith('mm: an open end'));
+    if (!weld) throw new Error('no weld field');
+    expect(weld.value).toBe('0.01');
+    h.type(weld, '5', true);
+    expect(status(h)).toContain('The weld is a number of 0 to 1 mm');
+    const after = Array.from(h.document.querySelectorAll<HTMLInputElement>('#panel input.value')).find((input) => input.title.startsWith('mm: an open end'));
+    expect(after?.value).toBe('0.01');
+  });
+
+  // the picker limit: the centres of the circles and arcs of an outline come before its other points
+  it('a point picker over an outline of many lines lists its circle and arc centres first', () => {
+    const s = emptySketch('s', 's', { kind: 'base', plane: 'XY' });
+    const curves: Record<string, unknown> = {};
+    for (let i = 1; i <= 150; i++) curves[`l${i}`] = { type: 'line', a: [i * 3, 0], b: [i * 3 + 1, 0] };
+    curves.a1 = { type: 'arc', center: [0, 50], start: [5, 50], end: [0, 55] };
+    for (let i = 1; i <= 3; i++) curves[`c${i}`] = { type: 'circle', center: [i * 10, 20], radius: 1 };
+    const feature = { ...s, external: { o: { type: 'outline', curves, x: 0, y: 0, turn: 0, anchor: 'origin', regions: true } } } as unknown as SketchFeature;
+    const points = entryEntities(feature, (kind) => kind === 'point').map((entity) => entity.id);
+    expect(points.slice(0, 4)).toEqual(['o/a1/center', 'o/c1/center', 'o/c2/center', 'o/c3/center']);
+    expect(points).toHaveLength(100);
   });
 });

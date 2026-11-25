@@ -17,10 +17,12 @@ import { measure } from './measure';
 import { print } from './print';
 import { section } from './section';
 import { constraintExplanation, sketchContacts, sketchDiagnosis } from './sketch';
+import { entryCurves } from './entry-curves';
+import { sketchRegions } from './sketch-regions';
 import { sketchSources } from './sketch-sources';
 import { type AnyQuery, type QueryCatalog, QueryFailure } from './spec';
 
-export const QUERIES: QueryCatalog = { interference, sketchDiagnosis, constraintExplanation, sketchContacts, sketchSources, body, catalog, measure, section, gap, mass, print, hardwareHole, mechanism, partsList };
+export const QUERIES: QueryCatalog = { interference, sketchDiagnosis, constraintExplanation, sketchContacts, sketchSources, body, catalog, measure, section, gap, mass, print, hardwareHole, mechanism, partsList, entryCurves, sketchRegions };
 
 const refused = (code: 'invalidArguments' | 'notAvailable' | 'failed', message: string, arg?: ArgPath): QueryOutcome<never> => ({ ok: false, error: { code, message, ...(arg ? { arg } : {}) } });
 

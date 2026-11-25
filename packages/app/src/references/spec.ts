@@ -49,4 +49,7 @@ export interface ReferenceUi<R> {
   form?(input: Input<R>): EntryControl[];
   flag?: { label: string; title: string; get(ref: R): boolean | undefined; set(ref: R, on: boolean): R };
   inModel?: boolean;
+  // `file` (D72): the button of a row that reads a revised file into the entry, through the draft of
+  // the import of an outline.
+  file?: { label: string; title: string };
 }

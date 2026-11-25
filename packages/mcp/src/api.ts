@@ -14,6 +14,9 @@ import {
   EXPORT_FORMATS,
   type AnyExportFormat,
   IMPORT_FORMATS,
+  OUTLINE_FORMATS,
+  OUTLINE_LIMITS,
+  type AnyOutlineFormat,
   type AnyImportFormat,
   MESH_LIMITS,
   GENERATORS,
@@ -95,7 +98,7 @@ const CONVENTIONS = [
     'A body is cut into two by the feature type split: `{ type: "split", body, plane, side }`, `plane` a plane reference as for a sketch. The body keeps its ID and the part on the other side than `side`; the part on the side `side` (`forward`: where the normal of the plane points) is a new body with the ID of the split, taking after the body (colour, material, use, density and mass) and in no link until one lists it. Both parts get the cut face `{ feature: <the split>, role: "splitFace" }`, a plane a sketch stands on, where the plane passes through material (a body of pieces on both sides of it is only taken apart). Later features that name the body work on the part that kept the ID, without a word: a cut meant for both parts lists both bodies, so put a split after what both parts should have.',
   'Stěny a hrany se jmenují podle svého původu: stěna `{ feature, role: side, curve }` vznikla z křivky skici (for a generated profile `curve` is the side name from the generator catalog, for a gear `teeth`; such a face is not planar), `startCap` je víko na začátku rozsahu (při nulovém `start` v rovině skici), `endCap` protější víko. A face of a copy made by a pattern has the same name with `copy: [{ pattern, index }]` added (the pattern and the number of the copy; a pattern of a pattern appends another entry); faces of the original have no `copy`. Hrana je dvojice jmen stěn. Jména platná pro těleso vrací get_body.',
   'Mirror and pattern in a sketch (D68; section Entries of a sketch, kind `pattern`): constrain the sources, not the copies; a copy is never an operand of a constraint of its sketch, a point of a curve, or what a sketch tool cuts or snaps to. A count follows a parameter (`count: "vents"`); a feature that should follow the count names a region the copies lie in (they are its holes), while a feature that names a region of a copy names that copy, and a copy above the count is a broken reference of that feature (noProfile) until the count comes back. A projection or a copy is no source. The copies of a mirrored outline close with the source only where their ends meet within 1e-6 mm: hold the end of the source on the axis by a constraint (`pointOnCurve` with the axis); get_sketch says which ends stayed open.',
-  'Projected geometry (section Entries of a sketch, the reference kinds `edge` and `sketch`): an entry of a reference kind is fixed for the solver and follows its source at every recompute; a curve is the entry itself and its points are `<id>/a`, `<id>/b`, `<id>/center`, `<id>/start`, `<id>/end`; when the source is gone it keeps its last place (brokenProjection; for a projection from a sketch the message says why) and constraints on it keep acting. Constrain own geometry to it with at least one own operand. A projection from a sketch with `regions: true` bounds regions as an own curve does, and the ends of such curves join at their place, with each other and with an own end there (get_sketch says which ends stayed open). Such a curve is never cut by the sketch tools: an outline to be trimmed is drawn as own curves over the projections, which the sketch tool projectSketch with `as: "own"` does in one batch, taking over an entry named in `entities` that projects the curve with the flag already (its flag switched off, and the features that read the regions along it or its side face renamed to the own curve in the same batch, `ids.patched`; a run over the whole sketch skips such an entry) (by hand: an own point coincident with the projected end at each corner, an own line between two of them, an own arc with a centre of its own, a construction line from that centre to the arc\'s start and the projected centre on that line by pointOnCurve; not equalRadius, which has a second solution). What a sketch can project, and where each entity would land, says the query sketchSources: `{ query: "sketchSources", args: { sketch, from } }`; one entity is `addExternal { sketch, id, ref: { type: "sketch", sketch: <earlier sketch>, entity, kind } }`.',
+  'Projected geometry (section Entries of a sketch, the reference kinds `edge` and `sketch`): an entry of a reference kind is fixed for the solver and follows its source at every recompute; a curve is the entry itself and its points are `<id>/a`, `<id>/b`, `<id>/center`, `<id>/start`, `<id>/end`; when the source is gone it keeps its last place (brokenProjection; for a projection from a sketch the message says why) and constraints on it keep acting. Constrain own geometry to it with at least one own operand. A projection from a sketch with `regions: true` bounds regions as an own curve does, and the ends of such curves join at their place, with each other and with an own end there (get_sketch says which ends stayed open). Such a curve is never cut by the sketch tools: an outline to be trimmed is drawn as own curves over the projections, which the sketch tool projectSketch with `as: "own"` does in one batch, taking over an entry named in `entities` that projects the curve with the flag already (its flag switched off, and the features that read the regions along it or its side face renamed to the own curve in the same batch, `ids.patched`; a run over the whole sketch skips such an entry) (by hand: an own point coincident with the projected end at each corner, an own line between two of them, an own arc with a centre of its own, a construction line from that centre to the arc\'s start and the projected centre on that line by pointOnCurve; not equalRadius, which has a second solution). What a sketch can project, and where each entity would land, says the query sketchSources: `{ query: "sketchSources", args: { sketch, from } }`; one entity is `addExternal { sketch, id, ref: { type: "sketch", sketch: <earlier sketch>, entity, kind } }`. An imported outline (kind `outline`, the tool import_outline, D72) is placed by its fields `x`, `y`, `turn` and `anchor`; its entities are `<entry>/<local>` (`board/l1`, `board/l1/a`, `board/c1/center`), the query entryCurves lists them, and a revised file keeps the IDs by kind and order.',
   'Parameters: the document has a table of named parameters (command setParameter, a name and an expression). A numeric field of a feature and the value of a driving dimension accept an expression as a string instead of a number, for example `{ extent: { distance: "thickness * 2" } }` or `value: "module * Zs"`. The section Numeric fields lists those fields; elsewhere a string in place of a number is an error. The engine evaluates the expression, fills the number into the field and stores the expression in `expressions` of the feature under the field address. After a parameter changes the model is recomputed.',
   'An expression in a feature field must evaluate right away (the parameters it uses must exist), otherwise the command is invalid. A parameter itself may refer to a parameter that does not exist yet; get_parameters returns its state. A number sent to a field with an expression removes the expression; fields updateFeature does not mention keep theirs. The command setField (`{ feature, path, value }`) changes a single field.',
   'Angles are in radians both as a number and in an expression; degrees are written with the function `deg()`: an angle of 30° is `"deg(30)"`. Angle fields have ranges in radians, so a value entered in degrees by mistake is an invalid command.',
@@ -226,6 +229,7 @@ export function apiDescription(): {
   catalogs: ReturnType<typeof dataCatalogs>;
   exports: ReturnType<typeof exportFormats>;
   imports: ReturnType<typeof importFormats>;
+  outlines: ReturnType<typeof outlineFormats>;
   sections: ReturnType<typeof documentSections>;
   entries: EntryKindDescription[];
   types: string;
@@ -243,6 +247,7 @@ export function apiDescription(): {
     catalogs: dataCatalogs(),
     exports: exportFormats(),
     imports: importFormats(),
+    outlines: outlineFormats(),
     sections: documentSections(),
     entries: entryKinds(),
     types: engineTypes(),
@@ -453,9 +458,21 @@ export function importFormats(): { format: string; title: string; summary: strin
   }));
 }
 
+// The outline formats of the engine's catalog (the tool import_outline reads them, D72) with their
+// extensions and options.
+export function outlineFormats(): { format: string; title: string; summary: string; extensions: string[]; options: { name: string; description: string }[] }[] {
+  return Object.entries(OUTLINE_FORMATS as Record<string, AnyOutlineFormat>).map(([format, spec]) => ({
+    format,
+    title: spec.title,
+    summary: spec.summary,
+    extensions: [...spec.extensions],
+    options: Object.entries(spec.options).map(([name, option]) => ({ name, description: `${argumentText(option)}${option.summary ? `. ${option.summary}` : ''}` })),
+  }));
+}
+
 // Tentýž popis jako souvislý text: tak ho dostane AI.
 export function apiText(): string {
-  const { conventions, features, generators, constraints, expressions, numericFields: fields, sketchTools, queries, operations, catalogs, exports, imports, sections, entries, types } = apiDescription();
+  const { conventions, features, generators, constraints, expressions, numericFields: fields, sketchTools, queries, operations, catalogs, exports, imports, outlines, sections, entries, types } = apiDescription();
   const queryText = (entry: QueryDescription): string =>
     [`- ${entry.query} (${entry.title}): ${entry.summary}`, ...(entry.args.length ? ['  args:', ...entry.args.map((arg) => `  - ${arg.name}${arg.required ? '' : ' (optional)'}: ${arg.description}`)] : ['  args: none']), `  returns: ${entry.returns}`].join('\n');
   const sketchToolText = (entry: SketchToolDescription): string =>
@@ -556,6 +573,10 @@ export function apiText(): string {
     '# Import formats',
     `The tool import_mesh \`{ path, format?, options?, id?, name? }\` reads a file of one of these formats into a stored mesh (it needs a disk, so it is a tool of the server); without \`format\` the extension of the path decides. The file has to hold a closed solid; the import leaves out the walls between solids stacked in the file and turns over shells written inside out, and refuses anything else that is not closed. At most ${MESH_LIMITS.triangles} triangles.`,
     ...imports.map((entry) => [`- ${entry.format} (${entry.title}, .${entry.extensions.join(', .')}): ${entry.summary}`, ...(entry.options.length ? ['  options:', ...entry.options.map((option) => `  - ${option.name}: ${option.description}`)] : ['  options: none'])].join('\n')),
+    '',
+    '# Outline formats',
+    `The tool import_outline \`{ path, format?, options?, sketch?, id?, replace?, remove?, name?, x?, y?, turn?, anchor?, regions? }\` reads a 2D outline of one of these formats (it needs a disk, so it is a tool of the server); without \`format\` the extension of the path decides. Without \`sketch\` it answers with the report only; with it, the curves become an entry \`outline\` of the sketch (section Entries of a sketch). The weld puts an open end on an end of another curve within \`weld\` mm, so a file written with few digits closes; no end moves further, and ends that meet are left alone. At most ${OUTLINE_LIMITS.curves} curves and ${OUTLINE_LIMITS.control} control points of splines, ${OUTLINE_LIMITS.bytes} bytes.`,
+    ...outlines.map((entry) => [`- ${entry.format} (${entry.title}, .${entry.extensions.join(', .')}): ${entry.summary}`, ...(entry.options.length ? ['  options:', ...entry.options.map((option) => `  - ${option.name}: ${option.description}`)] : ['  options: none'])].join('\n')),
     '',
     '# Typy (TypeScript, ze zdroje enginu)',
     'Příkaz je hodnota typu Command; dokument typu Document.',

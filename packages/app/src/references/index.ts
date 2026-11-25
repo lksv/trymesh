@@ -3,33 +3,37 @@
 // it has its row; and what the pickers, the view and the panel read of an entry: its entities.
 import { type EntityKind, type ExternalRef, type Id, type SketchFeature, entityIndex, kindOf } from '@trymesh/engine';
 import { edge } from './edge';
+import { outline } from './outline';
 import { pattern } from './pattern';
 import { projection } from './projection';
 import type { ReferenceUi } from './spec';
 
 export type { EntryControl, ReferenceUi } from './spec';
 
-export const REFERENCE_UI: { readonly [T in ExternalRef['type']]: ReferenceUi<Extract<ExternalRef, { type: T }>> } = { edge, pattern, sketch: projection };
+export const REFERENCE_UI: { readonly [T in ExternalRef['type']]: ReferenceUi<Extract<ExternalRef, { type: T }>> } = { edge, pattern, sketch: projection, outline };
 
 // The row of an entry (one cast, as the registries of the engine have).
 export const referenceUi = (ref: ExternalRef): ReferenceUi<ExternalRef> => REFERENCE_UI[ref.type] as ReferenceUi<ExternalRef>;
 
-// The most entities of one derived entry a picker lists (D68): the rest are not offered (a known
-// limit), but a value that names one is shown as what it is (`unlistedLabel`), and the picker says
-// how many it left out (`omittedNotes`).
+// The most entities of one entry a picker lists (D68; for every entry since D72, an outline of 2000
+// curves among them): the rest are not offered (a known limit), but a value that names one is shown
+// as what it is (`unlistedLabel`), and the picker says how many it left out (`omittedNotes`).
 export const PICKER_LIMIT = 100;
 
-// Every entity of every entry, in the order of `external` and within an entry in the order of its
-// kind, with the entry it belongs to and the word of its kind for the pickers (`tag`); of a derived
-// entry (a mirror or pattern) at most the first `PICKER_LIMIT`. All read the index of the engine,
-// built once per sketch.
-export function entryEntities(sketch: SketchFeature): { id: Id; kind: EntityKind; entry: Id; tag: string }[] {
+// Every entity of every entry of the kinds a picker asks for (all without `kinds`), in the order of
+// `external` and within an entry in the order of its kind, with the entry it belongs to and the word
+// of its kind for the pickers (`tag`); of each entry at most the first `PICKER_LIMIT` of those kinds
+// (the kind first, then the limit: 34 lines of an outline do not hide its circles, D72). Of an
+// imported outline the centres of its circles and arcs come before its other points, so that a
+// point picker over a board of many lines still offers its mounting holes (the review of 6f); the
+// limit stays for the rest. All read the index of the engine, built once per sketch.
+export function entryEntities(sketch: SketchFeature, kinds?: (kind: EntityKind) => boolean): { id: Id; kind: EntityKind; entry: Id; tag: string }[] {
   const index = entityIndex(sketch);
   return [...index.byEntry].flatMap(([entry, ids]) => {
-    const ref = sketch.external[entry];
-    const tag = referenceUi(ref).tag;
-    const listed = kindOf(ref).source === 'derived' ? ids.slice(0, PICKER_LIMIT) : ids;
-    return listed.map((id) => ({ id, kind: (index.entities.get(id) as { kind: EntityKind }).kind, entry, tag }));
+    const tag = referenceUi(sketch.external[entry]).tag;
+    const asked = ids.map((id) => ({ id, kind: (index.entities.get(id) as { kind: EntityKind }).kind, entry, tag })).filter((entity) => !kinds || kinds(entity.kind));
+    const centresFirst = sketch.external[entry].type === 'outline' ? [...asked.filter((entity) => entity.id.endsWith('/center')), ...asked.filter((entity) => !entity.id.endsWith('/center'))] : asked;
+    return centresFirst.slice(0, PICKER_LIMIT);
   });
 }
 
@@ -52,7 +56,7 @@ export function hoverMarks(sketch: SketchFeature, id: Id): Id[] {
 }
 
 // What a picker of a sketch says of a value it does not list: an entity of an entry beyond the first
-// `PICKER_LIMIT` of a mirror or pattern (D68) is there, tagged as the listed ones are; anything else
+// `PICKER_LIMIT` (D68, D72) is there, tagged as the listed ones are; anything else
 // is missing.
 export function unlistedLabel(sketch: SketchFeature | undefined, id: Id): string {
   const tag = sketch ? entryTag(sketch, id) : undefined;
@@ -62,12 +66,13 @@ export function unlistedLabel(sketch: SketchFeature | undefined, id: Id): string
 export const entryHas = (sketch: SketchFeature, id: Id): boolean => entryOf(sketch, id) !== undefined;
 
 // The notes a picker adds (as disabled options) for the entities of the kinds it lists that it left
-// out of each derived entry: "… 1880 more copies of p1".
+// out of each entry: "… 1880 more copies of p1", "… 1900 more of board".
 export function omittedNotes(sketch: SketchFeature, kind: (kind: EntityKind) => boolean): string[] {
   const index = entityIndex(sketch);
   return [...index.byEntry].flatMap(([entry, ids]) => {
-    if (kindOf(sketch.external[entry]).source !== 'derived' || ids.length <= PICKER_LIMIT) return [];
-    const left = ids.slice(PICKER_LIMIT).filter((id) => kind((index.entities.get(id) as { kind: EntityKind }).kind)).length;
-    return left > 0 ? [`… ${left} more ${left === 1 ? 'copy' : 'copies'} of ${entry}, not listed`] : [];
+    const left = ids.filter((id) => kind((index.entities.get(id) as { kind: EntityKind }).kind)).length - PICKER_LIMIT;
+    if (left <= 0) return [];
+    const derived = kindOf(sketch.external[entry]).source === 'derived';
+    return [derived ? `… ${left} more ${left === 1 ? 'copy' : 'copies'} of ${entry}, not listed` : `… ${left} more of ${entry}, not listed`];
   });
 }

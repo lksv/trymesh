@@ -552,7 +552,7 @@ export const axisKind = (axis: AxisRef): AxisKind => (axis.kind === 'base' ? axi
 // Of a derived entry (a mirror or pattern, D68) the lines among its first `PICKER_LIMIT` entities.
 export const lineIds = (sketch: SketchFeature): Id[] => [
   ...Object.entries(sketch.curves).filter(([, curve]) => curve.type === 'line').map(([id]) => id),
-  ...entryEntities(sketch).filter((entity) => entity.kind === 'line').map((entity) => entity.id),
+  ...entryEntities(sketch, (kind) => kind === 'line').map((entity) => entity.id),
   ...ORIGIN_AXES,
 ];
 // The label of a line in a select of the lines of a sketch: an axis of the origin says which.

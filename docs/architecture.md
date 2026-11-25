@@ -31,7 +31,7 @@ Poslední úprava: 2026-11-15
      adaptéry (WASM)                               adapter (JS, D54; optional)
 ```
 
-Pravidlo závislostí: engine nezná adaptéry ani renderer. Adaptéry a renderer znají jen veřejné typy enginu. Adaptéry se enginu předají při vytvoření.
+The rule of dependencies: the engine knows neither the adapters nor the renderer. The adapters and the renderer know only the public types of the engine, with one exception (D72): the solver adapter imports `commonEnd`, the rule of a tangency of a line and an arc at a common end, from the leaf module `common-end.ts`, which imports nothing at run time; the analysis of the sketch reads the same function, so the adapter and the analysis read one rule ([ports.md](architecture/ports.md), [repository.md](architecture/repository.md); `packages/engine/test/modules.test.ts` guards both). The adapters are given to the engine when it is created.
 
 ## Where it is written
 
@@ -41,7 +41,7 @@ The design is split by area (D37, part 5), so that work on one area changes one 
 |---|---|---|
 | [architecture/repository.md](architecture/repository.md) | Packages, the modules of the engine and of the app, and which may import which | Struktura repozitáře |
 | [architecture/document.md](architecture/document.md) | The two histories, the types of the document, parameters and expressions | Dvě různé historie; Dokument; Parameters and expressions (D35, point 1); Body properties and the sections of the document (D48); The mechanism (D49) |
-| [architecture/sketch.md](architecture/sketch.md) | The sketch, its solution, its diagnosis and the sketch tools, the re-point command and the fillet, mirror and pattern in a sketch (D68), projection from another sketch (D69), the spline (D70) | Skica; Řešení skici (D12); Diagnostika skici (D32); Sketch tools (D35, point 7; the fillet D52) |
+| [architecture/sketch.md](architecture/sketch.md) | The sketch, its solution, its diagnosis and the sketch tools, the re-point command and the fillet, mirror and pattern in a sketch (D68), projection from another sketch (D69), the spline (D70), an imported outline (D72) | Skica; Řešení skici (D12); Diagnostika skici (D32); Sketch tools (D35, point 7; the fillet D52) |
 | [architecture/naming.md](architecture/naming.md) | Names of faces and edges, the plane of a sketch on a face, profiles and regions | Pojmenování; Stěny; Hrany (D22); Rovina skici na stěně; Profily a oblasti |
 | [architecture/extrude.md](architecture/extrude.md) | The extrusion, its extent and targets, the offset of a profile and a wall along curves, the taper, profile generators | Extrude; Extent and targets (D35, point 2); Extent up to a plane (D47); Start at a plane (D66); Profile offset and a wall (D44); Taper (D45); Profile generators (D35, point 3) |
 | [architecture/hole.md](architecture/hole.md) | The hole feature, its tool of stacked sections, the hardware catalogs and the query `hardwareHole` | Hole (D46); The hardware catalogs (D46); The query `hardwareHole` (D46) |
@@ -52,8 +52,8 @@ The design is split by area (D37, part 5), so that work on one area changes one 
 | [architecture/combine.md](architecture/combine.md) | The boolean of finished bodies, the subtraction with a clearance, the split by a plane, and the checks of the result of a boolean of bodies | Combine (D56); The clearance (D56); The boolean of two bodies and its checks (D56); Split (D56) |
 | [architecture/ports.md](architecture/ports.md) | The contracts of `SketchSolver` (with the tangency of a line and an arc at a common end, D52), `SolidKernel` and `Deflater` (D54) | Porty; SketchSolver; SolidKernel; The intersection as computed (D50) |
 | [architecture/recompute.md](architecture/recompute.md) | The replay of the features, its cache and the states of errors | Přepočet |
-| [architecture/api.md](architecture/api.md) | The facade, queries, export formats, bodies, the commands and their validation | API enginu; Queries (D37); Export formats (D37); Bodies: volume, export and interference (D35, point 5); Příkazy; Co z API vzešlo z návrhu UI (D24) |
-| [architecture/ai.md](architecture/ai.md) | The MCP server, its tools and the bridge to the running app | Rozhraní pro AI (D33) |
+| [architecture/api.md](architecture/api.md) | The facade, queries, export formats, `importOutline` and the outline formats, bodies, the commands and their validation | API enginu; Queries (D37); Export formats (D37); Bodies: volume, export and interference (D35, point 5); Příkazy; Co z API vzešlo z návrhu UI (D24) |
+| [architecture/ai.md](architecture/ai.md) | The MCP server, its tools (`import_outline` among them) and the bridge to the running app | Rozhraní pro AI (D33) |
 | [architecture/verification.md](architecture/verification.md) | The design against the scenarios, the tests of the offset and the wall, of the taper, of the extent up to a plane, of body properties, of the mechanism, of an inserted document, of the second opinion of the kernel and of the second cleaning of an intersection, and the results of the spikes of both libraries | Ověření proti scénářům; The offset of a profile and a wall (D44); The taper (D45); The extent up to a plane (D47); Body properties (D48); The mechanism (D49); A second opinion of the kernel for a pair it refuses (D50); The second cleaning of an intersection (D51); Inserting another document (D62); Výsledky spiků; Manifold (`manifold-3d` 3.5.5); Koplanární stěny v adaptéru; planegcs (`@salusoft89/planegcs` 1.3.0) |
 
 A change of the engine, an adapter, the MCP server or the app is described in the file of its area. A new area (a new feature type, a new kind of port) gets a file of its own and a row here.

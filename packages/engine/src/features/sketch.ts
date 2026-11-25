@@ -2,7 +2,7 @@
 // document.ts call as well) and the step that projects, solves and analyses it.
 import { SketchAnalysis } from '../analysis';
 import { CONSTRAINTS, type EntityKind } from '../catalog';
-import { type ResolvedReference, copyInConstraint, derivedOrigin, entityOf, externalRef, kindOf, referenceEntities, resolveReferences, storedValue } from '../references/index';
+import { type ResolvedReference, copyInConstraint, derivedOrigin, entityOf, externalRef, kindOf, resolveReferences, storedValue } from '../references/index';
 import { frame as frameOf, issue } from '../recompute/services';
 import type { SolvedSketch, Step, StepContext } from '../recompute/state';
 import { entryOrder } from '../references/derive';
@@ -10,8 +10,8 @@ import type { DerivedGeometry } from '../references/spec';
 import { sketchWorld, stepBase } from '../references/world';
 import { type SketchGeometry, measure, ownVariables, profileOf, solverSetup } from '../sketch';
 import { MAX_SPLINE_POINTS, MIN_SPLINE_POINTS } from '../spline';
-import { AXES_GEOMETRY, CURVE_KINDS, constraintOperands, constraintPath, curvePoints, emptySketch, isDriving } from '../sketch-content';
-import type { Constraint, Curve, FeatureResult, Id, Issue, Projected, ResultCurve, SketchFeature, SolveInput, SolveResult } from '../types';
+import { AXES_GEOMETRY, CURVE_KINDS, CURVE_POINTS, constraintOperands, constraintPath, curvePoints, emptySketch, isDriving } from '../sketch-content';
+import type { Constraint, Curve, FeatureResult, Id, Issue, ResultCurve, SketchFeature, SolveInput, SolveResult, StoredValue } from '../types';
 import { ORIGIN, has, isOriginAxis, unreachable } from '../util';
 import { type Dict, type Fields, type ValidationContext, boolean, fail, finite, newId, object, oneOf, plain, planeRef, planeRefs, string } from '../validation';
 import type { FeatureModule } from './module';
@@ -69,11 +69,14 @@ export function curve(sketch: SketchFeature, v: unknown, what: string): Curve {
 // The own rule of a constraint in the catalog (`check` of CONSTRAINTS), which reads the points of
 // the curves it names: `constraint` asks it when a constraint is validated, and the command
 // setCurvePoint asks it again for every constraint on the curve it changes (D52).
-// The points of an entry are its point entities, by its kind (an edge: `a` and `b`, or `center`);
-// the point of an axis of the origin is `origin` (its far point is no entity, D71).
+// The points of a curve of an entry are the point entities under `<curve>/` by the names a curve
+// can have (`a`, `b`, `center`, `start`, `end`), asked of `entityOf` one by one, for every kind (an
+// edge `e/a`, a curve of an outline `o/l1/a`, D72) and never by a listing of the entry; the point of
+// an axis of the origin is `origin` (its far point is no entity, D71).
+const POINT_NAMES = [...new Set(Object.values(CURVE_POINTS).flat())];
 function ruleProblem(sketch: SketchFeature, type: Constraint['type'], operands: Id[], kinds: EntityKind[]): string | undefined {
-  const entryPoints = (id: Id): Id[] => Object.entries(referenceEntities(sketch, id)).flatMap(([entity, kind]) => (kind === 'point' ? [entity] : []));
-  const pointsOf = (id: Id): Id[] => (has(sketch.curves, id) ? curvePoints(sketch.curves[id]) : has(sketch.external, id) ? entryPoints(id) : isOriginAxis(id) ? [ORIGIN] : []);
+  const entryPoints = (id: Id): Id[] => POINT_NAMES.map((name) => `${id}/${name}`).filter((point) => entityOf(sketch, point)?.kind === 'point');
+  const pointsOf = (id: Id): Id[] => (has(sketch.curves, id) ? curvePoints(sketch.curves[id]) : isOriginAxis(id) ? [ORIGIN] : entityOf(sketch, id) ? entryPoints(id) : []);
   return CONSTRAINTS[type].check?.(kinds, operands, pointsOf);
 }
 export function constraintRuleProblem(sketch: SketchFeature, c: Constraint): string | undefined {
@@ -178,6 +181,25 @@ function resultCurves(feature: SketchFeature, resolved: Record<Id, ResolvedRefer
   return out;
 }
 
+// The geometry after the solver with the points and the radii of every entry whose solver input
+// was narrowed (D72): the solver returns only what it got, and a circle of an outline that no
+// constraint names has no radius without it. In one order whatever is named: the geometry of the
+// solve without those entries' points first, then the entries by ID.
+function withEntries(geometry: SketchGeometry, resolved: Record<Id, ResolvedReference>): SketchGeometry {
+  const narrowed = Object.keys(resolved)
+    .filter((id) => resolved[id].solver)
+    .sort();
+  if (narrowed.length === 0) return geometry;
+  const theirs = new Set(narrowed.flatMap((id) => [...Object.keys(resolved[id].geometry.points), ...Object.keys(resolved[id].geometry.radii)]));
+  const points = Object.fromEntries(Object.entries(geometry.points).filter(([id]) => !theirs.has(id)));
+  const radii = Object.fromEntries(Object.entries(geometry.radii).filter(([id]) => !theirs.has(id)));
+  for (const id of narrowed) {
+    Object.assign(points, resolved[id].geometry.points);
+    Object.assign(radii, resolved[id].geometry.radii);
+  }
+  return { points, radii };
+}
+
 function step(feature: SketchFeature, { state, settings, deps, done, failed, drag, badFields }: StepContext): Step {
   const frame = frameOf(feature.plane, state);
   if (typeof frame === 'string') return failed(frame, [feature.plane]);
@@ -186,7 +208,7 @@ function step(feature: SketchFeature, { state, settings, deps, done, failed, dra
   // 1. the reference geometry from the state before the sketch (the registry of kinds); an entry
   // that cannot be computed keeps its last valid value
   const { resolved, lost } = resolveReferences(feature, { state, frame });
-  const external: Record<Id, Projected> = {};
+  const external: Record<Id, StoredValue> = {};
   for (const [id, reference] of Object.entries(resolved)) if (reference.value) external[id] = reference.value;
   const setup = solverSetup(feature, resolved);
   for (const [id, code, detail] of lost) {
@@ -214,6 +236,8 @@ function step(feature: SketchFeature, { state, settings, deps, done, failed, dra
       writeBack = { ...ownVariables(feature, geometry), solved: { inputs: setup.stamp, external } };
     }
   } else if (warnings.every((w) => w.code !== 'sketchConflict')) warnings.push(issue('sketchConflict', result.conflicting));
+  // the points and the radii of the entries the solver did not get (an outline, D72), on each path
+  geometry = withEntries(geometry, resolved);
   // the far points of the axes of the origin are in the geometry of every sketch, so what reads the
   // state finds the axes whatever the constraints (D71)
   geometry = { points: { ...geometry.points, ...AXES_GEOMETRY.points }, radii: geometry.radii };

@@ -1,5 +1,5 @@
 // Nálezy z revize enginu ověřené proti skutečným adaptérům, a chybové kódy, které dosud neměly test.
-import type { Command, EngineState, FaceName, SketchFeature } from '@trymesh/engine';
+import type { Command, EngineState, FaceName, ImportedCurve, SketchFeature, SketchOutline } from '@trymesh/engine';
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { XY, addExtrude, addSketch, batch, cap, circle, constrain, dimension, expectAllOk, extrude, faceBox, faceNames, newEngine, onFace, rectLoop, rectangle, run, side, status, volume } from './kit';
@@ -8,7 +8,8 @@ import { booleanOfBodies, sheetTriangles } from '../../engine/src/recompute/body
 import { isMoveProblem, movedOutwards } from '../../engine/src/recompute/moved-body';
 import { volumeOf as volumeOf56 } from '../../engine/src/solid';
 import { box as box56, cylinder as cylinder56, faceNumber as faceNumber56, infosOf as infosOf56, solidOf as solidOf56 } from './combine-kit';
-import { faceKey, freshIds, readersOf, sketchTool } from '@trymesh/engine';
+import { faceKey, freshIds, readersOf, sketchTool, updateHolds } from '@trymesh/engine';
+import { addOutline } from './board-kit';
 import { canonicalEdge } from '../../engine/src/util';
 import { projection } from '../../engine/src/references/projection';
 import { STEPPED, box, chamfer, edge, fillet, profileXZ } from './blend-kit';
@@ -1639,5 +1640,127 @@ describe('the review of the implementation of 6d (D70)', () => {
         { type: 'removeEntity', sketch: 'T', id: 'C' },
       ]);
     }
+  });
+});
+
+describe('the review of the implementation of 6f (D72)', () => {
+  const result = (state: EngineState, id: string) => state.evaluation.features[id].sketch as NonNullable<EngineState['evaluation']['features'][string]['sketch']>;
+  const point = (sketch: string, id: string, x: number, y: number): Command => ({ type: 'addPoint', sketch, id, x, y });
+  const line = (sketch: string, id: string, a: string, b: string): Command => ({ type: 'addCurve', sketch, id, curve: { type: 'line', a, b } });
+
+  // kind 1: an own arc held on the start of a fixed line that lies 8e-7 mm from the end of the fixed
+  // line it is tangent to. The adapter takes the two fixed points as one end (D72); the analysis read
+  // the general form, which has a double root there, and counted 2 freedoms (the base build said 1)
+  it('kind 1: an own arc under 1 mm at a fixed join keeps the freedoms of the base build', () => {
+    for (const [d, L, r] of [
+      [8e-7, 0.1, 0.05],
+      [8e-7, 1, 0.5],
+      [0, 0.1, 0.05],
+    ]) {
+      const engine = newEngine();
+      const curves = { l1: { type: 'line', a: [-L, 0], b: [0, 0] }, l2: { type: 'line', a: [0, d], b: [0, L] } } as Record<string, ImportedCurve>;
+      run(engine, addSketch('s', XY), addOutline('s', 'o', { curves, regions: false }));
+      const state = run(
+        engine,
+        batch(point('s', 'c', 0.01 * r, r * 1.1), point('s', 'a', 0, d), point('s', 'e', r, r), { type: 'addCurve', sketch: 's', id: 'A', curve: { type: 'arc', center: 'c', start: 'a', end: 'e' } }),
+        constrain('s', 'k', { type: 'coincident', a: 'a', b: 'o/l2/a' }),
+        constrain('s', 'R', { type: 'radius', curve: 'A', value: r, driving: true }),
+        constrain('s', 't', { type: 'tangent', a: 'A', b: 'o/l1' }),
+      );
+      const solved = result(state, 's');
+      expect({ d, L, r, dof: solved.degreesOfFreedom, redundant: solved.redundant }).toEqual({ d, L, r, dof: 1, redundant: [] });
+    }
+  });
+
+  // kind 1, at the boundary of the fixed arc: the adapter took dy = 1e-6 · r (≤) and the analysis was
+  // one ulp over its own bound, so it counted 2
+  it('kind 1: an own line on a fixed line beside a fixed arc, at the boundary of the join, has 1 freedom', () => {
+    const near = (r: number, dy: number, L: number): number => {
+      const engine = newEngine();
+      const curves = { a1: { type: 'arc', center: [0, r], start: [0, 0], end: [r, r] }, l1: { type: 'line', a: [-10, dy], b: [0, dy] } } as Record<string, ImportedCurve>;
+      run(engine, addSketch('s', XY), addOutline('s', 'o', { curves, regions: false }));
+      const state = run(engine, batch(point('s', 'p', 0, 0), point('s', 'q', L, 0.1 * L), line('s', 'n', 'p', 'q')), constrain('s', 'k', { type: 'coincident', a: 'p', b: 'o/l1/b' }), constrain('s', 't', { type: 'tangent', a: 'n', b: 'o/a1' }));
+      return result(state, 's').degreesOfFreedom;
+    };
+    for (const [r, dy, L] of [
+      [0.5, 4.9e-7, 0.1],
+      [0.5, 4.99e-7, 0.1],
+      [0.5, 5e-7, 0.1],
+      [0.5, -5e-7, 0.1],
+      [0.3, 2.99e-7, 0.1],
+      [0.3, 3e-7, 0.1],
+      [0.5, 5e-7, 1],
+    ])
+      expect({ r, dy, L, dof: near(r, dy, L) }).toEqual({ r, dy, L, dof: 1 });
+  });
+
+  // kind 2: an arc whose ends are within the length tolerance and not one place had no length to the
+  // profile and took every region of the sketch away without a word
+  it('kind 2: an arc whose ends are within the length tolerance is refused, a near whole turn and a sliver', () => {
+    const engine = newEngine();
+    run(engine, addSketch('s', XY));
+    const refused = (curves: Record<string, ImportedCurve>): string => {
+      const outcome = engine.execute(addOutline('s', 'o', { curves }));
+      return outcome.ok ? 'ok' : outcome.error.message;
+    };
+    const turn = 1e-9;
+    expect(refused({ a1: { type: 'arc', center: [0, 0], start: [1, 0], end: [Math.cos(-turn), Math.sin(-turn)] } })).toContain('a whole turn is a circle');
+    expect(refused({ a1: { type: 'arc', center: [0, 0], start: [1, 0], end: [Math.cos(turn), Math.sin(turn)] } })).toContain('a whole turn is a circle');
+    // the margin of the placement: 1.05e-6 apart is still refused, 1.2e-6 is an arc
+    expect(refused({ a1: { type: 'arc', center: [0, 0], start: [1, 0], end: [Math.cos(1.05e-6), Math.sin(1.05e-6)] } })).toContain('a whole turn is a circle');
+    expect(refused({ a1: { type: 'arc', center: [0, 0], start: [1, 0], end: [Math.cos(1.2e-6), Math.sin(1.2e-6)] } })).toBe('ok');
+  });
+
+  // kind 3: the reorder in contactFix moved a flagged projection ahead of the spline rule, so a
+  // projection crossed by an own spline got advice that leads to another dead end
+  it('kind 3: a flagged projection crossed by an own spline keeps the advice of the spline (6b, 6d)', () => {
+    const engine = newEngine();
+    run(engine, addSketch('src', XY), point('src', 'a', 0, 0), point('src', 'b', 10, 0), line('src', 'l', 'a', 'b'));
+    run(engine, addSketch('s', XY), { type: 'addExternal', sketch: 's', id: 'p', ref: { type: 'sketch', sketch: 'src', entity: 'l', kind: 'line', regions: true } } as Command);
+    run(engine, point('s', 'q0', 2, -3), point('s', 'q1', 4, 3), point('s', 'q2', 6, 3), point('s', 'q3', 8, -3), { type: 'addCurve', sketch: 's', id: 'sp', curve: { type: 'spline', points: ['q0', 'q1', 'q2', 'q3'] } } as Command);
+    const answer = engine.query('sketchContacts', { sketch: 's' });
+    if (!answer.ok || answer.result.status !== 'ok') throw new Error('no contacts');
+    expect(answer.result.contacts.length).toBe(2);
+    for (const contact of answer.result.contacts) expect(contact.why).toContain('"sp" is a spline, which is not cut and holds no point');
+  });
+
+  // M6: the constraints that hold an entity a revised file takes away or changes in kind, as the rule
+  // of the update reads them: a control point of a spline with fewer points, an arc that is now a circle
+  it('M6: updateHolds names a control point that goes and an entity whose kind changes', () => {
+    const engine = newEngine();
+    const before = {
+      s1: { type: 'spline', points: [[0, 0], [1, 2], [3, 2], [4, 0], [5, -1], [6, 0]] },
+      a3: { type: 'arc', center: [20, 0], start: [21, 0], end: [20, 1] },
+      l1: { type: 'line', a: [30, 0], b: [40, 0] },
+    } as Record<string, ImportedCurve>;
+    run(engine, addSketch('s', XY), addOutline('s', 'b', { curves: before, regions: false }), point('s', 'p', 50, 50), point('s', 'q', 60, 60), point('s', 'r', 70, 70));
+    run(engine, constrain('s', 'k1', { type: 'coincident', a: 'p', b: 'b/s1/5' }), constrain('s', 'k2', { type: 'coincident', a: 'q', b: 'b/a3/start' }), constrain('s', 'k3', { type: 'pointOnCurve', point: 'r', curve: 'b/a3' }));
+    const sketch = engine.getState().document.features.find((f) => f.id === 's') as SketchFeature;
+    const after = { ...before, s1: { type: 'spline', points: [[0, 0], [1, 2], [3, 2], [4, 0]] }, a3: { type: 'circle', center: [20, 0], radius: 1 } } as Record<string, ImportedCurve>;
+    const holds = updateHolds(sketch, 'b', sketch.external.b, { ...(sketch.external.b as SketchOutline), curves: after });
+    // `a3/start` goes with the arc (a circle has no start), and `a3` itself becomes a circle
+    expect(holds.gone).toEqual([
+      { entity: 'b/s1/5', constraints: ['k1'] },
+      { entity: 'b/a3/start', constraints: ['k2'] },
+    ]);
+    expect(holds.changed).toEqual([{ entity: 'b/a3', was: 'arc', will: 'circle', constraints: ['k3'] }]);
+    expect(holds.constraints).toEqual(['k1', 'k2', 'k3']);
+    // the update without them is refused by the same rule; with them removed in one batch it passes
+    expect(engine.execute({ type: 'updateExternal', sketch: 's', id: 'b', ref: { type: 'outline', curves: after } } as Command).ok).toBe(false);
+    expect(engine.execute({ type: 'batch', commands: [...holds.constraints.map((id): Command => ({ type: 'removeConstraint', sketch: 's', id })), { type: 'updateExternal', sketch: 's', id: 'b', ref: { type: 'outline', curves: after } } as Command] }).ok).toBe(true);
+  });
+
+  // M5: the query entryCurves answers where its next page starts
+  it('M5: entryCurves gives the from of the next page, and the total at the end', () => {
+    const engine = newEngine();
+    const curves = Object.fromEntries(Array.from({ length: 7 }, (_, i) => [`c${i + 1}`, { type: 'circle', center: [10 * i, 0], radius: 1 }])) as Record<string, ImportedCurve>;
+    run(engine, addSketch('s', XY), addOutline('s', 'b', { curves }));
+    const page = (from: number) => {
+      const answer = engine.query('entryCurves', { sketch: 's', entry: 'b', from, max: 3 });
+      if (!answer.ok) throw new Error(answer.error.message);
+      return answer.result;
+    };
+    expect([page(0).next, page(3).next, page(6).next, page(9).next]).toEqual([3, 6, 7, 7]);
+    expect(page(6).curves.map((curve) => curve.id)).toEqual(['b/c7']);
   });
 });

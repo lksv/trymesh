@@ -42,6 +42,9 @@ export type { EntityKind };
 export interface Entity {
   kind: EntityKind;
   own: boolean; // false = počátek nebo promítnutá geometrie: solver s ní nehýbe
+  // an entity of an entry of derived geometry (a copy of a mirror or pattern, D68): computed after
+  // the sketch is solved, so no constraint of its own sketch may name it
+  derived?: true;
 }
 
 // What an ID is in a sketch (`entityOf`) and the derived points of an entry of `external` are in

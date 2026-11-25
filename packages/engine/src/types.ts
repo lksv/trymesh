@@ -1530,6 +1530,30 @@ export interface SketchResult {
   measurements: Record<Id, number>; // hodnoty referenčních kót
   valid: boolean; // false: the profile is invalid (curves cross or touch away from common points, or another reason); the query `sketchContacts` says where and why, and the sketch tool `split` without a curve repairs what can be cut
   regions: { ref: RegionRef; loops: Float64Array[] }[]; // pro vykreslení a výběr
+  // Present when ends of copies of a mirror or pattern stayed open: why an outline of copies did
+  // not close (OpenEnds). An open chain is a legitimate sketch, so this is no warning.
+  openEnds?: OpenEnds;
+}
+
+// The ends of copies (curves of derived geometry that form regions) that, after every join, are the
+// end of no other curve that forms regions. The ends of copies join the curve ends at their place
+// within the length tolerance (1e-6 mm), so an outline of copies closes only where the ends meet:
+// a mirrored half has to end on the axis by a constraint (`pointOnCurve` with the axis line).
+// - `count`: how many ends are open; `ends`: at most 20 of them, those of `twoVertices` first, then
+//   by `distance`, the nearest first.
+// - `reason: 'twoVertices'`: the own ends at its place are two points that are not joined, so it
+//   joined neither (`near` names them; a `coincident` between them cures it). `reason: 'apart'`:
+//   nothing is at its place; `near` is the nearest end of another curve that forms regions and
+//   `distance` how far it is, in mm.
+export interface OpenEnds {
+  count: number;
+  ends: OpenEnd[];
+}
+export interface OpenEnd {
+  end: Id;
+  reason: 'twoVertices' | 'apart';
+  near: Id[];
+  distance: number;
 }
 
 // Diagnostika skici na vyžádání (Engine.diagnoseSketch). Počítá se z vyřešeného stavu.
@@ -1681,8 +1705,13 @@ export type Command =
   // to a reference dimension is an invalid command.
   | { type: 'setConstraintValue'; sketch: Id; id: Id; value?: number | Expr; driving?: boolean }
   | { type: 'dragPoint'; sketch: Id; point: Id; x: number; y: number }
-  | { type: 'addExternal'; sketch: Id; id: Id; ref: ExternalRef }
-  | { type: 'updateExternal'; sketch: Id; id: Id; ref: ExternalRef }
+  // `ref` in its input form: a numeric field of an entry may be an expression (kept in the sketch's
+  // `expressions` at `external/<id>/…`; setField with the sketch as the feature reaches one). An
+  // update replaces the whole entry: send the entry with its expressions as strings, or a number
+  // removes the expression; a string equal to the expression the field has counts as unchanged. An
+  // update may not turn reference geometry into derived geometry or back.
+  | { type: 'addExternal'; sketch: Id; id: Id; ref: Input<ExternalRef> }
+  | { type: 'updateExternal'; sketch: Id; id: Id; ref: Input<ExternalRef> }
   | { type: 'removeExternal'; sketch: Id; id: Id }
   // Body properties (D48). The body of setBodyProperties and setBodyMaterial has to be one a feature
   // of the document can create: the feature exists and its type creates a body of that ID (an

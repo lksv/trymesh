@@ -6,9 +6,10 @@
 //   (the own ones and the reference ones, with the axes of the origin), the positions, and the
 //   joins before that stage as pairs of points (the `coincident` constraints, and for a tool what
 //   its batch joins).
-// - `sketchWorld` is the core. In 6e it adds nothing to the base: the curves as given and
-//   `joinsOf` of the pairs. 6c makes it the stage after the solver (the copies of the derived
-//   entries and the joins by position of the curves that are not own and form regions).
+// - `sketchWorld` is the core: the curves of the base with the copies of the derived entries made
+//   from it (`deriveAll` of derive.ts, the stage after the solver, D68), the positions with theirs,
+//   and the joins of the pairs of the base with those of the joins by position. `derived` is what
+//   the stage made, which the sketch step writes into its result.
 // - `stepBase` builds the base of the sketch step, `toolBase` that of a tool, which has only the
 //   sketch and its result.
 // - `cutInMemory` cuts curves of a world at their contacts with each other, in memory alone: the
@@ -16,7 +17,8 @@
 import { type CurveEnd, type SketchCurve, type SketchGeometry, curveContacts, joinPairs, joinsOf, placedCurve, sketchCurves, solvedCurves } from '../sketch';
 import type { CurveShape, Id, Point2, SketchFeature, SketchResult, Vec2 } from '../types';
 import { LENGTH_TOLERANCE, dist2, has, unreachable } from '../util';
-import type { ResolvedReference } from './spec';
+import { deriveAll } from './derive';
+import type { DerivedGeometry, ResolvedReference } from './spec';
 
 export interface SketchBase {
   sketch: SketchFeature; // read for its entries of `external` only (6c computes the copies from them)
@@ -25,15 +27,29 @@ export interface SketchBase {
   pairs: readonly [Id, Id][];
 }
 // `pairs`: the joins the world was made of, for a reader that adds to them (a cut in memory).
+// `derived`: the copies of the derived entries, the joins by position, the warnings and the open
+// ends (a world made by `cutInMemory` keeps that of the world it cut).
 export interface SketchWorld {
   curves: ReadonlyMap<Id, SketchCurve>;
   geometry: SketchGeometry;
   joins(id: Id): Id;
   pairs: readonly [Id, Id][];
+  derived: DerivedGeometry;
 }
 
 export function sketchWorld(base: SketchBase): SketchWorld {
-  return { curves: new Map(base.curves.map((curve) => [curve.id, curve])), geometry: base.geometry, joins: joinsOf(base.pairs, base.geometry), pairs: base.pairs };
+  const derived = deriveAll(base);
+  const curves = new Map(base.curves.map((curve) => [curve.id, curve]));
+  const points = { ...base.geometry.points };
+  const radii = { ...base.geometry.radii };
+  for (const geometry of Object.values(derived.entries)) {
+    Object.assign(points, geometry.points);
+    Object.assign(radii, geometry.radii);
+    for (const [id, shape] of Object.entries(geometry.curves)) curves.set(id, { id, shape, source: 'derived', regions: geometry.regions.includes(id) });
+  }
+  const geometry: SketchGeometry = Object.keys(derived.entries).length ? { points, radii } : base.geometry;
+  const pairs = derived.joins.length ? [...base.pairs, ...derived.joins] : base.pairs;
+  return { curves, geometry, joins: joinsOf(pairs, geometry), pairs, derived };
 }
 
 // The base of the sketch step: the curves of the sketch with those of its resolved entries and the
@@ -183,5 +199,5 @@ export function cutInMemory(world: SketchWorld, ids: readonly Id[]): SketchWorld
         unreachable(placed, 'curve');
     }
   }
-  return { curves, geometry, joins: joinsOf(pairs, geometry), pairs };
+  return { curves, geometry, joins: joinsOf(pairs, geometry), pairs, derived: world.derived };
 }

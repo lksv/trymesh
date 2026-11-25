@@ -10,33 +10,37 @@ import type { ExternalRef, Id, IssueCode, SketchFeature } from '../types';
 import { ORIGIN, has, isOriginAxis } from '../util';
 import { type ValidationContext, fail, object } from '../validation';
 import { edge, projected } from './edge';
-import type { ReferenceContext, ReferenceKindName, ReferenceKindSpec, ReferenceOf, ReferenceValues, ResolvedReference, StoredValue } from './spec';
+import type { AnyKind, EntryKindName, KindOf, ReferenceContext, ResolvedReference, StoredValue } from './spec';
 
-export type { EntryGeometry, GeometrySource, ReferenceContext, ResolvedReference, StoredValue } from './spec';
+export type { DerivedGeometry, EntryGeometry, GeometrySource, ReferenceContext, ResolvedReference, StoredValue } from './spec';
 
-// One entry per member of `ExternalRef`: a member without an entry does not compile.
-export const REFERENCE_KINDS: { readonly [T in ReferenceKindName]: ReferenceKindSpec<ReferenceOf<T>, ReferenceValues[T]> } = { edge };
+// One entry per member of `ExternalRef`, of the shape its name gives it (a reference kind when it
+// has a value in `ReferenceValues`, else a derived kind): a member without an entry does not
+// compile.
+export const REFERENCE_KINDS: { readonly [T in EntryKindName]: KindOf<T> } = { edge };
 
-// The kind of an entry (one cast, as `specOf` of the registry of feature types has).
-export const kindOf = (ref: ExternalRef): ReferenceKindSpec<ExternalRef, StoredValue> => REFERENCE_KINDS[ref.type] as unknown as ReferenceKindSpec<ExternalRef, StoredValue>;
+// The kind of an entry (one cast, as `specOf` of the registry of feature types has). It may be
+// a reference or a derived kind: a caller that wants `compute` or `derive` asks `source` first.
+export const kindOf = (ref: ExternalRef): AnyKind => REFERENCE_KINDS[ref.type] as unknown as AnyKind;
 
 // The validator of an entry of `external`: reads `type` and hands the entry to its kind. The text
 // for an unknown type names the edge while it is the one kind.
 export function externalRef(context: ValidationContext, sketch: SketchFeature, id: Id, entry: unknown, what: string): ExternalRef {
   const o = object(entry, what);
   if (typeof o.type !== 'string' || !has(REFERENCE_KINDS, o.type)) return fail(`${what}: promítnout jde jen hranu`);
-  return REFERENCE_KINDS[o.type as ReferenceKindName].validate(context, sketch, id, o, what);
+  return (REFERENCE_KINDS[o.type as EntryKindName] as unknown as AnyKind).validate(context, sketch, id, o, what);
 }
 
 // A stored value of `solved.external` by its form (the union of the values of the kinds), before it
 // is matched with its entry.
 export const storedValue = (v: unknown, what: string): StoredValue => projected(v, what);
 
-// What an update of an entry may not do, or undefined. 6a has the rule of today: an entity that
-// stays (the same ID) keeps its kind, so the curve of an edge stays a line or a circle. (A change
-// of source and an entity a constraint names that goes are refused by the packages that can reach
-// them, 6c and 6f, design.md of 6a, part 1.)
+// What an update of an entry may not do, or undefined: turn reference geometry into derived
+// geometry or back (the source decides whether constraints may name its entities, D68), or change
+// the kind of an entity that stays (the same ID), so the curve of an edge stays a line or a circle.
+// (An entity a constraint names that goes is refused by the package that can reach it, 6f.)
 export function updateProblem(sketch: SketchFeature, id: Id, before: ExternalRef, after: ExternalRef): string | undefined {
+  if (kindOf(before).source !== kindOf(after).source) return 'an entry of reference geometry cannot become derived geometry, or the other way; remove it and add the other';
   const [was, will] = [kindOf(before).entities(id, before, sketch), kindOf(after).entities(id, after, sketch)];
   if (Object.keys(will).some((entity) => has(was, entity) && was[entity] !== will[entity])) return 'druh promítnutí změnit nejde';
   return undefined;
@@ -62,9 +66,30 @@ export function entityOf(sketch: SketchFeature, id: Id): Entity | undefined {
   const slash = id.indexOf('/');
   const owner = slash > 0 ? id.slice(0, slash) : id;
   if (!has(sketch.external, owner)) return undefined;
+  const ref = sketch.external[owner];
+  const kind = kindOf(ref);
+  if (kind.source === 'derived') {
+    // one look-up, not a listing: a derived entry may have thousands of entities
+    const found = kind.entity(id, ref, sketch, owner);
+    return found ? { kind: found, own: false, derived: true } : undefined;
+  }
   const entities = referenceEntities(sketch, owner);
   return has(entities, id) ? { kind: entities[id], own: false } : undefined;
 }
+
+// The entry an entity of derived geometry belongs to and the ID of what it is a copy of, for the
+// texts that refuse it (`<entry>/<copy>/<source>`, D68); undefined for any other ID.
+export function derivedOrigin(sketch: SketchFeature, id: Id): { entry: Id; source: Id } | undefined {
+  if (!entityOf(sketch, id)?.derived) return undefined;
+  const entry = id.slice(0, id.indexOf('/'));
+  const rest = id.slice(entry.length + 1);
+  const slash = rest.indexOf('/');
+  return { entry, source: slash < 0 ? rest : rest.slice(slash + 1) };
+}
+
+// The text of a copy named as an operand of a constraint of its own sketch.
+export const copyInConstraint = (operand: Id, entry: Id, source: Id): string =>
+  `"${operand}" is a copy of the mirror or pattern "${entry}": a copy cannot be constrained in its own sketch, it is computed after the sketch is solved; constrain its source "${source}", or project the copy in a later sketch`;
 
 // ---------------------------------------------------------------- the sketch step
 
@@ -72,7 +97,7 @@ export function entityOf(sketch: SketchFeature, id: Id): Entity | undefined {
 // measured from the curves of the solver's input).
 export const axesNamed = (feature: SketchFeature): boolean => Object.values(feature.constraints).some((c) => constraintOperands(c).some(isOriginAxis));
 
-// The first stage of the step: every entry in the order of its ID, its value from `compute`, else
+// The first stage of the step: every entry of reference geometry in the order of its ID, its value from `compute`, else
 // the last valid one stored (through `value`), else none. `lost` names the entries whose value is
 // not fresh, with the code of the warning. When a constraint names an axis of the origin, the axes
 // come under the key `origin`, without a value: the solver gets them fixed, and the stamp of a
@@ -83,6 +108,8 @@ export function resolveReferences(feature: SketchFeature, context: ReferenceCont
   for (const id of Object.keys(feature.external).sort()) {
     const ref = feature.external[id];
     const kind = kindOf(ref);
+    // derived geometry is made after the solver (references/derive.ts): nothing of it is resolved
+    if (kind.source !== 'reference') continue;
     const computed = kind.compute(ref, context);
     if (typeof computed !== 'string') resolved[id] = { value: computed, geometry: kind.geometry(id, ref, computed) };
     else {

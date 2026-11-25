@@ -15,6 +15,7 @@ export {
   duplicateOf,
   emptyDocument,
   emptySketch,
+  entryInput,
   featureInput,
   fieldsOf,
   isDimension,
@@ -23,6 +24,7 @@ export {
 } from './document';
 export { bodyRefs, bodySource, featuresWithInserted, generatorOf, insertedFeature, producesTool, sourceChain, sourceRoot } from './features/index';
 export { INSERT_FIELDS } from './features/insert';
+export { entryOrder } from './references/derive';
 export { insertedFaceName } from './recompute/insertion';
 export { MAX_INSERT_DEPTH } from './sections/documents';
 export { GRID_STRIDE, MAX_PATTERN_PLACES } from './features/pattern';

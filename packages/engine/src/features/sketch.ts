@@ -2,9 +2,11 @@
 // document.ts call as well) and the step that projects, solves and analyses it.
 import { SketchAnalysis } from '../analysis';
 import { CONSTRAINTS, type EntityKind } from '../catalog';
-import { type ResolvedReference, entityOf, externalRef, kindOf, referenceEntities, resolveReferences, storedValue } from '../references/index';
+import { type ResolvedReference, copyInConstraint, derivedOrigin, entityOf, externalRef, kindOf, referenceEntities, resolveReferences, storedValue } from '../references/index';
 import { frame as frameOf, issue } from '../recompute/services';
 import type { SolvedSketch, Step, StepContext } from '../recompute/state';
+import { entryOrder } from '../references/derive';
+import type { DerivedGeometry } from '../references/spec';
 import { sketchWorld, stepBase } from '../references/world';
 import { type SketchGeometry, measure, ownVariables, profileOf, solverSetup } from '../sketch';
 import { AXES_GEOMETRY, CURVE_KINDS, constraintOperands, constraintPath, curvePoints, emptySketch, isDriving } from '../sketch-content';
@@ -70,6 +72,10 @@ export function constraint(sketch: SketchFeature, v: unknown, what: string, fiel
     const id = string(o[field], `${what}.${field}`);
     const entity = entityOf(sketch, id);
     if (!entity) return fail(`${what}.${field}: entita "${id}" ve skice není`);
+    if (entity.derived) {
+      const origin = derivedOrigin(sketch, id) as { entry: Id; source: Id };
+      return fail(`${what}.${field}: ${copyInConstraint(id, origin.entry, origin.source)}`);
+    }
     if (!accepted.includes(entity.kind)) fail(`${what}.${field}: "${id}" je ${entity.kind}, čeká se ${accepted.join(' nebo ')}`);
     operands[field] = id;
     kinds.push(entity.kind);
@@ -127,19 +133,23 @@ function sketchFeature(o: Dict, what: string, context: ValidationContext): Sketc
   for (const [id, value] of Object.entries(object(solved.external, `${what}.solved.external`))) {
     // the form of the value first, then whether it fits its entry
     const stored = storedValue(value, `${what}.solved.external.${id}`);
-    if (!has(sketch.external, id) || kindOf(sketch.external[id]).value(stored, sketch.external[id], `${what}.solved.external.${id}`) === undefined) fail(`${what}.solved.external: "${id}" neodpovídá promítnuté geometrii skici`);
+    // a value is stored for an entry of reference geometry only: derived geometry is never stored
+    const kind = has(sketch.external, id) ? kindOf(sketch.external[id]) : undefined;
+    if (kind?.source !== 'reference' || kind.value(stored, sketch.external[id], `${what}.solved.external.${id}`) === undefined) fail(`${what}.solved.external: "${id}" neodpovídá promítnuté geometrii skici`);
     sketch.solved.external[id] = stored;
   }
   return sketch;
 }
 
-// The curves of the result that are not own: those of the resolved entries, in the order of
-// `external` in the document and within an entry in the order of its kind.
-function resultCurves(feature: SketchFeature, resolved: Record<Id, ResolvedReference>): Record<Id, ResultCurve> {
+// The curves of the result that are not own, in the order of the entries (`entryOrder`) and within
+// an entry in the order of its kind: those of an entry of reference geometry from the resolved
+// references, those of an entry of derived geometry from the stage after the solver (D68), with
+// the regions the occupation pass left them.
+function resultCurves(feature: SketchFeature, resolved: Record<Id, ResolvedReference>, derived: DerivedGeometry): Record<Id, ResultCurve> {
   const out: Record<Id, ResultCurve> = {};
-  for (const id of Object.keys(feature.external)) {
-    const geometry = resolved[id]?.geometry;
+  for (const id of entryOrder(feature)) {
     const source = kindOf(feature.external[id]).source;
+    const geometry = source === 'reference' ? resolved[id]?.geometry : derived.entries[id];
     if (geometry) for (const [curve, shape] of Object.entries(geometry.curves)) out[curve] = { shape, source, regions: geometry.regions.includes(curve) };
   }
   return out;
@@ -182,9 +192,6 @@ function step(feature: SketchFeature, { state, settings, deps, done, failed, dra
   // the far points of the axes of the origin are in the geometry of every sketch, so what reads the
   // state finds the axes whatever the constraints (D71)
   geometry = { points: { ...geometry.points, ...AXES_GEOMETRY.points }, radii: geometry.radii };
-  // the result lists no hidden point (the far points of the axes)
-  const hidden = new Set([...(AXES_GEOMETRY.hidden ?? []), ...Object.values(resolved).flatMap((reference) => reference.geometry.hidden ?? [])]);
-  const resultPoints = Object.fromEntries(Object.entries(geometry.points).filter(([id]) => !hidden.has(id)));
 
   // Stupně volnosti počítá engine z vlastního rozboru; počet ze solveru není spolehlivý.
   // Polohy v pořadí dokumentu (solver je vrací seřazené podle ID), aby i rozbor šel v tomto pořadí.
@@ -192,9 +199,17 @@ function step(feature: SketchFeature, { state, settings, deps, done, failed, dra
   const input: SolveInput = { ...setup.input, points: inOrder(setup.input.points, geometry.points), radii: inOrder(setup.input.radii, geometry.radii) };
   const analysis = result.status === 'solved' ? new SketchAnalysis(input) : undefined;
   // the curves of the sketch and its joins, read by the profile and by what a later feature reads:
-  // the world of the sketch (D65), which the sketch tools build their profiles from as well
-  const { curves, joins } = sketchWorld(stepBase(feature, resolved, geometry));
+  // the world of the sketch (D65), which the sketch tools build their profiles from as well; it
+  // makes the copies of the derived entries after the solver (D68), with their positions, which come
+  // after the values to write back were taken
+  const world = sketchWorld(stepBase(feature, resolved, geometry));
+  const { curves, joins, derived } = world;
+  geometry = world.geometry;
+  for (const failure of derived.warnings) warnings.push(issue(failure.code, failure.refs, failure.detail));
   const profile = profileOf([...curves.values()], joins, geometry, settings.chordTolerance);
+  // the result lists no hidden point (the far points of the axes)
+  const hidden = new Set([...(AXES_GEOMETRY.hidden ?? []), ...Object.values(resolved).flatMap((reference) => reference.geometry.hidden ?? []), ...Object.values(derived.entries).flatMap((entry) => entry.hidden ?? [])]);
+  const resultPoints = Object.fromEntries(Object.entries(geometry.points).filter(([id]) => !hidden.has(id)));
   const sketchResult: FeatureResult = {
     status: warnings.length ? 'warning' : 'ok',
     warnings,
@@ -203,13 +218,14 @@ function step(feature: SketchFeature, { state, settings, deps, done, failed, dra
     sketch: {
       points: resultPoints,
       radii: geometry.radii,
-      curves: resultCurves(feature, resolved),
+      curves: resultCurves(feature, resolved, derived),
       degreesOfFreedom: analysis?.degreesOfFreedom ?? 0,
       conflicting: result.conflicting,
       redundant: result.redundant,
       measurements: measure(feature, setup.input.curves, geometry),
       valid: profile.valid,
       regions: profile.regions.map((region) => ({ ref: region.ref, loops: [region.outer, ...region.holes].map((loop) => Float64Array.from(loop.xy)) })),
+      ...(derived.openEnds ? { openEnds: derived.openEnds } : {}),
     },
   };
   const solve = { status: result.status, conflicting: result.conflicting };

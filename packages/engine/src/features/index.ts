@@ -144,7 +144,8 @@ export function requireRef(doc: Document, before: number | undefined, ref: Omit<
     const entity = entityOf(sketch, ref.id);
     if (!entity) return fail(`${what}: the sketch "${sketch.id}" has no entity "${ref.id}"`);
     if (!ref.accepts?.includes(entity.kind)) fail(`${what}: "${ref.id}" is a ${entity.kind}, expected ${(ref.accepts ?? []).join(' or ')}`);
-    if (ref.notProjected && !entity.own && ref.id !== ORIGIN) fail(`${what}: "${ref.id}" is ${isOriginAxis(ref.id) ? 'an axis of the origin' : 'projected geometry'}; an own ${(ref.accepts ?? []).join(' or ')} of the sketch "${sketch.id}" is expected`);
+    const isWhat = (): string => (isOriginAxis(ref.id) ? 'an axis of the origin' : entity.derived ? `a copy of the mirror or pattern "${ref.id.slice(0, ref.id.indexOf('/'))}"` : 'projected geometry');
+    if (ref.notProjected && !entity.own && ref.id !== ORIGIN) fail(`${what}: "${ref.id}" is ${isWhat()}; an own ${(ref.accepts ?? []).join(' or ')} of the sketch "${sketch.id}" is expected`);
     return;
   }
   const { feature, local } = ref.kind === 'body' ? bodyOwner(ref.id) : { feature: ref.id, local: undefined };

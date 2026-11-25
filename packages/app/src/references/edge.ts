@@ -6,9 +6,9 @@ export const edge: ReferenceUi<EdgeProjection> = {
   title: (ref) => (ref.kind === 'line' ? 'Úsečka' : 'Kružnice'),
   detail: (ref, host) => host.bodyName(ref.body),
   tag: 'projected',
-  repair: {
+  repair: () => ({
     title: 'Promítnout znovu: klikněte potom na novou hranu tělesa',
     tool: 'project',
     hint: 'Klikněte na hranu, která má promítnutí nahradit (Esc ruší).',
-  },
+  }),
 };

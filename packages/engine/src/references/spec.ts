@@ -48,8 +48,15 @@ export interface ReferenceContext {
 // - `faces`: the faces of bodies the entry reads (the fillet's list `shortened`).
 // - `entities`: every entity of the entry by its derived ID, with its kind, in the order of the
 //   kind, computed from the sketch alone, so commands and `load` are validated from the document.
+// - `summary`: what the kind is, its IDs and what may name them, for the description of the API
+//   (`describe_api`, section "Entries of a sketch").
+// - `example`: an entry of the kind over the fixture of that section (a box `box` from a rectangle
+//   `b1`..`b4` in the sketch `base`, and the sketch `top` on its top face with a rectangle `l1`..`l4`
+//   and a construction line `cl`); the tests of MCP add it with addExternal.
 export interface KindBase<R> {
   title: string;
+  summary: string;
+  example: { id: Id; ref: R };
   validate(context: ValidationContext, sketch: SketchFeature, id: Id, entry: Dict, what: string): R;
   refs(ref: R, path: string): FeatureRef[];
   faces(ref: R): FaceName[];

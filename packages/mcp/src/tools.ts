@@ -40,6 +40,11 @@ import {
   freshIds,
   isDimension,
   referenceEntities,
+  entryInput,
+  kindOf,
+  solvedCurves,
+  type SketchPattern,
+  type SketchResult,
   poseNote,
   printedBodies,
   sketchTool,
@@ -469,6 +474,129 @@ function entryDetail(feature: SketchFeature, entry: Id, position: (point: Id) =>
   };
 }
 
+// A derived entry (a mirror or pattern, D68) is listed short (design.md of 6c, "MCP"): its input
+// form (what updateExternal takes back), `source`, the copy numbers the last recompute made as
+// ranges, `step` (where copy k stands) and `first`, the entities of the first copy made with the
+// kind of a curve or the position of a point. Its every ID and position would be thousands.
+const rangesOf = (numbers: number[]): [number, number][] => {
+  const out: [number, number][] = [];
+  for (const n of [...new Set(numbers)].sort((p, q) => p - q)) {
+    const last = out[out.length - 1];
+    if (last && n === last[1] + 1) last[1] = n;
+    else out.push([n, n]);
+  }
+  return out;
+};
+// the copy number of `<entry>/<n>/<source>`, or undefined
+const copyNumber = (entry: Id, id: Id): number | undefined => {
+  if (!id.startsWith(`${entry}/`)) return undefined;
+  const rest = id.slice(entry.length + 1);
+  const slash = rest.indexOf('/');
+  const n = slash > 0 ? Number(rest.slice(0, slash)) : NaN;
+  return Number.isInteger(n) && n > 0 ? n : undefined;
+};
+function derivedDetail(feature: SketchFeature, entry: Id, solved: SketchResult | undefined, position: (point: Id) => Json): Record<string, Json> {
+  const input = entryInput(feature, entry) as unknown as { [key: string]: Json };
+  const made = new Set<number>();
+  for (const id of [...Object.keys(solved?.curves ?? {}), ...Object.keys(solved?.points ?? {})]) {
+    const n = copyNumber(entry, id);
+    if (n !== undefined) made.add(n);
+  }
+  const numbers = [...made].sort((p, q) => p - q);
+  const ref = feature.external[entry] as SketchPattern;
+  const world = solvedCurves(feature, solved);
+  const ends = (line: Id): [Json, Json] | null => {
+    const curve = world.curves.get(line);
+    if (curve?.shape.type !== 'line') return null;
+    const [a, b] = [world.geometry.points[curve.shape.a], world.geometry.points[curve.shape.b]];
+    return a && b ? [[round(a.x), round(a.y)], [round(b.x), round(b.y)]] : null;
+  };
+  // the shift of copy `n` from its source, read from the first copied point that has a position
+  const shift = (n: number): Json => {
+    for (const id of Object.keys(solved?.points ?? {})) {
+      if (copyNumber(entry, id) !== n) continue;
+      const source = id.slice(`${entry}/${n}/`.length);
+      const [p, q] = [world.geometry.points[source], solved?.points[id]];
+      if (p && q) return [round(q.x - p.x), round(q.y - p.y)];
+    }
+    return null;
+  };
+  const t = ref.transform;
+  let step: Json;
+  switch (t.type) {
+    case 'mirror':
+      step = { axis: ends(t.axis) };
+      break;
+    case 'linear':
+      step = { shift: shift(1), ...(t.second ? { second: shift(1000) } : {}) };
+      break;
+    case 'circular': {
+      const c = world.geometry.points[t.center];
+      step = { center: c ? [round(c.x), round(c.y)] : null, angle: round(t.span.type === 'full' ? (2 * Math.PI) / t.count : t.count > 1 ? t.span.angle / (t.count - 1) : 0) };
+      break;
+    }
+    default:
+      step = null;
+  }
+  const first: { [key: string]: Json } = {};
+  if (numbers.length > 0) {
+    const prefix = `${entry}/${numbers[0]}/`;
+    for (const [id, kind] of Object.entries(referenceEntities(feature, entry))) {
+      if (!id.startsWith(prefix)) continue;
+      if (kind === 'point') {
+        if (solved?.points[id]) first[id] = position(id);
+      } else if (solved?.curves[id]) first[id] = kind;
+    }
+  }
+  return { ...input, source: 'derived', copies: rangesOf(numbers), step, first };
+}
+
+// The regions of a sketch for get_sketch: regions whose outer loop is the copies with one number of
+// one entry and that are equal (the outer loop up to the copy number, the area as written, the
+// number of holes) are one row with the reference of the first and `copies: { entry, numbers }`;
+// every other region is a row of its own.
+function regionRows(feature: SketchFeature, solved: SketchResult | undefined): Json[] {
+  const rows: { [key: string]: Json }[] = [];
+  const groups = new Map<string, { row: { [key: string]: Json }; numbers: number[] }>();
+  for (const region of solved?.regions ?? []) {
+    const area = round(region.loops.reduce((sum, loop) => sum + loopArea(loop), 0));
+    const row: { [key: string]: Json } = { ref: region.ref as unknown as Json, area, holes: region.loops.length - 1 };
+    const loop = region.ref.outerLoop;
+    const entry = loop[0]?.split('/')[0];
+    const n = entry !== undefined && feature.external[entry]?.type === 'pattern' ? copyNumber(entry, loop[0]) : undefined;
+    if (entry === undefined || n === undefined || !loop.every((id) => copyNumber(entry, id) === n)) {
+      rows.push(row);
+      continue;
+    }
+    const key = JSON.stringify([entry, loop.map((id) => id.slice(`${entry}/${n}/`.length)), area, row.holes]);
+    const group = groups.get(key);
+    if (group) group.numbers.push(n);
+    else {
+      const made = { row, numbers: [n] };
+      groups.set(key, made);
+      rows.push(row);
+    }
+  }
+  for (const [key, group] of groups) {
+    if (group.numbers.length < 2) continue;
+    group.row.copies = { entry: JSON.parse(key)[0] as string, numbers: rangesOf(group.numbers) };
+  }
+  return rows;
+}
+
+// The advice of the open ends of copies (D68).
+function openEndAdvice(solved: SketchResult | undefined): string | undefined {
+  const open = solved?.openEnds;
+  if (!open || open.count === 0 || open.ends.length === 0) return undefined;
+  const first = open.ends[0];
+  const entry = first.end.split('/')[0];
+  const where =
+    first.reason === 'twoVertices'
+      ? `\`${first.end}\` lands where ${first.near.map((id) => `\`${id}\``).join(' and ')} lie without being joined: join them by \`coincident\`.`
+      : `\`${first.end}\` is ${round(first.distance)} mm from ${first.near.length ? `\`${first.near[0]}\`` : 'every other end'}. Copies close with what lies at their ends within 1e-6 mm: hold the source's end on the axis by a constraint (\`pointOnCurve\` with the axis).`;
+  return `${open.count} ${open.count === 1 ? 'end' : 'ends'} of copies of \`${entry}\` ${open.count === 1 ? 'is' : 'are'} open (\`openEnds\` of the result): ${where}`;
+}
+
 function sketchDetail(engine: Engine, id: string): unknown {
   const feature = sketchOf(engine, id);
   const result = engine.getState(id).evaluation.features[id];
@@ -502,6 +630,8 @@ function sketchDetail(engine: Engine, id: string): unknown {
     if (diagnosis.removable.length > 0) advice.push(`Vazby navíc: ${diagnosis.removable.join(', ')}. Jdou odebrat naráz beze změny geometrie; z čeho která plyne, řekne explain_constraint.`);
   }
   if (solved && !solved.valid) advice.push('Profil je neplatný: křivky se kříží nebo dotýkají mimo spojené body. Vysunout takovou skicu nejde.');
+  const open = openEndAdvice(solved);
+  if (open) advice.push(open);
 
   return {
     id,
@@ -527,12 +657,16 @@ function sketchDetail(engine: Engine, id: string): unknown {
       ...(twins.has(constraint) ? { duplicate: true } : {}),
       ...(diagnosis.removable.includes(constraint) ? { surplus: true } : {}),
     })),
-    external: Object.entries(feature.external).map(([external, ref]) => ({
-      id: external,
-      ...(ref as unknown as { [key: string]: Json }),
-      ...entryDetail(feature, external, position, solved?.radii),
-    })),
-    regions: (solved?.regions ?? []).map((region) => ({ ref: region.ref as unknown as Json, area: round(region.loops.reduce((sum, loop) => sum + loopArea(loop), 0)), holes: region.loops.length - 1 })),
+    external: Object.entries(feature.external).map(([external, ref]) =>
+      kindOf(ref).source === 'derived'
+        ? { id: external, ...derivedDetail(feature, external, solved, position) }
+        : {
+            id: external,
+            ...(ref as unknown as { [key: string]: Json }),
+            ...entryDetail(feature, external, position, solved?.radii),
+          },
+    ),
+    regions: regionRows(feature, solved),
     profileValid: solved?.valid ?? false,
     diagnosis: diagnosis as unknown as Json,
     advice,

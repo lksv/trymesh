@@ -24,6 +24,8 @@ const COUNT: NumberSpec = { title: 'count', unit: 'count', min: { value: 1 }, ma
 const testCopy: DerivedKindSpec<TestCopy> = {
   source: 'derived',
   title: 'Test copies',
+  summary: 'Copies of a line, side by side.',
+  example: { id: 't', ref: { type: 'testCopy', line: 'l1', count: 2 } },
   validate: (context, _sketch, id, o, what) => ({ type: 'testCopy', line: string(o.line, `${what}.line`), count: context.fields.number(o.count, `external/${id}/count`, COUNT, `${what}.count`) }),
   refs: () => [],
   faces: () => [],

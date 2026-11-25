@@ -55,6 +55,33 @@ export function referenceEntities(sketch: SketchFeature, id: Id): Record<Id, Ent
   return kindOf(ref).entities(id, ref, sketch);
 }
 
+// Every entity of every entry of a sketch with its kind and its entry, in the order of `external`
+// and within an entry in the order of its kind (`byEntry`: the IDs of each entry). Built once per
+// sketch object (the document is immutable, so a sketch object never changes): a pattern of 200
+// slots has 2,000 entities, which the readers of the app would otherwise list for every ID (D68).
+export interface EntityIndex {
+  entities: ReadonlyMap<Id, { kind: EntityKind; entry: Id }>;
+  byEntry: ReadonlyMap<Id, readonly Id[]>;
+}
+const entityIndexes = new WeakMap<SketchFeature, EntityIndex>();
+export function entityIndex(sketch: SketchFeature): EntityIndex {
+  let found = entityIndexes.get(sketch);
+  if (!found) {
+    const entities = new Map<Id, { kind: EntityKind; entry: Id }>();
+    const byEntry = new Map<Id, Id[]>();
+    for (const entry of Object.keys(sketch.external)) {
+      const ids: Id[] = [];
+      for (const [id, kind] of Object.entries(referenceEntities(sketch, entry))) {
+        entities.set(id, { kind, entry });
+        ids.push(id);
+      }
+      byEntry.set(entry, ids);
+    }
+    entityIndexes.set(sketch, (found = { entities, byEntry }));
+  }
+  return found;
+}
+
 // What an ID is in a sketch: `origin`, an axis of the origin (`origin/x`, `origin/y`: a line that is
 // not own; their far points are no entities), an own point or curve, or an entity of an entry of
 // `external` (the entry itself or `<entry>/<local>`), by the kind of the entry.

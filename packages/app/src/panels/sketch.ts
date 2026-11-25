@@ -1,7 +1,7 @@
 // The panel of the sketch mode: the status of the sketch, its diagnosis, the buttons of the
 // selection, the list of constraints and dimensions, the projected geometry, the options of the
 // active tool (its entry of SKETCH_TOOL_UI), and the row that re-points a point of a curve (D52).
-import { type Command, type Expr, type Id, type SketchDiagnosis, type Unit, CONSTRAINTS, CURVE_POINTS, type Constraint, type CurvePointName, constraintPath, isDimension, nearestCurvePoint, referenceEntities } from '@trymesh/engine';
+import { type Command, type Expr, type ExternalRef, type Id, type Input, type SketchDiagnosis, type SketchFeature, type Unit, CONSTRAINTS, CURVE_POINTS, type Constraint, type CurvePointName, atPath, constraintPath, entityIndex, entryInput, isDimension, isOriginAxis, kindOf, nearestCurvePoint, withPath } from '@trymesh/engine';
 import { h, markProblem } from '../dom';
 import { expressionProblem, fieldText, parseField, valueText } from '../fields';
 import { CURVE_POINT_LABELS, type DimensionVariant, GEOMETRIC_KINDS, dimensionFor, geometricFor, normalizeAngle, repointSelection } from '../sketch-commands';
@@ -9,7 +9,8 @@ import { duplicateTwins, explanationText, freeSummary, markOf } from '../sketch-
 import { type SketchHost, type SketchMode, addConstraints, contactsOf, deleteSelection, explain, setTool, toolOptions } from '../sketch-mode';
 import { SKETCH_TOOL_UI } from '../sketch-tools';
 import { measure, operandsOf } from '../sketch-view';
-import { referenceUi } from '../references';
+import { type EntryControl, PICKER_LIMIT, referenceUi } from '../references';
+import { selectedSources } from '../sketch-tools/pattern';
 
 // Jména vazeb jsou v katalogu enginu; nová vazba se tu objeví sama.
 const constraintName = (type: Constraint['type']): string => CONSTRAINTS[type].title;
@@ -244,21 +245,35 @@ export function sketchPanel(host: SketchHost, m: SketchMode): HTMLElement[] {
 
   // Promítnutá geometrie: i ta, kterou přepočet nedokázal promítnout a v pohledu proto není vidět.
   // A row by the kind of the entry (REFERENCE_UI); "bez geometrie" when no entity of it has a position.
+  // A derived entry (a mirror or pattern, D68): "no copies" when its count makes none, "n open ends"
+  // when the result lists open ends of its copies; a click on its name opens its form.
   const warnings = host.view().evaluation.features[m.id]?.warnings ?? [];
-  const projections = Object.entries(feature.external).map(([id, ref]) => {
+  const index = entityIndex(feature);
+  const openEnds = context.result.openEnds;
+  const projections = Object.entries(feature.external).flatMap(([id, ref]) => {
     const problem = warnings.find((w) => w.code !== 'sketchConflict' && Array.isArray(w.refs) && w.refs[0] === id);
     const ui = referenceUi(ref);
-    const shown = Object.keys(referenceEntities(feature, id)).some((entity) => view.points.has(entity) || view.curves.has(entity));
-    const repair = ui.repair;
-    return h(
+    const entities = index.byEntry.get(id) ?? [];
+    const shown = entities.some((entity) => view.points.has(entity) || view.curves.has(entity));
+    const derived = kindOf(ref).source === 'derived';
+    const open = derived ? (openEnds?.ends ?? []).filter((end) => end.end.startsWith(`${id}/`)) : [];
+    const state = derived ? (entities.length === 0 ? ' · no copies' : !shown ? ' · bez geometrie' : '') : shown ? '' : ' · bez geometrie';
+    const repair = ui.repair?.(ref);
+    const form = ui.form;
+    const row = h(
       'div',
       {
-        className: `constraint ${problem ? 'conflict' : ''} ${m.repair === id ? 'repair' : ''}`,
-        title: problem?.message ?? '',
+        className: `constraint ${problem ? 'conflict' : ''} ${m.repair === id ? 'repair' : ''} ${m.entry === id ? 'focus' : ''}`,
+        title: problem?.message ?? (open.length > 0 ? `${open[0].end}: ${open[0].reason === 'apart' ? `${Math.round(open[0].distance * 1e6) / 1e6} mm from ${open[0].near.join(', ') || 'every other end'}` : `lands where ${open[0].near.join(' and ')} lie without being joined`}` : ''),
         onmouseenter: () => ((m.hover = id), host.renderScene()),
         onmouseleave: () => ((m.hover = undefined), host.renderScene()),
       },
-      h('span', { className: 'name' }, `${ui.title(ref)} `, h('small', {}, `${id} · ${ui.detail(ref, host)}${shown ? '' : ' · bez geometrie'}`)),
+      h(
+        'span',
+        { className: 'name', ...(form ? { onclick: () => ((m.entry = m.entry === id ? undefined : id), host.renderPanel()) } : {}) },
+        `${ui.title(ref)} `,
+        h('small', {}, `${id} · ${ui.detail(ref, host)}${state}${open.length > 0 ? ` · ${open.length} open ${open.length === 1 ? 'end' : 'ends'}` : ''}`),
+      ),
       repair
         ? h('button', {
             className: 'icon',
@@ -272,9 +287,101 @@ export function sketchPanel(host: SketchHost, m: SketchMode): HTMLElement[] {
             },
           })
         : null,
-      h('button', { className: 'icon', textContent: '✕', title: 'Zrušit promítnutí', onclick: () => host.run({ type: 'removeExternal', sketch: m.id, id }, 'Promítnutí zrušeno.') }),
+      h('button', { className: 'icon', textContent: '✕', title: derived ? 'Remove the mirror or pattern' : 'Zrušit promítnutí', onclick: () => host.run({ type: 'removeExternal', sketch: m.id, id }, derived ? 'Mirror or pattern removed.' : 'Promítnutí zrušeno.') }),
     );
+    return form && m.entry === id ? [row, entryForm(host, m, feature, id, form)] : [row];
   });
   if (projections.length > 0) out.push(h('h2', {}, `Promítnutá geometrie (${projections.length})`), ...projections);
   return out;
+}
+
+// The form of an entry (D68): the controls of its kind, each over the path of its field in the
+// input form (`entryInput`); a change sends `updateExternal` with the whole input form, and an
+// invalid one is said with the engine's message.
+function entryForm(host: SketchHost, m: SketchMode, feature: SketchFeature, id: Id, form: (input: ExternalRef) => EntryControl[]): HTMLElement {
+  const input = entryInput(feature, id) as Input<ExternalRef>;
+  const send = (next: unknown, done: string): void => {
+    if (!host.run({ type: 'updateExternal', sketch: m.id, id, ref: next as Input<ExternalRef> }, done)) host.renderPanel();
+  };
+  const names = host.doc.parameters.map((p) => p.name);
+  const context = host.sketchContext();
+  // the lines or points that may serve: not copies; of each derived entry at most the first PICKER_LIMIT
+  const index = entityIndex(feature);
+  const choices = (entity: 'line' | 'point'): Id[] => {
+    const own = entity === 'point' ? ['origin', ...Object.keys(feature.points)] : Object.keys(feature.curves).filter((curve) => feature.curves[curve].type === 'line');
+    const entries = [...index.entities].filter(([, e]) => e.kind === entity && kindOf(feature.external[e.entry]).source !== 'derived').map(([entityId]) => entityId);
+    return [...own, ...entries, ...(entity === 'line' ? ['origin/x', 'origin/y'] : [])];
+  };
+  const control = (c: EntryControl): HTMLElement => {
+    const value = atPath(input, c.path);
+    switch (c.kind) {
+      case 'sources': {
+        const list = Array.isArray(value) ? (value as Id[]) : [];
+        return h(
+          'div',
+          { className: 'buttons' },
+          h('span', { className: 'name' }, `${c.title}: `, h('small', {}, list.length > PICKER_LIMIT ? `${list.slice(0, PICKER_LIMIT).join(', ')} … (${list.length - PICKER_LIMIT} more)` : list.join(', '))),
+          h('button', {
+            textContent: 'Use selection',
+            title: 'The own curves and points selected become the sources',
+            onclick: () => {
+              const sources = context ? selectedSources(m, context) : [];
+              if (sources.length === 0) return host.say('Select the own curves and points to copy first.', true);
+              send(withPath(input, c.path, sources), 'Sources changed.');
+            },
+          }),
+        );
+      }
+      case 'choice': {
+        const select = h('select', { onchange: () => send(c.set(input, select.value), `${c.title} changed.`) }, ...c.options.map((option) => h('option', { value: option.value, textContent: option.label, selected: option.value === value })));
+        return h('label', {}, c.title, select);
+      }
+      case 'entity': {
+        const ids = choices(c.entity);
+        const current = typeof value === 'string' ? value : '';
+        const select = h(
+          'select',
+          { onchange: () => send(withPath(input, c.path, select.value), `${c.title} changed.`) },
+          ...(ids.includes(current) ? ids : [current, ...ids]).map((option) => h('option', { value: option, textContent: isOriginAxis(option) ? `${option} (${option === 'origin/x' ? 'X' : 'Y'} axis of the sketch)` : option, selected: option === current })),
+        );
+        return h('label', {}, c.title, select);
+      }
+      case 'number': {
+        const unit: Unit = c.spec.unit as Unit;
+        const field = h('input', {
+          className: 'value',
+          value: typeof value === 'number' || typeof value === 'string' ? fieldText(value as number | Expr, unit) : '',
+          title: 'a number, or an expression',
+          oninput: () => {
+            const parsed = parseField(field.value, unit);
+            markProblem(field, typeof parsed === 'string' ? expressionProblem(parsed, 'number', names) : undefined);
+          },
+          onchange: () => {
+            const parsed = parseField(field.value, unit);
+            if (parsed === undefined) return host.renderPanel();
+            send(withPath(input, c.path, parsed), `${c.title} changed.`);
+          },
+        });
+        return h('label', {}, c.title, field);
+      }
+      case 'switch': {
+        const box = h('input', {
+          type: 'checkbox',
+          checked: value !== undefined,
+          onchange: () => {
+            const keys = c.path.split('/');
+            const without = (object: unknown, i: number): unknown => {
+              const { [keys[i]]: inner, ...rest } = object as Record<string, unknown>;
+              return i === keys.length - 1 ? rest : { ...rest, [keys[i]]: without(inner, i + 1) };
+            };
+            send(box.checked ? withPath(input, c.path, c.on) : without(input, 0), `${c.title} ${box.checked ? 'on' : 'off'}.`);
+          },
+        });
+        return h('label', { className: 'check' }, box, c.title);
+      }
+      default:
+        return c satisfies never;
+    }
+  };
+  return h('div', { className: 'entry-form' }, ...form(input as ExternalRef).map(control));
 }

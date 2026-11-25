@@ -27,6 +27,9 @@ export function projected(v: unknown, what: string): Projected {
 export const edge: ReferenceKindSpec<EdgeProjection, Projected> = {
   source: 'reference',
   title: 'Projection of an edge',
+  summary:
+    'An edge of a body made before the sketch, projected onto the plane of the sketch: a fixed curve of the sketch, `kind` `line` or `circle` (the edge has to be one). A line has the derived points `<id>/a` and `<id>/b`, a circle `<id>/center`. It is reference geometry: computed before the sketch is solved, so constraints and dimensions of the sketch may name the curve and its points; it bounds no region. The edge is named by its two faces as the query `body` lists it.',
+  example: { id: 'pr', ref: { type: 'edge', body: 'box', edge: { a: { feature: 'box', role: 'endCap' }, b: { feature: 'box', role: 'side', curve: 'b1' } }, kind: 'line' } },
   validate: (context, _sketch, _id, o, what) => {
     const body = string(o.body, `${what}.body`);
     context.requireRef({ id: body, kind: 'body' }, what);

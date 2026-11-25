@@ -337,6 +337,9 @@ function copyOf(shape: CurveShape, name: (source: Id) => Id, reflects: boolean):
 export const pattern: DerivedKindSpec<SketchPattern> = {
   source: 'derived',
   title: 'Mirror or pattern',
+  summary:
+    'Copies of own curves and points of the sketch (`sources`): a mirror about a line, a linear pattern along a line (a grid with `second`), or a circular pattern about a point. The copy n of a source is `<id>/<n>/<source>` (a mirror n = 1, a row and a circle 1 to count − 1, a grid i + 1000 · j); its points likewise. It is derived geometry: made after the sketch is solved, so no constraint of the sketch may name a copy (constrain the sources; the copies follow), no curve may run over a copied point, and no sketch tool cuts or snaps to a copy. A copy forms regions as its source and names side faces (`{ role: "side", curve: "<id>/<n>/<source>" }`); later features and sketches may read it as any curve. The count and the span are numeric fields (`external/<id>/transform/...`) and take expressions.',
+  example: { id: 'row', ref: { type: 'pattern', sources: ['l1', 'l2', 'l3', 'l4'], transform: { type: 'linear', direction: 'cl', count: 3, span: { type: 'spacing', spacing: 20 } } } },
   validate,
   refs: () => [],
   faces: () => [],

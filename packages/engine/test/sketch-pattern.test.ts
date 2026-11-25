@@ -6,6 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import { applyCommand, emptyDocument, emptySketch, entityOf, entryInput, fieldsOf, referenceEntities } from '../src/document';
 import { entryOrder, positionJoins } from '../src/references/derive';
+import { entityIndex } from '../src/references/index';
 import { sketchWorld, toolBase } from '../src/references/world';
 import { type SketchCurve, type SketchGeometry, detectProfile, joinsOf, profileOf } from '../src/sketch';
 import { type CurveChanges, contactFix, copyParts, curvePredicates, entryCommands, entryPatches, piecesOf, readersOf, reshapedProbes, sameTransform } from '../src/sketch-cut';
@@ -489,5 +490,20 @@ describe('the copies and the sketch tools (D68)', () => {
     doc = applyCommand(doc, { type: 'addFeature', feature: { id: 'rev', name: 'rev', suppressed: false, type: 'revolve', profile: { type: 'regions', sketch: S, regions: [{ outerLoop: SQUARE }] }, axis: { kind: 'sketchLine', sketch: S, line: 'm/1/qd' }, extent: { type: 'full' }, operation: 'new' } as never });
     expect(readersOf(doc, S, changesOf({ removed: ['qd'] })).broken).toEqual(['rev']);
     expect(readersOf(doc, S, changesOf({ removed: ['qb'] })).broken).toEqual([]);
+  });
+});
+
+describe('the index of the entities of the entries (D68)', () => {
+  it('is built once per sketch object, every entity with its kind and entry, and anew for a changed sketch', () => {
+    const [p, c] = square('q', 2, 0);
+    const doc = build(p, c, [add('m', { type: 'pattern', sources: SQUARE, transform: { type: 'mirror', axis: 'origin/y' } })]);
+    const sketch = sketchOf(doc);
+    const index = entityIndex(sketch);
+    expect(entityIndex(sketch)).toBe(index);
+    expect(index.entities.get('m/1/qa')).toEqual({ kind: 'line', entry: 'm' });
+    expect(index.entities.get('m/1/q1')).toEqual({ kind: 'point', entry: 'm' });
+    expect(index.byEntry.get('m')).toHaveLength(8);
+    const changed = sketchOf(applyCommand(doc, { type: 'removeExternal', sketch: S, id: 'm' }));
+    expect(entityIndex(changed).entities.size).toBe(0);
   });
 });

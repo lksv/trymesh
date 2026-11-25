@@ -133,7 +133,7 @@ A profile that fails any of them is `invalidProfile`. What passes hands `buildPr
 
 The moved outline is tessellated with the rule of today (`segments` of `sketch.ts`, by the new radius), every vertex with a key of its own, and handed to `buildPrism` as regions with their holes. `sideOf` answers with the moved curves in the direction of the sketch curve, so the surfaces are exact: the plane of a moved line, a cylinder with the new radius.
 
-One consequence to state in the docs: the frame of a sketch on a side face has its origin at the start point of the line (`faceFrame`, architecture.md, "Rovina skici na stěně"). For a moved line that is the mitred corner, so it moves with the offset.
+One consequence to state in the docs: the frame of a sketch on a side face has its origin at the start point of the line (`faceFrame`, architecture/naming.md, "The plane of a sketch on a face"). For a moved line that is the mitred corner, so it moves with the offset.
 
 ### The wall
 

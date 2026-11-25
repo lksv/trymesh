@@ -464,7 +464,7 @@ describe('queries on a sketch', () => {
     const advice = detail.advice.join(' ');
     expect(advice).toMatch(/1 degree of freedom/);
     expect(advice).toMatch(/position of one of the points c, d is set \(by one dimension or constraint/);
-    expect(advice).not.toMatch(/for example by the constraint coincident/);
+    expect(advice).not.toMatch(/\bcoincident\b/);
     // a coincidence with the origin really is a conflict, one dimension fully constrains the sketch
     expect(ok(engine, 'preview', { command: constrain('bad', { type: 'coincident', a: 'c', b: 'origin' }) }).sketches[0]).toMatchObject({ solved: false });
     expect(execute(engine, constrain('fixed', { type: 'verticalDistance', a: 'origin', b: 'c', value: 30, driving: true })).sketches[0]).toEqual({ id: 's', solved: true, degreesOfFreedom: 0, profileValid: true, regions: 1 });
@@ -483,7 +483,7 @@ describe('queries on a sketch', () => {
     execute(engine, constrain('par', { type: 'parallel', a: 'ab', b: 'cd' }));
     const detail = ok(engine, 'get_sketch', { sketch: 's' });
     expect(detail.constraints.find((c: { id: string }) => c.id === 'par')).toMatchObject({ surplus: true, label: 'Parallel (ab, cd)' });
-    expect(detail.advice.join(' ')).toMatch(/Redundant constraints: par\./);
+    expect(detail.advice.join(' ')).toMatch(/Surplus constraints: par\./);
     expect(ok(engine, 'explain_constraint', { sketch: 's', constraint: 'par' })).toEqual({
       constraint: { id: 'par', label: 'Parallel (ab, cd)' },
       redundant: true,

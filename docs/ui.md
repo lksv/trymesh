@@ -63,4 +63,4 @@ These requirements were missing from the original design of the API and have bee
 
 The app (`packages/app`, decided in D31) offers every function of the tables in `ui/`. Where it differs from a table, or does more, is said at the end of the file of that area ("Implementation status"). For the whole app:
 
-- New UI texts are in English (owner's instruction of 2026-11-14 for all new text in the repository); older texts stay in Czech until they are translated.
+- UI texts are in English (owner's instruction of 2026-11-14 for all new text in the repository; the older Czech texts were translated on 2026-11-25).

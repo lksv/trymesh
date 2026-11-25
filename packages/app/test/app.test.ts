@@ -1822,7 +1822,7 @@ describe('the app, driven as a user drives it', () => {
       const rename = (name: string): Command => ({ type: 'renameFeature', id: 'e1', name });
       h.record('a model of three bodies');
       h.press('toolbar', 'AI');
-      await until(() => bridge.connected() && status().startsWith('Linked'), 'the app to connect');
+      await until(() => bridge.connected() && status().startsWith('Connected'), 'the app to connect');
       h.record('the app is connected to the bridge');
 
       h.press('toolbar', 'Plane');
@@ -1868,7 +1868,7 @@ describe('the app, driven as a user drives it', () => {
       expect(await ai('_outline', { file: broken, sketch: 'so', id: 'sq2' })).not.toBe('ok');
       h.record('a placement of a file that cannot be read fails: the status line says it in words, as an error');
 
-      h.press('toolbar', 'AI: linked');
+      h.press('toolbar', 'AI: connected');
       await until(() => !bridge.connected(), 'the app to disconnect');
       h.record('the connection is switched off');
       await matches(h, 'bridge');

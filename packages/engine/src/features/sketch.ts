@@ -102,7 +102,7 @@ export function constraint(sketch: SketchFeature, v: unknown, what: string, fiel
       const origin = derivedOrigin(sketch, id) as { entry: Id; source: Id };
       return fail(`${what}.${field}: ${copyInConstraint(id, origin.entry, origin.source)}`);
     }
-    if (!accepted.includes(entity.kind)) fail(`${what}.${field}: "${id}" is ${entity.kind}, ${accepted.join(' or ')} is expected`);
+    if (!accepted.includes(entity.kind)) fail(`${what}.${field}: "${id}" is ${/^[aeiou]/.test(entity.kind) ? 'an' : 'a'} ${entity.kind}, expected ${accepted.join(' or ')}`);
     operands[field] = id;
     kinds.push(entity.kind);
   }

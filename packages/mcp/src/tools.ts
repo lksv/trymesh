@@ -773,7 +773,7 @@ function sketchDetail(engine: Engine, id: string): unknown {
         advice.push(`The sketch becomes fully constrained when the position of one of the points ${anchors.join(', ')} is set (${how}).`);
       }
     }
-    if (diagnosis.removable.length > 0) advice.push(`Redundant constraints: ${diagnosis.removable.join(', ')}. They can be removed at once without a change of the geometry; what each follows from, explain_constraint says.`);
+    if (diagnosis.removable.length > 0) advice.push(`Surplus constraints: ${diagnosis.removable.join(', ')}. They can be removed at once without a change of the geometry; what each follows from, explain_constraint says.`);
   }
   if (solved && !solved.valid) advice.push('The profile is invalid: curves cross or touch away from joined points. Such a sketch cannot be extruded.');
   const open = openEndAdvice(feature, solved);

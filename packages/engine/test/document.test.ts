@@ -209,15 +209,15 @@ describe('commands of a sketch', () => {
     const doc = run(base(), { type: 'addCurve', sketch: 'S1', id: 'c', curve: { type: 'circle', center: 'p1' }, radius: 4 });
     const add = (constraint: Constraint, id = 'k'): Command => ({ type: 'addConstraint', sketch: 'S1', id, constraint });
     expect(sketchOf(run(doc, add({ type: 'coincident', a: 'p1', b: 'origin' }))).constraints.k).toEqual({ type: 'coincident', a: 'p1', b: 'origin' });
-    invalid(doc, add({ type: 'parallel', a: 'l1', b: 'c' }), /line is expected/);
+    invalid(doc, add({ type: 'parallel', a: 'l1', b: 'c' }), /expected line/);
     invalid(doc, add({ type: 'parallel', a: 'l1', b: 'l1' }), /two different entities/);
-    invalid(doc, add({ type: 'horizontal', line: 'p1' }), /line is expected/);
+    invalid(doc, add({ type: 'horizontal', line: 'p1' }), /expected line/);
     invalid(doc, add({ type: 'tangent', a: 'l1', b: 'l2' }), /tangency of two lines/);
     invalid(doc, add({ type: 'coincident', a: 'p1', b: 'ghost' }), /is not in the sketch/);
     invalid(doc, add({ type: 'distance', a: 'p1', b: 'p2', value: -1, driving: true }), /must not be negative/);
     invalid(doc, add({ type: 'radius', curve: 'c', value: 0, driving: true }), /must be positive/);
     invalid(doc, add({ type: 'angle', a: 'l1', b: 'l2', value: 4, driving: true }), /\(−π, π\]/);
-    invalid(doc, add({ type: 'radius', curve: 'l1', value: 3, driving: true }), /circle or arc is expected/);
+    invalid(doc, add({ type: 'radius', curve: 'l1', value: 3, driving: true }), /expected circle or arc/);
     invalid(doc, add({ type: 'frobnicate' } as never), /unknown constraint/);
     expect(sketchOf(run(doc, add({ type: 'horizontalDistance', a: 'p2', b: 'p1', value: -40, driving: true }))).constraints.k).toMatchObject({ value: -40 });
     expect(sketchOf(run(doc, add({ type: 'tangent', a: 'c', b: 'l3' }))).constraints.k).toEqual({ type: 'tangent', a: 'c', b: 'l3' });
@@ -230,12 +230,12 @@ describe('commands of a sketch', () => {
     expect(sketchOf(run(doc, add({ type: 'symmetric', a: 'p3', b: 'p4', line: 'l1' }))).constraints.k).toEqual({ type: 'symmetric', a: 'p3', b: 'p4', line: 'l1' });
     expect(sketchOf(run(doc, add({ type: 'midpoint', point: 'q', line: 'l1' }))).constraints.k).toEqual({ type: 'midpoint', point: 'q', line: 'l1' });
     invalid(doc, add({ type: 'symmetric', a: 'p3', b: 'p3', line: 'l1' }), /needs 3 different entities/);
-    invalid(doc, add({ type: 'symmetric', a: 'p3', b: 'l2', line: 'l1' }), /point is expected/);
-    invalid(doc, add({ type: 'symmetric', a: 'p3', b: 'p4', line: 'q' }), /line is expected/);
+    invalid(doc, add({ type: 'symmetric', a: 'p3', b: 'l2', line: 'l1' }), /expected point/);
+    invalid(doc, add({ type: 'symmetric', a: 'p3', b: 'p4', line: 'q' }), /expected line/);
     invalid(doc, add({ type: 'symmetric', a: 'p1', b: 'p4', line: 'l1' }), /a symmetric point must not be an end of the axis/);
     invalid(doc, add({ type: 'symmetric', a: 'p3', b: 'p2', line: 'l1' }), /a symmetric point must not be an end of the axis/);
     invalid(doc, add({ type: 'midpoint', point: 'p2', line: 'l1' }), /the midpoint of a line cannot be its end/);
-    invalid(doc, add({ type: 'midpoint', point: 'l2', line: 'l1' }), /point is expected/);
+    invalid(doc, add({ type: 'midpoint', point: 'l2', line: 'l1' }), /expected point/);
     invalid(doc, add({ type: 'midpoint', point: 'q' } as never), /a string is expected/);
     // for symmetry the order of the points does not matter, the axis does; the midpoint of two different lines is not a duplicate
     const twice = run(doc, add({ type: 'symmetric', a: 'p3', b: 'p4', line: 'l1' }, 's'), add({ type: 'midpoint', point: 'q', line: 'l1' }, 'm'));
@@ -411,7 +411,7 @@ describe('loading a document', () => {
     bad((d) => (d.features[0].curves.l1.b = 'p9'), /is neither an own point/);
     bad((d) => (d.features[0].points.p1.x = null), /finite number/);
     bad((d) => (d.features[0].radii.l1 = 3), /is not a circle/);
-    bad((d) => (d.features[0].constraints.k = { type: 'horizontal', line: 'p1' }), /line is expected/);
+    bad((d) => (d.features[0].constraints.k = { type: 'horizontal', line: 'p1' }), /expected line/);
     bad((d) => (d.features[0].solved.external.x9 = { kind: 'line', a: [0, 0], b: [1, 1] }), /does not match the projected geometry/);
     bad((d) => d.features.push({ ...d.features[1] }), /twice/);
     bad((d) => (d.features[1].extent.distance = 0), /must not be zero/);

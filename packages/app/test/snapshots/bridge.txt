@@ -89,7 +89,7 @@
         button: "Export STL"
         input type=file hidden
       div.group
-        button title="Link to the MCP server (packages/mcp): the AI then reads and changes the document open in the app": "AI"
+        button title="Connect to the MCP server (packages/mcp): the AI then reads and changes the document open in the app": "AI"
       div.group
         button title="Ctrl+Z": "↶ Undo"
         button disabled title="Ctrl+Shift+Z": "↷ Redo"
@@ -218,9 +218,9 @@
 
 === 2. the app is connected to the bridge
   toolbar:
-    +   button.active title="Link to the MCP server (packages/mcp): the AI then reads and changes the document open in the app": "AI: linked"
-    -   button title="Link to the MCP server (packages/mcp): the AI then reads and changes the document open in the app": "AI"
-  status: Linked to the MCP server: the AI sees and changes this document.
+    +   button.active title="Connect to the MCP server (packages/mcp): the AI then reads and changes the document open in the app": "AI: connected"
+    -   button title="Connect to the MCP server (packages/mcp): the AI then reads and changes the document open in the app": "AI"
+  status: Connected to the MCP server: the AI sees and changes this document.
   view: 0 scene(s) set
 
 === 3. a form is open
@@ -932,7 +932,7 @@
 
 === 20. the connection is switched off
   toolbar:
-    +   button title="Link to the MCP server (packages/mcp): the AI then reads and changes the document open in the app": "AI"
-    -   button.active title="Link to the MCP server (packages/mcp): the AI then reads and changes the document open in the app": "AI: linked"
-  status: Link to the AI turned off.
+    +   button title="Connect to the MCP server (packages/mcp): the AI then reads and changes the document open in the app": "AI"
+    -   button.active title="Connect to the MCP server (packages/mcp): the AI then reads and changes the document open in the app": "AI: connected"
+  status: Connection to the AI turned off.
   view: 0 scene(s) set

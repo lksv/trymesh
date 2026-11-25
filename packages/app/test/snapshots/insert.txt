@@ -9,7 +9,7 @@
         button disabled: "Export STL"
         input type=file hidden
       div.group
-        button title="Link to the MCP server (packages/mcp): the AI then reads and changes the document open in the app": "AI"
+        button title="Connect to the MCP server (packages/mcp): the AI then reads and changes the document open in the app": "AI"
       div.group
         button disabled title="Ctrl+Z": "↶ Undo"
         button disabled title="Ctrl+Shift+Z": "↷ Redo"

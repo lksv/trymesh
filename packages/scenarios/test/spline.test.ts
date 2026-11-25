@@ -64,9 +64,9 @@ describe('a spline in the document (D70)', () => {
   it('no constraint takes a spline; setCurvePoint refuses it by its own text', () => {
     const engine = newEngine();
     bulge(engine);
-    expect(refusal(engine, constrain('S', 'k', { type: 'pointOnCurve', point: 'p4', curve: 'sp' }))).toMatch(/"sp" is spline, line or circle or arc is expected/);
-    expect(refusal(engine, constrain('S', 'k', { type: 'tangent', a: 'sp', b: 'l1' }))).toMatch(/"sp" is spline/);
-    expect(refusal(engine, constrain('S', 'k', { type: 'radius', curve: 'sp', value: 5, driving: true }))).toMatch(/"sp" is spline/);
+    expect(refusal(engine, constrain('S', 'k', { type: 'pointOnCurve', point: 'p4', curve: 'sp' }))).toMatch(/"sp" is a spline, expected line or circle or arc/);
+    expect(refusal(engine, constrain('S', 'k', { type: 'tangent', a: 'sp', b: 'l1' }))).toMatch(/"sp" is a spline/);
+    expect(refusal(engine, constrain('S', 'k', { type: 'radius', curve: 'sp', value: 5, driving: true }))).toMatch(/"sp" is a spline/);
     expect(refusal(engine, { type: 'setCurvePoint', sketch: 'S', id: 'sp', point: 'a', to: 'p4' })).toBe('setCurvePoint.id: "sp" is a spline, which has no named points; to change its control points, remove it and add it again under its ID in one batch');
   });
 

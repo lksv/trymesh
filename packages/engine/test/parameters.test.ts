@@ -389,7 +389,7 @@ describe('a fixed point and equal radius (D35, point 6)', () => {
     // the origin is fixed already; a curve is not a point
     expect(() => applyCommand(doc, add('o', { type: 'fixed', point: 'origin', x: 0, y: 0 }))).toThrow(/would never take effect/);
     expect(() => applyCommand(doc, add('o', { type: 'fixed', point: 'origin' }))).toThrow(/would never take effect/); // not a complaint about a missing coordinate
-    expect(() => applyCommand(doc, add('k', { type: 'fixed', point: 'c', x: 0, y: 0 }))).toThrow(/point is expected/);
+    expect(() => applyCommand(doc, add('k', { type: 'fixed', point: 'c', x: 0, y: 0 }))).toThrow(/expected point/);
     expect(() => applyCommand(doc, add('m', { type: 'fixed', point: 'missing' }))).toThrow(/entity "missing" is not in the sketch/);
     expect(() => applyCommand(doc, add('n', { type: 'fixed', point: 'p3', x: null, y: 2 }))).toThrow(CommandError); // only a missing coordinate is filled in
     expect(() => applyCommand(doc, add('n', { type: 'fixed', point: 'p3', x: true, y: 2 }))).toThrow(CommandError);
@@ -408,8 +408,8 @@ describe('a fixed point and equal radius (D35, point 6)', () => {
     doc = run(doc, add('e2', { type: 'equalRadius', a: 'arc', b: 'c' }));
     expect(() => applyCommand(doc, add('e3', { type: 'equalRadius', a: 'c2', b: 'c' }))).toThrow(/the same constraint is already in the sketch \("e1"\)/);
     expect(() => applyCommand(doc, add('e3', { type: 'equalRadius', a: 'c', b: 'c' }))).toThrow(/different entities/);
-    expect(() => applyCommand(doc, add('e3', { type: 'equalRadius', a: 'c', b: 'l' }))).toThrow(/circle or arc is expected/);
-    expect(() => applyCommand(doc, add('e3', { type: 'equalRadius', a: 'c', b: 'p2' }))).toThrow(/circle or arc is expected/);
+    expect(() => applyCommand(doc, add('e3', { type: 'equalRadius', a: 'c', b: 'l' }))).toThrow(/expected circle or arc/);
+    expect(() => applyCommand(doc, add('e3', { type: 'equalRadius', a: 'c', b: 'p2' }))).toThrow(/expected circle or arc/);
     expect(() => applyCommand(doc, add('e3', { type: 'equalRadius', a: 'c', b: 'c2', value: 3 }))).toThrow(/the same constraint/);
     expect(validateDocument(JSON.parse(JSON.stringify(doc)))).toEqual(doc);
   });

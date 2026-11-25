@@ -190,7 +190,7 @@ export class App implements SketchHost, SceneHost {
     if (this.bridge) {
       this.bridge.stop();
       this.bridge = undefined;
-      return this.say('Link to the AI turned off.');
+      return this.say('Connection to the AI turned off.');
     }
     let restore: (() => void) | undefined;
     this.bridge = connectBridge(this.engine, {
@@ -198,13 +198,13 @@ export class App implements SketchHost, SceneHost {
       host: { engine: this.engine, view: this.pictures },
       onStatus: (status) => {
         this.bridgeStatus = status;
-        if (status === 'connected') this.say('Linked to the MCP server: the AI sees and changes this document.');
+        if (status === 'connected') this.say('Connected to the MCP server: the AI sees and changes this document.');
         else if (status === 'connecting') this.say('Waiting for the MCP server (the AI client starts it)…');
         this.renderToolbar();
       },
       onDisplaced: () => {
         this.bridge = undefined;
-        this.say('Another app (another window or tab) has linked to the AI; the link is off here.', true);
+        this.say('Another app (another window or tab) has connected to the AI; the connection is off here.', true);
       },
       // A change from the AI under an operation in progress (extrusion, plane) would pull the ground from
       // under it, so the operation is cancelled before the change; only when the command really changes the
@@ -380,8 +380,8 @@ export class App implements SketchHost, SceneHost {
         file,
       ),
       group(
-        button(this.bridgeStatus === 'connected' ? 'AI: linked' : this.bridgeStatus === 'connecting' ? 'AI: waiting…' : 'AI', () => this.toggleBridge(), {
-          title: 'Link to the MCP server (packages/mcp): the AI then reads and changes the document open in the app',
+        button(this.bridgeStatus === 'connected' ? 'AI: connected' : this.bridgeStatus === 'connecting' ? 'AI: waiting…' : 'AI', () => this.toggleBridge(), {
+          title: 'Connect to the MCP server (packages/mcp): the AI then reads and changes the document open in the app',
           active: this.bridgeStatus !== 'off',
         }),
       ),
@@ -570,7 +570,7 @@ export class App implements SketchHost, SceneHost {
     if (pick.kind === 'plane') return pick.ref.kind === 'base' ? `Plane ${pick.ref.plane}` : pick.ref.kind === 'plane' ? `Plane "${this.nameOf(pick.ref.feature)}"` : 'Plane';
     const face = (name: FaceName) => faceLabel(name, this.featureNames, (id) => insertedFeature(this.doc, id)?.feature.type);
     if (pick.kind === 'face') return `Face: ${face(pick.name)}${pick.planar ? '' : ' (not planar)'}`;
-    const kinds: Record<EdgeKind, string> = { line: 'line', circle: 'circle', coplanar: 'in the surface', other: 'general curve' };
+    const kinds: Record<EdgeKind, string> = { line: 'line', circle: 'circle', coplanar: 'between coplanar faces', other: 'general curve' };
     return `Edge (${kinds[pick.edgeKind]}): ${face(pick.name.a)} × ${face(pick.name.b)}`;
   }
 

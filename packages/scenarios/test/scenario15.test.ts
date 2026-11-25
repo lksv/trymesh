@@ -1218,8 +1218,8 @@ describe('scenario 15, steps 4, 6 and 7: the lid with spline grips (6d, D70)', (
     expect(refusal(engine, sp(s, 'x2', ['a2', 'g1', 'a2', 'g3']))).toMatch(/"a2" is listed twice/);
     expect(refusal(engine, sp(s, 'x3', ['a2', 'g1', 'a2']))).toMatch(/a closed spline needs at least three different points/);
     expect(refusal(engine, sp(s, 'x4', ['a2', 'g1', 'm/1/g2']))).toMatch(/"m\/1\/g2"/);
-    expect(refusal(engine, constrain(s, 'x6', { type: 'pointOnCurve', point: 'g1', curve: 'c2' }))).toMatch(/"c2" is spline/);
-    expect(refusal(engine, constrain(s, 'x7', { type: 'tangent', a: 'c2', b: 'r1' }))).toMatch(/"c2" is spline/);
+    expect(refusal(engine, constrain(s, 'x6', { type: 'pointOnCurve', point: 'g1', curve: 'c2' }))).toMatch(/"c2" is a spline/);
+    expect(refusal(engine, constrain(s, 'x7', { type: 'tangent', a: 'c2', b: 'r1' }))).toMatch(/"c2" is a spline/);
     expect(refusal(engine, { type: 'setCurvePoint', sketch: s, id: 'c2', point: 'a', to: 'g1' })).toMatch(/spline/);
     expect(refusal(engine, { type: 'addFeature', feature: { id: 'w', name: 'w', suppressed: false, type: 'extrude', profile: { type: 'wall', sketch: s, curves: ['c2'], thickness: 1 }, extent: { type: 'distance', start: 0, distance: 1 }, operation: 'new' } as never })).toMatch(/c2/);
     // 6e: the grip by name, the place on it without a name, the mirrored place on its copy

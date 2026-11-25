@@ -6,7 +6,7 @@ import type { Step, StepContext } from '../recompute/state';
 import type { Document, Feature, Id } from '../types';
 import type { Dict, FeatureRef, ValidationContext } from '../validation';
 
-// Veřejný popis typu feature (pro UI a popis API).
+// The public description of a feature type (for the UI and the description of the API).
 export interface FeatureTypeInfo {
   title: string;
   summary: string;
@@ -18,7 +18,7 @@ export interface FeatureTypeInfo {
   // `<feature>/<local name>`. Whether a particular feature does is up to the registry (an extrusion
   // only with the operation new, a pattern only with a body as its source).
   bodies: 'none' | 'self' | 'derived';
-  updatable: readonly string[]; // pole, která mění příkaz updateFeature; prázdné = má vlastní příkazy
+  updatable: readonly string[]; // the fields the command updateFeature changes; empty = it has its own commands
 }
 
 export interface FeatureModule<F extends Feature> {

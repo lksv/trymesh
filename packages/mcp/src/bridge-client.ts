@@ -1,12 +1,13 @@
-// Strana aplikace: připojí engine k mostu MCP serveru a obsluhuje jeho požadavky. Běží v prohlížeči
-// i v Node (testy), proto čte proud událostí přes fetch a ne přes EventSource.
+// The app's side: connects the engine to the bridge of the MCP server and serves its requests. Runs in the
+// browser and in Node (tests), so it reads the event stream through fetch and not through EventSource.
 import type { Engine } from '@trymesh/engine';
 import { HOST_OPERATIONS, type Host, type HostOperationSet, callHostOperation, hostOperationProblems, isHostOperation } from './host';
 import { MUTATING, type ToolOutcome, callProblem, callTool, tools } from './tools';
 
 export { MUTATING, changesDocument, outlineSaid } from './tools';
 
-// Stejná hlavička jako na straně serveru (bridge.ts); tady zvlášť, aby se do prohlížeče netáhl kód pro Node.
+// The same header as on the server's side (bridge.ts); separate here so that code for Node is not pulled
+// into the browser.
 const BRIDGE_HEADER = 'x-trymesh-bridge';
 
 export const DEFAULT_BRIDGE_URL = 'http://127.0.0.1:4517';
@@ -14,18 +15,18 @@ export type BridgeStatus = 'connecting' | 'connected' | 'off';
 
 export interface BridgeConnection {
   stop(): void;
-  // Aplikace vyměnila dokument za jiný (Nový, Otevřít). Server podle toho pozná, že soubor,
-  // do kterého ukládal předchozí dokument, tomu novému nepatří.
+  // The app replaced the document with another one (New, Open). The server tells from it that the file
+  // the previous document was saved to does not belong to the new one.
   documentReplaced(): void;
 }
 
 export interface BridgeClientOptions {
   url?: string;
-  retryMs?: number; // prodleva mezi pokusy o připojení
+  retryMs?: number; // delay between attempts to connect
   onStatus?: (status: BridgeStatus) => void;
-  onDisplaced?: () => void; // k serveru se připojila jiná aplikace; tahle se už sama znovu nepřipojí
-  beforeCall?: (name: string, args: Record<string, unknown>) => void; // před provedením nástroje: aplikace si může uklidit rozpracovaný stav
-  onCall?: (name: string, outcome: ToolOutcome, args: Record<string, unknown>) => void; // po každém obslouženém požadavku (with the arguments of the call)
+  onDisplaced?: () => void; // another app connected to the server; this one does not reconnect by itself any more
+  beforeCall?: (name: string, args: Record<string, unknown>) => void; // before a tool runs: the app can clean up a state in progress
+  onCall?: (name: string, outcome: ToolOutcome, args: Record<string, unknown>) => void; // after every request served (with the arguments of the call)
   // What the operations of the app need of it, with the engine that is connected (host.ts). It is
   // handed to an operation as it is. Without it an operation answers `notAvailable`.
   host?: Host;
@@ -36,7 +37,7 @@ export function connectBridge(engine: Engine, options: BridgeClientOptions = {})
   const url = (options.url ?? DEFAULT_BRIDGE_URL).replace(/\/$/, '');
   const abort = new AbortController();
   let stopped = false;
-  let document = 0; // pořadové číslo dokumentu; server ho dostává s každou odpovědí
+  let document = 0; // sequence number of the document; the server gets it with every answer
   const operations = options.operations ?? HOST_OPERATIONS;
   const defects = [...hostOperationProblems(operations, tools().map((tool) => tool.name)), ...(options.host !== undefined && options.host.engine !== engine ? ['the host has another engine than the one connected'] : [])];
   if (defects.length) throw new Error(`connectBridge: ${defects.join('; ')}`);
@@ -60,14 +61,14 @@ export function connectBridge(engine: Engine, options: BridgeClientOptions = {})
       }
     } catch (error) {
       const text = error instanceof Error ? error.message : String(error);
-      // Výjimka může přijít i z posluchače enginu až po zapsání změny, proto ta výhrada. A question
-      // (a query, a read, an operation of the app) wrote nothing, and says so instead.
+      // An exception can come from a listener of the engine too, after the change was written, hence that
+      // caveat. A question (a query, a read, an operation of the app) wrote nothing, and says so instead.
       outcome = { ok: false, error: MUTATING.includes(call.name) ? `an error occurred in the app (the change may already have been made, check the state): ${text}` : `the app failed to answer ${call.name} (nothing was changed): ${text}` };
     }
     try {
       options.onCall?.(call.name, outcome, call.args ?? {});
     } catch {
-      // chyba v obsluze aplikace nesmí nechat volajícího bez odpovědi
+      // an error in the app's handling must not leave the caller without an answer
     }
     await fetch(`${url}/reply`, { method: 'POST', headers: { 'Content-Type': 'application/json', [BRIDGE_HEADER]: '1' }, body: JSON.stringify({ id: call.id, session, outcome, document }), signal: abort.signal });
   };
@@ -93,8 +94,8 @@ export function connectBridge(engine: Engine, options: BridgeClientOptions = {})
           report('connected');
         } else if (event === 'call') await serve(session, JSON.parse(data));
         else if (event === 'displaced') {
-          // Spojení převzala jiná aplikace. Znovu se nepřipojuje: obě by si ho jinak přebíraly
-          // dokola a AI by střídavě měnila dva různé dokumenty.
+          // Another app took over the connection. It does not reconnect: otherwise the two would take it
+          // from each other over and over and the AI would change two different documents in turn.
           stopped = true;
           report('off');
           options.onDisplaced?.();
@@ -110,7 +111,7 @@ export function connectBridge(engine: Engine, options: BridgeClientOptions = {})
       try {
         await listen();
       } catch {
-        // server neběží nebo spojení spadlo: zkusí se to znovu
+        // the server is not running or the connection dropped: it is tried again
       }
       if (stopped) break;
       report('connecting');

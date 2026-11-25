@@ -14,16 +14,16 @@ export interface DragTarget {
   target: Point2;
 }
 
-// Stav modelu po feature. Neměnný; nezměněné části sdílí s předchozím stavem.
+// The state of the model after a feature. Immutable; it shares unchanged parts with the previous state.
 export interface State {
   features: Record<Id, FeatureResult>;
   bodies: Record<Id, Solid>;
-  faceNames: FaceName[]; // společná tabulka, index = číslo stěny
+  faceNames: FaceName[]; // a shared table, index = the number of the face
   faceInfos: FaceInfo[];
-  faceIds: Map<string, number>; // jméno stěny → číslo
-  planes: Record<Id, Frame>; // vyhodnocené vlastní roviny
+  faceIds: Map<string, number>; // the name of a face → its number
+  planes: Record<Id, Frame>; // evaluated own planes
   sketches: Record<Id, SketchState>;
-  tools: Record<Id, ToolRecipe>; // recepty nástrojů vysunutí s operací add a cut
+  tools: Record<Id, ToolRecipe>; // recipes of the tools of extrusions with the operation add and cut
   // The chord tolerance of the document (D58), for the analysis of a body: of two circles two
   // surfaces meet in, the points of an edge choose within a reach that grows with it. Set where the
   // evaluator builds the state before the first feature; a change of the setting recomputes all.
@@ -69,10 +69,11 @@ export interface InsertedBody {
   inherited: InheritedProperties;
 }
 
-// Recept nástroje: jak z vyhodnoceného profilu a rozsahu postavit síť nástroje a jeho stěny.
-// Ukládá se do stavu, aby pozdější feature (pole) mohla tentýž nástroj postavit znovu; hotová síť
-// nestačí, protože čísla stěn i poloha nástroje se při opakování liší. Recept zůstává i tehdy, když
-// vysunutí samo skončilo varováním „bez účinku".
+// The recipe of a tool: how to build the mesh of the tool and its faces from the evaluated profile
+// and extent. It is stored in the state so that a later feature (a pattern) can build the same tool
+// again; a finished mesh is not enough, because the numbers of the faces and the position of the
+// tool differ when it is repeated. The recipe stays even when the extrusion itself ended with the
+// warning "no effect".
 export interface ToolRecipe {
   operation: 'add' | 'cut';
   targets: Id[];
@@ -92,7 +93,7 @@ export interface ToolRecipe {
 // error with this code and detail, and no body is changed.
 export interface BuiltTool {
   solid: Solid;
-  faces: { name: FaceName; info: FaceInfo }[]; // nové stěny; číslo stěny = firstFaceId + index
+  faces: { name: FaceName; info: FaceInfo }[]; // new faces; the number of a face = firstFaceId + index
   refuseChange?: { code: IssueCode; detail: string };
 }
 export interface Placement {
@@ -118,7 +119,7 @@ export class ToolProblem extends Error {
   }
 }
 
-// Křivka skici, ze které vzniká boční stěna. `general`: a side of a generated profile.
+// A curve of a sketch that a side face is made from. `general`: a side of a generated profile.
 export type SideCurve = { type: 'line'; a: Vec2; b: Vec2 } | { type: 'round'; center: Vec2; radius: number } | { type: 'general' };
 
 // The exact outline of a profile: closed loops of curves with the material on their left, an outer
@@ -132,7 +133,8 @@ export type ProfileProblem = { code: IssueCode; refs: unknown[]; message?: strin
 // The name of a face without what the tool build adds (the feature, the tag of a copy).
 export type FaceRole = FaceName extends infer Name ? (Name extends FaceName ? Omit<Name, 'feature' | 'copy'> : never) : never;
 
-// Vyhodnocený profil vysunutí: oblasti v rovině skici a popis křivek, ze kterých vznikají boční stěny.
+// The evaluated profile of an extrusion: regions in the plane of the sketch and a description of
+// the curves the side faces are made from.
 // - `sideOf`: the side face an edge of a loop belongs to, by what `Loop.curves` holds for the edge.
 //   For regions that is the curve ID and the name is `{ role: 'side', curve }`; a wall names its
 //   sides itself.
@@ -151,8 +153,9 @@ export interface ResolvedProfile {
   warnings?: Issue[];
 }
 
-// `input`: vstup solveru s použitými polohami; `solve`: jak řešení dopadlo; `analysis`: rozbor
-// určenosti (jen u vyřešené skici). Z nich vychází diagnostika skici.
+// `input`: the input of the solver with the positions used; `solve`: how solving turned out;
+// `analysis`: the analysis of how determined it is (only for a solved sketch). The diagnosis of a
+// sketch comes from them.
 export interface SketchState {
   feature: SketchFeature;
   frame: Frame;

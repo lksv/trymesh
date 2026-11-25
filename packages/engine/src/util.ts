@@ -1,8 +1,9 @@
-// Společné pomůcky: vektory, tolerance, kanonický zápis a otisk.
+// Shared helpers: vectors, tolerances, canonical form and fingerprint.
 import { faceKey, faceText, sameFaceName } from './face-roles';
 import type { EdgeName, FaceName, Vec2, Vec3 } from './types';
 
-// Tolerance enginu (docs/architecture.md, Konvence). Tolerance booleanů jsou věcí jádra.
+// The tolerances of the engine (docs/architecture/document.md, "Conventions"). The tolerances of booleans
+// are a matter of the kernel.
 export const LENGTH_TOLERANCE = 1e-6; // mm
 export const ANGLE_TOLERANCE = 1e-4; // rad
 
@@ -27,7 +28,7 @@ export function unreachable(value: never, what: string): never {
   throw new Error(`${what}: unexpected ${JSON.stringify(value)}`);
 }
 
-// ---------------------------------------------------------------- vektory
+// ---------------------------------------------------------------- vectors
 
 export const add3 = (a: Vec3, b: Vec3): Vec3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
 export const sub3 = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -43,12 +44,12 @@ export const cross2 = (a: Vec2, b: Vec2): number => a[0] * b[1] - a[1] * b[0];
 export const len2 = (a: Vec2): number => Math.hypot(a[0], a[1]);
 export const dist2 = (a: Vec2, b: Vec2): number => Math.hypot(a[0] - b[0], a[1] - b[1]);
 
-// ---------------------------------------------------------------- jména
+// ---------------------------------------------------------------- names
 
-// Zápis jména stěny pro porovnání a řazení: feature/role/curve. A face of a copy has the tags of
-// its copies appended (`@pattern:index`), so it differs from the face of the original and sorts
-// right after it. Neither `@` nor `:` needs escaping: the key is only compared with other keys built
-// here, and an ID cannot contain `/`, which separates the parts before the tags.
+// The key of a face name for comparing and sorting: feature/role/curve. A face of a copy has the
+// tags of its copies appended (`@pattern:index`), so it differs from the face of the original and
+// sorts right after it. Neither `@` nor `:` needs escaping: the key is only compared with other keys
+// built here, and an ID cannot contain `/`, which separates the parts before the tags.
 export { faceKey, faceText, sameFaceName };
 
 // The number of a face by its name in a face table: looked up by its key and taken only when the
@@ -64,7 +65,7 @@ export function sameEdgeName(a: EdgeName, b: EdgeName): boolean {
   return sameFaceName(x.a, y.a) && sameFaceName(x.b, y.b);
 }
 
-// Jméno hrany v kanonickém pořadí stěn.
+// The name of an edge in the canonical order of its faces.
 export function canonicalEdge(edge: EdgeName): EdgeName {
   return faceKey(edge.a) <= faceKey(edge.b) ? edge : { a: edge.b, b: edge.a };
 }
@@ -73,9 +74,9 @@ export const edgeKey = (edge: EdgeName): string => {
   return `${faceKey(c.a)}|${faceKey(c.b)}`;
 };
 
-// ---------------------------------------------------------------- kanonický zápis a otisk
+// ---------------------------------------------------------------- canonical form and fingerprint
 
-// JSON s klíči seřazenými lexikograficky; stejná data dají vždy stejný řetězec.
+// JSON with keys sorted lexicographically; the same data always give the same string.
 export function stableStringify(value: unknown): string {
   if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null';
   if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
@@ -86,7 +87,8 @@ export function stableStringify(value: unknown): string {
   return `{${keys.map((key) => `${JSON.stringify(key)}:${stableStringify(record[key])}`).join(',')}}`;
 }
 
-// Otisk řetězce (dvakrát FNV-1a s různým základem, 64 bitů šestnáctkově). Není kryptografický.
+// The fingerprint of a string (FNV-1a twice with different bases, 64 bits in hexadecimal). It is
+// not cryptographic.
 export function fingerprint(text: string): string {
   let h1 = 0x811c9dc5;
   let h2 = 0x01000193;

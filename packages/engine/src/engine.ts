@@ -1,4 +1,4 @@
-// Fasáda enginu: příkazy, undo/redo, náhled, načtení a uložení, export.
+// The facade of the engine: commands, undo/redo, preview, load and save, export.
 import { CommandError, applyCommand, emptyDocument, validateDocument } from './document';
 import { type DragTarget, type Deps, type EvaluateOptions, Evaluator, type WriteBack } from './evaluate';
 import { has } from './util';
@@ -40,9 +40,10 @@ export function createEngine(deps: EngineDeps): Engine {
     if (kept) kept.document = doc;
     return { document: doc, evaluation: result, canUndo: undoStack.length > 0, canRedo: redoStack.length > 0 };
   };
-  // Posluchači dostanou stavy v pořadí, v jakém vznikly, i když některý z nich sám zavolá engine:
-  // vnořená změna se rozešle až po dokončení právě běžícího kola. Výjimka posluchače ostatní
-  // posluchače o zprávu nepřipraví; vyhodí se až nakonec (stav je v té chvíli už zapsaný).
+  // Listeners get the states in the order they arose, even when one of them calls the engine
+  // itself: a nested change is sent out only after the running round finishes. An exception of a
+  // listener does not deprive the other listeners of the message; it is thrown only at the end (the
+  // state is already written by then).
   let notifying = false;
   let again = false;
   const notify = () => {
@@ -69,7 +70,7 @@ export function createEngine(deps: EngineDeps): Engine {
     }
     if (failures.length > 0) throw failures[0];
   };
-  // Liší se dokumenty obsahem? Features se stejnou identitou se neporovnávají.
+  // Do the documents differ in content? Features with the same identity are not compared.
   const differs = (a: Document, b: Document): boolean =>
     a !== b &&
     (a.settings.chordTolerance !== b.settings.chordTolerance ||
@@ -150,9 +151,10 @@ export function createEngine(deps: EngineDeps): Engine {
       }
       const drag = dragOf(cmd);
       const next = settle(applied, drag);
-      // Krok undo vzniká jen změnou obsahu: přejmenování na stejné jméno nebo tažení plně určeného
-      // bodu historii nezaplní. Tažení, které dokument nezměnilo (solver cíl nevyřešil), nechává
-      // i předchozí vyhodnocení, aby v něm nezůstal konflikt z neúspěšného pokusu.
+      // An undo step arises only from a change of content: a rename to the same name or a drag of
+      // a fully determined point does not fill the history. A drag that did not change the document
+      // (the solver did not solve the target) keeps the previous evaluation too, so that no conflict
+      // from the failed attempt stays in it.
       const changed = differs(next.document, document);
       if (changed) {
         undoStack = [...undoStack, document];
@@ -215,7 +217,7 @@ export function createEngine(deps: EngineDeps): Engine {
       } catch (error) {
         return invalid(error, 'invalidDocument');
       }
-      const next = settle(loaded); // selže-li přepočet výjimkou, engine zůstane v původním stavu
+      const next = settle(loaded); // if the recompute fails with an exception, the engine stays in its original state
       undoStack = [];
       redoStack = [];
       commit(next);

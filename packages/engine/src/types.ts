@@ -1,5 +1,5 @@
 // Public types of the engine: the document, the ports, the result of the recompute and the API.
-// The source of truth is docs/architecture.md; the types are to agree with it.
+// The source of truth is docs/architecture/ (docs/architecture.md says which file holds what); the types are to agree with it.
 import type { ExportFormat, ExportOptions } from './export/spec';
 import type { QueryArgs, QueryName, QueryResult } from './query/spec';
 

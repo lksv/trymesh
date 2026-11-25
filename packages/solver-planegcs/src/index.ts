@@ -1,17 +1,17 @@
-// Adaptér portu SketchSolver nad planegcs (2D solver z FreeCADu ve WASM).
-// Kontrakt portu je v docs/architecture.md, sekce SketchSolver.
+// Adapter of the port SketchSolver over planegcs (the 2D solver of FreeCAD in WASM).
+// The contract of the port is in docs/architecture/ports.md, section SketchSolver.
 import { Algorithm, DebugMode, GcsWrapper, SolveStatus, init_planegcs_module } from '@salusoft89/planegcs';
 import type { SketchPrimitive } from '@salusoft89/planegcs';
 import { commonEnd } from '@trymesh/engine';
 import type { Constraint, Curve, Id, Point2, SketchSolver, SolveInput, SolveResult, TangentEnds } from '@trymesh/engine';
 
 export interface PlanegcsOptions {
-  // Kde najít planegcs.wasm (v browseru); v Node se najde sám.
+  // Where to find planegcs.wasm (in the browser); in Node it is found on its own.
   locateFile?: (file: string) => string;
 }
 
-// Pomocné vazby a primitiva adaptéru. ID uživatele smí obsahovat nejvýš jedno lomítko
-// (odvozená ID promítnuté geometrie), takže dvě lomítka na začátku nemohou kolidovat.
+// Auxiliary constraints and primitives of the adapter. A user's ID may contain at most one slash
+// (derived IDs of projected geometry), so two slashes at the start cannot collide.
 const SYNTHETIC = '//';
 const isSynthetic = (id: string) => id.startsWith(SYNTHETIC);
 // A constraint of the engine that needs two primitives of the library (a fixed point: one per
@@ -20,16 +20,16 @@ const isSynthetic = (id: string) => id.startsWith(SYNTHETIC);
 const SECOND = `${SYNTHETIC}second/`;
 const owners = (ids: string[]): Id[] => [...new Set(ids.map((id) => (id.startsWith(SECOND) ? id.slice(SECOND.length) : id)).filter((id) => !isSynthetic(id)))].sort();
 
-const MERGED = 1e-7; // dva body leží ve stejném místě (vzhledem k velikosti souřadnic)
-const SPREAD = 1e-3; // o kolik se splynulé body rozestoupí (vzhledem k rozměru skici)
+const MERGED = 1e-7; // two points lie at the same place (relative to the size of the coordinates)
+const SPREAD = 1e-3; // how far merged points are moved apart (relative to the size of the sketch)
 
 type Primitive = SketchPrimitive;
 type Loose = Record<string, unknown> & { id: string; type: string };
 
-// Jeden průchod knihovnou.
+// One pass through the library.
 interface Pass {
-  ok: boolean; // knihovna našla řešení a nehlásí konflikt
-  settled: boolean; // stav Success: všechny vazby včetně nadbytečných jsou splněné
+  ok: boolean; // the library found a solution and reports no conflict
+  settled: boolean; // status Success: all constraints, the redundant ones included, are met
   points: Record<Id, Point2>;
   radii: Record<Id, number>;
   degreesOfFreedom: number;
@@ -46,7 +46,7 @@ export async function createPlanegcsSolver(options: PlanegcsOptions = {}): Promi
   const run = (input: SolveInput, extra: { drag?: SolveInput['drag']; without?: Set<string>; algorithm?: Algorithm; collapsed?: Set<Id> } = {}): Pass => {
     const gcs = new GcsWrapper(new mod.GcsSystem());
     try {
-      gcs.debug_mode = DebugMode.NoDebug; // jinak solver vypisuje na standardní výstup
+      gcs.debug_mode = DebugMode.NoDebug; // otherwise the solver prints to standard output
       gcs.push_primitives_and_params(buildPrimitives(input, extra.drag, extra.without, extra.collapsed) as unknown as Primitive[]);
       const status = gcs.solve(extra.algorithm);
       const conflicting = owners(gcs.get_gcs_conflicting_constraints());
@@ -63,13 +63,13 @@ export async function createPlanegcsSolver(options: PlanegcsOptions = {}): Promi
       pass.degreesOfFreedom = gcs.gcs.dof();
       return pass;
     } finally {
-      gcs.destroy_gcs_module(); // paměť WASM se uvolňuje ručně
+      gcs.destroy_gcs_module(); // WASM memory is freed by hand
     }
   };
 
   return {
     solve(input: SolveInput): SolveResult {
-      // Při neúspěchu se vrací vstup; počet stupňů volnosti pak nemá význam.
+      // On failure the input is returned; the count of degrees of freedom then has no meaning.
       const failure = (conflicting: Id[], redundant: Id[]): SolveResult => ({
         status: conflicting.length > 0 ? 'conflict' : 'failed',
         points: clonePoints(input.points),
@@ -79,17 +79,19 @@ export async function createPlanegcsSolver(options: PlanegcsOptions = {}): Promi
         redundant,
       });
 
-      // Splynulá souměrnost. Knihovna počítá souměrnost dvou bodů (a střed úsečky) z jejich
-      // spojnice; když body leží ve stejném místě, hlásí vazbu jako konflikt, i když je splněná
-      // (oba body na ose). Když je taková vazba mezi konfliktními, zkusí se dvě náhradní cesty:
-      // 1. rozestoupit splynulé body o kousek od sebe a řešit původní soustavu (řešení, ve kterém
-      //    body nesplývají, se tak najde: kóta šířky, tažení jednoho z bodů),
-      // 2. nahradit vazbu jejím splynulým tvarem (totožnost bodů a bod na ose); každé takové
-      //    řešení původní vazbu splňuje. Tvar pak platí i pro další průchody tohoto řešení.
+      // Merged symmetry. The library computes the symmetry of two points (and the midpoint of a line)
+      // from the line joining them; when the points lie at the same place, it reports the constraint
+      // as a conflict even though it is met (both points on the axis). When such a constraint is
+      // among the conflicting ones, two fallbacks are tried:
+      // 1. move the merged points a little apart and solve the original system (a solution in which
+      //    the points do not merge is found this way: a width dimension, dragging one of the points),
+      // 2. replace the constraint by its merged form (the points coincide and a point on the axis);
+      //    every such solution meets the original constraint. The form then holds for the further
+      //    passes of this solve too.
       let collapsed = new Set<Id>();
       const attempt = (from: SolveInput, extra: { drag?: SolveInput['drag']; without?: Set<string> }, first: boolean): Pass => {
         let pass = run(from, { ...extra, collapsed });
-        // Výchozí algoritmus (DogLeg) občas nedoběhne tam, kde jiný ano; stejně postupuje FreeCAD.
+        // The default algorithm (DogLeg) sometimes does not get there where another one does; FreeCAD does the same.
         if (first && !pass.ok && pass.conflicting.length === 0) pass = run(from, { ...extra, collapsed, algorithm: Algorithm.LevenbergMarquardt });
         if (pass.ok) return pass;
         const merged = mergedPairs(from).filter((id) => !collapsed.has(id));
@@ -105,8 +107,9 @@ export async function createPlanegcsSolver(options: PlanegcsOptions = {}): Promi
         return forced;
       };
 
-      // Tažení: nadbytečná vazba by se s dočasným cílem tažení ohlásila jako konflikt. Nejdřív se
-      // proto zjistí bez tažení, které vazby nadbytečné jsou, a při tažení se vynechají.
+      // Dragging: a redundant constraint would be reported as a conflict with the temporary target of
+      // the drag. So it is first found out without the drag which constraints are redundant, and they
+      // are left out while dragging.
       // (Primitives, not constraints: a fixed point whose one coordinate repeats another constraint
       // must keep the other coordinate, or the drag would move it.)
       let without: Set<string> | undefined;
@@ -114,14 +117,15 @@ export async function createPlanegcsSolver(options: PlanegcsOptions = {}): Promi
         const plain = attempt(input, {}, true);
         if (!plain.ok) return failure(plain.conflicting, plain.redundant);
         without = new Set(plain.redundantPrimitives);
-        collapsed = new Set(); // tažení smí splynulé body zase rozestoupit
+        collapsed = new Set(); // a drag may move merged points apart again
       }
       let pass = attempt(input, { drag: input.drag, without }, true);
       if (!pass.ok) return failure(pass.conflicting, pass.redundant);
 
-      // Ověření a diagnostika z nalezeného stavu. Knihovna hlásí stupně volnosti a nadbytečné vazby
-      // podle výchozího odhadu, ne podle výsledku, a ve stavu Converged může nechat nadbytečnou
-      // vazbu nesplněnou. Řeší se proto znovu z výsledku, dokud stav není ustálený.
+      // Verification and diagnostics from the state found. The library reports the degrees of freedom
+      // and the redundant constraints by the initial estimate, not by the result, and in the status
+      // Converged it may leave a redundant constraint unmet. So it solves again from the result until
+      // the state is settled.
       for (let round = 0; round < 4; round++) {
         const next = attempt({ ...input, points: pass.points, radii: { ...input.radii, ...pass.radii } }, {}, false);
         if (!next.ok) return failure(next.conflicting, next.redundant);
@@ -131,9 +135,9 @@ export async function createPlanegcsSolver(options: PlanegcsOptions = {}): Promi
       }
       if (!pass.settled) return failure([], pass.redundant);
 
-      // Řešení, které není použitelná geometrie, se nevrací: nekonečné hodnoty, nekladný poloměr
-      // (knihovna si u tečnosti drží vnější nebo vnitřní dotyk podle výchozího odhadu), oblouk
-      // s konci na různých poloměrech.
+      // A solution that is not usable geometry is not returned: infinite values, a radius that is not
+      // positive (for a tangency the library keeps the outer or the inner contact by the initial
+      // estimate), an arc with its ends on different radii.
       const fixed = new Set(input.fixed);
       const usable =
         Object.values(pass.points).every((p) => Number.isFinite(p.x) && Number.isFinite(p.y)) &&
@@ -145,7 +149,7 @@ export async function createPlanegcsSolver(options: PlanegcsOptions = {}): Promi
           return Math.abs(rs - re) <= 1e-6 * Math.max(1, rs);
         });
       if (!usable) return failure([], pass.redundant);
-      // pevná kružnice si drží poloměr bitově, i když se její střed hýbe
+      // a fixed circle keeps its radius bit for bit, even when its centre moves
       for (const id of Object.keys(pass.radii)) if (fixed.has(id)) pass.radii[id] = input.radii[id];
       return { status: 'solved', points: pass.points, radii: pass.radii, degreesOfFreedom: pass.degreesOfFreedom, conflicting: [], redundant: pass.redundant };
     },
@@ -155,16 +159,17 @@ export async function createPlanegcsSolver(options: PlanegcsOptions = {}): Promi
 const clonePoints = (points: Record<Id, Point2>): Record<Id, Point2> =>
   Object.fromEntries(Object.entries(points).map(([id, p]) => [id, { x: p.x, y: p.y }]));
 
-// Pořadí primitiv je seřazené podle ID, aby stejný vstup dal vždy stejný výstup
-// bez ohledu na pořadí klíčů v objektech.
-// Dvojice bodů, ze které knihovna počítá souměrnost: souměrné body, u středu úsečky její konce.
+// The primitives are ordered by ID so that the same input always gives the same output
+// regardless of the order of the keys in the objects.
+// The pair of points from which the library computes the symmetry: the symmetric points, for the
+// midpoint of a line its ends.
 function pairOf(c: Constraint, curves: Record<Id, Curve>): [Id, Id] | undefined {
   if (c.type === 'symmetric') return [c.a, c.b];
   const line = c.type === 'midpoint' ? curves[c.line] : undefined;
   return line?.type === 'line' ? [line.a, line.b] : undefined;
 }
 
-// Vazby souměrnosti a středu úsečky, jejichž dvojice bodů ve vstupu splývá.
+// Constraints of symmetry and of the midpoint of a line whose pair of points merges in the input.
 function mergedPairs(input: SolveInput): Id[] {
   return Object.keys(input.constraints).filter((id) => {
     const pair = pairOf(input.constraints[id], input.curves);
@@ -174,8 +179,8 @@ function mergedPairs(input: SolveInput): Id[] {
   });
 }
 
-// Vstup, ve kterém jsou splynulé dvojice daných vazeb rozestoupené: souměrné body kolmo na osu,
-// konce úsečky ve směru x. Pevnými body se nehýbe.
+// The input in which the merged pairs of the given constraints are moved apart: symmetric points
+// perpendicular to the axis, the ends of a line in the direction x. Fixed points are not moved.
 function spread(input: SolveInput, constraints: Id[]): SolveInput {
   const fixed = new Set(input.fixed);
   const points = clonePoints(input.points);
@@ -203,7 +208,7 @@ function buildPrimitives(input: SolveInput, drag?: SolveInput['drag'], without?:
   for (const id of [...Object.keys(input.points), ...Object.keys(input.curves), ...Object.keys(input.constraints)]) {
     if (isSynthetic(id)) throw new Error(`solver: the ID "${id}" collides with the auxiliary IDs of the adapter`);
   }
-  // Pevné smějí být body a kružnice (pevný poloměr); nic jiného adaptér zafixovat neumí.
+  // Points and circles (a fixed radius) may be fixed; the adapter cannot fix anything else.
   for (const id of fixed) {
     if (!input.points[id] && input.curves[id]?.type !== 'circle') throw new Error(`solver: "${id}" in fixed is neither a point nor a circle`);
   }
@@ -240,13 +245,13 @@ function buildPrimitives(input: SolveInput, drag?: SolveInput['drag'], without?:
         break;
       }
       case 'arc': {
-        // Oblouk: knihovna chce poloměr a úhly na vstupu a pravidla oblouku jako vazbu.
+        // An arc: the library wants the radius and the angles on input and the rules of the arc as a constraint.
         const c = point(curve.center);
         const s = point(curve.start);
         const e = point(curve.end);
         const startAngle = Math.atan2(s.y - c.y, s.x - c.x);
         let endAngle = Math.atan2(e.y - c.y, e.x - c.x);
-        if (endAngle <= startAngle) endAngle += 2 * Math.PI; // proti směru hodin
+        if (endAngle <= startAngle) endAngle += 2 * Math.PI; // counter-clockwise
         out.push({
           id,
           type: 'arc',
@@ -273,7 +278,7 @@ function buildPrimitives(input: SolveInput, drag?: SolveInput['drag'], without?:
   }
 
   for (const [id, constraint] of sorted(input.constraints)) {
-    if ('driving' in constraint && !constraint.driving) continue; // referenční kóty počítá engine
+    if ('driving' in constraint && !constraint.driving) continue; // reference dimensions are computed by the engine
     if (constraint.type === 'fixed') {
       // two primitives, each left out on its own
       point(constraint.point);
@@ -283,7 +288,7 @@ function buildPrimitives(input: SolveInput, drag?: SolveInput['drag'], without?:
     }
     if (without?.has(id)) continue;
     if (collapsed?.has(id)) {
-      // splynulý tvar: oba body dvojice v jednom místě, které leží na ose (ve středu úsečky)
+      // the merged form: both points of the pair at one place, which lies on the axis (at the midpoint of the line)
       const [a, b] = pairOf(constraint, input.curves) as [Id, Id];
       out.push({ id, type: 'p2p_coincident', p1_id: a, p2_id: b });
       if (constraint.type === 'symmetric') out.push({ id: `${SYNTHETIC}onAxis/${id}`, type: 'point_on_line_pl', p_id: a, l_id: constraint.line });
@@ -302,7 +307,7 @@ function buildPrimitives(input: SolveInput, drag?: SolveInput['drag'], without?:
   return out;
 }
 
-// Každá varianta vazby enginu má právě jeden protějšek v knihovně; liší se jen podle druhu křivky.
+// Each variant of a constraint of the engine has exactly one counterpart in the library; it varies only by the kind of curve.
 // (A fixed point is the exception with two primitives and is translated by the caller.)
 // A tangency of a line and an arc at a common end (D52, D72): the rule is the engine's `commonEnd`,
 // which the analysis of the sketch reads too, so that the two never disagree about the form.
@@ -395,7 +400,7 @@ function translate(id: Id, c: Exclude<Constraint, { type: 'fixed' }>, curves: Re
       }
     }
     case 'tangent': {
-      // pořadí operandů knihovny: úsečka, kružnice, oblouk
+      // operand order of the library: line, circle, arc
       const rank = { line: 0, circle: 1, arc: 2, spline: 3 } as const; // a spline is never an operand (D70): its pair throws below
       const [first, second] = rank[kind(c.a)] <= rank[kind(c.b)] ? [c.a, c.b] : [c.b, c.a];
       const pair = `${kind(first)}-${kind(second)}`;
@@ -419,7 +424,7 @@ function translate(id: Id, c: Exclude<Constraint, { type: 'fixed' }>, curves: Re
     case 'symmetric':
       return { type: 'p2p_symmetric_ppl', p1_id: c.a, p2_id: c.b, l_id: line(c.line) };
     case 'midpoint': {
-      // bod je středem úsečky, když jsou její konce souměrné podle něj
+      // a point is the midpoint of a line when its ends are symmetric about it
       const ends = curves[line(c.line)] as Extract<Curve, { type: 'line' }>;
       return { type: 'p2p_symmetric_ppp', p1_id: ends.a, p2_id: ends.b, p_id: c.point };
     }
@@ -427,11 +432,11 @@ function translate(id: Id, c: Exclude<Constraint, { type: 'fixed' }>, curves: Re
       return { type: 'p2p_distance', p1_id: c.a, p2_id: c.b, distance: c.value };
     case 'distancePointLine':
       return { type: 'p2l_distance', p_id: c.point, l_id: line(c.line), distance: c.value };
-    case 'horizontalDistance': // orientovaná: b.x − a.x = value
+    case 'horizontalDistance': // signed: b.x − a.x = value
       return { type: 'difference', param1: { o_id: c.a, prop: 'x' }, param2: { o_id: c.b, prop: 'x' }, difference: c.value };
-    case 'verticalDistance': // orientovaná: b.y − a.y = value
+    case 'verticalDistance': // signed: b.y − a.y = value
       return { type: 'difference', param1: { o_id: c.a, prop: 'y' }, param2: { o_id: c.b, prop: 'y' }, difference: c.value };
-    case 'angle': // od směru úsečky a ke směru úsečky b, proti směru hodin
+    case 'angle': // from the direction of line a to the direction of line b, counter-clockwise
       return { type: 'l2l_angle_ll', l1_id: line(c.a), l2_id: line(c.b), angle: c.value };
     case 'radius': {
       const k = kind(c.curve);

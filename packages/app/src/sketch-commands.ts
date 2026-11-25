@@ -1,5 +1,5 @@
-// Příkazy, které posílají kreslicí nástroje a tlačítka vazeb. Čisté funkce: z kliknutí a výběru
-// sestaví příkazy enginu; ID nových entit dodává volající (viz docs/ui.md, bod 9).
+// Commands sent by the drawing tools and the constraint buttons. Pure functions: from a click and a selection
+// they build the engine's commands; the IDs of new entities come from the caller (see docs/ui.md, point 9).
 import {
   type AxisRef,
   CONSTRAINTS,
@@ -43,8 +43,8 @@ import { type EntityKind, ORIGIN, type PointView, type SketchView, dist, holdsPo
 // are the types of the sketch tools of the engine (D35, point 7), which the app shares with MCP.
 export type { Anchor, NewId };
 
-// Body blíž než tohle jsou pro kreslení tentýž bod: křivka mezi nimi by měla nulovou délku
-// a zneplatnila by profil skici.
+// Points closer than this are the same point for drawing: a curve between them would have zero length
+// and would make the profile of the sketch invalid.
 const SAME_PLACE = 1e-6;
 
 // The point for an end of a curve: the rule of the engine's sketch tools (an own point and the
@@ -53,13 +53,13 @@ const SAME_PLACE = 1e-6;
 export const place = (_sketch: Id, view: SketchView, anchor: Anchor, newId: NewId): Placed => placeAnchor(view.source, anchor, newId);
 
 export function pointCommands(sketch: Id, view: SketchView, anchor: Anchor, newId: NewId): Command[] | undefined {
-  if (anchor.snap?.kind === 'point') return undefined; // bod tam už je
+  if (anchor.snap?.kind === 'point') return undefined; // the point is already there
   return place(sketch, view, anchor, newId).commands;
 }
 
-// Úsečka mezi dvěma kliknutími; `infer` přidá vazbu vodorovnosti nebo svislosti.
+// A line between two clicks; `infer` adds a horizontal or vertical constraint.
 export function lineCommands(sketch: Id, view: SketchView, from: Anchor, to: Anchor, newId: NewId, infer?: 'horizontal' | 'vertical'): { commands: Command[]; end: Id } | undefined {
-  if (dist(positionOf(view, from), positionOf(view, to)) <= SAME_PLACE) return undefined; // dvojklik na stejné místo
+  if (dist(positionOf(view, from), positionOf(view, to)) <= SAME_PLACE) return undefined; // a double click at the same place
   const a = place(sketch, view, from, newId);
   const b = place(sketch, view, to, newId);
   if (a.id === b.id) return undefined;
@@ -118,7 +118,7 @@ export function polygonCommands(_sketch: Id, context: SketchToolCall, center: An
   return made.ok ? made.commands : undefined;
 }
 
-// Kružnice: střed a bod na obvodu. Přichycení obvodu na bod přidá vazbu bodu na křivce.
+// A circle: the centre and a point on the rim. Snapping the rim to a point adds a point-on-curve constraint.
 export function circleCommands(sketch: Id, view: SketchView, center: Anchor, rim: Anchor, newId: NewId): Command[] | undefined {
   const radius = dist(positionOf(view, center), positionOf(view, rim));
   if (!(radius > SAME_PLACE)) return undefined;
@@ -129,7 +129,7 @@ export function circleCommands(sketch: Id, view: SketchView, center: Anchor, rim
   return commands;
 }
 
-// Oblouk: střed, začátek, konec (proti směru hodin). Volný konec se posune na poloměr začátku.
+// An arc: centre, start, end (counter-clockwise). A free end is moved to the radius of the start.
 export function arcCommands(sketch: Id, view: SketchView, center: Anchor, start: Anchor, end: Anchor, newId: NewId): Command[] | undefined {
   const [pc, ps, pe] = [positionOf(view, center), positionOf(view, start), positionOf(view, end)];
   const radius = dist(pc, ps);
@@ -206,10 +206,10 @@ export function splineCommands(sketch: Id, view: SketchView, places: Anchor[], c
   return { commands };
 }
 
-// Kde přichycené kliknutí skutečně leží: the rule of the engine's sketch tools.
+// Where a snapped click really lies: the rule of the engine's sketch tools.
 export const positionOf = (view: SketchView, anchor: Anchor): Vec2 => anchorPosition(view.source, anchor);
 
-// ---------------------------------------------------------------- vazby z výběru
+// ---------------------------------------------------------------- constraints from the selection
 
 export type GeometricKind = GeometricConstraint['type'];
 
@@ -218,14 +218,14 @@ export type GeometricKind = GeometricConstraint['type'];
 // length dimension of one selected line.
 export const hasLength = (line: Id): boolean => !isOriginAxis(line);
 
-// Geometrické vazby, které engine zná (vazby bez hodnoty), v pořadí katalogu. Nová vazba enginu
-// se tu objeví sama.
+// The geometric constraints the engine knows (constraints without a value), in the order of the catalog. A new
+// constraint of the engine shows up here by itself.
 export const GEOMETRIC_KINDS: GeometricKind[] = (Object.keys(CONSTRAINTS) as Constraint['type'][]).filter((type) => !CONSTRAINTS[type].dimension) as GeometricKind[];
 
 interface Sorted {
   points: Id[];
   lines: Id[];
-  round: Id[]; // kružnice a oblouky
+  round: Id[]; // circles and arcs
 }
 function sort(view: SketchView, ids: Id[]): Sorted {
   const out: Sorted = { points: [], lines: [], round: [] };
@@ -252,7 +252,7 @@ function sort(view: SketchView, ids: Id[]): Sorted {
   return out;
 }
 
-// Geometrické vazby pro výběr; undefined = výběr se pro vazbu nehodí.
+// Geometric constraints for the selection; undefined = the selection does not suit the constraint.
 // A constraint is offered only with an operand the solver can move: the engine refuses one between
 // fixed entities alone (the origin, its axes, projected geometry). `horizontal` and `vertical` go to
 // the own lines of the selection only.
@@ -291,9 +291,10 @@ export function geometricFor(kind: GeometricKind, view: SketchView, selection: I
   }
 }
 
-// Vazba bez zvláštního pravidla: výběr se rozdělí mezi operandy podle katalogu enginu. Operandy
-// se obsazují v pořadí výběru entitami přípustného druhu; vazba vznikne, jen když se takto
-// rozdělí celý výběr a projde vlastní pravidlo vazby z katalogu (souměrný bod není koncem osy).
+// A constraint without a special rule: the selection is split among the operands by the engine's catalog.
+// The operands are filled in the order of the selection by entities of an allowed kind; the constraint is
+// made only when the whole selection is split this way and the constraint's own rule of the catalog passes
+// (a symmetric point is not an end of the axis).
 function fromCatalog(kind: GeometricKind, view: SketchView, selection: Id[]): Constraint[] | undefined {
   const spec = CONSTRAINTS[kind];
   if (selection.length !== spec.operands.length || new Set(selection).size !== selection.length) return undefined;
@@ -334,13 +335,13 @@ function roundDimension(kind: EntityKind | undefined): 'diameter' | 'radius' {
   }
 }
 
-// Kóta podle výběru (tabulka v docs/ui.md); hodnota je současná míra zaokrouhlená na setiny.
+// A dimension from the selection (the table in docs/ui.md); the value is the current measure rounded to hundredths.
 export function dimensionFor(variant: DimensionVariant, view: SketchView, selection: Id[]): Dimension | undefined {
   if (holdsUnconstrainable(view, selection)) return undefined;
   const { points, lines, round } = sort(view, selection);
   const count = points.length + lines.length + round.length;
   let shape: DimensionShape | undefined;
-  // dva body, nebo koncové body jedné úsečky
+  // two points, or the end points of one line
   const pair = count === 2 && points.length === 2 ? points : count === 1 && lines.length === 1 && hasLength(lines[0]) ? lineEnds(view, lines[0]) : undefined;
   if (pair) shape = { type: variant === 'auto' ? 'distance' : variant === 'horizontal' ? 'horizontalDistance' : 'verticalDistance', a: pair[0], b: pair[1] };
   else if (variant !== 'auto') return undefined;
@@ -350,20 +351,21 @@ export function dimensionFor(variant: DimensionVariant, view: SketchView, select
   if (!shape) return undefined;
   const value = measure(shape, view);
   if (value === undefined) return undefined;
-  // úhel na celé stupně, délky na setiny; nulu engine u vzdálenosti, poloměru a úhlu nechce nebo nedává smysl
+  // an angle to whole degrees, lengths to hundredths; zero for a distance, radius and angle the engine does
+  // not want or makes no sense
   const rounded = shape.type === 'angle' ? normalizeAngle((Math.round((value * 180) / Math.PI) * Math.PI) / 180) : Math.round(value * 100) / 100;
   return { ...shape, value: rounded === 0 && shape.type !== 'horizontalDistance' && shape.type !== 'verticalDistance' ? value : rounded, driving: true };
 }
 
-// Úhel v intervalu (−π, π], který engine u úhlové kóty vyžaduje.
+// An angle in the interval (−π, π], which the engine requires for an angle dimension.
 export function normalizeAngle(angle: number): number {
   const turn = 2 * Math.PI;
   const wrapped = (((angle % turn) + turn) % turn); // [0, 2π)
   return wrapped > Math.PI ? wrapped - turn : wrapped;
 }
 
-// Smazání výběru: s křivkou zmizí i její body, které už nic dalšího nepoužívá; promítnutí se maže
-// celé. Počátek a body promítnuté geometrie smazat nejdou.
+// Deleting the selection: with a curve go its points that nothing else uses any more; a projection is deleted
+// whole. The origin and the points of projected geometry cannot be deleted.
 export function deleteCommands(sketch: Id, feature: SketchFeature, view: SketchView, selection: Id[]): Command[] {
   const selected = new Set(selection);
   const points = new Set(selection.filter((id) => view.points.get(id)?.own));
@@ -377,7 +379,7 @@ export function deleteCommands(sketch: Id, feature: SketchFeature, view: SketchV
   ];
 }
 
-// ---------------------------------------------------------------- rozpracované vysunutí a rovina
+// ---------------------------------------------------------------- extrusion and plane in progress
 
 // A feature draft is in the input form (featureInput): a numeric field holds a number or an
 // expression. When an existing feature is edited the form therefore sends its expressions back
@@ -739,7 +741,7 @@ function changeDirection<D extends { direction: AxisRef; count: number | Expr; s
 // normal of a sketch; the preview then says which copies meet.
 const newSecond = (first: AxisRef): SecondDraft => ({ direction: { kind: 'base', axis: first.kind === 'base' && first.axis === 'Y' ? 'X' : 'Y' }, count: 2, span: DEFAULT_SPAN.spacing });
 
-// Příkaz, kterým se rozpracovaná feature založí nebo (při úpravě existující) změní.
+// The command that creates the feature in progress or (when editing an existing one) changes it.
 export function draftCommand(draft: ExtrudeDraft | PlaneDraft | PatternDraft, editing: boolean, index: number): Command {
   if (!editing) return { type: 'addFeature', feature: draft, index };
   // a second plane or a tilt the draft no longer has is removed by name (D60)
@@ -761,12 +763,12 @@ export function draftCommand(draft: ExtrudeDraft | PlaneDraft | PatternDraft, ed
   return { type: 'updateFeature', id, patch: { profile, extent, operation, ...(operation === 'new' || targets === undefined ? {} : { targets }) } };
 }
 
-// ID koncových bodů úsečky (u promítnuté jsou odvozené).
+// IDs of the end points of a line (for a projected one they are derived).
 function lineEnds(view: SketchView, line: Id): [Id, Id] | undefined {
   const curve = view.curves.get(line);
   return curve?.shape.type === 'line' ? [curve.points[0], curve.points[1]] : undefined;
 }
 
-// Příkazy kreslicího nástroje v konstrukčním režimu: nové křivky jsou pomocné a netvoří profil.
+// Commands of a drawing tool in construction mode: the new curves are construction geometry and do not form a profile.
 export const asConstruction = (commands: Command[]): Command[] =>
   commands.map((command) => (command.type === 'addCurve' ? { ...command, curve: { ...command.curve, construction: true } } : command));

@@ -5,7 +5,7 @@ import { h } from '../dom';
 import type { PanelHost } from '../host';
 import type { FeatureUi } from './draft';
 
-// Založí skicu; na stěně rovnou promítne její obrys (hrany druhu úsečka a kružnice).
+// Creates a sketch; on a face it projects its outline right away (edges of the kinds line and circle).
 function createSketch(host: PanelHost, ref: PlaneRef, index: number): boolean {
   const id = host.newId('s');
   const commands: Command[] = [{ type: 'addFeature', feature: emptySketch(id, `Sketch ${id.slice(1)}`, ref), index }];

@@ -6,12 +6,12 @@ import { cross3, sub3, unit3 } from '../util';
 import type { ToolSpan } from './extent';
 import type { BuiltTool, ResolvedProfile } from './state';
 
-// Postaví uzavřenou síť nad vybranými oblastmi: dvě víka a boční stěny. Boční stěna vznikne jen
-// z křivky na hranici právě jedné vybrané oblasti; křivka sdílená dvěma oblastmi se vyruší.
-// `span` je rozsah podél normály roviny skici: [začátek, konec], měřeno od roviny skici. Víko
-// startCap leží na začátku, endCap na konci. The end may be a level per vertex (an extent up to
-// a tilted plane, D47): every end lies on the same side of the start, and the end cap lies in the
-// plane the span describes.
+// Builds a closed mesh over the selected regions: two caps and side faces. A side face is made only
+// from a curve on the boundary of exactly one selected region; a curve shared by two regions
+// cancels out. `span` is the extent along the normal of the sketch plane: [start, end], measured
+// from the sketch plane. The cap startCap lies at the start, endCap at the end. The end may be a
+// level per vertex (an extent up to a tilted plane, D47): every end lies on the same side of the
+// start, and the end cap lies in the plane the span describes.
 // The vertices are placed by `frame` alone and the triangles wound as for a right-handed frame; in
 // the left-handed frame of a mirrored copy the prism faces inwards and `applyTool` turns it over
 // (D53).
@@ -20,11 +20,12 @@ import type { BuiltTool, ResolvedProfile } from './state';
 export function buildPrism(feature: Id, regions: Region[], frame: Frame, span: ToolSpan, sideOf: ResolvedProfile['sideOf'], firstFaceId: number, kernel: SolidKernel, triangulation?: Map<Region, Uint32Array>): BuiltTool {
   const start = Array.isArray(span) ? span[0] : span.start;
   const endAt = (u: number, v: number): number => (Array.isArray(span) ? span[1] : span.end(u, v));
-  // 2D síť sjednocení oblastí. Vrcholy se sdílejí podle klíče, takže sousední oblasti na sebe navazují.
+  // The 2D mesh of the union of the regions. Vertices are shared by key, so neighbouring regions
+  // connect to each other.
   const index = new Map<string, number>();
   const xy: number[] = [];
   const triangles: number[] = [];
-  const curveAt = new Map<string, Id>(); // hrana (neorientovaná dvojice vrcholů) → křivka
+  const curveAt = new Map<string, Id>(); // edge (an unoriented pair of vertices) → curve
   const pair = (i: number, j: number) => (i < j ? `${i}_${j}` : `${j}_${i}`);
   for (const region of regions) {
     const loops = [region.outer, ...region.holes];
@@ -48,8 +49,9 @@ export function buildPrism(feature: Id, regions: Region[], frame: Frame, span: T
     for (const i of flat) triangles.push(local[i]);
   }
 
-  // Kde se oblast dotýká sama sebe nebo jiné vybrané oblasti jen v bodě, by svislá hrana nesla čtyři
-  // boční stěny. Vrchol se proto zdvojí: každý vějíř trojúhelníků kolem něj dostane vlastní.
+  // Where a region touches itself or another selected region only at a point, the vertical edge
+  // would carry four side faces. So the vertex is doubled: each fan of triangles around it gets its
+  // own.
   const original: number[] = Array.from({ length: xy.length / 2 }, (_, i) => i);
   const count = triangles.length / 3;
   const around = new Map<number, number[]>();
@@ -60,7 +62,7 @@ export function buildPrism(feature: Id, regions: Region[], frame: Frame, span: T
       while (group.get(t) !== t) t = group.get(t) as number;
       return t;
     };
-    const byNeighbour = new Map<number, number[]>(); // druhý vrchol hrany → trojúhelníky vějíře
+    const byNeighbour = new Map<number, number[]>(); // the other vertex of an edge → the triangles of the fan
     for (const t of list) for (let k = 0; k < 3; k++) if (triangles[3 * t + k] !== v) byNeighbour.set(triangles[3 * t + k], [...(byNeighbour.get(triangles[3 * t + k]) ?? []), t]);
     for (const shared of byNeighbour.values()) if (shared.length === 2) group.set(root(shared[0]), root(shared[1]));
     const fans = [...new Set(list.map(root))];
@@ -72,7 +74,7 @@ export function buildPrism(feature: Id, regions: Region[], frame: Frame, span: T
     }
   }
 
-  // Stěny: víka a boky. Boční stěny podle křivek, v pořadí ID křivky.
+  // Faces: caps and sides. Side faces by curves, in the order of the curve ID.
   const directed = new Set<string>();
   for (let t = 0; t < count; t++) for (let k = 0; k < 3; k++) directed.add(`${triangles[3 * t + k]}>${triangles[3 * t + ((k + 1) % 3)]}`);
   const boundary: [number, number, Id][] = [];
@@ -104,7 +106,8 @@ export function buildPrism(feature: Id, regions: Region[], frame: Frame, span: T
     }
   }
 
-  // 3D síť: spodní a horní hladina podle normály roviny skici; startCap je víko na začátku rozsahu.
+  // The 3D mesh: the bottom and top levels along the normal of the sketch plane; startCap is the cap
+  // at the start of the extent.
   // Every end lies on one side of the start, so the side of the first decides the winding.
   const n = xy.length / 2;
   const up = endAt(xy[0], xy[1]) > start;

@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite';
 
-// Server pro Node v jednom souboru. Balíčky workspace se přibalí (jsou to zdroje v TypeScriptu),
-// knihovny třetích stran zůstávají vnější a načtou se z node_modules.
+// A server for Node in one file. The workspace packages are bundled (they are TypeScript sources),
+// third-party libraries stay external and are loaded from node_modules.
 export default defineConfig({
   build: {
     ssr: 'src/main.ts',

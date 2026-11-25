@@ -34,7 +34,7 @@ export function stretchInView(corners: readonly Vec2[], direction: Vec2): [Vec2,
   return from < to ? [[from * d[0] + 0, from * d[1] + 0], [to * d[0] + 0, to * d[1] + 0]] : undefined; // + 0: no negative zero
 }
 
-// Uzavřená smyčka (dvojice souřadnic v rovině) jako úsečky ve světě.
+// A closed loop (pairs of coordinates in the plane) as lines in the world.
 export function loopSegments(frame: Frame, loop: number[]): number[] {
   const points: Vec2[] = [];
   for (let i = 0; i < loop.length; i += 2) points.push([loop[i], loop[i + 1]]);

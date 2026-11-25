@@ -26,7 +26,7 @@ type ExtrudeMode = DraftMode<ExtrudeFeature, Extra>;
 
 const EXTENTS: Record<ExtentKind, string> = { distance: 'Distance', throughAll: 'Through all', upTo: 'Up to a plane or face' };
 
-// Výchozí volby: jediná oblast se vybere sama; skica na stěně tělesa navrhne přidání k němu.
+// Default options: a single region is picked by itself; a sketch on a face of a body proposes joining it.
 function extrudeDefaults(host: PanelHost, sketch: SketchFeature, index: number): Pick<ExtrudeFeature, 'profile' | 'operation' | 'targets'> {
   const regions = sketchRegions(host, sketch.id)?.result.regions ?? [];
   const bodies = Object.keys(host.stateBefore(index).evaluation.bodies);

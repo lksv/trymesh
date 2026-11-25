@@ -1,5 +1,6 @@
-// Ukázková aplikace nad enginem: časová osa, 3D pohled, skicář, panel vysunutí, roviny a pole (pattern).
-// Drží jen stav UI (režim, výběr, značku pozice, viditelnost); vše ostatní čte z EngineState.
+// Demo app over the engine: timeline, 3D view, sketcher, extrusion panel, planes and patterns. Holds only
+// the state of the UI (mode, selection, position marker, visibility); it reads everything else from
+// EngineState.
 import {
   type Command,
   type EdgeKind,
@@ -48,7 +49,7 @@ type Pick = ViewPick;
 type Mode = { kind: 'model' } | SketchMode | AnyDraft;
 const isDraft = (m: Mode): m is AnyDraft => m.kind === 'draft';
 
-// Stejné soustavy základních rovin jako v enginu (ten je mimo výsledek přepočtu nevystavuje).
+// The same frames of the base planes as in the engine (which does not expose them outside the result of the recompute).
 const BASE: Record<'XY' | 'XZ' | 'YZ', Frame> = {
   XY: { origin: [0, 0, 0], x: [1, 0, 0], y: [0, 1, 0], normal: [0, 0, 1] },
   XZ: { origin: [0, 0, 0], x: [1, 0, 0], y: [0, 0, 1], normal: [0, -1, 0] },
@@ -59,11 +60,11 @@ export class App implements SketchHost, SceneHost {
   private readonly viewport: View;
   private readonly pictures: ViewCapability; // a picture of a model, for the AI and for the button that saves one
   private mode: Mode = { kind: 'model' };
-  selected?: Pick; // výběr v pohledu (režim modelu)
+  selected?: Pick; // selection in the view (model mode)
   hover?: Pick;
-  selectedFeature?: Id; // výběr na časové ose
-  marker: Id | null = null; // feature, za kterou se vkládá; null = konec osy
-  private markerIndex = 0; // kde značka naposledy ležela, pro případ, že její feature zmizí
+  selectedFeature?: Id; // selection on the timeline
+  marker: Id | null = null; // the feature after which features are inserted; null = end of the timeline
+  private markerIndex = 0; // where the marker lay last, in case its feature disappears
   readonly hidden = new Set<Id>();
   private showBasePlanes = true;
   pending?: Feature['type']; // a new feature of this type waits for its plane to be picked
@@ -89,7 +90,7 @@ export class App implements SketchHost, SceneHost {
     canvas.addEventListener('pointerdown', (event) => this.onDown(event));
     canvas.addEventListener('pointermove', (event) => this.onMove(event));
     canvas.addEventListener('pointerup', (event) => this.onUp(event));
-    // tažení přerušené systémem (ztráta ukazatele) se zahodí; po běžném puštění už žádné neběží
+    // a drag interrupted by the system (pointer lost) is discarded; after a normal release none is running any more
     for (const type of ['pointercancel', 'lostpointercapture']) canvas.addEventListener(type, () => this.cancelDrag() && this.refresh());
     window.addEventListener('keydown', (event) => this.onKey(event));
     this.say('Start with a sketch: the Sketch button and a choice of plane.');
@@ -97,7 +98,7 @@ export class App implements SketchHost, SceneHost {
     this.fit();
   }
 
-  // ---------------------------------------------------------------- stav
+  // ---------------------------------------------------------------- state
 
   get doc() {
     return this.engine.getState().document;
@@ -124,7 +125,7 @@ export class App implements SketchHost, SceneHost {
     return this.hidden.has(bodyOwner(body).feature);
   }
 
-  // Stav, který se právě zobrazuje: model po značce pozice, po upravované feature, nebo náhled.
+  // The state being shown: the model after the position marker, after the feature being edited, or a preview.
   // In the model mode a slider of the mechanism being dragged previews a pose (D49).
   view(): EngineState {
     if (this.cache) return this.cache;
@@ -166,8 +167,8 @@ export class App implements SketchHost, SceneHost {
     return at < 0 ? this.doc.features.length : at + 1;
   }
 
-  // ID nové entity: předpona a pořadové číslo, které se v dokumentu ještě nevyskytuje. Čítač se
-  // během práce nevrací, takže se ID smazané entity znovu nepoužije. An ID a section of the
+  // The ID of a new entity: a prefix and a sequence number that does not occur in the document yet. The counter
+  // does not go back during work, so the ID of a deleted entity is not used again. An ID a section of the
   // document still names (the feature of body properties whose body is gone) counts as used.
   readonly newId = (prefix: string): Id => {
     // the links and the joints of the mechanism (D49) have IDs of their own
@@ -182,7 +183,7 @@ export class App implements SketchHost, SceneHost {
     return `${prefix}${n}`;
   };
 
-  // Propojení s MCP serverem: AI pak pracuje s dokumentem otevřeným v aplikaci.
+  // Connection to the MCP server: the AI then works with the document open in the app.
   private bridge?: BridgeConnection;
   private bridgeStatus: BridgeStatus = 'off';
   private toggleBridge(): void {
@@ -205,9 +206,10 @@ export class App implements SketchHost, SceneHost {
         this.bridge = undefined;
         this.say('Another app (another window or tab) has linked to the AI; the link is off here.', true);
       },
-      // Změna od AI pod rozpracovanou operací (vysunutí, rovina) by jí vzala půdu, proto se
-      // operace ruší ještě před změnou; jen když příkaz dokument opravdu změní. Načtení jiného
-      // dokumentu vymění i stav UI, stejně jako Otevřít; při neúspěchu se stav vrátí.
+      // A change from the AI under an operation in progress (extrusion, plane) would pull the ground from
+      // under it, so the operation is cancelled before the change; only when the command really changes the
+      // document. Loading another document replaces the state of the UI too, just as Open does; on failure
+      // the state is restored.
       beforeCall: (name, args) => {
         if (!MUTATING.includes(name)) return;
         if (name === '_load') {
@@ -262,7 +264,7 @@ export class App implements SketchHost, SceneHost {
     return holdsPose(this.engine.getState().evaluation.mechanism) ? 'The view shows the model as modelled: sketches and features are edited there.' : '';
   }
 
-  // Provede příkaz; neplatný příkaz dokument nezmění a zpráva se ukáže ve stavovém řádku.
+  // Runs a command; an invalid command does not change the document and the message shows in the status line.
   run(command: Command, done?: string): boolean {
     const now = this.engine.getState();
     const before = this.failedChecks(now);
@@ -275,21 +277,21 @@ export class App implements SketchHost, SceneHost {
     if (failed.length > 0) this.say(`Check failed: ${failed.join('; ')}`, true);
     else if (taken.length > 0) this.say(`${done === undefined ? '' : `${done} `}${takenOverText(now.document, taken)}`);
     else if (done !== undefined) this.say(done);
-    else if (this.note.error) this.say(''); // stará chyba po úspěšném příkazu už neplatí
+    else if (this.note.error) this.say(''); // an old error no longer holds after a successful command
     return true;
   }
   private failedChecks(state: EngineState): string[] {
     return state.document.checks.map((check) => check.name).filter((name) => state.evaluation.checks[name]?.status !== 'ok');
   }
 
-  // ---------------------------------------------------------------- překreslení
+  // ---------------------------------------------------------------- redraw
 
   refresh(): void {
-    this.cancelDrag(); // dokument se mohl změnit pod rozpracovaným tažením
+    this.cancelDrag(); // the document may have changed under a drag in progress
     this.mechanism.preview = undefined; // a pose previewed by a slider ends with its drag
     this.invalidate();
     const m = this.mode;
-    // Značka, jejíž feature zmizela (undo, smazání), spadne na feature před ní.
+    // A marker whose feature disappeared (undo, deletion) falls to the feature before it.
     const features = this.doc.features;
     const at = features.findIndex((f) => f.id === this.marker);
     if (this.marker && at < 0) this.marker = features[Math.min(this.markerIndex, features.length) - 1]?.id ?? null;
@@ -301,7 +303,7 @@ export class App implements SketchHost, SceneHost {
     if (isDraft(m) && m.editing && !this.feature(m.draft.id)) this.mode = { kind: 'model' };
     if (isDraft(this.mode) && !this.drafting.confirming) updatePreview(this);
     if (this.mode.kind === 'sketch') settleSketch(this.mode, this.sketchContext());
-    // Výběr v pohledu platí jen pro to, co je právě vidět (jiný stav modelu, skrytí, undo).
+    // A selection in the view holds only for what is visible now (another state of the model, hiding, undo).
     this.hover = undefined;
     if (this.selected && !this.stillThere(this.selected)) this.selected = undefined;
     this.renderToolbar();
@@ -311,7 +313,7 @@ export class App implements SketchHost, SceneHost {
     this.renderStatus();
   }
 
-  // Zahodí rozpracované tažení bodu i jeho náhled. Vrací, zda nějaké běželo.
+  // Discards a drag of a point in progress and its preview. Returns whether one was running.
   private cancelDrag(): boolean {
     const m = this.mode;
     if (m.kind !== 'sketch' || !m.drag) return false;
@@ -321,7 +323,7 @@ export class App implements SketchHost, SceneHost {
     return true;
   }
 
-  // Je vybraná stěna, hrana nebo rovina v právě zobrazeném stavu modelu?
+  // Is a face, edge or plane selected in the state of the model shown now?
   private stillThere(pick: Pick): boolean {
     const state = this.view();
     if (pick.kind === 'plane') return this.planes(state).some((plane) => plane.key === pick.key);
@@ -351,11 +353,11 @@ export class App implements SketchHost, SceneHost {
     this.mode = mode;
     this.pending = undefined;
     this.hover = undefined;
-    this.selected = undefined; // výběr v pohledu patří jedné akci; nová skica ho nemá zdědit
+    this.selected = undefined; // a selection in the view belongs to one action; the new sketch must not inherit it
     this.refresh();
   }
 
-  // ---------------------------------------------------------------- lišta
+  // ---------------------------------------------------------------- toolbar
 
   private renderToolbar(): void {
     const m = this.mode;
@@ -364,7 +366,8 @@ export class App implements SketchHost, SceneHost {
       h('button', { textContent: label, onclick: action, title: options.title ?? '', disabled: options.disabled === true, className: options.active ? 'active' : '' });
     const group = (...items: HTMLElement[]) => h('div', { className: 'group' }, ...items);
     const file = h('input', { type: 'file', accept: '.json,application/json', hidden: true, onchange: () => void this.open(file) });
-    // Rozpracované vysunutí nebo rovina v dokumentu ještě nejsou; undo pod nimi by jim vzalo půdu.
+    // An extrusion or plane in progress is not in the document yet; an undo under it would pull the ground
+    // from under it.
     const drafting = isDraft(m);
 
     const groups = [
@@ -434,7 +437,8 @@ export class App implements SketchHost, SceneHost {
   private async open(input: HTMLInputElement): Promise<void> {
     const text = await input.files?.[0]?.text();
     if (text === undefined) return;
-    // Stav UI se vymění před načtením (engine při něm rozešle nový stav) a při chybě se vrátí.
+    // The state of the UI is replaced before loading (the engine sends out the new state during it) and
+    // restored on error.
     const restore = this.swapUi();
     const result = this.engine.load(text);
     if (result.ok) {
@@ -446,7 +450,7 @@ export class App implements SketchHost, SceneHost {
     this.say(`The file cannot be opened: ${result.error.message}`, true);
   }
 
-  // Vrátí UI do výchozího stavu a dá funkci, která původní stav obnoví.
+  // Returns the UI to its initial state and gives a function that restores the original state.
   private swapUi(): () => void {
     const saved = { mode: this.mode, marker: this.marker, hidden: [...this.hidden], pending: this.pending, selectedFeature: this.selectedFeature };
     this.resetUi();
@@ -465,7 +469,7 @@ export class App implements SketchHost, SceneHost {
     this.hidden.clear();
   }
 
-  // ---------------------------------------------------------------- časová osa
+  // ---------------------------------------------------------------- timeline
 
   private renderTimeline(): void {
     const full = this.engine.getState();
@@ -537,7 +541,7 @@ export class App implements SketchHost, SceneHost {
     uiOf(f.type).edit(this, f);
   }
 
-  // ---------------------------------------------------------------- pravý panel
+  // ---------------------------------------------------------------- right panel
 
   renderPanel(): void {
     const m = this.mode;
@@ -576,7 +580,7 @@ export class App implements SketchHost, SceneHost {
     return undefined;
   }
 
-  // ---------------------------------------------------------------- výběr v pohledu
+  // ---------------------------------------------------------------- selection in the view
 
   planeSize(state: EngineState): number {
     const { min, max } = modelBounds(state);
@@ -606,19 +610,19 @@ export class App implements SketchHost, SceneHost {
     this.viewport.fit(min, max);
   }
 
-  // Roviny, které jsou vidět a dají se vybrat.
+  // Planes that are visible and can be selected.
   planes(state: EngineState): Extract<Pick, { kind: 'plane' }>[] {
     const out: Extract<Pick, { kind: 'plane' }>[] = [];
     if (this.showBasePlanes) for (const plane of ['XY', 'XZ', 'YZ'] as const) out.push({ kind: 'plane', key: plane, ref: { kind: 'base', plane }, frame: BASE[plane] });
     for (const f of state.document.features) {
       const frame = state.evaluation.features[f.id]?.plane;
-      const drafted = isDraft(this.mode) && this.mode.draft.id === f.id; // rovina nemůže být svým vlastním základem
+      const drafted = isDraft(this.mode) && this.mode.draft.id === f.id; // a plane cannot be its own base
       if (f.type === 'plane' && frame && !this.hidden.has(f.id) && !drafted) out.push({ kind: 'plane', key: f.id, ref: { kind: 'plane', feature: f.id }, frame });
     }
     return out;
   }
 
-  // Co je pod kurzorem: hrana má přednost před stěnou, stěna před rovinou.
+  // What is under the cursor: an edge takes precedence over a face, a face over a plane.
   pick(event: PointerEvent, want: { edges?: boolean; faces?: boolean; planes?: boolean }): Pick | undefined {
     const state = this.view();
     const pose = this.pose(); // the bodies are picked where the view draws them (D49)
@@ -650,7 +654,7 @@ export class App implements SketchHost, SceneHost {
             const t = length2 === 0 ? 0 : Math.min(1, Math.max(0, ((event.clientX - a.x) * dx + (event.clientY - a.y) * dy) / length2));
             const distance = Math.hypot(a.x + t * dx - event.clientX, a.y + t * dy - event.clientY);
             const depth = a.depth + t * (b.depth - a.depth);
-            // hrana schovaná za tělesem se nevybírá
+            // an edge hidden behind a body is not selected
             if (distance < bestDistance && (!hit || depth <= hit.depth + slack)) {
               bestDistance = distance;
               best = { kind: 'edge', body, index, name: edge.name, edgeKind: edge.kind };
@@ -681,7 +685,7 @@ export class App implements SketchHost, SceneHost {
     return undefined;
   }
 
-  // Průsečík paprsku pod kurzorem s rovinou, v souřadnicích roviny.
+  // The intersection of the ray under the cursor with a plane, in the plane's coordinates.
   planePoint(event: { clientX: number; clientY: number }, frame: Frame): { at: Vec2; depth: number } | undefined {
     const { origin, direction } = this.viewport.ray(event.clientX, event.clientY);
     const dot = (a: Vec3, b: Vec3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
@@ -693,10 +697,10 @@ export class App implements SketchHost, SceneHost {
     return { at: [dot(p, frame.x), dot(p, frame.y)], depth };
   }
 
-  // ---------------------------------------------------------------- události pohledu
+  // ---------------------------------------------------------------- events of the view
 
   private onDown(event: PointerEvent): void {
-    // Alt/Option + tažení patří pohledu (otáčení bez myši), ne výběru ani kreslení.
+    // Alt/Option + drag belongs to the view (rotating without a mouse), not to selection or drawing.
     this.down = { x: event.clientX, y: event.clientY, button: event.altKey ? -1 : event.button };
     const m = this.mode;
     if (this.down.button !== 0 || m.kind !== 'sketch') return;
@@ -705,10 +709,10 @@ export class App implements SketchHost, SceneHost {
 
   private onMove(event: PointerEvent): void {
     const m = this.mode;
-    if (event.buttons !== 0 && !(m.kind === 'sketch' && m.drag)) return; // otáčení a posun pohledu
+    if (event.buttons !== 0 && !(m.kind === 'sketch' && m.drag)) return; // rotating and panning the view
     if (m.kind === 'sketch') {
       const moved = sketchMove(this, m, event, this.down);
-      // při tažení se panel nepřestavuje, jen stav určenosti
+      // while dragging, the panel is not rebuilt, only the state of how constrained the sketch is
       if (moved === 'drag') updateSketchStatus(this, m);
       return moved ? this.renderScene() : undefined;
     }
@@ -749,7 +753,7 @@ export class App implements SketchHost, SceneHost {
       const what = this.pending;
       if (!ref) this.say('Select a plane or a planar face.', true);
       else if (!this.usePlane(ref)) {
-        this.pending = what; // engine výběr odmítl (zpráva je ve stavovém řádku); čeká se na jiný
+        this.pending = what; // the engine refused the selection (the message is in the status line); another one is awaited
         this.refresh();
       }
       return;
@@ -789,7 +793,7 @@ export class App implements SketchHost, SceneHost {
     } else if (event.key === 'Enter' && m.kind === 'sketch' && sketchFinish(this, m)) event.preventDefault(); // not also a click of the button in focus
   }
 
-  // ---------------------------------------------------------------- nová skica a rovina
+  // ---------------------------------------------------------------- new sketch and plane
 
   // The button of a feature type: a type that starts on a plane waits for one, the others start at once.
   private create(type: Feature['type']): void {
@@ -800,12 +804,12 @@ export class App implements SketchHost, SceneHost {
 
   private startOnPlane(what: Feature['type']): void {
     const selected = this.feature(this.selectedFeature);
-    // rovina vybraná na časové ose se použije, jen když leží před místem vkládání
+    // a plane selected on the timeline is used only when it lies before the insertion point
     const before = selected?.type === 'plane' && this.doc.features.indexOf(selected) < this.insertIndex();
     const ref = this.planeRefOf(this.selected) ?? (selected && before ? ({ kind: 'plane', feature: selected.id } as PlaneRef) : undefined);
     this.pending = what;
     if (ref && this.usePlane(ref)) return;
-    // bez použitelného výběru (nebo když ho engine odmítl) se čeká na kliknutí v pohledu
+    // without a usable selection (or when the engine refused it), a click in the view is awaited
     this.pending = what;
     if (!ref) this.say('Select a plane or a planar face.');
     this.refresh();
@@ -822,7 +826,7 @@ export class App implements SketchHost, SceneHost {
     return what !== undefined && FEATURE_UI[what].create?.run(this, { index: this.insertIndex(), plane: ref }) === true;
   }
 
-  // ---------------------------------------------------------------- skica
+  // ---------------------------------------------------------------- sketch
 
   enterSketch(id: Id): void {
     this.selectedFeature = id;
@@ -856,7 +860,7 @@ export class App implements SketchHost, SceneHost {
     return this.viewport.pixelSize();
   }
 
-  // ---------------------------------------------------------------- scéna
+  // ---------------------------------------------------------------- scene
 
   // The scene of the model, then what the open sketch or the open form adds to it.
   renderScene(): void {

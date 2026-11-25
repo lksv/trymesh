@@ -13,7 +13,7 @@ import { type EntryControl, PICKER_LIMIT, entryEntities, referenceUi } from '../
 import { outlineDraftPanel, outlineFileButton } from './outline-draft';
 import { selectedSources } from '../sketch-tools/pattern';
 
-// Jména vazeb jsou v katalogu enginu; nová vazba se tu objeví sama.
+// The names of constraints are in the engine's catalog; a new constraint shows up here by itself.
 const constraintName = (type: Constraint['type']): string => CONSTRAINTS[type].title;
 
 // A row that re-points a point of the selected curve to the selected point (setCurvePoint, D52):
@@ -34,7 +34,7 @@ function sketchStatus(host: SketchHost, m: SketchMode): HTMLElement[] {
   const result = host.view().evaluation.features[m.id];
   if (!context) return [h('p', { className: 'issue error' }, result?.status === 'suppressed' ? 'The sketch is suppressed.' : 'The sketch cannot be shown: its plane is not available.'), ...host.issues(result)];
   const r = context.result;
-  const unsolved = result?.warnings.some((w) => w.code === 'sketchConflict') === true; // stupně volnosti pak nic neříkají
+  const unsolved = result?.warnings.some((w) => w.code === 'sketchConflict') === true; // the degrees of freedom then say nothing
   const empty = Object.keys(context.feature.points).length + Object.keys(context.feature.curves).length === 0;
   const state =
     r.conflicting.length > 0
@@ -64,12 +64,12 @@ function contactsHint(host: SketchHost, sketch: Id): HTMLElement {
   return h('p', { className: 'hint' }, `Contacts marked in the view: ${found.total}. Split crossings (the tool Split) cuts them; then Trim removes the pieces that should go.${stuck}`);
 }
 
-// Při tažení se panel nepřestavuje, jen stav určenosti.
+// While dragging, the panel is not rebuilt, only the state of how constrained the sketch is.
 export function updateSketchStatus(host: SketchHost, m: SketchMode): void {
   document.getElementById('sketch-status')?.replaceChildren(...sketchStatus(host, m));
 }
 
-// Souhrn diagnostiky pod stavem skici: vazby navíc a co se ještě může hýbat.
+// Summary of the diagnosis under the state of the sketch: redundant constraints and what can still move.
 function diagnosisSummary(host: SketchHost, m: SketchMode, d: SketchDiagnosis): HTMLElement[] {
   const out: HTMLElement[] = [];
   const twins = duplicateTwins(d);
@@ -78,7 +78,7 @@ function diagnosisSummary(host: SketchHost, m: SketchMode, d: SketchDiagnosis): 
     return h('div', { className: 'buttons' }, h('button', { textContent: `Delete duplicates (${twins.length})`, onclick: () => host.run({ type: 'batch', commands }, twins.length === 1 ? 'Duplicate constraint deleted.' : 'Duplicate constraints deleted.') }));
   };
   if (d.status !== 'solved') {
-    // duplicity engine hlásí i u nevyřešené skici; jejich smazání může konflikt odstranit
+    // the engine reports duplicates for an unsolved sketch too; deleting them may remove the conflict
     if (twins.length > 0) out.push(h('p', { className: 'issue warning' }, `Duplicate constraints: ${twins.length}. They are marked in the list.`), removeTwins());
     return out;
   }
@@ -130,7 +130,7 @@ export function sketchPanel(host: SketchHost, m: SketchMode): HTMLElement[] {
     h(
       'div',
       { className: 'buttons' },
-      // tlačítko pro každou geometrickou vazbu z katalogu enginu; nápověda je její popis
+      // a button for each geometric constraint of the engine's catalog; its tooltip is its description
       ...GEOMETRIC_KINDS.map((kind) => {
         const constraints = geometricFor(kind, view, m.selection);
         return action(constraintName(kind), constraints !== undefined, () => addConstraints(host, m, constraints), CONSTRAINTS[kind].summary);
@@ -154,7 +154,7 @@ export function sketchPanel(host: SketchHost, m: SketchMode): HTMLElement[] {
     ...repointRow(host, m),
   );
 
-  // vazby, které solver nedostal, protože odkazují na geometrii, kterou nešlo promítnout
+  // constraints the solver did not get, because they refer to geometry that could not be projected
   const skipped = new Set((host.view().evaluation.features[m.id]?.warnings ?? []).flatMap((w) => (w.code !== 'sketchConflict' && Array.isArray(w.refs) ? w.refs.slice(1) : [])));
   const rows = Object.entries(feature.constraints).flatMap(([id, c]) => {
     const mark = markOf(diagnosis, id);
@@ -171,7 +171,7 @@ export function sketchPanel(host: SketchHost, m: SketchMode): HTMLElement[] {
               : 'A click shows whether the constraint follows from others',
       onmouseenter: () => ((m.hoverConstraint = id), host.renderScene()),
       onmouseleave: () => ((m.hoverConstraint = undefined), host.renderScene()),
-      // klik na řádek (ne na jeho pole a tlačítka) vazbu označí nebo označení zruší
+      // a click on the row (not on its field and buttons) marks the constraint or clears the mark
       onclick: (event: Event) => {
         if ((event.target as HTMLElement).closest('input, button, label')) return;
         m.focus = m.focus === id ? undefined : id;
@@ -209,7 +209,7 @@ export function sketchPanel(host: SketchHost, m: SketchMode): HTMLElement[] {
           h('input', {
             type: 'checkbox',
             checked: c.driving,
-            // referenční kóta se při přepnutí stane řídicí s právě naměřenou hodnotou
+            // on switching, a reference dimension becomes driving with the value just measured
             onchange: () => !host.run({ type: 'setConstraintValue', sketch: m.id, id, driving: !c.driving, ...(c.driving ? {} : { value: shown }) }) && host.refresh(),
           }),
           'driving',
@@ -240,8 +240,8 @@ export function sketchPanel(host: SketchHost, m: SketchMode): HTMLElement[] {
       }
     }
     row.append(h('button', { className: 'icon', textContent: '✕', title: 'Delete the constraint', onclick: () => host.run({ type: 'removeConstraint', sketch: m.id, id }) }));
-    // Vysvětlení je hned pod označeným řádkem: řádky nad ním se nehnou a druhé kliknutí
-    // na stejném místě označení zruší.
+    // The explanation is right under the marked row: the rows above it do not move and a second click
+    // at the same place clears the mark.
     return m.focus === id && explanation ? [row, h('p', { className: 'explain' }, explanationText(c, id, explanation, diagnosis, label, skipped.has(id)))] : [row];
   });
   out.push(h('h2', {}, `Constraints and dimensions (${Object.keys(feature.constraints).length})`));

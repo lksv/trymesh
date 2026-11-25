@@ -1,5 +1,6 @@
-// 3D pohled: vykreslí popis scény přes three.js a nabízí pomůcky pro výběr (paprsek, průmět na
-// obrazovku, zásah tělesa). O dokumentu a enginu neví nic kromě tvaru sítě tělesa.
+// 3D view: draws the description of the scene through three.js and offers helpers for selection (a ray,
+// projection onto the screen, a hit on a body). It knows nothing about the document and the engine except
+// the shape of a body's mesh.
 import type { Frame, Id, RigidTransform, Solid, Vec2, Vec3 } from '@trymesh/engine';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
@@ -10,11 +11,11 @@ import { currentScale, fittedCamera, keptSide, topDown } from './camera';
 import { stretchInView, toWorld } from './draw';
 
 export interface LineSet {
-  segments: ArrayLike<number>; // úsečky ve světových souřadnicích, 6 čísel na úsečku
+  segments: ArrayLike<number>; // lines in world coordinates, 6 numbers per line
   color: number;
-  width: number; // v pixelech
+  width: number; // in pixels
   dashed?: boolean;
-  onTop?: boolean; // kreslit přes tělesa
+  onTop?: boolean; // draw over the bodies
   overFills?: boolean; // drawn after the fills, so that a fill in the plane of the line does not cover it
 }
 // A half-space that is cut away: what lies on the side the normal points to.
@@ -28,9 +29,9 @@ export interface SceneModel {
   // puts the body (D49), applied to its mesh as it is drawn and picked; none: as modelled.
   bodies: { id: Id; solid: Solid; color?: number; opacity?: number; transform?: RigidTransform }[];
   lines: LineSet[];
-  points: { positions: number[]; color: number; size: number }[]; // vždy přes tělesa
-  fills: { frame: Frame; loops: ArrayLike<number>[]; color: number; opacity: number; onTop?: boolean }[]; // první smyčka obrys, další díry
-  faces: { solid: Solid; faceId: number; color: number; opacity: number; transform?: RigidTransform }[]; // zvýrazněné stěny; `transform` that of the body
+  points: { positions: number[]; color: number; size: number }[]; // always over the bodies
+  fills: { frame: Frame; loops: ArrayLike<number>[]; color: number; opacity: number; onTop?: boolean }[]; // the first loop is the outline, the others holes
+  faces: { solid: Solid; faceId: number; color: number; opacity: number; transform?: RigidTransform }[]; // highlighted faces; `transform` that of the body
   labels: { at: Vec3; text: string; tone?: 'driving' | 'reference' | 'problem' }[];
   // Lines without ends through the origin of a frame, each along a direction of the frame: the
   // axes of the origin of an open sketch (D71). The view draws each as its stretch inside what it
@@ -61,7 +62,7 @@ export interface BodyHit {
   body: Id;
   triangle: number;
   point: Vec3;
-  depth: number; // vzdálenost od roviny kamery ve směru pohledu
+  depth: number; // distance from the camera's plane in the direction of view
 }
 
 // What the app uses of the view. `Viewport` below is the one that draws; a test of the app hands
@@ -83,7 +84,7 @@ export interface View {
 
 // The corners of the view in normalised device coordinates, in order around it.
 const CORNERS = [[-1, -1], [1, -1], [1, 1], [-1, 1]] as const;
-const DISTANCE = 5000; // kamera stojí daleko, aby žádná část modelu nebyla za ní
+const DISTANCE = 5000; // the camera stands far away so that no part of the model is behind it
 const BACKGROUND = 0xf2f4f7;
 const BODY_MATERIAL = { roughness: 0.75, metalness: 0.05, flatShading: true, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 } as const;
 // The light of a camera: it hangs on the camera, so the model is lit from where it is seen.
@@ -132,15 +133,17 @@ export class Viewport implements View {
     lit(this.camera);
     this.scene.add(this.camera, new THREE.AmbientLight(0xffffff, 1.1), this.content);
 
-    // Bez myši (touchpad): Alt/Option + tažení levým otáčí, se Shiftem posouvá. Musí být zaregistrováno
-    // před OrbitControls, aby se přiřazení levého tlačítka změnilo dřív, než ho ovladač přečte.
+    // Without a mouse (touchpad): Alt/Option + drag with the left button rotates, with Shift it pans. It
+    // must be registered before OrbitControls, so that the assignment of the left button changes before the
+    // control reads it.
     this.renderer.domElement.addEventListener(
       'pointerdown',
       (event) => (this.controls.mouseButtons.LEFT = event.altKey ? THREE.MOUSE.ROTATE : (null as unknown as THREE.MOUSE)),
       { capture: true },
     );
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
-    // levé tlačítko patří výběru a kreslení; otáčení pravým, posun prostředním nebo Shift + pravým
+    // the left button belongs to selection and drawing; rotating with the right, panning with the middle or
+    // Shift + right
     this.controls.mouseButtons = { LEFT: null as unknown as THREE.MOUSE, MIDDLE: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.ROTATE };
     this.controls.zoomToCursor = true;
     this.controls.addEventListener('change', () => this.requestRender());
@@ -156,14 +159,14 @@ export class Viewport implements View {
 
   private resize(): void {
     const [width, height] = [Math.max(1, this.container.clientWidth), Math.max(1, this.container.clientHeight)];
-    this.renderer.setPixelRatio(window.devicePixelRatio); // mění se s přiblížením stránky i s monitorem
+    this.renderer.setPixelRatio(window.devicePixelRatio); // changes with the zoom of the page and with the monitor
     this.renderer.setSize(width, height);
     Object.assign(this.camera, { left: -width / 2, right: width / 2, top: height / 2, bottom: -height / 2 });
     this.camera.updateProjectionMatrix();
     this.requestRender();
   }
 
-  // ---------------------------------------------------------------- scéna
+  // ---------------------------------------------------------------- scene
 
   setScene(model: SceneModel): void {
     this.content.clear();
@@ -181,7 +184,7 @@ export class Viewport implements View {
     }
     this.bodyMaterial.clippingPlanes = clipping;
 
-    // Síť tělesa se staví jednou pro každý objekt Solid; engine nezměněná tělesa vrací stejná.
+    // The mesh of a body is built once for each Solid object; the engine returns unchanged bodies as the same objects.
     const meshes = new Map<Solid, THREE.Mesh>();
     this.bodies = model.bodies.map(({ id, solid, color, opacity, transform }) => {
       const mesh = this.bodyMeshes.get(solid) ?? new THREE.Mesh(triangleGeometry(solid), this.bodyMaterial);
@@ -270,7 +273,7 @@ export class Viewport implements View {
     this.pending = true;
     requestAnimationFrame(() => {
       this.pending = false;
-      // délka čárek je ve světových jednotkách; přepočet drží čárkování stejné při každém přiblížení
+      // the length of dashes is in world units; recomputing keeps the dashing the same at every zoom
       for (const material of this.lineMaterials.values()) if (material.dashed) material.dashScale = this.camera.zoom;
       this.placeAxes();
       this.renderer.render(this.scene, this.camera);
@@ -312,14 +315,14 @@ export class Viewport implements View {
     }
   }
 
-  // ---------------------------------------------------------------- výběr
+  // ---------------------------------------------------------------- selection
 
   private ndc(clientX: number, clientY: number): THREE.Vector2 {
     const rect = this.renderer.domElement.getBoundingClientRect();
     return new THREE.Vector2(((clientX - rect.left) / rect.width) * 2 - 1, 1 - ((clientY - rect.top) / rect.height) * 2);
   }
 
-  // Paprsek pod kurzorem; směr je směr pohledu (kamera je rovnoběžná).
+  // The ray under the cursor; its direction is the direction of view (the camera is orthographic).
   ray(clientX: number, clientY: number): { origin: Vec3; direction: Vec3 } {
     this.camera.updateMatrixWorld();
     this.raycaster.setFromCamera(this.ndc(clientX, clientY), this.camera);
@@ -340,8 +343,8 @@ export class Viewport implements View {
     return best;
   }
 
-  // Funkce pro průmět bodů při současném pohledu: poloha v okně prohlížeče (px) a hloubka ve směru
-  // pohledu (stejná míra jako BodyHit.depth).
+  // A function for projecting points in the current view: the position in the browser window (px) and the
+  // depth in the direction of view (the same measure as BodyHit.depth).
   projector(): (x: number, y: number, z: number) => { x: number; y: number; depth: number } {
     this.camera.updateMatrixWorld();
     const rect = this.renderer.domElement.getBoundingClientRect();
@@ -356,19 +359,20 @@ export class Viewport implements View {
     };
   }
 
-  // Kolik světových jednotek je jeden pixel.
+  // How many world units one pixel is.
   pixelSize(): number {
     return 1 / this.camera.zoom;
   }
 
-  // ---------------------------------------------------------------- kamera
+  // ---------------------------------------------------------------- camera
 
-  // Pohled kolmo na rovinu; osa Y roviny míří na obrazovce nahoru, pokud to svislá osa Z dovolí.
+  // A view perpendicular to a plane; the plane's Y axis points up on the screen if the vertical Z axis allows it.
   lookAt(frame: Frame): void {
     const target = new THREE.Vector3(...frame.origin);
     const normal = new THREE.Vector3(...frame.normal);
-    // Při pohledu podél svislé osy určuje natočení malý úklon: shora proti ose Y roviny, zdola po ní
-    // (kamera pod rovinou má „nahoře“ tu stranu, ke které je ukloněná).
+    // When looking along the vertical axis, a small tilt decides the rotation: from above against the
+    // plane's Y axis, from below along it (a camera below the plane has as "up" the side it is tilted
+    // towards).
     const tilt = new THREE.Vector3(...frame.y).multiplyScalar((normal.z < 0 ? 1 : -1) * 1e-3 * DISTANCE);
     this.controls.target.copy(target);
     this.camera.position.copy(target).addScaledVector(normal, DISTANCE).add(tilt);
@@ -462,7 +466,7 @@ export class Viewport implements View {
     }
   }
 
-  // Přiblíží tak, aby byl vidět celý kvádr.
+  // Zooms so that the whole box is visible.
   fit(min: Vec3, max: Vec3): void {
     const center = new THREE.Vector3().addVectors(new THREE.Vector3(...min), new THREE.Vector3(...max)).multiplyScalar(0.5);
     const size = Math.max(1, new THREE.Vector3(...max).distanceTo(new THREE.Vector3(...min)));
@@ -509,7 +513,7 @@ function fillMesh(fill: SceneModel['fills'][number], own: <T extends { dispose()
   return mesh;
 }
 
-// Trojúhelníky tělesa (nebo jen jedné stěny) bez sdílení vrcholů, s normálou plošky.
+// Triangles of a body (or of only one face) without shared vertices, with the normal of the facet.
 function triangleGeometry(solid: Solid, faceId?: number): THREE.BufferGeometry {
   const count = solid.triangles.length / 3;
   const positions: number[] = [];

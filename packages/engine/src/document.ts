@@ -1,5 +1,5 @@
-// Dokument: validace a provedení příkazů. Vše pracuje jen se strukturou dokumentu, bez přepočtu.
-// Pravidla jsou v docs/architecture.md, sekce Příkazy.
+// Document: validation and execution of commands. Everything works only with the structure of the
+// document, without a recompute. The rules are in docs/architecture/api.md, section "Commands".
 import type {
   Check,
   Command,
@@ -79,7 +79,7 @@ const expressionsOf = (o: Dict, what: string): Record<FieldPath, Expr> =>
 
 const NO_ENVIRONMENT = (): Environment => ({});
 
-// ---------------------------------------------------------------- entity skici
+// ---------------------------------------------------------------- entities of a sketch
 
 // A fixed point given without a coordinate is fixed where it is: the coordinate is filled in from
 // the position the sketch has stored for the point. That is its last solved position; for a point
@@ -93,7 +93,7 @@ function withPosition(sketch: SketchFeature, given: unknown): unknown {
 
 // ---------------------------------------------------------------- features
 
-// ---------------------------------------------------------------- registr typů features
+// ---------------------------------------------------------------- registry of feature types
 
 // Validates a feature and returns its canonical copy. `before`: see requireRef; `mode`: see FieldMode.
 function feature(doc: Document, before: number | undefined, v: unknown, what: string, mode: FieldMode): Feature {
@@ -148,8 +148,8 @@ export function featureInput<F extends Feature>(f: F): Input<F> {
   return Object.entries(expressions ?? {}).reduce((input, [path, expr]) => withPath(input, path, expr), rest as unknown) as Input<F>;
 }
 
-// Features, na které feature odkazuje: rovina, skica, feature, která vytvořila těleso, a extrude,
-// které pojmenovaly stěnu (stěna i hrana existují až po feature, která je vytvořila).
+// The features a feature refers to: a plane, a sketch, the feature that created a body, and the
+// extrudes that named a face (a face and an edge exist only after the feature that created them).
 export function featureRefs(f: Feature): Id[] {
   return [
     ...new Set(
@@ -174,8 +174,9 @@ const sameVariant = (old: Dict, patch: Dict): boolean => VARIANT_KEYS.every((key
 type IsDictionary = (path: readonly string[]) => boolean;
 const NO_DICTIONARY: IsDictionary = () => false;
 
-// Slučovací změna (příkaz updateFeature): varianta se stejným `type` se slučuje po polích, jiná
-// varianta, odkaz (objekt s `kind`) a seznam dosavadní hodnotu nahradí, `null` pole odebere.
+// A merging change (command updateFeature): a variant with the same `type` merges field by field,
+// another variant, a reference (an object with `kind`) and a list replace the current value, `null`
+// removes a field.
 // A dictionary (operands, parameters and references of a generated profile) merges by entry.
 function mergePatch(old: unknown, patch: unknown, what: string, dictionary: IsDictionary = NO_DICTIONARY, path: string[] = []): unknown {
   if (dictionary(path) && isObject(patch)) {
@@ -188,7 +189,8 @@ function mergePatch(old: unknown, patch: unknown, what: string, dictionary: IsDi
     return out;
   }
   if (!isObject(patch) || has(patch, 'kind')) return patch;
-  // odkaz se po polích neslučuje: půlka odkazu by vybrala jinou stěnu téhož tělesa
+  // a reference does not merge field by field: half of a reference would select another face of
+  // the same body
   if (isObject(old) && has(old, 'kind')) fail(`${what}: a reference is replaced whole, an object with the field kind is expected`);
   // Nothing to merge with: the patch is the new value. A `null` in it removes an entry that is not
   // there (a form sends `refs: { meshWith: null }` whether the feature had the reference or not).
@@ -224,7 +226,7 @@ function replacedPaths(old: unknown, patch: Dict, dictionary: IsDictionary = NO_
   });
 }
 
-// Cesty k hodnotám, které změna nastavuje: listy, seznamy a odkazy (odebraná pole ne).
+// The paths to the values the change sets: leaves, lists and references (not removed fields).
 function patchPaths(patch: Dict, dictionary: IsDictionary = NO_DICTIONARY, prefix: string[] = []): string[][] {
   return Object.entries(patch).flatMap(([key, value]) => {
     const path = [...prefix, key];
@@ -243,7 +245,8 @@ function removedPaths(patch: Dict, dictionary: IsDictionary = NO_DICTIONARY, pre
   });
 }
 
-// Změna bez polí s hodnotou `undefined`: v JSON nejsou a volající z kódu jimi myslí „neměnit".
+// The change without fields whose value is `undefined`: they are not in JSON, and a caller from code
+// means "do not change" by them.
 const withoutUndefined = (value: unknown): unknown =>
   isObject(value)
     ? Object.fromEntries(
@@ -257,10 +260,10 @@ const hasPath = (value: unknown, path: string[]): boolean => path.length === 0 |
 // the identity of a reference: a parameter of another stored document is another reference (D62)
 const refKey = (ref: FeatureRef): string => JSON.stringify([ref.path, ref.kind, ref.id, ref.sketch, ref.document]);
 
-// ---------------------------------------------------------------- načtení dokumentu
+// ---------------------------------------------------------------- loading a document
 
-// Ověří celý dokument stejnými pravidly jako příkazy. Odkazy na features, které v dokumentu nejsou
-// nebo leží jinde, jsou přípustné: projeví se až při přepočtu.
+// Validates the whole document by the same rules as the commands. References to features that are
+// not in the document or lie elsewhere are allowed: they show only in the recompute.
 // `what` is the path of the document in the messages and `depth` its level below the host: a stored
 // document (D62) is validated by this same function, one level deeper, and the message of its
 // fault names its path (`document.documents.bearing.document.settings: …`). The host keeps the
@@ -428,7 +431,7 @@ export function entryInput(s: SketchFeature, id: Id): Input<ExternalRef> {
     .reduce((input, [path, expr]) => withPath(input, path.slice(prefix.length), expr), s.external[id] as unknown) as Input<ExternalRef>;
 }
 
-// ---------------------------------------------------------------- příkazy
+// ---------------------------------------------------------------- commands
 
 function indexOf(doc: Document, id: unknown, what: string): number {
   const index = doc.features.findIndex((f) => f.id === id);
@@ -455,16 +458,17 @@ function editSketch(doc: Document, id: unknown, edit: (sketch: SketchFeature, in
   return replaceAt(doc, index, edit(f, index));
 }
 
-// Příkaz, který zapisuje řešené proměnné přímo (nový bod, nová křivka), zruší razítko: uložené
-// hodnoty už neodpovídají poslednímu řešení, i kdyby se otisk vstupů solveru shodoval (bod smazaný
-// a přidaný znovu pod stejným ID na jiném místě).
+// A command that writes solved variables directly (a new point, a new curve) clears the stamp: the
+// stored values no longer match the last solution, even if the fingerprint of the solver's inputs
+// matched (a point deleted and added again under the same ID at another place).
 const unsolved = (s: SketchFeature): SketchFeature['solved'] => ({ ...s.solved, inputs: '' });
 
 const without = <T>(record: Record<Id, T>, drop: (id: Id, value: T) => boolean): Record<Id, T> =>
   Object.fromEntries(Object.entries(record).filter(([id, value]) => !drop(id, value)));
 
-// Provede příkaz a vrátí nový dokument; původní se nemění. Neplatný příkaz vyhodí CommandError.
-// Příkaz `dragPoint` dokument nemění (cíl tažení dostane přepočet), jen se ověří.
+// Runs a command and returns the new document; the original does not change. An invalid command
+// throws CommandError. The command `dragPoint` does not change the document (the recompute gets the
+// target of the drag), it is only validated.
 export function applyCommand(doc: Document, command: Command): Document {
   const cmd = object(command, 'command') as Dict & { type?: unknown };
   switch (cmd.type) {
@@ -553,15 +557,16 @@ export function applyCommand(doc: Document, command: Command): Document {
       const gone = replaced.filter((path) => !repeated.includes(path));
       input.expressions = without(f.expressions ?? {}, (path) => gone.some((prefix) => path === prefix || path.startsWith(`${prefix}/`)));
       const checked = validated(spec, doc, undefined, input, 'updateFeature.patch', 'update');
-      // Validace neznámá pole zahazuje; ve změně je to překlep nebo pole jiné varianty, které by
-      // jinak skončilo úspěchem bez účinku.
+      // Validation drops unknown fields; in a change it is a typo or a field of another variant,
+      // which would otherwise end in success without effect.
       for (const path of patchPaths(patch, dictionary)) if (!hasPath(checked, path)) fail(`updateFeature.patch.${path.join('.')}: this ${title} has no such field`);
       // The same for `null`: removing what the feature did not have is fine only for a name the
       // feature knows (a form sends `refs: { meshWith: null }` whether the reference was set or
       // not); `params: { rotaton: null }` must not report success and reset nothing.
       for (const path of removedPaths(patch, dictionary)) if (!hasPath(f, path) && !spec.patch.removable?.(checked, path)) fail(`updateFeature.patch.${path.join('.')}: this ${title} has no such field`);
-      // Tvar se ověří celý, odkazy jen ty, které feature dosud neměla: oprava jedné rozbité
-      // reference nesmí narazit na jinou, kterou změna nechává být (i když ji zopakuje).
+      // The shape is validated whole, the references only those the feature did not have yet: a
+      // fix of one broken reference must not run into another one the change leaves alone (even
+      // when it repeats it).
       const kept = new Set(spec.refs(f).map(refKey));
       for (const ref of spec.refs(checked)) if (!kept.has(refKey(ref))) requireRef(doc, index, ref, `updateFeature.patch.${ref.path.split('/').join('.')}`);
       return replaceAt(doc, index, checked);
@@ -662,7 +667,8 @@ export function applyCommand(doc: Document, command: Command): Document {
         const id = string(cmd.id, 'removeEntity.id');
         const entity = entityOf(s, id);
         if (!entity?.own) fail(`removeEntity: "${id}" is neither an own point nor a curve of the sketch (the origin and projected geometry cannot be deleted)`);
-        // Mazání kaskáduje: bod vezme křivky, které na něm stojí; bod i křivka vezmou své vazby.
+        // Deletion cascades: a point takes the curves that stand on it; a point and a curve take
+        // their constraints.
         const gone = new Set<Id>([id]);
         for (const [curveId, c] of Object.entries(s.curves)) if (curvePoints(c).includes(id)) gone.add(curveId);
         const left = { ...s, points: without(s.points, (p) => gone.has(p)), curves: without(s.curves, (c) => gone.has(c)), radii: without(s.radii, (c) => gone.has(c)) };
@@ -677,7 +683,8 @@ export function applyCommand(doc: Document, command: Command): Document {
         const id = string(cmd.id, 'setConstruction.id');
         if (!has(s.curves, id)) fail(`setConstruction: "${id}" is not a curve of the sketch`);
         const { construction: _old, ...rest } = s.curves[id];
-        // pořadí klíčů jako při načtení dokumentu, aby se uložený a znovu načtený dokument nelišil
+        // the order of keys as when a document is loaded, so that a saved and reloaded document
+        // does not differ
         const flagged = boolean(cmd.construction, 'setConstruction.construction') ? { construction: true, ...rest } : rest;
         return { ...s, curves: { ...s.curves, [id]: flagged as Curve } };
       });
@@ -737,8 +744,8 @@ export function applyCommand(doc: Document, command: Command): Document {
         const fields = new Fields('update', kept, () => evaluateParameters(doc.parameters));
         const changed = { ...old, value: cmd.value === undefined ? old.value : cmd.value, driving: cmd.driving === undefined ? old.driving : cmd.driving };
         const next = constraint(s, changed, 'setConstraintValue', fields, id);
-        // Duplicitu smí vyrobit jen přepnutí referenční kóty na řídicí. Změna hodnoty projde
-        // i u kót, které jsou duplicitní už z načteného dokumentu.
+        // Only switching a reference dimension to driving may create a duplicate. A change of the
+        // value passes even for dimensions that are duplicate already from the loaded document.
         const twin = old.driving ? undefined : duplicateOf(s, next, id);
         if (twin !== undefined) fail(`setConstraintValue: the sketch already has the same driving dimension ("${twin}")`);
         return withConstraints(s, { ...s.constraints, [id]: next }, { [path]: fields.expressions('setConstraintValue')?.[path] ?? null });
@@ -800,7 +807,8 @@ export function applyCommand(doc: Document, command: Command): Document {
         const namesNothing = kindOfShaped.source === 'reference' && kindOfShaped.refs(shaped, prefix).length === 0 && kindOfShaped.faces(shaped).length === 0;
         const context = keeps || namesNothing ? form : { ...refContext(doc, index), fields: fieldsOf() };
         const ref = keeps || namesNothing ? shaped : externalRef(context, s, id, input, 'updateExternal.ref');
-        // Změna druhu by změnila odvozená ID; kdo chce jiný druh, promítnutí smaže a založí nové.
+        // A change of the kind would change the derived IDs; whoever wants another kind deletes the
+        // projection and creates a new one.
         const problem = updateProblem(s, id, before, ref);
         if (problem) fail(`updateExternal: ${problem}`);
         // of a derived entry only what the update brings in is checked against the sketch

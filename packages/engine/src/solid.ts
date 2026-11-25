@@ -1,14 +1,16 @@
 // Bodies: rigid transforms, faces and edges of a body, the plane on a face, the projection of an
 // edge, measures of a mesh, STL. The meshes of tools are built in recompute/tool-*.ts.
-// Pravidla jsou v docs/architecture.md, sekce Pojmenování a Extrude.
+// The rules are in docs/architecture/naming.md, section "Naming", and
+// docs/architecture/extrude.md, section "Extrude".
 import type { BodyResult, EdgeKind, EdgeName, FaceName, Frame, IssueCode, Projected, ProjectionKind, RigidTransform, Solid, Surface, Vec2, Vec3 } from './types';
 import { closestOnTriangle } from './mesh-distance';
 import { circleBetween } from './surfaces';
 import { ANGLE_TOLERANCE, LENGTH_TOLERANCE, add3, cross3, dot3, edgeKey, faceKey, len3, mul3, sameEdgeName, sub3, unit3 } from './util';
 
-// Analytický popis stěny; plyne z definice feature, ne ze sítě.
+// The analytic description of a face; it follows from the definition of the feature, not from the
+// mesh.
 export type FaceInfo =
-  | { planar: true; origin: Vec3; y: Vec3; normal: Vec3 } // rovina bodem `origin`; `normal` bez znaménka směru ven
+  | { planar: true; origin: Vec3; y: Vec3; normal: Vec3 } // a plane through the point `origin`; `normal` without the sign of the outward direction
   // `along` of a round face with an axis (a cylinder, a cone, a torus; D60): the sense of its axis
   // as its build gives it, which `axis` does not carry (a cylinder's has no sign, a cone's points
   // to the face and turns with the sign of a taper or the direction of a hole). An extrusion and
@@ -490,10 +492,10 @@ export function penetration(common: Solid, a: Solid, b: Solid, isPlanar: (face: 
   return reach;
 }
 
-// ---------------------------------------------------------------- stěny a hrany tělesa
+// ---------------------------------------------------------------- faces and edges of a body
 
 export interface EdgeData {
-  a: number; // čísla stěn v kanonickém pořadí jmen
+  a: number; // the numbers of the faces in the canonical order of names
   b: number;
   name: EdgeName;
   kind: EdgeKind;
@@ -505,14 +507,14 @@ export interface EdgeData {
 }
 export interface BodyData {
   result: BodyResult;
-  normalSum: Map<number, Vec3>; // součet normál trojúhelníků stěny vážený plochou: směr ven z tělesa
+  normalSum: Map<number, Vec3>; // the sum of the normals of the face's triangles weighted by area: the direction out of the body
   edges: Map<string, EdgeData>;
 }
 
 const cache = new WeakMap<Solid, { tolerance: number; data: BodyData }>();
 
-// Stěny a hrany tělesa. Výsledek závisí jen na síti a na tabulce stěn, která se pro existující
-// čísla nemění, takže se pamatuje podle identity sítě.
+// The faces and edges of a body. The result depends only on the mesh and on the table of faces,
+// which does not change for existing numbers, so it is memoised by the identity of the mesh.
 // `chordTolerance`: the chord tolerance of the document, by which the kind of an edge between two
 // surfaces that meet in two circles is decided (`circleBetween` with the points of the edge, D58).
 // A change of the setting recomputes every feature, so a solid meets one tolerance; the memo keeps
@@ -523,7 +525,7 @@ export function analyzeBody(solid: Solid, faceNames: FaceName[], faceInfos: Face
   const p = solid.positions;
   const at = (i: number): Vec3 => [p[3 * i], p[3 * i + 1], p[3 * i + 2]];
   const normalSum = new Map<number, Vec3>();
-  const byEdge = new Map<number, number>(); // orientovaná hrana → číslo stěny trojúhelníku
+  const byEdge = new Map<number, number>(); // oriented edge → the number of the triangle's face
   const triangleOf = new Map<number, number>(); // the directed side of a triangle → the triangle
   const vertexCount = p.length / 3;
   for (let t = 0; t < solid.triangles.length / 3; t++) {
@@ -536,7 +538,7 @@ export function analyzeBody(solid: Solid, faceNames: FaceName[], faceInfos: Face
   const edges = new Map<string, EdgeData>();
   for (const [key, id] of byEdge) {
     const [i, j] = [Math.floor(key / vertexCount), key % vertexCount];
-    if (i > j) continue; // každou hranu jednou
+    if (i > j) continue; // each edge once
     const other = byEdge.get(j * vertexCount + i);
     if (other === undefined || other === id) continue;
     const [a, b] = faceKey(faceNames[id]) <= faceKey(faceNames[other]) ? [id, other] : [other, id];
@@ -614,17 +616,19 @@ export function normalAt(info: FaceInfo, point: Vec3): Vec3 | undefined {
   }
 }
 
-// Normála rovinné stěny ven z tělesa: analytický směr, znaménko ze sítě. undefined = stěna v tělese není.
+// The normal of a planar face out of the body: the analytic direction, the sign from the mesh.
+// undefined = the face is not in the body.
 function outward(body: BodyData, id: number, info: Extract<FaceInfo, { planar: true }>): Vec3 | undefined {
   const sum = body.normalSum.get(id);
   if (!sum) return undefined;
   const side = dot3(sum, info.normal);
   if (side === 0) return undefined;
   const flipped = mul3(info.normal, Math.sign(side));
-  return [flipped[0] + 0, flipped[1] + 0, flipped[2] + 0]; // bez záporné nuly
+  return [flipped[0] + 0, flipped[1] + 0, flipped[2] + 0]; // without negative zero
 }
 
-// Souřadný systém skici na stěně: počátek a osa Y analyticky, normála ven z tělesa, X = Y × N.
+// The coordinate system of a sketch on a face: the origin and the Y axis analytically, the normal
+// out of the body, X = Y × N.
 export function faceFrame(body: BodyData, id: number, info: FaceInfo): Frame | IssueCode {
   if (!body.normalSum.has(id)) return 'brokenReference';
   if (!info.planar) return 'nonPlanarFace';
@@ -633,18 +637,20 @@ export function faceFrame(body: BodyData, id: number, info: FaceInfo): Frame | I
   return { origin: info.origin, x: cross3(info.y, normal), y: info.y, normal };
 }
 
-// Promítne hranu tělesa do roviny skici. Přímka hrany se počítá analyticky z rovin obou stěn,
-// ze sítě se bere jen rozsah; kružnice celá analyticky.
+// Projects an edge of a body into the plane of a sketch. The line of the edge is computed
+// analytically from the planes of both faces, only the extent is taken from the mesh; a circle
+// entirely analytically.
 // `chordTolerance`: as for `analyzeBody`, to choose among two circles by the points of the edge.
 export function projectEdge(body: BodyData, name: EdgeName, kind: ProjectionKind, frame: Frame, faceInfos: FaceInfo[], chordTolerance: number): Extract<Projected, { kind: 'line' | 'circle' }> | IssueCode {
   const edge = body.edges.get(edgeKey(name));
   if (!edge || !sameEdgeName(edge.name, name)) return 'brokenProjection';
-  if (edge.kind !== kind) return 'unsupportedProjection'; // coplanar, other, nebo jiný druh, než se uložilo
+  if (edge.kind !== kind) return 'unsupportedProjection'; // coplanar, other, or another kind than was stored
   const [a, b] = [faceInfos[edge.a], faceInfos[edge.b]];
   if (edge.kind === 'line' && a.planar && b.planar) {
     const [na, nb] = [outward(body, edge.a, a), outward(body, edge.b, b)];
     if (!na || !nb) return 'brokenProjection';
-    // Orientace n_a × n_b; bod `<id>/a` je konec s menším parametrem v tomto směru.
+    // Orientation n_a × n_b; the point `<id>/a` is the end with the smaller parameter in this
+    // direction.
     const d = cross3(na, nb);
     const [da, db] = [dot3(na, a.origin), dot3(nb, b.origin)];
     const point = mul3(add3(mul3(cross3(nb, d), da), mul3(cross3(d, na), db)), 1 / dot3(d, d));
@@ -656,13 +662,13 @@ export function projectEdge(body: BodyData, name: EdgeName, kind: ProjectionKind
       high = Math.max(high, t);
     }
     const [start, end] = [toPlane(frame, add3(point, mul3(direction, low))), toPlane(frame, add3(point, mul3(direction, high)))];
-    if (Math.hypot(end[0] - start[0], end[1] - start[1]) <= LENGTH_TOLERANCE) return 'degenerateProjection'; // hrana kolmá na rovinu
+    if (Math.hypot(end[0] - start[0], end[1] - start[1]) <= LENGTH_TOLERANCE) return 'degenerateProjection'; // an edge perpendicular to the plane
     return { kind: 'line', a: start, b: end };
   }
   if (edge.kind === 'circle') {
     const circle = circleBetween(surfaceOf(a), surfaceOf(b), edge.segments, chordTolerance);
     if (!circle) return 'brokenProjection'; // the kind `circle` was given by this function
-    if (len3(cross3(circle.axis, frame.normal)) > Math.sin(ANGLE_TOLERANCE)) return 'unsupportedProjection'; // elipsa nebo úsečka
+    if (len3(cross3(circle.axis, frame.normal)) > Math.sin(ANGLE_TOLERANCE)) return 'unsupportedProjection'; // an ellipse or a line
     return { kind: 'circle', center: toPlane(frame, circle.center), radius: circle.radius };
   }
   return 'unsupportedProjection';
@@ -670,7 +676,7 @@ export function projectEdge(body: BodyData, name: EdgeName, kind: ProjectionKind
 
 // ---------------------------------------------------------------- export
 
-// Binární STL všech těles.
+// Binary STL of all bodies.
 export function toStl(solids: Solid[]): Uint8Array {
   const count = solids.reduce((sum, s) => sum + s.triangles.length / 3, 0);
   const bytes = new Uint8Array(84 + 50 * count);

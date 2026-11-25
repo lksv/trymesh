@@ -23,7 +23,7 @@ export type ProfileChange = Pick<ExtrudeChange, 'regions' | 'offset' | 'curves' 
 export const sameRegion = (a: RegionRef, b: RegionRef): boolean => a.outerLoop.length === b.outerLoop.length && a.outerLoop.every((id, i) => id === b.outerLoop[i]);
 
 export function sketchRegions(host: PanelHost, id: Id): { result: SketchResult; frame: Frame } | undefined {
-  if (!host.feature(id)) return undefined; // skica vysunutí mohla být smazána
+  if (!host.feature(id)) return undefined; // the extrusion's sketch may have been deleted
   const result = host.engine.getState(id).evaluation.features[id];
   return result?.sketch && result.plane ? { result: result.sketch, frame: result.plane } : undefined;
 }

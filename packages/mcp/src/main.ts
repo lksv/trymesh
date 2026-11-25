@@ -1,4 +1,4 @@
-// Spuštění MCP serveru nad standardním vstupem a výstupem.
+// Runs the MCP server over standard input and output.
 //   node dist/server.js [--file model.json] [--port 4517] [--no-bridge]
 import { readFile } from 'node:fs/promises';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
@@ -9,7 +9,7 @@ import { createPlanegcsSolver } from '@trymesh/solver-planegcs';
 import { type Bridge, DEFAULT_BRIDGE_PORT, startBridge } from './bridge';
 import { createTrymeshServer } from './server';
 
-// Standardní výstup patří protokolu; zprávy pro člověka jdou na chybový výstup.
+// Standard output belongs to the protocol; messages for a person go to standard error.
 const log = (message: string) => process.stderr.write(`trymesh-mcp: ${message}\n`);
 const fail = (message: string, usage = true): never => {
   log(message);
@@ -17,7 +17,7 @@ const fail = (message: string, usage = true): never => {
   process.exit(2);
 };
 
-// Volby: `--jméno hodnota` nebo `--jméno=hodnota`; neznámá volba je chyba.
+// Options: `--name value` or `--name=value`; an unknown option is an error.
 const options: { file?: string; port?: string; bridge: boolean } = { bridge: true };
 const args = process.argv.slice(2);
 for (let i = 0; i < args.length; i++) {
@@ -54,7 +54,7 @@ if (options.bridge) {
     bridge = await startBridge(port);
     log(`the bridge for the app listens on http://127.0.0.1:${bridge.port}`);
   } catch (error) {
-    // Port drží jiný MCP server. Tento poběží jen nad vlastním dokumentem.
+    // Another MCP server holds the port. This one will work only over its own document.
     log(`the bridge on port ${port} cannot be opened (${error instanceof Error ? error.message : String(error)}); the server works with files only`);
   }
 }
@@ -63,8 +63,8 @@ const server = createTrymeshServer({ engine, bridge, file: options.file });
 await server.connect(new StdioServerTransport());
 log('ready');
 
-// Konec: signál, nebo klient zavřel vstup. Bez toho by most držel proces i port naživu
-// a aplikace by se připojovala k serveru, se kterým už nikdo nemluví.
+// The end: a signal, or the client closed the input. Without this the bridge would keep the process and the
+// port alive and the app would connect to a server nobody talks to any more.
 let closing = false;
 const shutdown = () => {
   if (closing) return;

@@ -1,6 +1,6 @@
-// Most mezi MCP serverem a běžící aplikací. Server poslouchá na místní adrese; aplikace se k němu
-// připojí, čte požadavky jako proud událostí (SSE) a odpovědi posílá zpět přes POST. Nástroje se
-// tak provádějí nad enginem aplikace a uživatel změny hned vidí.
+// The bridge between the MCP server and the running app. The server listens on a local address; the app
+// connects to it, reads requests as an event stream (SSE) and sends the answers back by POST. The tools
+// thus run over the app's engine and the user sees the changes at once.
 import { type IncomingMessage, type Server as HttpServer, type ServerResponse, createServer } from 'node:http';
 import type { ToolOutcome } from './tools';
 
@@ -8,24 +8,25 @@ export const DEFAULT_BRIDGE_PORT = 4517;
 const CALL_TIMEOUT_MS = 30_000;
 const KEEPALIVE_MS = 15_000;
 
-// Hlavička, kterou musí mít každý požadavek aplikace. Stránka z jiného původu ji bez svolení
-// serveru (preflight) poslat nemůže a prvky jako <img> ji neposílají vůbec.
+// The header every request of the app must have. A page of another origin cannot send it without the
+// server's consent (preflight), and elements such as <img> do not send it at all.
 export const BRIDGE_HEADER = 'x-trymesh-bridge';
 
 export interface Bridge {
   port: number;
   connected(): boolean;
-  session(): number | undefined; // číslo připojení aplikace; s novým připojením se mění
-  // Pořadové číslo dokumentu v připojené aplikaci, jak ho hlásila v poslední odpovědi. Roste,
-  // kdykoli aplikace dokument vymění za jiný (Nový, Otevřít, načtení od AI).
+  session(): number | undefined; // number of the app's connection; it changes with a new connection
+  // The sequence number of the document in the connected app, as it reported it in its last answer. It grows
+  // whenever the app replaces the document with another one (New, Open, loading from the AI).
   document(): number | undefined;
   call(name: string, args: Record<string, unknown>): Promise<ToolOutcome>;
   close(): Promise<void>;
 }
 
-// Připojit se smí jen stránka z tohoto počítače (nebo klient bez hlavičky Origin, tedy ne prohlížeč).
-// Samotný původ nestačí: požadavek bez hlavičky Origin pošle i cizí stránka (obrázek, stejný původ
-// po přesměrování DNS). Proto se navíc hlídá cílová adresa v hlavičce Host a vlastní hlavička.
+// Only a page from this computer may connect (or a client without the Origin header, so not a browser). The
+// origin alone is not enough: a foreign page sends a request without the Origin header too (an image, the
+// same origin after DNS rebinding). So the target address in the Host header and an own header are checked
+// as well.
 const LOCAL_HOSTS = ['localhost', '127.0.0.1', '[::1]'];
 function localHost(host: string | undefined, port: number): boolean {
   return host !== undefined && LOCAL_HOSTS.some((name) => host === `${name}:${port}`);
@@ -40,7 +41,8 @@ function allowedOrigin(origin: string | undefined): string | undefined | false {
   }
 }
 
-// port 0 = volný port přidělí systém. Když port otevřít nejde (běží jiný server), slib se zamítne.
+// port 0 = the system assigns a free port. When the port cannot be opened (another server runs), the
+// promise is rejected.
 export function startBridge(port: number = DEFAULT_BRIDGE_PORT): Promise<Bridge> {
   let client: { response: ServerResponse; session: number; document: number } | undefined;
   let sessions = 0;
@@ -71,15 +73,15 @@ export function startBridge(port: number = DEFAULT_BRIDGE_PORT): Promise<Bridge>
     } else if (path !== '/status' && request.headers[BRIDGE_HEADER] === undefined) {
       response.writeHead(403, cors).end('missing bridge header');
     } else if (request.method === 'GET' && path === '/events') {
-      // Platí poslední připojená aplikace; předchozí spojení se ukončí.
+      // The last connected app holds; the previous connection is closed.
       const previous = client;
       const session = ++sessions;
       response.writeHead(200, { ...cors, 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive' });
       response.write(`event: hello\ndata: ${JSON.stringify({ session })}\n\n`);
       client = { response, session, document: 0 };
       if (previous) {
-        // Vytlačená aplikace se dozví proč, aby se nepřipojovala znovu: dvě aplikace by si
-        // jinak spojení přebíraly dokola a příkaz by mohl skončit v nesprávném dokumentu.
+        // The displaced app is told why, so that it does not reconnect: two apps would otherwise take
+        // the connection from each other over and over and a command could end in the wrong document.
         drop(previous.session, 'another app connected');
         previous.response.end('event: displaced\ndata: {}\n\n');
       }

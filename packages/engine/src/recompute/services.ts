@@ -6,8 +6,9 @@ import type { AxisRef, Frame, Id, Issue, IssueCode, PlaneRef, Solid, SolidKernel
 import { LENGTH_TOLERANCE, dot3, faceKey, faceNumber, has, mul3, sub3, unit3 } from '../util';
 import { type Applied, type BuiltTool, type Done, type Failed, type Model, type Placement, type State, type Step, type ToolRecipe, ToolProblem } from './state';
 
-// Záznam podle ID, které v něm nemusí být. ID přichází z odkazu v dokumentu a může se jmenovat
-// jako vlastnost každého objektu (`constructor`, `toString`); ta se za záznam nepočítá.
+// A record by an ID that need not be in it. The ID comes from a reference in the document and may
+// be named like a property of every object (`constructor`, `toString`); that does not count as a
+// record.
 export const lookup = <T>(record: Record<Id, T>, id: Id): T | undefined => (has(record, id) ? record[id] : undefined);
 
 export const BASE: Record<'XY' | 'XZ' | 'YZ', Frame> = {
@@ -132,9 +133,10 @@ export function applyTool(recipe: ToolRecipe, model: Model, kernel: SolidKernel,
       const result = kernel.boolean(recipe.operation === 'add' ? 'union' : 'difference', before, tool.solid);
       // a tool that must not change a target and removed one whole is the error of its mark, not emptyResult
       if (result.triangles.length === 0) return tool.refuseChange ? { ok: false, code: tool.refuseChange.code, refs: [target], detail: tool.refuseChange.detail } : { ok: false, code: 'emptyResult', refs: [target] };
-      // Bez účinku: objem se nezměnil. U výřezu navíc ve výsledku nesmí být žádná stěna nástroje;
-      // u přidání být může (nástroj uvnitř tělesa, jehož stěna lícuje se stěnou tělesa, ji přejmenuje).
-      // Změna objemu se měří proti menšímu z obou těles: drobný výstupek na velké desce účinek má.
+      // No effect: the volume did not change. For a cut, moreover, no face of the tool may be in the
+      // result; for an add there may be (a tool inside the body whose face is flush with a face of
+      // the body renames it). The change of volume is measured against the smaller of the two
+      // bodies: a small boss on a large plate does have an effect.
       // A cut copy of a pattern has no effect also when faces of its tool are in the result but
       // the shape is what it was: a copy that lands on what is cut already (five copies over
       // 360°) would otherwise only take the faces of the original over, silently. The shape is

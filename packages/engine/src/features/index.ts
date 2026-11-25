@@ -106,9 +106,10 @@ export function sourceChain(doc: Document, body: Id): Id[] {
 // The body the chain of sources of a body starts at (D57); the body itself when it has no source.
 export const sourceRoot = (doc: Document, body: Id): Id => sourceChain(doc, body).at(-1) ?? body;
 
-// Kde odkaz nastavuje příkaz (`before` je index odkazující feature), musí cíl existovat, mít
-// správný druh a ležet před ní. Při načítání dokumentu (`before` není) se ověřuje jen tvar:
-// odkaz na feature, která v dokumentu není, vzniká povoleným smazáním.
+// Where a command sets a reference (`before` is the index of the referring feature), the target
+// must exist, have the right kind and lie before it. When a document is loaded (`before` is absent)
+// only the shape is checked: a reference to a feature that is not in the document arises from an
+// allowed deletion.
 export function requireRef(doc: Document, before: number | undefined, ref: Omit<FeatureRef, 'path'>, what: string): void {
   if (before === undefined) return;
   // a stored mesh (D55) is no feature: the section has it or not, and it has no place on the timeline

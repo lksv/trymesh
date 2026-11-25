@@ -25,7 +25,7 @@ export const SPLINE_REFUSALS = {
 // The refusal of `setCurvePoint` for a spline (D52, D70).
 export const SET_CURVE_POINT_SPLINE = (id: Id): string => `setCurvePoint.id: "${id}" is a spline, which has no named points; to change its control points, remove it and add it again under its ID in one batch`;
 
-// Křivka smí odkazovat jen na vlastní body skici a na počátek.
+// A curve may refer only to the sketch's own points and to the origin.
 export function curve(sketch: SketchFeature, v: unknown, what: string): Curve {
   const o = object(v, what);
   const type = oneOf(o.type, CURVE_KINDS, `${what}.type`);
@@ -84,9 +84,9 @@ export function constraintRuleProblem(sketch: SketchFeature, c: Constraint): str
   return ruleProblem(sketch, c.type, operands, operands.map((id) => entityOf(sketch, id)?.kind as EntityKind));
 }
 
-// Vazba podle katalogu: operandy existují, mají správný druh a jsou navzájem různé, hodnota
-// splňuje konvenci znamének a aspoň jedním operandem může solver hýbat (řídicí vazbu jen mezi
-// pevnými entitami solver tiše ignoruje).
+// A constraint by the catalog: the operands exist, have the right kind and differ from each other,
+// the value meets the sign convention and the solver can move at least one operand (the solver
+// silently ignores a driving constraint between fixed entities only).
 export function constraint(sketch: SketchFeature, v: unknown, what: string, fields: Fields, id: Id): Constraint {
   const o = object(v, what);
   const type = string(o.type, `${what}.type`);
@@ -218,7 +218,8 @@ function step(feature: SketchFeature, { state, settings, deps, done, failed, dra
     warnings.push(issue(code, [id, ...skipped], said || undefined));
   }
 
-  // 2.–4. řešení: uložené proměnné platí, když se otisk vstupů shoduje s razítkem a netáhne se
+  // 2.–4. solving: the stored variables hold when the fingerprint of the inputs matches the stamp
+  // and nothing is dragged
   const stored: SketchGeometry = { points: setup.input.points, radii: setup.input.radii };
   const mustSolve = setup.stamp !== feature.solved.inputs || drag !== undefined;
   let result: SolveResult;
@@ -242,8 +243,9 @@ function step(feature: SketchFeature, { state, settings, deps, done, failed, dra
   // state finds the axes whatever the constraints (D71)
   geometry = { points: { ...geometry.points, ...AXES_GEOMETRY.points }, radii: geometry.radii };
 
-  // Stupně volnosti počítá engine z vlastního rozboru; počet ze solveru není spolehlivý.
-  // Polohy v pořadí dokumentu (solver je vrací seřazené podle ID), aby i rozbor šel v tomto pořadí.
+  // The engine computes the degrees of freedom from its own analysis; the count from the solver is
+  // not reliable. Positions in the order of the document (the solver returns them sorted by ID), so
+  // that the analysis goes in this order too.
   const inOrder = <T>(order: Record<Id, T>, values: Record<Id, T>): Record<Id, T> => Object.fromEntries(Object.keys(order).map((id) => [id, values[id]]));
   const input: SolveInput = { ...setup.input, points: inOrder(setup.input.points, geometry.points), radii: inOrder(setup.input.radii, geometry.radii) };
   const analysis = result.status === 'solved' ? new SketchAnalysis(input) : undefined;

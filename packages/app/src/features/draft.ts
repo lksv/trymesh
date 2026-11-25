@@ -100,7 +100,7 @@ export function editDraft<F extends Feature, Extra>(host: PanelHost, form: Featu
   host.openDraft({ kind: 'draft', form, editing: true, index: host.doc.features.findIndex((f) => f.id === feature.id), draft: featureInput(feature), extra });
 }
 
-// Náhled: příkaz se spočítá po upravovanou feature a dokument se nemění.
+// Preview: the command is computed up to the feature being edited and the document does not change.
 export function updatePreview(host: PanelHost): void {
   const state = host.drafting;
   window.clearTimeout(state.timer);

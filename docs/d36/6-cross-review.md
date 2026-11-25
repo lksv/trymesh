@@ -344,13 +344,16 @@ The reviews of the designs of 6b and 6d (on their branches), and a second round 
 
 ### Later answers: the designs of 6f and 6h
 
-The design of 6f (on its branch, reviewed in three rounds) asked two questions (37 and 38), and the design of 6h (on its branch, in review) one (39). All three were answered on 2026-11-25, 37 and 38 "yes" to their recommendation.
+The design of 6f (on its branch, reviewed in three rounds) asked two questions (37 and 38), and the design of 6h (on its branch) one during its review (39) and three after its three rounds (40 to 42). All six were answered on 2026-11-25; 37, 38 and 40 to 42 as recommended.
 
 | # | About | Question | Answer (2026-11-25) | Where it lands |
 |---|---|---|---|---|
 | 37 | 6f | Where an imported outline is stored: the plan says "stored in the document (like a stored mesh of D55)" and expects a section with a schema step | In the entry of `external` that places it: one place, no section, no schema step (`SCHEMA_PENDING` stays 0); the options of the import stored in the entry. An outline two sketches need is projected, or stored twice | [6f-outline-import/design.md](6f-outline-import/design.md), "The stored outline: in its entry"; D72 |
 | 38 | 6f | What the MCP tool `import_outline` does: the plan says it answers with the batch, which would carry every curve through the caller and back | It sends the command itself, as `import_mesh` stores its mesh; without a sketch named it only reports, and a refusal still answers with the report | [6f-outline-import/design.md](6f-outline-import/design.md), "MCP"; D72 |
 | 39 | 6h | Whether the converter's `summary.json` files from before and after the change are committed | No: they stay with the dump of the Onshape model, which is not in the repository | 6h's design |
+| 40 | 6h | Whether the angle, "horizontal/vertical of two points" and the distance of two lines are mapped in 6h, though the plan leaves the angle and other distances to the backlog | Yes, all three: the angles with their expressions (one at an ambiguous value as a number), the two-point constraints by a dimension of 0, a distance of two lines by one `distancePointLine`, with `parallel` where the sketch's probe finds the pair parting. Without them 18 stay lost, not 6 | [6h-onshape-converter/design.md](6h-onshape-converter/design.md), "Kinds taken along" |
+| 41 | 6h | Whether the skeleton sketch (Global Sketch 1) that the derived sketches are held on is copied as a helper into Housing and Motor Shell | Yes: one level, one copy per destination and source, of construction use; its numeric diameter reported apart, a parameter only the copy reads not counted as driving the part, the two copies tested to agree. `HOUSING_MOUNTPATTERN` then drives the holes of both parts; lost 6, not 12 | [6h-onshape-converter/design.md](6h-onshape-converter/design.md), "External operands" |
+| 42 | 6h | Whether the exact identity of an external operand is taken from Onshape (one FeatureScript call per studio) in 6h | Not in 6h: the decode of the ID stands in, and what it does not settle is lost and listed. The call is due before a second model is converted and before any studio with more than 64 operations | [6h-onshape-converter/design.md](6h-onshape-converter/design.md), "External operands" and "Known limits" |
 
 ## What the designs leave out
 

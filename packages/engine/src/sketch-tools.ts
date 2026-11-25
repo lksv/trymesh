@@ -11,7 +11,7 @@ import { evaluateNumber } from './expression';
 import { namedBySections } from './sections/index';
 import { toolBase } from './references/world';
 import { type SolvedCurves, lineExtent, pointJoins, solvedCurves } from './sketch';
-import { CUT_IDS, type CurveChanges, type ExtendInput, type SplitInput, type TrimInput, copiesByNames, copyAsSnap, copyInTool, copyParts, cutTool, entryCommands, entryPatches, namedOutside, profileSourceOf, readersOf } from './sketch-cut';
+import { CUT_IDS, type CurveChanges, type ExtendInput, type SplitInput, type TrimInput, copiesByNames, copyAsSnap, copyInTool, copyParts, cutTool, SPLINE_NOT_CUT, entryCommands, entryPatches, namedOutside, profileSourceOf, readersOf } from './sketch-cut';
 import { PROJECT_SKETCH_IDS, type ProjectSketchInput, projectSketch } from './sketch-project';
 import type { Command, Constraint, Curve, CurvePointName, Document, Expr, FeaturePatch, FeatureResult, Id, ParameterResult, Point2, RegionRef, SketchFeature, SketchPattern, SketchResult, Vec2 } from './types';
 import { ANGLE_TOLERANCE, LENGTH_TOLERANCE, ORIGIN, cross2, dist2, dot2, has, sub2, unreachable } from './util';
@@ -232,6 +232,8 @@ function shapeOf(context: SketchToolContext, id: Id): Shape | undefined {
         const turn = (((Math.atan2(end[1] - center[1], end[0] - center[0]) - from) % TAU) + TAU) % TAU;
         return { type: 'arc', center, radius: dist2(center, start), from, sweep: turn || TAU };
       }
+      case 'spline':
+        return undefined; // nothing snaps to a spline (D70): `anchorProblem` refuses it first
       default:
         return unreachable(curve, 'curve');
     }
@@ -316,9 +318,13 @@ function anchorProblem(context: SketchToolContext, v: unknown): string | undefin
   const copy = entity.derived ? copyParts(context.sketch, snap.id) : undefined;
   if (copy) return copyAsSnap(snap.id, copy.entry, copy.source);
   if ((entity.kind === 'point') !== (snap.kind === 'point')) return `"${snap.id}" is a ${entity.kind}, not a ${snap.kind}`;
+  // a snap to a curve becomes a point held on it, which a spline cannot hold (D70)
+  if (entity.kind === 'spline') return SPLINE_AS_SNAP;
   const known = snap.kind === 'point' ? pointAt(context, snap.id) : shapeOf(context, snap.id);
   return known ? undefined : `"${snap.id}" has no solved position to snap to`;
 }
+
+export const SPLINE_AS_SNAP = 'a point cannot be held on a spline; snap to a control point or leave the place free';
 
 // A point given by its ID, checked like the snap of an anchor: the sketch has the entity, it is
 // a point, it is not a point of projected geometry, and it has a solved position.
@@ -345,6 +351,7 @@ function curveInputProblem(context: SketchToolContext, v: unknown, reference: bo
   const copy = curve.source === 'derived' ? copyParts(context.sketch, v) : undefined;
   if (copy) return copyInTool(v, copy.entry, copy.source);
   if (curve.source !== 'own' && !reference) return `"${v}" is reference geometry; give an own curve of the sketch`;
+  if (curve.shape.type === 'spline') return SPLINE_NOT_CUT(v); // no tool takes a spline (D70)
   return shapeOf(context, v) ? undefined : `"${v}" has no solved position`;
 }
 
@@ -520,6 +527,8 @@ function cornerLines(context: SketchToolContext, corner: Id): [Id, Id] | string 
         return [curve.a, curve.b];
       case 'arc':
         return [curve.start, curve.end];
+      case 'spline':
+        return [curve.points[0], curve.points[curve.points.length - 1]];
       case 'circle':
         return [];
       default:

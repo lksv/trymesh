@@ -28,7 +28,7 @@ const AS: { value: ProjectSketchOptions['as']; label: string }[] = [
 export interface Candidate {
   sketch: Id;
   id: Id;
-  kind: SourceEntity['kind'];
+  kind: Exclude<SourceEntity['kind'], 'spline'>; // a spline is not projected (D70)
   at?: Vec2; // a point
   shape?: Shape; // a curve
 }
@@ -69,7 +69,8 @@ export function candidatesOf(host: Pick<SketchHost, 'engine'>, context: SketchCo
     const one = host.engine.query('sketchSources', { sketch: context.feature.id, from: source.sketch, max: 1e6 });
     if (!one.ok) continue;
     for (const entity of one.result.entities ?? []) {
-      if ('problem' in entity) continue;
+      // an entity that cannot be projected: no extent, or a spline (D70: its control points are offered)
+      if ('problem' in entity || entity.kind === 'spline') continue;
       entities.push({ sketch: source.sketch, id: entity.id, kind: entity.kind, ...(entity.kind === 'point' ? { at: (entity as { at: Vec2 }).at } : { shape: shapeOf(entity) }) });
     }
   }

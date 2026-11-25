@@ -329,6 +329,10 @@ function copyOf(shape: CurveShape, name: (source: Id) => Id, reflects: boolean):
     case 'arc':
       // an arc runs counter-clockwise: its mirror image runs from the image of its end
       return reflects ? { type: 'arc', center: name(shape.center), start: name(shape.end), end: name(shape.start) } : { type: 'arc', center: name(shape.center), start: name(shape.start), end: name(shape.end) };
+    case 'spline':
+      // the image of a B-spline is the B-spline of the images of its control points, in the same
+      // order; a spline has no sense to turn (D70)
+      return { type: 'spline', points: shape.points.map(name) };
     default:
       return unreachable(shape, 'curve');
   }

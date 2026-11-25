@@ -117,7 +117,8 @@ export const offProjection = (state: StateAfter, s: Id, curves: Id[], entries: I
     ...curves.map((own, i) => {
       const curve = f.curves[own];
       if (curve.type === 'arc') return Math.max(far(curve.center, `${entries[i]}/center`), far(curve.start, `${entries[i]}/start`), far(curve.end, `${entries[i]}/end`));
-      return curve.type === 'line' ? Math.max(far(curve.a, `${entries[i]}/a`), far(curve.b, `${entries[i]}/b`)) : far(curve.center, `${entries[i]}/center`);
+      // D70, written after this draft: a spline has no center
+      return curve.type === 'line' ? Math.max(far(curve.a, `${entries[i]}/a`), far(curve.b, `${entries[i]}/b`)) : 'center' in curve ? far(curve.center, `${entries[i]}/center`) : 0;
     }),
   );
 };

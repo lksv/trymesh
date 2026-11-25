@@ -1,6 +1,6 @@
 // Geometrie skici pro vykreslení a test zásahu: polohy z výsledku přepočtu, tvar křivek, měření.
 // Čisté funkce bez závislosti na prohlížeči.
-import { type Constraint, type DimensionShape, type Id, type SketchCurve, type SketchFeature, type SketchResult, type SketchToolContext, type Vec2, constraintOperands, curvePoints, derivedOrigin, isOriginAxis, kindOf as kindOfEntry, lineExtent, referenceEntities, solvedCurves } from '@trymesh/engine';
+import { type Constraint, type DimensionShape, type Id, type SketchCurve, type SketchFeature, type SketchResult, type SketchToolContext, type Vec2, constraintOperands, curvePoints, derivedOrigin, isOriginAxis, kindOf as kindOfEntry, lineExtent, referenceEntities, solvedCurves, splinePolyline } from '@trymesh/engine';
 
 export const ORIGIN = 'origin';
 const TAU = 2 * Math.PI;
@@ -8,7 +8,19 @@ const TAU = 2 * Math.PI;
 export type Shape =
   | { type: 'line'; a: Vec2; b: Vec2 }
   | { type: 'circle'; center: Vec2; radius: number }
-  | { type: 'arc'; center: Vec2; radius: number; from: number; sweep: number }; // proti směru hodin
+  | { type: 'arc'; center: Vec2; radius: number; from: number; sweep: number } // proti směru hodin
+  // a spline (D70): its control polygon and the polyline the view draws and hit-tests
+  | { type: 'spline'; control: Vec2[]; points: Vec2[] };
+
+// The chord tolerance of the polyline of a spline in the view, relative to the largest side of the
+// box of its control points: a rule of the view, as the step of π/48 of an arc is.
+export const VIEW_TOLERANCE = 0.0005;
+export function splineShape(control: Vec2[]): Shape {
+  const xs = control.map((p) => p[0]);
+  const ys = control.map((p) => p[1]);
+  const size = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
+  return { type: 'spline', control, points: size > 0 ? splinePolyline(control, VIEW_TOLERANCE * size) : [control[0], control[control.length - 1]] };
+}
 
 export interface PointView {
   id: Id;
@@ -72,6 +84,8 @@ export function sketchView(feature: SketchFeature, result: SketchResult): Sketch
         const sweep = positive(Math.atan2(end[1] - center[1], end[0] - center[0]) - from) || TAU;
         return { type: 'arc', center, radius: dist(center, start), from, sweep };
       }
+      case 'spline':
+        return splineShape(curve.points.map((id) => at(id) as Vec2));
       default:
         return unreachable(curve, 'curve');
     }
@@ -103,6 +117,22 @@ export function sketchView(feature: SketchFeature, result: SketchResult): Sketch
   return { points, curves, source: { sketch: feature, result } };
 }
 
+// Whether a drawing tool may snap a new point to a curve: one that can hold a point by
+// `pointOnCurve`. Not a copy of a mirror or pattern (D68: no constraint of its own sketch names it),
+// not a spline (D70: no constraint holds a point on it).
+export const holdsPoint = (view: SketchView, curve: Id): boolean => {
+  const c = view.curves.get(curve);
+  return c !== undefined && c.derived !== true && c.shape.type !== 'spline';
+};
+// Whether a constraint may name an entity of the sketch: not a copy (D68) and not a spline (D70).
+// A selection that holds one is offered no constraint.
+export const takesConstraint = (view: SketchView, id: Id): boolean => {
+  const point = view.points.get(id);
+  if (point) return point.derived !== true;
+  const c = view.curves.get(id);
+  return c === undefined || (c.derived !== true && c.shape.type !== 'spline');
+};
+
 export const kindOf = (view: SketchView, id: Id): EntityKind | undefined => (view.points.has(id) ? 'point' : view.curves.get(id)?.shape.type);
 
 // Lomená čára křivky; kružnice je uzavřená (poslední bod = první).
@@ -111,6 +141,8 @@ export function polyline(shape: Shape): Vec2[] {
   switch (shape.type) {
     case 'line':
       return [shape.a, shape.b];
+    case 'spline':
+      return shape.points;
     case 'circle':
       break;
     case 'arc':
@@ -149,6 +181,15 @@ export function closestOn(shape: Shape, p: Vec2): Vec2 {
       // mimo oblouk: bližší z koncových bodů
       if (along > shape.sweep) angle = along - shape.sweep < TAU - along ? shape.from + shape.sweep : shape.from;
       return [center[0] + radius * Math.cos(angle), center[1] + radius * Math.sin(angle)];
+    }
+    case 'spline': {
+      // the nearest point of its polyline
+      let [best, bestDistance]: [Vec2, number] = [shape.points[0], Infinity];
+      for (let k = 0; k + 1 < shape.points.length; k++) {
+        const q = closestOn({ type: 'line', a: shape.points[k], b: shape.points[k + 1] }, p);
+        if (dist(q, p) < bestDistance) [best, bestDistance] = [q, dist(q, p)];
+      }
+      return best;
     }
     default:
       return unreachable(shape, 'shape');
@@ -223,6 +264,7 @@ export function measure(shape: DimensionShape, view: SketchView): number | undef
       if (!curve) return undefined;
       switch (curve.type) {
         case 'line':
+        case 'spline': // never an operand (D70)
           return undefined;
         case 'circle':
         case 'arc':
@@ -261,6 +303,9 @@ export function anchorOf(c: Constraint, view: SketchView): Vec2 | undefined {
           spots.push([shape.center[0] + shape.radius * Math.cos(angle), shape.center[1] + shape.radius * Math.sin(angle)]);
           break;
         }
+        case 'spline': // never an operand of a constraint (D70): the middle of its polyline's points
+          spots.push(shape.points[Math.floor(shape.points.length / 2)]);
+          break;
         default:
           unreachable(shape, 'shape');
       }

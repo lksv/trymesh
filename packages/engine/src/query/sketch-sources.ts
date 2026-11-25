@@ -41,12 +41,15 @@ export interface SketchSource {
 // - its place in the coordinates of the asking sketch: `at` of a point; `a`, `b` of a line;
 //   `center`, `radius` of a circle; `center`, `start`, `end` of an arc (the ends swapped when the
 //   map flips). `problem` instead of a place when it cannot be projected as it stands (no extent).
+// - A spline (D70) is listed with its kind, `whole: false` and no place: a spline is not projected
+//   yet; its control points are entities of the same list, as points.
 export type SourceEntity = { id: Id; whole: boolean; regions: boolean; construction?: true; entry?: Id } & (
   | { kind: 'point'; at: [number, number] }
   | { kind: 'line'; a: [number, number]; b: [number, number] }
   | { kind: 'circle'; center: [number, number]; radius: number }
   | { kind: 'arc'; center: [number, number]; start: [number, number]; end: [number, number] }
   | { kind: 'point' | 'line' | 'circle' | 'arc'; problem: string }
+  | { kind: 'spline'; whole: false }
 );
 // `sources`: without `from` the sketches before `sketch` in the order of the timeline; with it the
 // one. `entities` and `total` only with `from`, and only when that sketch is `parallel`.
@@ -64,7 +67,7 @@ declare module './spec' {
 
 // The entities of a solved sketch a projection may name, in the order the query lists them: those
 // projectSketch takes whole, in its order, then the other curves, then the other points.
-type EntityKind4 = 'point' | 'line' | 'circle' | 'arc';
+type EntityKind4 = 'point' | 'line' | 'circle' | 'arc' | 'spline';
 function entitiesOf(state: SketchState): { id: Id; kind: EntityKind4; whole: boolean }[] {
   const curves = new Map([...state.curves].filter(([id]) => !underOrigin(id)));
   const whole = wholeSketch(state.feature, curves);
@@ -93,7 +96,7 @@ export const sketchSources: QuerySpec<typeof SKETCH_SOURCES_ARGS, SketchSourcesR
   summary:
     'The sketches before a sketch on the timeline and whether each lies on a parallel plane, and, for one of them, every point and curve a projection may name, placed in the coordinates of the asking sketch. Ask it before addExternal with `type: "sketch"` or the sketch tool projectSketch.',
   returns:
-    '`sources` (each `sketch`, `name`, `status`: parallel, tilted or notEvaluated; `angle` in rad; `flips`; `curves` and `points`, the counts) and, with `from` on a parallel plane, `entities`: each `id`, `kind`, `whole` (the sketch tool projectSketch takes it without `entities`), `regions` (it forms regions in its own sketch), `construction`, `entry` (the entry of the asking sketch that projects it already) and its place in mm in the asking sketch (`at`; `a`, `b`; `center`, `radius`; `center`, `start`, `end`), those projectSketch takes whole first; at most `max`, with `total`.',
+    '`sources` (each `sketch`, `name`, `status`: parallel, tilted or notEvaluated; `angle` in rad; `flips`; `curves` and `points`, the counts) and, with `from` on a parallel plane, `entities`: each `id`, `kind`, `whole` (the sketch tool projectSketch takes it without `entities`), `regions` (it forms regions in its own sketch), `construction`, `entry` (the entry of the asking sketch that projects it already) and its place in mm in the asking sketch (`at`; `a`, `b`; `center`, `radius`; `center`, `start`, `end`), those projectSketch takes whole first; a spline has its kind and no place (a spline is not projected; its control points are listed as points); at most `max`, with `total`.',
   units: { angle: 'rad', at: 'mm', a: 'mm', b: 'mm', center: 'mm', radius: 'mm', start: 'mm', end: 'mm' },
   args: SKETCH_SOURCES_ARGS,
   run: (context, { sketch, from, max }) => {
@@ -122,6 +125,7 @@ export const sketchSources: QuerySpec<typeof SKETCH_SOURCES_ARGS, SketchSourcesR
       return entitiesOf(state).map((entity): SourceEntity => {
         const curve = state.curves.get(entity.id);
         const construction = curve?.source === 'own' && state.feature.curves[entity.id]?.construction === true;
+        if (entity.kind === 'spline') return { id: entity.id, kind: 'spline', whole: false, regions: curve?.regions ?? false, ...(construction ? { construction: true as const } : {}) };
         const value = projectFromSketch({ type: 'sketch', sketch: from, entity: entity.id, kind: entity.kind, regions: false }, state, target.frame);
         const entry = projects.get(entity.id);
         return {

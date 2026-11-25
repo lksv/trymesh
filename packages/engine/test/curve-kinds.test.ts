@@ -6,11 +6,11 @@ import { unreachable } from '../src/util';
 
 describe('the kinds of a sketch curve', () => {
   it('are the keys of CURVE_POINTS, in its order', () => {
-    expect(CURVE_KINDS).toEqual(['line', 'circle', 'arc']);
+    expect(CURVE_KINDS).toEqual(['line', 'circle', 'arc', 'spline']);
     expect(CURVE_KINDS).toEqual(Object.keys(CURVE_POINTS));
   });
 
   it('a switch that meets a kind it has no case for throws', () => {
-    expect(() => unreachable({ type: 'spline' } as never, 'curve')).toThrow('curve: unexpected {"type":"spline"}');
+    expect(() => unreachable({ type: 'ellipse' } as never, 'curve')).toThrow('curve: unexpected {"type":"ellipse"}');
   });
 });

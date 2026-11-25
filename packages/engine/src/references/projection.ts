@@ -7,7 +7,7 @@ import { lookup } from '../recompute/services';
 import type { SketchState } from '../recompute/state';
 import { toPlane, toWorld } from '../solid';
 import { CURVE_POINTS } from '../sketch-content';
-import type { Frame, Id, Projected, SketchProjection, Vec2 } from '../types';
+import type { Frame, Id, Projected, SketchFeature, SketchProjection, Vec2 } from '../types';
 import { ANGLE_TOLERANCE, LENGTH_TOLERANCE, ORIGIN, cross3, dot3, has, len3, underOrigin, unreachable } from '../util';
 import { boolean, fail, oneOf, onlyFields, string } from '../validation';
 import { type EntryGeometry, type ReferenceFailure, type ReferenceKindSpec, projected } from './spec';
@@ -31,6 +31,17 @@ export const NOT_PARALLEL = (sketch: Id, degrees: number): string => `the plane 
 export const ENTITY_GONE = (sketch: Id, entity: Id, kind: ProjectedKind): string => `${sketch} has no ${kind} ${entity}`;
 const article = (kind: string): string => `${/^[aeiou]/.test(kind) ? 'an' : 'a'} ${kind}`;
 export const KIND_CHANGED = (sketch: Id, entity: Id, now: string, kind: ProjectedKind): string => `${entity} of ${sketch} is ${article(now)} now, not ${article(kind)}`;
+// A spline is not projected (D70, the owner's answer 22): by the form of an entry, and by the check
+// of a command that names a spline of the source whatever `kind` says.
+export const SPLINE_KIND_NOT_PROJECTED = (what: string): string => `${what}.kind: a spline is not projected yet: project its control points as points`;
+export const SPLINE_NOT_PROJECTED = (what: string, sketch: Id, spline: Id): string => `${what}.entity: "${spline}" of ${sketch} is a spline, and a spline is not projected yet: project its control points as points`;
+// Whether an entity of a sketch is a spline: an own spline, or the copy `<entry>/<n>/<source>` of a
+// mirror or pattern whose source is one.
+export function isSplineOf(sketch: SketchFeature, entity: Id): boolean {
+  if (sketch.curves[entity]?.type === 'spline') return true;
+  const [entry, , ...rest] = entity.split('/');
+  return rest.length > 0 && sketch.external[entry]?.type === 'pattern' && sketch.curves[rest.join('/')]?.type === 'spline';
+}
 export const NO_EXTENT = (sketch: Id, entity: Id, kind: ProjectedKind): string => `the ${kind} ${entity} of ${sketch} cannot be projected as it stands: it has no length or no radius, or a position that is not a number`;
 
 // ---------------------------------------------------------------- the map between two planes
@@ -215,6 +226,7 @@ export const projection: ReferenceKindSpec<SketchProjection, Projected> = {
     onlyFields(o, ['type', 'sketch', 'entity', 'kind', 'regions'], what, 'a projection from a sketch');
     const source = string(o.sketch, `${what}.sketch`);
     const entity = string(o.entity, `${what}.entity`);
+    if (o.kind === 'spline') fail(SPLINE_KIND_NOT_PROJECTED(what));
     const kind = oneOf(o.kind, PROJECTED_KINDS, `${what}.kind`);
     if (underOrigin(entity)) fail(`${what}.entity: ${UNDER_ORIGIN(entity, source)}`);
     const regions = o.regions === undefined ? REGIONS_DEFAULT : boolean(o.regions, `${what}.regions`);
@@ -223,6 +235,10 @@ export const projection: ReferenceKindSpec<SketchProjection, Projected> = {
     if (twin) fail(`${what}: ${DUPLICATE(entity, source, twin[0])}`);
     // a command: earlier on the timeline, and the entity there of that kind (load checks neither)
     context.requireRef({ id: source, kind: 'sketch' }, `${what}.sketch`);
+    if (context.before !== undefined) {
+      const from = context.doc.features.find((f) => f.id === source);
+      if (from?.type === 'sketch' && isSplineOf(from, entity)) fail(SPLINE_NOT_PROJECTED(what, source, entity));
+    }
     context.requireRef({ id: entity, kind: 'entity', sketch: source, accepts: [kind] }, `${what}.entity`);
     return { type: 'sketch', sketch: source, entity, kind, regions };
   },

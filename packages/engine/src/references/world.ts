@@ -15,6 +15,7 @@
 // - `cutInMemory` cuts curves of a world at their contacts with each other, in memory alone: the
 //   faces of a cut sketch and a region as it was are built so (sketch-cut.ts).
 import { type CurveEnd, type SketchCurve, type SketchGeometry, curveContacts, joinPairs, joinsOf, placedCurve, sketchCurves, solvedCurves } from '../sketch';
+import { splinePolyline } from '../spline';
 import type { CurveShape, Id, Point2, SketchFeature, SketchResult, Vec2 } from '../types';
 import { LENGTH_TOLERANCE, dist2, has, unreachable } from '../util';
 import { deriveAll } from './derive';
@@ -75,13 +76,16 @@ const TAU = 2 * Math.PI;
 const positive = (angle: number): number => ((angle % TAU) + TAU) % TAU;
 const xy = (p: Point2): Vec2 => [p.x, p.y];
 
-// The ends of a shape (a line `a`, `b`; an arc `start`, `end`; none for a circle).
+// The ends of a shape (a line `a`, `b`; an arc `start`, `end`; a spline its first and last control
+// point; none for a circle).
 function endIds(shape: CurveShape): Id[] {
   switch (shape.type) {
     case 'line':
       return [shape.a, shape.b];
     case 'arc':
       return [shape.start, shape.end];
+    case 'spline':
+      return [shape.points[0], shape.points[shape.points.length - 1]];
     case 'circle':
       return [];
     default:
@@ -94,7 +98,11 @@ function endIds(shape: CurveShape): Id[] {
 // opposite (harmless where nothing is solved); of two curves lying on each other the later by ID is
 // left out; two ends at one place among them are joined. The pieces are curves `<id>\u0000<n>` over
 // the points of the world and points `\u0000cut<n>` of their own; the other curves of the world stay.
-export function cutInMemory(world: SketchWorld, ids: readonly Id[]): SketchWorld {
+// A spline among them that a contact cuts is the chain of the pieces of its polyline at the chord
+// tolerance (D70, `splineChain`): lines over points `<id>\u0000p<k>` of its own, with each contact
+// as a point of the chain (a contact within the length tolerance of a point of the polyline is that
+// point). Here alone a spline is cut: nothing of it reaches the document.
+export function cutInMemory(world: SketchWorld, ids: readonly Id[], chordTolerance: number): SketchWorld {
   const points: Record<Id, Point2> = { ...world.geometry.points };
   const geometry: SketchGeometry = { points, radii: world.geometry.radii };
   const list = [...new Set(ids)].filter((id) => world.curves.has(id)).sort();
@@ -126,7 +134,7 @@ export function cutInMemory(world: SketchWorld, ids: readonly Id[]): SketchWorld
     for (let j = i + 1; j < list.length; j++) {
       const [a, b] = [list[i], list[j]];
       if (left.has(a) || left.has(b)) continue;
-      const found = curveContacts(world.curves.get(a) as SketchCurve, world.curves.get(b) as SketchCurve, world.joins, world.geometry);
+      const found = curveContacts(world.curves.get(a) as SketchCurve, world.curves.get(b) as SketchCurve, world.joins, world.geometry, chordTolerance);
       if (!found) continue;
       if (found.lying && found.points.length === 0) {
         left.add(b);
@@ -195,9 +203,54 @@ export function cutInMemory(world: SketchWorld, ids: readonly Id[]): SketchWorld
         sorted.forEach((n, k) => piece(k, { type: 'arc', center: shape.center, start: n.point, end: sorted[(k + 1) % sorted.length].point }));
         break;
       }
+      case 'spline': {
+        const chain = splineChain(id, placed.a.key, placed.b.key, splinePolyline(placed.control, chordTolerance), mine, points);
+        for (let k = 0; k + 1 < chain.length; k++) piece(k, { type: 'line', a: chain[k], b: chain[k + 1] });
+        break;
+      }
       default:
         unreachable(placed, 'curve');
     }
   }
   return { curves, geometry, joins: joinsOf(pairs, geometry), pairs, derived: world.derived };
+}
+
+// The points of the chain of a spline cut in memory (D70): its two ends, the points of its polyline
+// between them as points `<id>\u0000p<k>` added to `points`, and each contact (`cuts`) put into the
+// piece it lies on; a contact within the length tolerance of a point of the polyline replaces that
+// point.
+function splineChain(id: Id, a: Id, b: Id, pts: readonly Vec2[], cuts: readonly { point: Id; at: Vec2 }[], points: Record<Id, Point2>): Id[] {
+  const last = pts.length - 1;
+  const names: Id[] = pts.map((p, k) => {
+    if (k === 0) return a;
+    if (k === last) return b;
+    const name = `${id}\u0000p${k}`;
+    points[name] = { x: p[0], y: p[1] };
+    return name;
+  });
+  // the contacts on each piece, in the order along it
+  const inserted = new Map<number, { t: number; point: Id }[]>();
+  for (const cut of cuts) {
+    const k0 = pts.findIndex((p, k) => k > 0 && k < last && dist2(p, cut.at) <= LENGTH_TOLERANCE);
+    if (k0 >= 0) {
+      names[k0] = cut.point;
+      continue;
+    }
+    let best = { k: 0, t: 0, d: Infinity };
+    for (let k = 0; k < last; k++) {
+      const [p, q] = [pts[k], pts[k + 1]];
+      const d: Vec2 = [q[0] - p[0], q[1] - p[1]];
+      const length = d[0] * d[0] + d[1] * d[1];
+      const t = length > 0 ? Math.min(1, Math.max(0, ((cut.at[0] - p[0]) * d[0] + (cut.at[1] - p[1]) * d[1]) / length)) : 0;
+      const gap = dist2(cut.at, [p[0] + d[0] * t, p[1] + d[1] * t]);
+      if (gap < best.d) best = { k, t, d: gap };
+    }
+    inserted.set(best.k, [...(inserted.get(best.k) ?? []), { t: best.t, point: cut.point }]);
+  }
+  const chain: Id[] = [];
+  names.forEach((name, k) => {
+    chain.push(name);
+    for (const cut of (inserted.get(k) ?? []).sort((p, q) => p.t - q.t)) chain.push(cut.point);
+  });
+  return chain;
 }

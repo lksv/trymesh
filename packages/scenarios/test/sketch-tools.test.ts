@@ -40,7 +40,7 @@ describe('the catalog of sketch tools', () => {
     expect(Object.keys(SKETCH_TOOLS)).toEqual(['rectangle', 'polygon', 'fillet', 'trim', 'extend', 'split', 'projectSketch']);
     // D69: a sketch, its entities, a role; the lists, those left out one per reason
     expect(SKETCH_TOOLS.projectSketch.inputs).toEqual({ sketch: { kind: 'sketch' }, entities: { kind: 'entities', of: 'sketch', optional: true }, as: { kind: 'option', options: ['source', 'reference', 'regions', 'own'], optional: true } });
-    expect(Object.keys(SKETCH_TOOLS.projectSketch.ids)).toEqual(['entries', 'sources', 'skipped', 'doubled', 'taken', 'curves', 'points', 'helpers', 'constraints', 'patched']);
+    expect(Object.keys(SKETCH_TOOLS.projectSketch.ids)).toEqual(['entries', 'sources', 'skipped', 'doubled', 'splines', 'taken', 'curves', 'points', 'helpers', 'constraints', 'patched']);
     // D65: the three cuts return the same lists, fifteen and 6c's `entries` (D68)
     const lists = ['changed', 'added', 'span', 'points', 'constraints', 'reattached', 'removed', 'uncut', 'patched', 'dropped', 'pending', 'reshaped', 'moved', 'shortened', 'broken', 'entries'];
     for (const tool of ['trim', 'extend', 'split'] as const) expect(Object.keys(SKETCH_TOOLS[tool].ids)).toEqual(lists);

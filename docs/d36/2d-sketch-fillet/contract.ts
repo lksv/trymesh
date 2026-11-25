@@ -19,7 +19,7 @@ import type { CommandAfter, DocumentAfter } from '../00-prep/contract';
 
 // The points a curve is given by, by the kind of the curve: the fields of `CurveShape` other than
 // `type`, so the table cannot name a point a curve does not have.
-export const CURVE_POINTS = { line: ['a', 'b'], circle: ['center'], arc: ['center', 'start', 'end'] } as const satisfies {
+export const CURVE_POINTS = { line: ['a', 'b'], circle: ['center'], arc: ['center', 'start', 'end'], spline: [] } as const satisfies { // spline: D70, no named point
   [T in CurveShape['type']]: readonly Exclude<keyof Extract<CurveShape, { type: T }>, 'type'>[];
 };
 export type CurvePointName = (typeof CURVE_POINTS)[keyof typeof CURVE_POINTS][number]; // 'a' | 'b' | 'center' | 'start' | 'end'

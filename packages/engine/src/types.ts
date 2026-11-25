@@ -322,7 +322,50 @@ export type Projected =
 export type CurveShape =
   | { type: 'line'; a: Id; b: Id } // ID bodů
   | { type: 'circle'; center: Id } // poloměr je v `radii`
-  | { type: 'arc'; center: Id; start: Id; end: Id }; // proti směru hodin
+  | { type: 'arc'; center: Id; start: Id; end: Id } // proti směru hodin
+  // A spline: a smooth curve over control points (D70).
+  // - `points`: the control points in order, own points of the sketch or `origin`, 3 to 64. The
+  //   curve starts at the first and ends at the last; the points between pull it and lie off it in
+  //   general: a control point pulled aside moves the curve less than itself (in a spline of five
+  //   points, the middle one pulled by 4 mm moves the curve by 2). `get_sketch` says where the curve
+  //   runs: `through`, points it passes from its start to its end, and `box`.
+  // - The same point may not be listed twice, except the first again as the last: the spline is then
+  //   closed (at least 4 entries), with a corner at that point unless the first and the last leg of
+  //   the control polygon are made to lie on one line.
+  // - The curve is a B-spline of degree 3 (2 for three points), clamped (it starts at the first
+  //   point along the first leg, from `points[0]` towards `points[1]`, and ends at the last along the
+  //   last leg), with uniform knots, not rational. Four points are one cubic Bezier curve; three one
+  //   quadratic. It has no other field: no degree, no knots, no weights.
+  // - The solver sees only the points: no constraint names a spline, and nothing holds a point on
+  //   it. Shape it by constraining its control points like any points.
+  // - A spline that runs on smoothly from a line that ends at its first point: hold the second
+  //   control point on that line (`pointOnCurve`, which holds it on the whole line, not only between
+  //   its ends), and give that point a start position beyond the end of the line. The solver keeps
+  //   the side it starts on; behind the end, over the line, the spline turns back on the line in a
+  //   cusp, so read the position after the solve, and again after a large change of a dimension,
+  //   which can carry the point to the other side. From an arc that ends at its first point: a
+  //   construction line from `points[0]` to `points[1]`, tangent to the arc (`tangent`). The same at
+  //   the last point with the last leg. A spline may end on a point of a line or an arc only at their
+  //   common end; a circle of the outline has no end, so a spline that ends on one makes the profile
+  //   invalid (a construction circle may be touched so).
+  // - A spline forms regions with the other curves (unless it is a construction curve). The profile
+  //   uses its polyline within the chord tolerance of the document: a spline that crosses itself
+  //   or another curve, or touches one away from a shared end, makes the profile invalid as two
+  //   crossing curves do; the query `sketchContacts` says where. A spline is not trimmed, split or
+  //   extended, and a curve is not cut where it crosses one: move the curve or the control points,
+  //   or trim the curve back to another curve. It is not projected into another sketch (project its
+  //   control points, as points).
+  // - The side face of an extrusion is `{ role: 'side', curve: <the spline> }`, one face for the
+  //   whole spline, a swept surface; its edges have the kind `other`, so they cannot be projected,
+  //   chamfered or filleted, and neither can an edge that runs on smoothly into one: the rim of a
+  //   part whose outline is smooth all round and holds a spline takes no chamfer and no fillet. A
+  //   sketch cannot stand on the face. A profile with a spline cannot be offset, tapered or revolved,
+  //   and a wall does not run along a spline (`invalidProfile` naming the spline).
+  // - To change the control points, remove the spline and add it again under its ID in one batch:
+  //   no constraint names it, so nothing is lost, and the faces and regions named by it keep the
+  //   name. Removing a control point removes the spline, as removing the end of a line removes the
+  //   line. `setCurvePoint` does not take a spline.
+  | { type: 'spline'; points: Id[] };
 
 export type Curve = { construction?: boolean } & CurveShape;
 

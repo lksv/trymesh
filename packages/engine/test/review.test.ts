@@ -41,6 +41,8 @@ import { faceKey } from '../src/face-roles';
 import { type ExactCurve, exactStart, planeLevel } from '../src/recompute/extent';
 import type { Loop } from '../src/sketch';
 import { LENGTH_TOLERANCE } from '../src/util';
+import { splinePolyline } from '../src/spline';
+import type { Vec2 } from '../src/types';
 import type { EdgeProjection, FaceName } from '../src/types';
 import { midplaneFrame } from '../src/features/plane';
 
@@ -1283,5 +1285,159 @@ describe('the review of the implementation of 6a (D64)', () => {
     expect(() => validateDocument(tampered((s) => (s.solved.external = { x2: { kind: 'circle', center: [0, 0], radius: 0 } })))).toThrow(/solved\.external\.x2\.radius: poloměr musí být kladný/);
     expect(() => validateDocument(tampered((s) => (s.solved.external = { x2: { kind: 'line', a: [0, 0], b: [1, 0] } })))).toThrow(/neodpovídá promítnuté geometrii skici/);
     expect(validateDocument(tampered((s) => (s.solved.external = { x2: { kind: 'circle', center: [0, 0], radius: 2 } })))).toBeDefined();
+  });
+});
+
+// The reviews of the design of 6d (D70): the cases of "Measured", F and G.
+describe('the reviews of the design of 6d (D70): a spline in the profile', () => {
+  const spline = (...points: string[]): Curve => ({ type: 'spline', points });
+  const deg = (d: number): number => (d * Math.PI) / 180;
+
+  it('a closed spline with a triangle of long lines at its point keeps its region (finding 1: both halves took one direction)', () => {
+    for (const far of [16, 48, 96, 320]) {
+      const s = sketch(
+        { b1: [10, 0], b2: [30, 0], b3: [30, 20], b4: [10, 20], z1: [10 - far, -far * 1.3], z2: [10 - far, far * 1.3] },
+        [
+          ['s', spline('b1', 'b2', 'b3', 'b4', 'b1')],
+          ['u1', line('b1', 'z1')],
+          ['u2', line('z2', 'b1')],
+          ['u3', line('z1', 'z2')],
+        ],
+      );
+      const p = profile(s);
+      expect(p.valid).toBe(true);
+      expect(p.regions.map((r) => r.ref.outerLoop.join(','))).toEqual(['s', 'u1,u2,u3']);
+    }
+  });
+
+  it('three control points at an end beside a line at 10°, and inside a spline as a corner of 10°, are valid at 0.01 and 1e-5 (G)', () => {
+    const atEnd = sketch(
+      { a: [0, 0], b: [0, 0], c: [0, 0], d: [10, 0], e: [20, 1], f: [10 * Math.cos(deg(10)), 10 * Math.sin(deg(10))] },
+      [
+        ['s', spline('a', 'b', 'c', 'd', 'e')],
+        ['l', line('a', 'f')],
+        ['m', line('f', 'e')],
+      ],
+    );
+    const corner = sketch(
+      { a: [0, 0], b: [10, 0], c: [10, 0], d: [10, 0], e: [10 - 10 * Math.cos(deg(10)), 10 * Math.sin(deg(10))] },
+      [
+        ['s', spline('a', 'b', 'c', 'd', 'e')],
+        ['l', line('e', 'a')],
+      ],
+    );
+    for (const tolerance of [0.01, 1e-5]) {
+      expect(profile(atEnd, tolerance).valid).toBe(true);
+      expect(profile(corner, tolerance).valid).toBe(true);
+    }
+  });
+
+  it('a closed spline of two pieces out and back and an open fold back touch themselves; two long pieces at 2.3° do not (G)', () => {
+    const tiny = sketch({ a: [0, 0], b: [0.02, 0], c: [0.02, 0.02] }, [['s', spline('a', 'b', 'c', 'a')]]);
+    expect(profile(tiny, 0.01).valid).toBe(false);
+    const fold = sketch({ a: [0, 0], b: [10, 0], c: [0, 1e-7] }, [['s', spline('a', 'b', 'c')]]);
+    expect(profile(fold).valid).toBe(false);
+    const narrow = sketch(
+      { a: [0, 0], b: [10, 0], c: [10, 0], d: [10, 0], e: [10 - 10 * Math.cos(deg(2.3)), 10 * Math.sin(deg(2.3))] },
+      [
+        ['s', spline('a', 'b', 'c', 'd', 'e')],
+        ['l', line('e', 'a')],
+      ],
+    );
+    expect(profile(narrow, 0.1).valid).toBe(true);
+  });
+
+  // A spline that leaves the vertex of a neighbour, goes round and comes back to cross it near the
+  // vertex: its last control point is moved along x until its polyline crosses the neighbour at the
+  // distance `at` from the vertex (the light read of round 2: the vertex excuses only the pieces
+  // that start within its reach along the polyline).
+  function returning(neighbour: (p: Vec2) => number, at: number, tolerance: number): Record<string, [number, number]> {
+    const points: Record<string, [number, number]> = { v: [0, 0], p1: [12, 14], p2: [-8, 14], e: [0, -3] };
+    // the distance from the vertex along x of the last crossing of the neighbour, from above to below
+    const crossing = (x: number): number => {
+      const pts = splinePolyline([points.v, points.p1, points.p2, [x, points.e[1]]], tolerance);
+      let cross: Vec2 | undefined;
+      for (let k = 0; k + 1 < pts.length; k++) {
+        const [f, g] = [neighbour(pts[k]), neighbour(pts[k + 1])];
+        if (f > 0 && g <= 0) {
+          const t = f / (f - g);
+          cross = [pts[k][0] + t * (pts[k + 1][0] - pts[k][0]), pts[k][1] + t * (pts[k + 1][1] - pts[k][1])];
+        }
+      }
+      if (!cross) throw new Error('the spline does not come back across its neighbour');
+      return cross[0] - at;
+    };
+    // the secant method on the x of the last control point
+    let [x0, x1] = [0, 2];
+    let [f0, f1] = [crossing(x0), crossing(x1)];
+    for (let round = 0; round < 40 && Math.abs(f1) > 1e-12; round++) {
+      const x2 = x1 - (f1 * (x1 - x0)) / (f1 - f0);
+      [x0, f0, x1, f1] = [x1, f1, x2, crossing(x2)];
+    }
+    expect(Math.abs(f1)).toBeLessThan(1e-9);
+    points.e = [x1, points.e[1]];
+    return points;
+  }
+
+  it('a spline that comes back to cross its neighbour line 5 µm from their vertex, and an arc of radius 50 at 0.015 mm, is invalid (G)', () => {
+    const lineCase = returning((p) => p[1], 5e-6, 0.01);
+    const s = sketch({ ...lineCase, w: [20, 0] }, [
+      ['s', spline('v', 'p1', 'p2', 'e')],
+      ['l', line('v', 'w')],
+    ]);
+    expect(profile(s).valid).toBe(false);
+    const arcCase = returning((p) => 50 - Math.hypot(p[0], p[1] - 50), 0.015, 0.01);
+    const t = sketch({ ...arcCase, c: [0, 50], w: [50, 50] }, [
+      ['s', spline('v', 'p1', 'p2', 'e')],
+      ['r', { type: 'arc', center: 'c', start: 'v', end: 'w' }],
+    ]);
+    expect(profile(t).valid).toBe(false);
+  });
+});
+
+// The review of the implementation of 6d (D70).
+describe('the review of the implementation of 6d (D70)', () => {
+  const spline = (...points: string[]): Curve => ({ type: 'spline', points });
+
+  it('a 64-point zigzag spline at a chord tolerance of 1e-6 (170,442 polyline points) is a valid profile; the reach of a half-edge took the points as arguments of one call (F1)', () => {
+    const points: Record<string, [number, number]> = { z1: [315, -200], z2: [0, -200] };
+    const ids: string[] = [];
+    for (let i = 0; i < 64; i++) {
+      points[`p${i}`] = [i * 5, i % 2 ? 30 : 0];
+      ids.push(`p${i}`);
+    }
+    const s = sketch(points, [
+      ['sp', spline(...ids)],
+      ['l1', line('p63', 'z1')],
+      ['l2', line('z1', 'z2')],
+      ['l3', line('z2', 'p0')],
+    ]);
+    expect(splinePolyline(ids.map((id) => points[id]), 1e-6).length).toBeGreaterThan(150000);
+    const p = profile(s, 1e-6);
+    expect(p.valid).toBe(true);
+    expect(p.regions).toHaveLength(1);
+  });
+
+  it('two 64-point splines with touching boxes at a chord tolerance of 1e-5 (45k pieces each) are tested by a sweep, not piece against every piece (F4)', () => {
+    const points: Record<string, [number, number]> = {};
+    const [a, b]: string[][] = [[], []];
+    for (let i = 0; i < 64; i++) {
+      points[`a${i}`] = [i * 2, 10 + (i % 2 === 0 ? 10 : -10)];
+      points[`b${i}`] = [i * 2 + 1, 30 + (i % 2 === 0 ? 10 : -10)];
+      a.push(`a${i}`);
+      b.push(`b${i}`);
+    }
+    const s = sketch(points, [
+      ['sa', spline(...a)],
+      ['sb', spline(...b)],
+      ['l1', line('a0', 'b0')],
+      ['l2', line('a63', 'b63')],
+    ]);
+    const started = performance.now();
+    const p = profile(s, 1e-5);
+    // measured: 10.2 s with the double loop, 1.1 s with the sweep; the bound is loose for a loaded machine
+    expect(performance.now() - started).toBeLessThan(6000);
+    expect(p.valid).toBe(true);
+    expect(p.regions).toHaveLength(1);
   });
 });

@@ -32,6 +32,8 @@ export function profile(id: Id, source: ProfileSource, state: State, chordTolera
       case 'circle':
       case 'arc':
         return { type: 'round', center: curve.center, radius: curve.radius };
+      case 'spline':
+        return { type: 'general' }; // a swept surface along the extrusion (D70)
       default:
         return unreachable(curve, 'curve');
     }

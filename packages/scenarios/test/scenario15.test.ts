@@ -2,7 +2,7 @@
 // points of step 6 of D36 each have a `describe` of their own; the board of step 1 is a stand-in
 // until 6f imports one, and 6c and 6b build on it.
 import { describe, expect, it } from 'vitest';
-import { type Command, type CutIds, type Engine, type EngineState, type Expr, type Id, type SketchFeature, type SketchResult, type SketchToolInputs, AXIS_CURVES, AXIS_REACH, DUPLICATE, REGIONS_ON_A_POINT, UNDER_ORIGIN, emptySketch, faceKey, freshIds, lineExtent, profileOf, repairsByDefault, sketchTool, sketchWorld, solvedCurves, toolBase } from '@trymesh/engine';
+import { type Command, type CutIds, type Engine, type EngineState, type Expr, type Id, type SketchFeature, type SketchResult, type SketchToolInputs, AXIS_CURVES, AXIS_REACH, DUPLICATE, REGIONS_ON_A_POINT, UNDER_ORIGIN, emptySketch, faceKey, freshIds, lineExtent, profileOf, repairsByDefault, sketchTool, sketchWorld, solvedCurves, splineBox, splineThrough, toolBase, type OutlineAbout } from '@trymesh/engine';
 import { pcbByHand, point, standInBoard } from './board-kit';
 import { XY, addSketch, batch, constrain, newEngine, run } from './kit';
 
@@ -876,7 +876,7 @@ function offProjection(state: EngineState, s: Id, curves: Id[], entries: Id[]): 
     ...curves.map((own, i) => {
       const curve = f.curves[own];
       if (curve.type === 'arc') return Math.max(far(curve.center, `${entries[i]}/center`), far(curve.start, `${entries[i]}/start`), far(curve.end, `${entries[i]}/end`));
-      return curve.type === 'line' ? Math.max(far(curve.a, `${entries[i]}/a`), far(curve.b, `${entries[i]}/b`)) : far(curve.center, `${entries[i]}/center`);
+      return curve.type === 'line' ? Math.max(far(curve.a, `${entries[i]}/a`), far(curve.b, `${entries[i]}/b`)) : 'center' in curve ? far(curve.center, `${entries[i]}/center`) : 0;
     }),
   );
 }
@@ -1037,5 +1037,237 @@ describe('scenario 15, steps 2, 3, 5 and 7: the skeleton and the base by project
     expect(refusal(engine, fromSketch('frame', 'z7', 'board', 'hc0', 'point', true))).toContain(REGIONS_ON_A_POINT);
     // a constraint between two fixed entities: an axis and a projected point
     expect(refusal(engine, constrain('frame', 'z8', { type: 'pointOnCurve', point: 'fh0/center', curve: 'origin/x' }))).toContain('only between fixed entities');
+  });
+});
+
+// ================================================================ 6d (D70): the grips of the lid
+// The lid of 6c with each flank a spline (docs/d36/6d-sketch-spline/calls.ts): the middle control
+// point of the right half's flank pulled in by `grip` at mid-height, its end legs `reach` long,
+// vertical and tangent to the corner arcs, so the spline runs on from them without a kink; the
+// mirror of 6c copies the spline with the rest. The curve is `grip / 2` deep.
+const [GRIP, REACH] = [4, 10];
+// The area a grip takes, by hand: two Bezier pieces, each (d / 2) · 9.8 (calls.ts, "the numbers").
+const gripArea = (d: number): number => 9.8 * d;
+const lidWithGrips = (d: number): number => LID - 2 * gripArea(d); // 4436.1398 for d = 4
+// The body is the prism of the region's polygon: first to the precision of the float32 mesh, then
+// against the value by hand within twice what was measured for the grips.
+const GRIP_ALLOWANCE = (0.2 + 2 * 0.06) * LT;
+const PRISM = 1e-3;
+const sp = (sketch: Id, id: Id, points: Id[]): Command => ({ type: 'addCurve', sketch, id, curve: { type: 'spline', points } });
+const polygonArea = (state: EngineState, sketch: Id, outerLoop: Id[]): number => {
+  const region = resultOf(state, sketch).regions.find((r) => JSON.stringify(r.ref.outerLoop) === JSON.stringify(outerLoop));
+  if (!region) throw new Error(`no region ${outerLoop.join()}`);
+  const area = (xy: Float64Array): number => {
+    let sum = 0;
+    for (let i = 0; i < xy.length; i += 2) {
+      const j = (i + 2) % xy.length;
+      sum += xy[i] * xy[j + 1] - xy[j] * xy[i + 1];
+    }
+    return Math.abs(sum) / 2;
+  };
+  return area(region.loops[0]) - region.loops.slice(1).reduce((sum, hole) => sum + area(hole), 0);
+};
+const lidSide = (curve: Id) => ({ feature: 'lid', role: 'side', curve }) as const;
+const LID_TOP = { feature: 'lid', role: 'endCap' } as const;
+const sameName = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
+const lidFace = (state: EngineState, name: object): number | undefined => state.evaluation.bodies.lid?.faces.find((f) => sameName(state.evaluation.faceNames[f.id], name))?.id;
+
+// The right half drawn off its place and solved, then mirrored (calls.ts, `lidHalfWithGrip`,
+// `mirroredWithGrip`).
+function mirroredLidWithGrip(engine: Engine): EngineState {
+  run(engine, ...(['W', 'H', 'R', 'T', 'grip', 'reach'] as const).map((name, i): Command => ({ type: 'setParameter', name, expr: `${[LW, LH, LR, LT, GRIP, REACH][i]}` })));
+  const s = 'lidSketch';
+  run(engine, { type: 'addFeature', feature: emptySketch(s, 'Lid', XY) });
+  run(
+    engine,
+    pt(s, 'a1', 37.3, 0.2),
+    pt(s, 'q1', 36.8, 5.1),
+    pt(s, 'a2', 42.2, 4.7),
+    pt(s, 'g1', 42.4, 15.3),
+    pt(s, 'g2', 37.6, 27.4),
+    pt(s, 'g3', 41.7, 38.6),
+    pt(s, 'a3', 41.9, 49.4),
+    pt(s, 'q2', 37.3, 48.8),
+    pt(s, 'a4', 36.8, 54.3),
+    pt(s, 'a5', 0.7, 53.8),
+    ln(s, 'c1', 'origin', 'a1'),
+    ac(s, 'r1', 'q1', 'a1', 'a2'),
+    sp(s, 'c2', ['a2', 'g1', 'g2', 'g3', 'a3']),
+    ac(s, 'r2', 'q2', 'a3', 'a4'),
+    ln(s, 'c3', 'a4', 'a5'),
+    { type: 'addCurve', sketch: s, id: 'l1', curve: { type: 'line', a: 'a2', b: 'g1', construction: true } },
+    { type: 'addCurve', sketch: s, id: 'l2', curve: { type: 'line', a: 'g3', b: 'a3', construction: true } },
+  );
+  run(
+    engine,
+    constrain(s, 'k1', { type: 'horizontal', line: 'c1' }),
+    constrain(s, 'k3', { type: 'horizontal', line: 'c3' }),
+    constrain(s, 'k4', { type: 'tangent', a: 'c1', b: 'r1' }),
+    constrain(s, 'k7', { type: 'tangent', a: 'r2', b: 'c3' }),
+    constrain(s, 'k8', { type: 'radius', curve: 'r1', value: 'R', driving: true } as never),
+    constrain(s, 'k9', { type: 'equalRadius', a: 'r1', b: 'r2' }),
+    dim(s, 'k10', 'horizontalDistance', 'origin', 'a2', 'W / 2'),
+    dim(s, 'k11', 'verticalDistance', 'origin', 'a4', 'H'),
+    constrain(s, 'k12', { type: 'pointOnCurve', point: 'a5', curve: 'origin/y' }),
+    constrain(s, 't1', { type: 'vertical', line: 'l1' }),
+    constrain(s, 't2', { type: 'tangent', a: 'r1', b: 'l1' }),
+    constrain(s, 't3', { type: 'vertical', line: 'l2' }),
+    constrain(s, 't4', { type: 'tangent', a: 'l2', b: 'r2' }),
+    dim(s, 't5', 'horizontalDistance', 'origin', 'a3', 'W / 2'),
+    dim(s, 't6', 'verticalDistance', 'a2', 'g1', 'reach'),
+    dim(s, 't7', 'verticalDistance', 'g3', 'a3', 'reach'),
+    dim(s, 't8', 'horizontalDistance', 'g2', 'a2', 'grip'),
+    dim(s, 't9', 'verticalDistance', 'origin', 'g2', 'H / 2'),
+  );
+  return run(engine, addPattern(s, 'm', { type: 'pattern', sources: ['c1', 'r1', 'c2', 'r2', 'c3'], transform: { type: 'mirror', axis: 'origin/y' } }));
+}
+const lidWithGrip = (engine: Engine): EngineState => run(engine, extrudeLoops('lid', 'lidSketch', [LID_REGION], 'T'));
+
+describe('scenario 15, steps 4, 6 and 7: the lid with spline grips (6d, D70)', () => {
+  it('the half with its grip closes with its image into one region, fully determined; the copy is a spline; where the grip runs', () => {
+    const engine = newEngine();
+    const state = mirroredLidWithGrip(engine);
+    const result = resultOf(state, 'lidSketch');
+    expect(result.valid).toBe(true);
+    expect(loopsOf(state, 'lidSketch')).toEqual([LID_REGION]);
+    expect(result.curves['m/1/c2']).toEqual({ shape: { type: 'spline', points: ['m/1/a2', 'm/1/g1', 'm/1/g2', 'm/1/g3', 'm/1/a3'] }, source: 'derived', regions: true });
+    expect(result.degreesOfFreedom).toBe(0);
+    expect(result.redundant).toEqual([]);
+    expect(result.openEnds).toBeUndefined();
+    expect(state.evaluation.features.lidSketch.status).toBe('ok');
+    const at = (id: Id): [number, number] => [result.points[id].x, result.points[id].y];
+    for (const [id, x, y] of [
+      ['g1', 42, 15],
+      ['g2', 38, 27],
+      ['g3', 42, 39],
+      ['a3', 42, 49],
+      ['a5', 0, 54],
+      ['m/1/g2', -38, 27],
+    ] as const) {
+      expect(at(id)[0], id).toBeCloseTo(x, 9);
+      expect(at(id)[1], id).toBeCloseTo(y, 9);
+    }
+    // what get_sketch says of the grip (the owner's answer 26): the ends, the joint of its two
+    // pieces `grip / 2` inside the flank, the middle of each; the box half as deep as the control points'
+    const control = ['a2', 'g1', 'g2', 'g3', 'a3'].map(at);
+    const through = splineThrough(control);
+    expect(through).toHaveLength(5);
+    for (const [i, expected] of [
+      [LW / 2, LR],
+      [LW / 2 - GRIP / 4, 17.5],
+      [LW / 2 - GRIP / 2, LH / 2],
+      [LW / 2 - GRIP / 4, 36.5],
+      [LW / 2, LH - LR],
+    ].entries()) {
+      expect(through[i][0]).toBeCloseTo(expected[0], 6);
+      expect(through[i][1]).toBeCloseTo(expected[1], 6);
+    }
+    splineBox(control).forEach((value, i) => expect(value).toBeCloseTo([LW / 2 - GRIP / 2, LR, LW / 2, LH - LR][i], 6));
+  });
+
+  it('the lid: the prism of its polygon; each flank one swept face whose edges are other; the grip follows its parameter; the section as DXF', () => {
+    const engine = newEngine();
+    mirroredLidWithGrip(engine);
+    const state = lidWithGrip(engine);
+    const volume = state.evaluation.bodies.lid.volume;
+    expect(Math.abs(volume - polygonArea(state, 'lidSketch', LID_REGION) * LT)).toBeLessThan(PRISM);
+    expect(Math.abs(volume - lidWithGrips(GRIP) * LT)).toBeLessThan(GRIP_ALLOWANCE); // measured 8871.8091, by hand 8872.2796
+    const flank = lidFace(state, lidSide('c2'));
+    expect(flank).toBeDefined();
+    expect(lidFace(state, lidSide('m/1/c2'))).toBeDefined();
+    const surface = state.evaluation.faceSurfaces[flank as number];
+    expect(surface.kind).toBe('swept');
+    expect(surface.kind === 'swept' && Math.abs(surface.axis[2])).toBeCloseTo(1, 9);
+    const edges = state.evaluation.bodies.lid.edges.filter((e) => sameName(e.name.a, lidSide('c2')) || sameName(e.name.b, lidSide('c2')));
+    expect(edges).toHaveLength(4);
+    expect(edges.every((e) => e.kind === 'other')).toBe(true);
+    // the grip 6: g2 at x = 36, its copy at −36, 9.8 · 2 mm² less per grip (by hand 8833.0796)
+    const deeper = previewOf(engine, { type: 'setParameter', name: 'grip', expr: '6' });
+    expect(resultOf(deeper, 'lidSketch').points.g2.x).toBeCloseTo(36, 9);
+    expect(resultOf(deeper, 'lidSketch').points['m/1/g2'].x).toBeCloseTo(-36, 9);
+    expect(Math.abs(deeper.evaluation.bodies.lid.volume - polygonArea(deeper, 'lidSketch', LID_REGION) * LT)).toBeLessThan(PRISM);
+    expect(Math.abs(deeper.evaluation.bodies.lid.volume - lidWithGrips(6) * LT)).toBeLessThan(GRIP_ALLOWANCE);
+    // step 7: the section at half the thickness as DXF, one loop and no circle, its area the polygon's
+    const exported = engine.export('dxf', { plane: XY, offset: LT / 2, bodies: ['lid'] });
+    if (!exported.ok) throw new Error(exported.error.message);
+    expect(exported.result.layout === 'file' && exported.result.files).toHaveLength(1);
+    const about = (exported.result as { files: { about?: unknown }[] }).files[0].about as OutlineAbout;
+    expect(about.loops).toBe(1);
+    expect(about.circles).toBe(0);
+    expect(Math.abs(about.area - volume / LT)).toBeLessThan(1e-3);
+  });
+
+  it('what the lid refuses for its splines: the offset, the chamfers of the rim, the commands, a projection', () => {
+    const engine = newEngine();
+    mirroredLidWithGrip(engine);
+    const state = lidWithGrip(engine);
+    const errorOf = (command: Command, feature: Id) => previewOf(engine, command).evaluation.features[feature]?.error;
+    const offset = errorOf({ type: 'addFeature', feature: { id: 'lidOffset', name: 'lidOffset', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 'lidSketch', regions: [{ outerLoop: LID_REGION }], offset: 1 }, extent: { type: 'distance', start: 0, distance: 'T' }, operation: 'new' } }, 'lidOffset');
+    expect(offset?.code).toBe('invalidProfile');
+    expect(offset?.refs).toEqual(['c2', 'm/1/c2']); // the splines of the selection, each once, sorted
+    // no edge of the rim takes a chamfer: the grip's edge is other, and the top edges of c3 and its
+    // copy run on smoothly through the arcs to the grips (the owner's answer 24)
+    const top = (curve: Id) => ({ a: LID_TOP, b: lidSide(curve) });
+    const chamferOf = (edges: object[]) => errorOf({ type: 'addFeature', feature: { id: 'ch', name: 'ch', suppressed: false, type: 'chamfer', body: 'lid', edges: edges as never, distance: 0.5 } }, 'ch');
+    expect(chamferOf([top('c2')])?.code).toBe('unsupportedEdge');
+    expect(chamferOf([top('c3'), top('m/1/c3')])?.code).toBe('unsupportedEdge');
+    expect(chamferOf([top('c3'), top('m/1/c3'), top('r2'), top('m/1/r2')])?.code).toBe('unsupportedEdge');
+    const s = 'lidSketch';
+    expect(refusal(engine, sp(s, 'x1', ['a2', 'g1']))).toMatch(/a spline has 3 to 64 control points, not 2/);
+    expect(refusal(engine, sp(s, 'x2', ['a2', 'g1', 'a2', 'g3']))).toMatch(/"a2" is listed twice/);
+    expect(refusal(engine, sp(s, 'x3', ['a2', 'g1', 'a2']))).toMatch(/a closed spline needs at least three different points/);
+    expect(refusal(engine, sp(s, 'x4', ['a2', 'g1', 'm/1/g2']))).toMatch(/"m\/1\/g2"/);
+    expect(refusal(engine, constrain(s, 'x6', { type: 'pointOnCurve', point: 'g1', curve: 'c2' }))).toMatch(/"c2" je spline/);
+    expect(refusal(engine, constrain(s, 'x7', { type: 'tangent', a: 'c2', b: 'r1' }))).toMatch(/"c2" je spline/);
+    expect(refusal(engine, { type: 'setCurvePoint', sketch: s, id: 'c2', point: 'a', to: 'g1' })).toMatch(/spline/);
+    expect(refusal(engine, { type: 'addFeature', feature: { id: 'w', name: 'w', suppressed: false, type: 'extrude', profile: { type: 'wall', sketch: s, curves: ['c2'], thickness: 1 }, extent: { type: 'distance', start: 0, distance: 1 }, operation: 'new' } as never })).toMatch(/c2/);
+    // 6e: the grip by name, the place on it without a name, the mirrored place on its copy
+    expect(cutRefusal(engine, 'trim', s, { curve: 'c2', at: [LW / 2 - GRIP / 2, LH / 2] })).toMatch(/"c2" is a spline/);
+    expect(cutRefusal(engine, 'trim', s, { at: [LW / 2 - GRIP / 2, LH / 2] })).toMatch(/"c2" is a spline/);
+    expect(cutRefusal(engine, 'trim', s, { at: [-(LW / 2 - GRIP / 2), LH / 2] })).toMatch(/m\/1\/c2/);
+    // 6b: a projection of the grip refused, of its control point taken; projectSketch lists the splines it left out
+    run(engine, { type: 'addFeature', feature: emptySketch('over', 'over', XY) });
+    expect(refusal(engine, fromSketch('over', 'e1', s, 'c2', 'line'))).toMatch(/"c2" of lidSketch is a spline, and a spline is not projected yet/);
+    expect(engine.preview(fromSketch('over', 'e3', s, 'g2', 'point')).ok).toBe(true);
+    const whole = sketchTool('projectSketch', toolContext(engine.getState(), 'over'), { sketch: s }, freshIds(engine.getState().document, 'p_'));
+    expect(whole.ok && whole.ids.splines).toEqual(['c2', 'm/1/c2']);
+    expect(state.evaluation.features.lid.status).toBe('ok');
+  });
+
+  it('a sixth control point by a batch keeps the names of the lid; removing a control point removes the grip and the lid has no profile', () => {
+    const engine = newEngine();
+    mirroredLidWithGrip(engine);
+    lidWithGrip(engine);
+    const s = 'lidSketch';
+    const state = previewOf(engine, batch(pt(s, 'g4', 39, 33), { type: 'removeEntity', sketch: s, id: 'c2' }, sp(s, 'c2', ['a2', 'g1', 'g2', 'g4', 'g3', 'a3'])));
+    expect(loopsOf(state, s)).toEqual([LID_REGION]);
+    expect(state.evaluation.features.lid.status).toBe('ok');
+    expect(lidFace(state, lidSide('c2'))).toBeDefined();
+    const without = previewOf(engine, { type: 'removeEntity', sketch: s, id: 'g2' });
+    expect(without.evaluation.features.lid.error?.code).toBe('noProfile');
+  });
+
+  it('the second notch with the grip flank in: two trims of 6e, the copy notched by 6c, one region through both splines', () => {
+    const engine = newEngine();
+    mirroredLidWithGrip(engine);
+    lidWithGrip(engine);
+    const s = 'lidSketch';
+    const R = 4;
+    run(engine, pt(s, 'nc', 20, LH), { type: 'addCurve', sketch: s, id: 'nk', curve: { type: 'circle', center: 'nc' }, radius: R });
+    const first = cut(engine, 'trim', s, { curve: 'nk', at: [20, LH + R] }, 'n1_');
+    const second = cut(engine, 'trim', s, { at: [20, LH] }, 'n2_');
+    const state = engine.getState();
+    expect(first.dropped).not.toContain('lid');
+    // the second trim takes the half discs of the notches away, regions of the lid after the first:
+    // the lid is in `dropped` for them, as in 6e's own notch above, and keeps the region of the lid
+    expect(second.dropped).toEqual(['lid']);
+    const region = regionsOf(state, 'lid');
+    expect(resultOf(state, s).valid).toBe(true);
+    expect(region).toHaveLength(1);
+    for (const curve of ['c2', 'm/1/c2', 'nk', 'm/1/nk']) expect(region[0]).toContain(curve);
+    expect(state.evaluation.features.lid.status).toBe('ok');
+    const volume = state.evaluation.bodies.lid.volume;
+    expect(Math.abs(volume - polygonArea(state, s, [...region[0]].sort()) * LT)).toBeLessThan(PRISM);
+    expect(Math.abs(volume - (lidWithGrips(GRIP) - Math.PI * R * R) * LT)).toBeLessThan(GRIP_ALLOWANCE + 0.06 * 2 * LT);
   });
 });

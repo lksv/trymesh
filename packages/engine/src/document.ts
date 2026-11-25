@@ -43,7 +43,7 @@ import { applySectionCommand, emptySections, renamedSections, validateSections }
 import { MAX_INSERT_DEPTH } from './sections/documents';
 import type { SectionContext } from './sections/spec';
 import type { FeatureModule } from './features/module';
-import { constraint, constraintRuleProblem, curve } from './features/sketch';
+import { SET_CURVE_POINT_SPLINE, constraint, constraintRuleProblem, curve } from './features/sketch';
 
 // What moved to the leaf modules keeps its path here: the tests and the modules above import it from
 // the document.
@@ -676,6 +676,8 @@ export function applyCommand(doc: Document, command: Command): Document {
         const id = string(cmd.id, 'setCurvePoint.id');
         if (!has(s.curves, id)) fail(`setCurvePoint.id: "${id}" is not an own curve of the sketch`);
         const old = s.curves[id];
+        // D70: a spline has no named points; said before the generic text, which would list none
+        if (old.type === 'spline') fail(SET_CURVE_POINT_SPLINE(id));
         const names: readonly string[] = CURVE_POINTS[old.type];
         const point = string(cmd.point, 'setCurvePoint.point');
         if (!names.includes(point)) fail(`setCurvePoint.point: a ${old.type} has the points ${names.join(', ')}, not "${point}"`);

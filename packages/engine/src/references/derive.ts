@@ -78,8 +78,10 @@ const distance = (p: Point2, q: Point2): number => Math.hypot(p.x - q.x, p.y - q
 
 // ---------------------------------------------------------------- a copy that lies on its source
 
-// The one place a curve is filed under: a line its middle, an arc its start, a circle its centre;
-// two curves that occupy the same have it within the tolerance. Undefined without positions.
+// The one place a curve is filed under: a line its middle, an arc its start, a circle its centre,
+// a spline the middle of its two middle control points (for an odd count the middle one; the same
+// for both orders, D70); two curves that occupy the same have it within the tolerance. Undefined
+// without positions.
 function placeOf(shape: CurveShape, points: Record<Id, Point2>): Point2 | undefined {
   switch (shape.type) {
     case 'line': {
@@ -90,6 +92,11 @@ function placeOf(shape: CurveShape, points: Record<Id, Point2>): Point2 | undefi
       return points[shape.start];
     case 'circle':
       return points[shape.center];
+    case 'spline': {
+      const n = shape.points.length;
+      const [a, b] = [points[shape.points[Math.floor((n - 1) / 2)]], points[shape.points[Math.ceil((n - 1) / 2)]]];
+      return a && b ? { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 } : undefined;
+    }
     default:
       return unreachable(shape, 'curve');
   }
@@ -97,7 +104,7 @@ function placeOf(shape: CurveShape, points: Record<Id, Point2>): Point2 | undefi
 
 // Whether two curves occupy the same, within the length tolerance: a line its segment (either way),
 // a circle its centre and radius, an arc its centre and its two ends in order (both run
-// counter-clockwise).
+// counter-clockwise), a spline its control points in order or in reverse (D70).
 export function occupies(a: SketchCurve, b: SketchCurve, geometry: SketchGeometry): boolean {
   const at = (id: Id): Point2 | undefined => (has(geometry.points, id) ? geometry.points[id] : undefined);
   const same = (p: Id, q: Id): boolean => {
@@ -112,6 +119,11 @@ export function occupies(a: SketchCurve, b: SketchCurve, geometry: SketchGeometr
       return sb.type === 'circle' && same(sa.center, sb.center) && has(geometry.radii, a.id) && has(geometry.radii, b.id) && Math.abs(geometry.radii[a.id] - geometry.radii[b.id]) <= LENGTH_TOLERANCE;
     case 'arc':
       return sb.type === 'arc' && same(sa.center, sb.center) && same(sa.start, sb.start) && same(sa.end, sb.end);
+    case 'spline': {
+      if (sb.type !== 'spline' || sa.points.length !== sb.points.length) return false;
+      const n = sa.points.length;
+      return sa.points.every((p, i) => same(p, sb.points[i])) || sa.points.every((p, i) => same(p, sb.points[n - 1 - i]));
+    }
     default:
       return unreachable(sa, 'curve');
   }

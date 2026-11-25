@@ -121,6 +121,15 @@ export function nestingOf(outline: Outline): boolean[][] {
 //    the outline is refused.
 // 3. A loop with a positive area is an outer loop; the others are holes of the smallest outer loop
 //    that contains them.
+// The refusal of an outline that passes a spline (D70): the offset of regions, the taper and the
+// revolve read the exact outline, and a spline has none.
+export const SPLINE_OUTLINE_REFUSAL = (splines: Id[]): string =>
+  splines.length === 1
+    ? `The curve ${quoted(splines)} is a spline, which has no exact form: a profile with a spline cannot be offset, tapered or revolved. Draw that part with lines and arcs, or leave the offset, the taper or the revolve out.`
+    : `The curves ${quoted(splines)} are splines, which have no exact form: a profile with a spline cannot be offset, tapered or revolved. Draw those parts with lines and arcs, or leave the offset, the taper or the revolve out.`;
+// The refusal of a wall whose curve is a spline (D70); the command refuses one before.
+export const SPLINE_WALL_REFUSAL = (spline: Id): string => `The curve "${spline}" is a spline; a wall runs along lines, arcs and circles.`;
+
 export function selectionOutline(regions: Region[]): Outline | ProfileProblem {
   interface Piece {
     curve: OutlineCurve;
@@ -130,6 +139,10 @@ export function selectionOutline(regions: Region[]): Outline | ProfileProblem {
   }
   const pieces: Piece[] = [];
   let loops = 0;
+  // D70: a loop through a spline has no exact form; the refusal names the splines of the whole
+  // selection, each once, sorted
+  const splines = [...new Set(regions.flatMap((region) => [region.outer, ...region.holes].flatMap((loop) => loop.sampled ?? [])))].sort();
+  if (splines.length) return refusal(splines, SPLINE_OUTLINE_REFUSAL(splines));
   for (const region of regions) {
     for (const loop of [region.outer, ...region.holes]) {
       const exact = loop.exact;
@@ -535,6 +548,7 @@ export function wallOfCurves(sketchCurve: ReadonlyMap<Id, SketchCurve>, joins: (
     // the ends at their joined vertices, a centre as it is
     const placed = placedCurve(curve, geometry.radii, vertex, centre);
     if (!placed) return { code: 'brokenReference', refs: [id] };
+    if (placed.type === 'spline') return refusal([id], SPLINE_WALL_REFUSAL(id));
     if (placed.type === 'circle') {
       if (!(placed.radius > LENGTH_TOLERANCE)) return refusal([id], `The circle ${quoted([id])} of the wall has no radius.`);
       own.push({ key: id, forward: true, type: 'circle', center: placed.center, radius: placed.radius, ccw: true });

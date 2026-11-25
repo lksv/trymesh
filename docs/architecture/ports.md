@@ -30,6 +30,8 @@ interface SolveResult {
 }
 ```
 
+A spline in `curves` (D70): an adapter adds no primitive and no equation for it; its control points are points of the input (checked as the ends of a line are), and no constraint names a spline, so the planegcs adapter's cases of a spline in a constraint throw (never reached). The analysis of freedom gives it no row either.
+
 Bezstavová funkce. Načtení WASM je asynchronní a proběhne při vytvoření adaptéru, `solve` je synchronní.
 
 Záruky implementace:

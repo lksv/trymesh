@@ -1264,3 +1264,107 @@ describe('model, tělesa a příkazy', () => {
     expect(callTool(newEngine(), 'redo')).toEqual({ ok: false, error: 'není co opakovat' });
   });
 });
+
+// D70: a spline as the AI meets it: the curve and its comment in describe_api, where it runs in
+// get_sketch, and why a profile with a spline is invalid in the query of the contacts.
+describe('a spline over MCP (D70)', () => {
+  const points = (list: [string, number, number][]): Command[] => list.map(([id, x, y]) => ({ type: 'addPoint', sketch: 's', id, x, y }));
+  it('describe_api names the curve and says where it runs', () => {
+    const description: string = ok(newEngine(), 'describe_api');
+    expect(description).toContain("{ type: 'spline'; points: Id[] }");
+    expect(description).toContain('`get_sketch` says where the curve');
+  });
+
+  it('get_sketch lists the control points of the grip, the five points it passes and its box', () => {
+    const engine = newEngine();
+    execute(engine, sketch('s'));
+    execute(engine, {
+      type: 'batch',
+      commands: [
+        ...points([
+          ['a2', 42, 5],
+          ['g1', 42, 15],
+          ['g2', 38, 27],
+          ['g3', 42, 39],
+          ['a3', 42, 49],
+        ]),
+        { type: 'addCurve', sketch: 's', id: 'c2', curve: { type: 'spline', points: ['a2', 'g1', 'g2', 'g3', 'a3'] } },
+      ],
+    });
+    const detail = ok(engine, 'get_sketch', { sketch: 's' });
+    expect(detail.curves).toEqual([
+      {
+        id: 'c2',
+        type: 'spline',
+        points: ['a2', 'g1', 'g2', 'g3', 'a3'],
+        through: [
+          [42, 5],
+          [41, 17.5],
+          [40, 27],
+          [41, 36.5],
+          [42, 49],
+        ],
+        box: [40, 5, 42, 49],
+      },
+    ]);
+  });
+
+  // The review of the implementation (deviation 2, accepted): `through` and `box` are at the
+  // positions `at` of the points shows, so an unsolved sketch lists them too.
+  it('get_sketch of an unsolved sketch gives through and box at the positions at of the control points shows', () => {
+    const engine = newEngine();
+    execute(engine, sketch('s'));
+    execute(engine, {
+      type: 'batch',
+      commands: [
+        ...points([
+          ['a2', 42, 5],
+          ['g1', 42, 15],
+          ['g2', 38, 27],
+          ['g3', 42, 39],
+          ['a3', 42, 49],
+        ]),
+        { type: 'addCurve', sketch: 's', id: 'c2', curve: { type: 'spline', points: ['a2', 'g1', 'g2', 'g3', 'a3'] } },
+        constrain('d1', { type: 'distance', a: 'a2', b: 'a3', value: 44, driving: true }),
+        constrain('d2', { type: 'horizontalDistance', a: 'a2', b: 'a3', value: 0, driving: true }),
+        constrain('d3', { type: 'verticalDistance', a: 'a2', b: 'a3', value: 40, driving: true }),
+      ],
+    });
+    const detail = ok(engine, 'get_sketch', { sketch: 's' });
+    expect(detail.diagnosis.status).toBe('conflict');
+    const at = (id: string): [number, number] => {
+      const p = detail.points.find((q: { id: string }) => q.id === id).at;
+      return Array.isArray(p) ? [p[0], p[1]] : [p.x, p.y];
+    };
+    const curve = detail.curves.find((c: { id: string }) => c.id === 'c2');
+    expect(curve.through[0]).toEqual(at('a2'));
+    expect(curve.through[curve.through.length - 1]).toEqual(at('a3'));
+    // the joint of the two pieces, a quarter of g1, half of g2 and a quarter of g3
+    const [g1, g2, g3] = [at('g1'), at('g2'), at('g3')];
+    expect(curve.through[2]).toEqual([(g1[0] + 2 * g2[0] + g3[0]) / 4, (g1[1] + 2 * g2[1] + g3[1]) / 4]);
+    expect(curve.box).toHaveLength(4);
+  });
+
+  it('sketchContacts says that a spline crosses itself', () => {
+    const engine = newEngine();
+    execute(engine, sketch('s'));
+    execute(engine, {
+      type: 'batch',
+      commands: [
+        ...points([
+          ['n1', 0, 0],
+          ['n2', 30, 0],
+          ['n3', 30, 20],
+          ['n4', 10, 20],
+          ['n5', 10, -10],
+        ]),
+        { type: 'addCurve', sketch: 's', id: 'k', curve: { type: 'spline', points: ['n1', 'n2', 'n3', 'n4', 'n5'] } },
+      ],
+    });
+    const answer = ok(engine, 'query', { query: 'sketchContacts', args: { sketch: 's' } });
+    expect(answer.valid).toBe(false);
+    expect(answer.contacts).toHaveLength(1);
+    expect(answer.contacts[0]).toMatchObject({ kind: 'crossing', curves: ['k', 'k'], fix: 'none' });
+    expect(answer.reason).toMatch(/the spline "k" crosses or touches itself/);
+  });
+});

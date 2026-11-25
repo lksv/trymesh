@@ -26,7 +26,7 @@ import { entryOrder } from './references/derive';
 import { derivedOrigin, entityOf, kindOf } from './references/index';
 import { type SketchBase, type SketchWorld, cutInMemory, sketchWorld, toolBase } from './references/world';
 import { DOCUMENT_SECTIONS, namedBySections } from './sections/index';
-import { type ContactKind, type CurveContacts, type Profile, type Region, type SketchCurve, type SketchGeometry, type TightPlace, curveContacts, curvesTouch, joinsOf, lineExtent, profileOf, profileProblem, sameRegion } from './sketch';
+import { type ContactKind, type CurveContacts, type Profile, type Region, type SketchCurve, type SketchGeometry, type TightPlace, curveContacts, curvesTouch, joinsOf, lineExtent, profileOf, profileProblem, sameRegion, splinePolylineOf, splineSelfContact } from './sketch';
 import { constraintKey, constraintOperands, constraintPath, curvePoints, isDimension, isDriving } from './sketch-content';
 import type { NewId, SketchToolCall, SketchToolContext, SketchToolResult } from './sketch-tools';
 import type { Command, Constraint, Curve, CurvePointName, CurveShape, Document, EdgeName, Expr, FaceName, Feature, FeaturePatch, Id, ParameterResult, PlaneRef, Point2, ProfileSource, RegionRef, SketchFeature, SketchPattern, SketchProjection, SketchResult, Vec2 } from './types';
@@ -157,6 +157,7 @@ export type CutIds = { [K in keyof typeof CUT_IDS]: Id[] };
 // - `mayCut`: an own line, arc or circle that no generated profile names as an operand.
 // - `formsRegions`: 6a's flag `regions` (an own curve that is not a construction curve).
 // - `holdsPoint`: an own or a reference line, arc or circle (a projected edge, an axis).
+// A spline (D70) is neither cut nor holds a point: no constraint holds a point on it.
 export interface CurvePredicates {
   mayCut(curve: SketchCurve): boolean;
   formsRegions(curve: SketchCurve): boolean;
@@ -177,6 +178,8 @@ const simpleCurve = (curve: SketchCurve): boolean => {
     case 'arc':
     case 'circle':
       return true;
+    case 'spline':
+      return false;
     default:
       return unreachable(curve.shape, 'curve');
   }
@@ -210,16 +213,20 @@ export function contactFix(a: SketchCurve, b: SketchCurve, kind: ContactKind | '
     if (other.source === 'own') return { fix: 'none', why: ownCrossesCopy(ca ? a.id : b.id, copy.entry) };
     return { fix: 'none', why: copiesCross(a.id, b.id) };
   }
-  const stuck = [a, b].find((curve) => !predicates.mayCut(curve));
   // a projection from a sketch that forms regions (D69): the way is an own outline over it
   const flagged = [a, b].find((curve) => curve.source === 'reference' && curve.regions && sketch.external[curve.id]?.type === 'sketch');
+  // Ends of a flagged projection and of another curve that stay apart: the other is own (two
+  // flagged ends, or one and a copy's, join by position), with a second own vertex at that place.
+  // Nothing needs a cut, and a coincident with the projected end could be redundant: joining the
+  // own ends there, which is listed with them, makes them one vertex, and the joins by position
+  // take the projection's end in. Not listed, also when the own curve is a spline (the review of
+  // 6d, F3).
+  if (flagged && kind === 'ends') return undefined;
+  // a spline (D70): not cut and holds no point; two ends at one place are joined without re-pointing it
+  const spline = [a, b].find((curve) => curve.shape.type === 'spline');
+  if (spline) return kind === 'ends' ? { fix: 'join' } : { fix: 'none', why: a.id === b.id ? SPLINE_SELF_WHY(a.id) : SPLINE_CONTACT_WHY(spline.id) };
+  const stuck = [a, b].find((curve) => !predicates.mayCut(curve));
   if (flagged) {
-    // Ends of it and of another curve that stay apart: the other is own (two flagged ends, or one
-    // and a copy's, join by position), with a second own vertex at that place. Nothing needs a cut,
-    // and a coincident with the projected end could be redundant: joining the own ends there,
-    // which is listed with them, makes them one vertex, and the joins by position take the
-    // projection's end in. Not listed.
-    if (kind === 'ends') return undefined;
     const ref = sketch.external[flagged.id] as SketchProjection;
     return { fix: 'none', why: flaggedNotCut(flagged.id, ref.sketch, ref.entity) };
   }
@@ -240,6 +247,21 @@ export function contactFix(a: SketchCurve, b: SketchCurve, kind: ContactKind | '
       return unreachable(kind, 'contact');
   }
 }
+
+// A spline is never the curve a tool cuts (D70): `curveProblem` refuses it and it has no carrier.
+const neverCut = (id: Id): never => {
+  throw new Error(`the spline "${id}" is never cut`);
+};
+// The texts of a spline (D70): named to a tool, met by a curve, crossing itself.
+export const SPLINE_NOT_CUT = (spline: Id): string => `"${spline}" is a spline; a spline is not trimmed, split or extended (no point can be held on it); move its control points, or remove it and add it again with other ones`;
+export const SPLINE_CONTACT_WHY = (spline: Id): string => `"${spline}" is a spline, which is not cut and holds no point: move the other curve or the control points so that the two meet only at a common end, or trim the other curve back to another curve`;
+export const SPLINE_SELF_WHY = (spline: Id): string => `the spline "${spline}" crosses or touches itself: move its control points`;
+// An extension that would cross a spline before it stops, in a profile that was valid, and one that
+// meets nothing but a spline (the review of 6d, F2).
+export const SPLINE_IN_EXTENSION = (curve: Id, spline: Id, at: Vec2): string =>
+  `the extension of "${curve}" would meet the spline "${spline}" at ${fmt(at)}, which is not cut and holds no point: the profile would become invalid; move the control points of "${spline}", or extend "${curve}" to a curve it meets before the spline`;
+export const SPLINE_STOPS_NOTHING = (curve: Id, end: Id, spline: Id, at: Vec2): string =>
+  `the extension of "${curve}" beyond "${end}" meets no curve it can stop at, only the spline "${spline}" at ${fmt(at)}: a spline is not cut and holds no point, so an extension does not stop at it; move its control points, or draw a curve to the place`;
 
 // The reason of a contact with a projection from a sketch that forms regions (D69).
 export const flaggedNotCut = (entry: Id, source: Id, entity: Id): string =>
@@ -543,9 +565,17 @@ function boxesApart(curves: ReadonlyMap<Id, SketchCurve>, geometry: SketchGeomet
   const boxes = new Map<Id, [number, number, number, number] | undefined>();
   const boxOf = (id: Id): [number, number, number, number] | undefined => {
     if (boxes.has(id)) return boxes.get(id);
-    const carrier = carrierIn(curves.get(id), geometry);
+    const curve = curves.get(id);
+    const carrier = carrierIn(curve, geometry);
     let box: [number, number, number, number] | undefined;
-    if (carrier) {
+    if (curve?.shape.type === 'spline') {
+      // a spline has no carrier; the box of its control points holds its polyline (D70)
+      const control = curve.shape.points.map((p) => geometry.points[p]);
+      if (control.every((p) => p !== undefined)) {
+        box = [Infinity, Infinity, -Infinity, -Infinity];
+        for (const p of control) box = [Math.min(box[0], p.x), Math.min(box[1], p.y), Math.max(box[2], p.x), Math.max(box[3], p.y)];
+      }
+    } else if (carrier) {
       switch (carrier.type) {
         case 'line':
           box = [Math.min(carrier.a[0], carrier.b[0]), Math.min(carrier.a[1], carrier.b[1]), Math.max(carrier.a[0], carrier.b[0]), Math.max(carrier.a[1], carrier.b[1])];
@@ -586,7 +616,7 @@ function worldOf(doc: Document, sketch: SketchFeature, result: SketchResult, bas
       let found = cache.get(key);
       if (!found) {
         const [ca, cb] = [curves.get(first), curves.get(second)];
-        found = (ca && cb && !apart(first, second) ? curveContacts(ca, cb, joins, geometry) : undefined) ?? NO_CONTACT;
+        found = (ca && cb && !apart(first, second) ? curveContacts(ca, cb, joins, geometry, doc.settings.chordTolerance) : undefined) ?? NO_CONTACT;
         cache.set(key, found);
       }
       // the ends are given as those of the first curve asked, then of the second
@@ -624,6 +654,7 @@ const position = (world: World, id: Id): Vec2 | undefined => (has(world.geometry
 function roundShape(shape: CurveShape): boolean {
   switch (shape.type) {
     case 'line':
+    case 'spline':
       return false;
     case 'arc':
     case 'circle':
@@ -636,6 +667,7 @@ function roundShape(shape: CurveShape): boolean {
 function centreOf(curve: Curve): Id[] {
   switch (curve.type) {
     case 'line':
+    case 'spline':
       return [];
     case 'arc':
     case 'circle':
@@ -675,26 +707,32 @@ function carrierIn(curve: SketchCurve | undefined, geometry: SketchGeometry): Ca
       const r = dist2(c, s);
       return r > tol && dist2(s, e) > tol ? { type: 'arc', c, r, from, sweep } : undefined;
     }
+    case 'spline':
+      return undefined; // a spline has no carrier: it is not cut (D70)
     default:
       return unreachable(shape, 'curve');
   }
 }
 const carrierOf = (world: World, id: Id): Carrier | undefined => carrierIn(curveOf(world, id), world.geometry);
 
-// The points at the ends of a curve (a line `a`, `b`; an arc `start`, `end`; none for a circle).
+// The points at the ends of a curve (a line `a`, `b`; an arc `start`, `end`; a spline its first and
+// last control point; none for a circle).
 function endsOf(curve: Curve | SketchCurve['shape']): Id[] {
   switch (curve.type) {
     case 'line':
       return [curve.a, curve.b];
     case 'arc':
       return [curve.start, curve.end];
+    case 'spline':
+      return [curve.points[0], curve.points[curve.points.length - 1]];
     case 'circle':
       return [];
     default:
       return unreachable(curve, 'curve');
   }
 }
-// The names of the ends of a curve of a kind (a circle has none).
+// The names of the ends of a curve of a kind (a circle has none, and a spline none: its control
+// points are a list, which `setCurvePoint` does not re-point).
 function endNames(curve: Curve): readonly ('a' | 'b' | 'start' | 'end')[] {
   switch (curve.type) {
     case 'line':
@@ -702,6 +740,7 @@ function endNames(curve: Curve): readonly ('a' | 'b' | 'start' | 'end')[] {
     case 'arc':
       return ['start', 'end'];
     case 'circle':
+    case 'spline':
       return [];
     default:
       return unreachable(curve, 'curve');
@@ -1298,7 +1337,9 @@ function makePlan(world: World, spec: CutSpec, newId: NewId): Plan | string {
     const clusters = new Map<Id, Id[]>();
     for (const p of parent.keys()) clusters.set(find(p), [...(clusters.get(find(p)) ?? []), p]);
     const curvesUsing = (p: Id): Id[] => Object.keys(sketch.curves).filter((id) => curvePoints(sketch.curves[id]).includes(p));
-    const orphan = (p: Id): boolean => p !== ORIGIN && curvesUsing(p).length === 1 && !Object.values(sketch.constraints).some((c) => constraintOperands(c).includes(p)) && !outside.has(p);
+    // a point named by nothing but its curve, which can be re-pointed: never a spline's (D70), which
+    // `setCurvePoint` does not take; the other curve is re-pointed onto it, or a coincident joins them
+    const orphan = (p: Id): boolean => p !== ORIGIN && curvesUsing(p).length === 1 && sketch.curves[curvesUsing(p)[0]].type !== 'spline' && !Object.values(sketch.constraints).some((c) => constraintOperands(c).includes(p)) && !outside.has(p);
     for (const members of clusters.values()) {
       const sorted = [...new Set(members)].sort();
       const named = sorted.filter((p) => !orphan(p));
@@ -1355,6 +1396,8 @@ function makePlan(world: World, spec: CutSpec, newId: NewId): Plan | string {
           chain = atStart ? [newEnd as Id, ...nodes.map((n) => n.point), ends[1]] : [ends[0], ...nodes.map((n) => n.point), newEnd as Id];
         } else chain = [ends[0], ...nodes.map((n) => n.point), ends[1]];
         break;
+      case 'spline':
+        return neverCut(X); // it has no carrier, so it is skipped above
       default:
         return unreachable(curve, 'curve');
     }
@@ -1475,6 +1518,9 @@ function makePlan(world: World, spec: CutSpec, newId: NewId): Plan | string {
         for (const group of groups) if (!group.some((piece) => piece.id === cut.id)) model.constrain({ type: 'equalRadius', a: group[0].id, b: cut.id });
         break;
       }
+      case 'spline':
+        neverCut(cut.id);
+        break;
       default:
         unreachable(keeper, 'curve');
     }
@@ -1814,6 +1860,7 @@ const fmt = (p: Vec2): string => `[${p.map((v) => +v.toFixed(6)).join(', ')}]`;
 function curveProblem(world: World, X: Id, withId?: Id): string | undefined {
   const curve = curveOf(world, X);
   if (!curve) return `the sketch has no curve "${X}"`;
+  if (curve.shape.type === 'spline' && curve.source === 'own') return SPLINE_NOT_CUT(X);
   if (!world.predicates.mayCut(curve)) {
     if (curve.source === 'own') return `the circle "${X}" is an operand of a generated profile, which takes a whole circle; it is not trimmed, extended or split`;
     const copy = curve.source === 'derived' ? copyParts(world.sketch, X) : undefined;
@@ -1827,6 +1874,7 @@ function curveProblem(world: World, X: Id, withId?: Id): string | undefined {
     if (!other) return `with: the sketch has no curve "${withId}"`;
     const copy = other.source === 'derived' ? copyParts(world.sketch, withId) : undefined;
     if (copy) return `with: ${copyInTool(withId, copy.entry, copy.source)} (no point can be held on a copy in its own sketch)`;
+    if (other.shape.type === 'spline') return `with: ${SPLINE_NOT_CUT(withId)}`;
   }
   return undefined;
 }
@@ -1839,14 +1887,32 @@ const repairOf = (world: World, given: Repair | undefined): boolean => (given ??
 function nearestOwn(world: World, at: Vec2): { id: Id; distance: number } | undefined {
   let best: { id: Id; distance: number; regions: boolean } | undefined;
   for (const id of Object.keys(world.sketch.curves).sort()) {
-    const carrier = carrierOf(world, id);
-    if (!carrier) continue;
-    const distance = distanceTo(carrier, at);
+    const distance = placeDistance(world, id, at);
+    if (distance === undefined) continue;
     const regions = formsRegions(world, id);
     if (!best || distance < best.distance - tol || (Math.abs(distance - best.distance) <= tol && regions && !best.regions)) best = { id, distance, regions };
   }
   return best && { id: best.id, distance: best.distance };
 }
+
+// The distance of a place from a curve: from its carrier, or for a spline (own or a copy, D70) from
+// its polyline at the chord tolerance of the document; undefined without a position.
+function placeDistance(world: World, id: Id, at: Vec2): number | undefined {
+  const carrier = carrierOf(world, id);
+  if (carrier) return distanceTo(carrier, at);
+  const curve = curveOf(world, id);
+  const pts = curve ? splinePolylineOf(curve, world.joins, world.geometry, world.doc.settings.chordTolerance) : undefined;
+  if (!pts) return undefined;
+  let best = Infinity;
+  for (let k = 0; k + 1 < pts.length; k++) best = Math.min(best, segmentDistance(at, pts[k], pts[k + 1]));
+  return best;
+}
+const segmentDistance = (p: Vec2, a: Vec2, b: Vec2): number => {
+  const d: Vec2 = [b[0] - a[0], b[1] - a[1]];
+  const length = d[0] * d[0] + d[1] * d[1];
+  const t = length > 0 ? Math.min(1, Math.max(0, ((p[0] - a[0]) * d[0] + (p[1] - a[1]) * d[1]) / length)) : 0;
+  return dist2(p, [a[0] + d[0] * t, a[1] + d[1] * t]);
+};
 
 // The curve a trim means: `curve`, or the own curve nearest to `at`; a refusal as text.
 function trimCurve(world: World, input: TrimInput): Id | string {
@@ -1858,8 +1924,7 @@ function trimCurve(world: World, input: TrimInput): Id | string {
     let nearest: { id: Id; curve: SketchCurve; distance: number } | undefined;
     for (const [id, curve] of world.curves) {
       if (curve.source === 'own' || isOriginAxis(id)) continue;
-      const carrier = carrierOf(world, id);
-      const distance = carrier ? distanceTo(carrier, input.at) : Infinity;
+      const distance = placeDistance(world, id, input.at) ?? Infinity;
       if (distance < own.distance - tol && (!nearest || distance < nearest.distance)) nearest = { id, curve, distance };
     }
     if (nearest) {
@@ -1977,7 +2042,7 @@ function reachOf(world: World, X: Id, end: ExtendInput['end'], withId: Id | unde
   const contactsWith = (C: Id): { at: Vec2; d: number; touch: boolean }[] => {
     const curveC = curveOf(world, C);
     if (!curveC) return [];
-    return (curveContacts(stretch, curveC, joins, geometry)?.points ?? []).flatMap((contact) => {
+    return (curveContacts(stretch, curveC, joins, geometry, world.doc.settings.chordTolerance)?.points ?? []).flatMap((contact) => {
       const p = contact.at;
       const d = along(p);
       if (d <= tol || dist2(p, e) <= tol) return [];
@@ -2007,11 +2072,14 @@ function reachOf(world: World, X: Id, end: ExtendInput['end'], withId: Id | unde
         const copy = C === X ? undefined : copyParts(world.sketch, C);
         return copy ? contactsWith(C).map((contact) => ({ ...contact, C, copy })) : [];
       });
-      copies.sort((p, q) => p.d - q.d);
-      if (copies.length > 0) {
-        const { C, copy, at } = copies[0];
+      // nor is a spline (D70)
+      const splines = [...world.curves.keys()].flatMap((C) => (C !== X && world.sketch.curves[C]?.type === 'spline' ? contactsWith(C).map((contact) => ({ ...contact, C, copy: undefined })) : []));
+      const first = [...copies, ...splines].sort((p, q) => p.d - q.d)[0];
+      if (first?.copy) {
+        const { C, copy, at } = first;
         return `the extension of "${X}" beyond "${E}" meets no curve it can stop at, only "${C}" at ${fmt(at)}: ${copyInTool(C, copy.entry, copy.source)}; an extension stops only at a curve that is cut there or holds its new end, and a copy does neither`;
       }
+      if (first) return SPLINE_STOPS_NOTHING(X, E, first.C, first.at);
     }
     if (carrier.type === 'arc') return `the extension of the arc "${X}" comes round to the arc itself before it meets ${withId ? `"${withId}"` : 'another curve'}`;
     return `the extension of "${X}" beyond "${E}" meets ${withId ? `no "${withId}"` : 'nothing'}`;
@@ -2076,6 +2144,7 @@ function extendSpec(world: World, input: ExtendInput, repairOfSketch = true): Cu
       const { with: C, at } = reach.stuck[0];
       const copy = copyParts(world.sketch, C);
       if (copy) return `the extension of "${X}" would meet "${C}" at ${fmt(at)}, where no cut can be made: the profile would become invalid; ${copyInTool(C, copy.entry, copy.source)}`;
+      if (world.sketch.curves[C]?.type === 'spline') return SPLINE_IN_EXTENSION(X, C, at);
       return `the extension of "${X}" would meet "${C}" at ${fmt(at)}, a curve that forms regions and is not own, which no tool cuts: the profile would become invalid; draw an own curve over it or change its source`;
     }
     if (reach.passed.length > 0) return `the extension of "${X}" would pass ${fmt(reach.passed[0].at)}, where it only touches "${reach.passed[0].with}", which no tool can cut: the profile would become invalid`;
@@ -2249,9 +2318,9 @@ function regionAsItWas(before: SketchWorld, predicates: CurvePredicates, region:
   // close a loop through R's vertices and divide R
   const vertices = new Set(own.flatMap((id) => endsOf((curve(id) as SketchCurve).shape).map((p) => before.joins(p))));
   const attached = (c: SketchCurve): boolean => endsOf(c.shape).some((p) => vertices.has(before.joins(p)));
-  const others = [...before.curves.values()].filter((c) => predicates.formsRegions(c) && !own.includes(c.id) && !attached(c) && own.every((id) => !curvesTouch(curve(id) as SketchCurve, c, before.joins, before.geometry)));
+  const others = [...before.curves.values()].filter((c) => predicates.formsRegions(c) && !own.includes(c.id) && !attached(c) && own.every((id) => !curvesTouch(curve(id) as SketchCurve, c, before.joins, before.geometry, chord)));
   // 2. the rest cut where they meet, in memory
-  const cut = cutInMemory(before, others.map((c) => c.id));
+  const cut = cutInMemory(before, others.map((c) => c.id), chord);
   const fromOthers = (id: Id): boolean => others.some((o) => id === o.id || id.startsWith(`${o.id}\u0000`));
   let pieces = [...cut.curves.values()].filter((c) => fromOthers(c.id));
   // 3. pieces with a free end go, again until none has one
@@ -2295,6 +2364,8 @@ function removedPiece(world: World, plan: Plan, spec: CutSpec, afterSketch: Sket
       if (trim.whole) return { curve: { type: 'circle', center }, points };
       return { curve: { type: 'arc', center, start: from, end: to }, points };
     }
+    case 'spline':
+      return neverCut(X);
     default:
       return unreachable(original, 'curve');
   }
@@ -2390,9 +2461,9 @@ function patchFeatures(world: World, plan: Plan, spec: CutSpec, changes: CurveCh
     const withPiece = sketchWorld(toolBase(memory, world.result, { points: { ...newPoints, ...put.points }, radii }));
     // a removed piece that lies on a curve that stays (a duplicate) bounds nothing the other does not
     const piece = withPiece.curves.get(id) as SketchCurve;
-    const duplicate = regionCurves(after).some((c) => c.regions && curveContacts(piece, c, withPiece.joins, withPiece.geometry)?.lying === true);
+    const duplicate = regionCurves(after).some((c) => c.regions && curveContacts(piece, c, withPiece.joins, withPiece.geometry, chord)?.lying === true);
     const base = duplicate ? after : withPiece;
-    const cut = cutInMemory(base, [...base.curves.values()].filter((c) => c.regions).map((c) => c.id));
+    const cut = cutInMemory(base, [...base.curves.values()].filter((c) => c.regions).map((c) => c.id), chord);
     return (faces = profileOf(regionCurves(cut), cut.joins, cut.geometry, chord));
   };
   const loopsExact = (): boolean => (facesOf().regions.every(exactRegion) && profileAfter.regions.every(exactRegion));
@@ -3058,18 +3129,45 @@ export function contactPlaces(world: Pick<SketchWorld, 'curves' | 'geometry' | '
   const curves = [...world.curves.values()].filter((c) => c.regions).sort((p, q) => (p.id < q.id ? -1 : p.id > q.id ? 1 : 0));
   const places: ContactPlaces['places'] = [];
   const lying: [Id, Id][] = [];
-  const degenerate = curves.filter((c) => !carrierIn(c, world.geometry)).map((c) => c.id);
+  // a spline (D70) has no carrier: its polyline at the chord tolerance, which has no length when it
+  // is degenerate, and its contacts are ordered along it
+  const polylines = new Map<Id, Vec2[] | undefined>(curves.filter((c) => c.shape.type === 'spline').map((c) => [c.id, splinePolylineOf(c, world.joins, world.geometry, chord)]));
+  const degenerate = curves.filter((c) => (c.shape.type === 'spline' ? !polylines.get(c.id) : !carrierIn(c, world.geometry))).map((c) => c.id);
   const alive = curves.filter((c) => !degenerate.includes(c.id));
   const apart = boxesApart(new Map(alive.map((c) => [c.id, c])), world.geometry);
+  // a place along a curve, for the order of its contacts
+  const alongOf = (curve: SketchCurve): ((p: Vec2) => number) => {
+    const pts = polylines.get(curve.id);
+    if (!pts) {
+      const carrier = carrierIn(curve, world.geometry) as Carrier;
+      return (p) => paramOf(carrier, p);
+    }
+    return (p) => {
+      let [best, at, run] = [Infinity, 0, 0];
+      for (let k = 0; k + 1 < pts.length; k++) {
+        const length = dist2(pts[k], pts[k + 1]);
+        const t = length > 0 ? Math.min(1, Math.max(0, ((p[0] - pts[k][0]) * (pts[k + 1][0] - pts[k][0]) + (p[1] - pts[k][1]) * (pts[k + 1][1] - pts[k][1])) / (length * length))) : 0;
+        const d = segmentDistance(p, pts[k], pts[k + 1]);
+        if (d < best) [best, at] = [d, run + t * length];
+        run += length;
+      }
+      return at;
+    };
+  };
   for (let i = 0; i < alive.length; i++) {
-    const carrier = carrierIn(alive[i], world.geometry) as Carrier;
+    const along = alongOf(alive[i]);
+    // a spline that crosses or touches itself: one place, its two curves the spline
+    const own = polylines.get(alive[i].id);
+    const ends = endsOf(alive[i].shape);
+    const self = own && splineSelfContact(own, world.joins(ends[0]) === world.joins(ends[1]));
+    if (self) places.push({ at: self, kind: 'crossing', curves: [alive[i].id, alive[i].id] });
     for (let j = i + 1; j < alive.length; j++) {
       const [a, b] = [alive[i], alive[j]];
       if (apart(a.id, b.id)) continue;
-      const found = curveContacts(a, b, world.joins, world.geometry);
+      const found = curveContacts(a, b, world.joins, world.geometry, chord);
       if (!found) continue;
       if (found.lying) lying.push([a.id, b.id]);
-      const sorted = [...found.points].sort((p, q) => paramOf(carrier, p.at) - paramOf(carrier, q.at));
+      const sorted = [...found.points].sort((p, q) => along(p.at) - along(q.at));
       for (const contact of sorted) places.push({ at: contact.at, kind: contact.kind, curves: [a.id, b.id] });
       const [ea, eb] = [endsOf(a.shape), endsOf(b.shape)];
       for (const [x] of found.ends) {

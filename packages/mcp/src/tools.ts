@@ -29,6 +29,9 @@ import {
   INTERFERENCE_THRESHOLD,
   SKETCH_TOOLS,
   type SketchFeature,
+  type Point2,
+  splineBox,
+  splineThrough,
   type SketchToolName,
   type BodyPropertiesResult,
   QueryFailure,
@@ -630,6 +633,18 @@ export function openEndAdvice(feature: SketchFeature, solved: SketchResult | und
   return `${open.count} ${open.count === 1 ? 'end' : 'ends'} of ${whose} ${open.count === 1 ? 'is' : 'are'} open (\`openEnds\` of the result${listed}): ${where}`;
 }
 
+// Where a spline runs (D70, the owner's answers 26 and 34): `through`, points the curve passes from
+// its start to its end (the joints of its Bezier pieces and the middle of each), and `box`, the box
+// of the curve, at the positions `at` of the control points shows (the solved ones, else the
+// document's, so also in an unsolved sketch), rounded as positions are; left out while a control
+// point has no position.
+function splineDetail(points: readonly Id[], at: (point: Id) => Point2 | undefined): { through?: Json; box?: Json } {
+  const control = points.map((point) => (point === 'origin' ? { x: 0, y: 0 } : at(point)));
+  if (control.some((p) => p === undefined)) return {};
+  const xy = (control as Point2[]).map((p): [number, number] => [p.x, p.y]);
+  return { through: splineThrough(xy).map((p) => [round(p[0]), round(p[1])]), box: splineBox(xy).map(round) };
+}
+
 function sketchDetail(engine: Engine, id: string): unknown {
   const feature = sketchOf(engine, id);
   const result = engine.getState(id).evaluation.features[id];
@@ -677,6 +692,7 @@ function sketchDetail(engine: Engine, id: string): unknown {
       id: curve,
       ...(shape as unknown as { [key: string]: Json }),
       ...(shape.type === 'circle' ? { radius: round(solved?.radii[curve] ?? feature.radii[curve]), ...(freedom.has(`radius:${curve}`) ? { radiusFree: true } : {}) } : {}),
+      ...(shape.type === 'spline' ? splineDetail(shape.points, (point) => solved?.points[point] ?? (Object.prototype.hasOwnProperty.call(feature.points, point) ? feature.points[point] : undefined)) : {}),
     })),
     constraints: Object.entries(feature.constraints).map(([constraint, c]) => ({
       id: constraint,

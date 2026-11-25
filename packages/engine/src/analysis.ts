@@ -65,6 +65,12 @@ type Held = (point: Id, round: Id) => boolean;
 type Variant<C, T> = C extends { type: infer U } ? (T extends U ? C : never) : never;
 type Of<T extends Constraint['type']> = Variant<Constraint, T>;
 
+// A spline is never an operand of a constraint (D70): the catalog refuses it, so a validated
+// document never reaches the case.
+const neverAnOperand = (what: string): never => {
+  throw new Error(`a spline is never an operand of ${what}`);
+};
+
 // Rovnice každé vazby: v řešení jsou nulové. `g0` je vyřešený stav; rozhoduje se podle něj to,
 // co rovnice sama neurčuje (na které straně přímky bod leží, vnější nebo vnitřní dotyk kružnic),
 // a berou se z něj délky, kterými se dělí rovnice s nulovou pravou stranou: dělitel je pak
@@ -83,6 +89,8 @@ const EQUATIONS: { [T in Constraint['type']]: (c: Of<T>, g0: Geometry, held: Hel
       case 'circle':
       case 'arc':
         return (g) => [len(sub(g.point(c.point), centerOf(g, c.curve))) - g.radius(c.curve)];
+      case 'spline':
+        return neverAnOperand('pointOnCurve');
       default:
         return unreachable(curve, 'curve');
     }
@@ -128,6 +136,8 @@ const EQUATIONS: { [T in Constraint['type']]: (c: Of<T>, g0: Geometry, held: Hel
         case 'line':
         case 'circle':
           return [];
+        case 'spline':
+          return neverAnOperand('tangent');
         default:
           return unreachable(curve, 'curve');
       }
@@ -154,6 +164,8 @@ const EQUATIONS: { [T in Constraint['type']]: (c: Of<T>, g0: Geometry, held: Hel
       case 'circle':
       case 'arc':
         break;
+      case 'spline':
+        return neverAnOperand('tangent');
       default:
         return unreachable(firstCurve, 'curve');
     }
@@ -344,6 +356,8 @@ export class SketchAnalysis {
             const index = radiusAt.get(id);
             return index === undefined ? input.radii[id] : values[index] + (index === moved ? shift : 0);
           }
+          case 'spline':
+            return neverAnOperand('a radius');
           default:
             return unreachable(curve, 'curve');
         }
@@ -378,6 +392,7 @@ export class SketchAnalysis {
         if (curve) {
           switch (curve.type) {
             case 'line':
+            case 'spline': // no radius (a spline is never an operand; its points are)
               break;
             case 'circle':
             case 'arc':

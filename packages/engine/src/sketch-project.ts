@@ -7,7 +7,7 @@ import { entryOrder, occupies } from './references/derive';
 import { entityIndex, kindOf } from './references/index';
 import { type ProjectedKind, degreesText, projectFromSketch, sketchMap } from './references/projection';
 import { sketchWorld, toolBase } from './references/world';
-import { type SketchCurve, type SketchGeometry, solvedCurves } from './sketch';
+import { type SketchCurve, type SketchGeometry, curveEnds, solvedCurves } from './sketch';
 import { renamePatches } from './sketch-cut';
 import { curvePoints } from './sketch-content';
 import type { NewId, SketchToolCall, SketchToolResult } from './sketch-tools';
@@ -26,6 +26,7 @@ export const PROJECT_SKETCH_IDS = {
   sources: 'the entity of the source sketch each entry projects',
   skipped: 'entities of the source this sketch projects already; nothing was made for them (with `as: "own"`, see `taken` for an entry with the flag `regions`)',
   doubled: 'with `as: "own"`: curves of the source at the place of a curve before them in the list, or of an own curve that forms regions in this sketch already (one own curve is drawn per place); nothing was made for them',
+  splines: 'splines of the source that were left out, in the order of the source: a spline is not projected yet. Project its control points as points by naming them in `entities`; with `as: "own"` the own outline is open where each of them was',
   taken: 'with `as: "own"` and `entities`: the entries of this sketch that projected a curve named in `entities` with the flag `regions` already (they are not cut); their flag is switched off and an own curve is drawn over each and held on it, so the regions along it and its side face are named by the own curve',
   curves: 'with `as: "own"`: the own curves, `curves[i]` over the i-th entry that is a curve',
   points: 'with `as: "own"`: the own points (the ends, one per place, then the centres)',
@@ -34,6 +35,8 @@ export const PROJECT_SKETCH_IDS = {
   patched: 'with `taken`: the features that named a region along a taken entry or a side face of it, renamed to its own curve in the same batch (the regions of an extrusion or a revolve, the edges of a chamfer or a fillet, the plane of a sketch and the edges it projects, the base or midplane of a plane)',
 } as const;
 
+// A spline named in `entities` (D70, the owner's answer 22).
+export const SPLINE_IN_ENTITIES = (sketch: Id, spline: Id): string => `entities: "${spline}" of ${sketch} is a spline, and a spline is not projected yet: name its control points instead`;
 export const TILTED = (sketch: Id, degrees: number): string => `the plane of ${sketch} is at ${degreesText(degrees)} to this sketch; only a sketch on a parallel plane is projected`;
 export const LYING = (a: Id, b: Id, sketch: Id): string => `${a} and ${b} of ${sketch} lie on each other: projected with regions both would bound the same regions; name the entities, or use as: "source"`;
 
@@ -58,8 +61,18 @@ interface Item {
 // The source's entities the whole-sketch form takes, in its order: the own curves that are not
 // construction curves; the curves of the entries in their order (of a reference entry every curve,
 // of a derived entry the copies that form regions); the lone points (an own point no own curve
-// names, a point entry). Nothing under `origin/`.
+// names, a point entry). Nothing under `origin/`. A spline, own or a copy, is not projected (D70):
+// it is in `splines`, in the same order, and not in `ids`; its control points are points of a
+// curve, so no lone points.
 export function wholeSketch(source: SketchFeature, curves: ReadonlyMap<Id, SketchCurve>): Id[] {
+  return wholeSketchParts(source, curves).ids;
+}
+export function wholeSketchParts(source: SketchFeature, curves: ReadonlyMap<Id, SketchCurve>): { ids: Id[]; splines: Id[] } {
+  const all = wholeCurvesAndPoints(source, curves);
+  const spline = (id: Id): boolean => curves.get(id)?.shape.type === 'spline';
+  return { ids: all.filter((id) => !spline(id)), splines: all.filter(spline) };
+}
+function wholeCurvesAndPoints(source: SketchFeature, curves: ReadonlyMap<Id, SketchCurve>): Id[] {
   const out: Id[] = [];
   for (const [id, curve] of Object.entries(source.curves)) if (!curve.construction && curves.has(id)) out.push(id);
   const index = entityIndex(source);
@@ -123,20 +136,38 @@ export function projectSketch(context: SketchToolCall, input: ProjectSketchInput
   const curves = new Map([...solved.curves].filter(([id]) => !underOrigin(id)));
   const state = { frame: sourceResult.plane, geometry: solved.geometry, curves };
 
-  // what is projected, in order
+  // what is projected, in order; a spline is not (D70)
   let ids: Id[];
+  let splines: Id[] = [];
   if (input.entities !== undefined) {
     ids = [...new Set(input.entities)];
     for (const id of ids) {
       if (underOrigin(id)) return failed(`${id} of ${from} is not projected: this sketch has its own axes origin/x and origin/y; project the origin of ${from} for a point at its origin`);
       if (!curves.has(id) && !has(solved.geometry.points, id) && id !== ORIGIN) return failed(`${from} has no point or curve "${id}"`);
+      if (curves.get(id)?.shape.type === 'spline') return failed(SPLINE_IN_ENTITIES(from, id));
     }
-  } else ids = wholeSketch(source, curves);
-  const items: Item[] = ids.map((id) => {
+  } else ({ ids, splines } = wholeSketchParts(source, curves));
+  const items: Item[] = [];
+  for (const id of ids) {
     const curve = curves.get(id);
-    return curve ? { id, kind: curve.shape.type, regions: curve.regions, curve } : { id, kind: 'point', regions: false };
-  });
-  if (items.length === 0) return failed(`${from} has nothing to project`);
+    if (!curve) {
+      items.push({ id, kind: 'point', regions: false });
+      continue;
+    }
+    const shape = curve.shape;
+    switch (shape.type) {
+      case 'line':
+      case 'circle':
+      case 'arc':
+        items.push({ id, kind: shape.type, regions: curve.regions, curve });
+        break;
+      case 'spline':
+        return failed(SPLINE_IN_ENTITIES(from, id)); // left out above
+      default:
+        return unreachable(shape, 'curve');
+    }
+  }
+  if (items.length === 0) return failed(splines.length > 0 ? `${from} has nothing to project but splines (${splines.join(', ')}), and a spline is not projected yet: name its control points in \`entities\`` : `${from} has nothing to project`);
 
   // the role of the curves here
   const role = (item: Item): boolean => item.kind !== 'point' && (as === 'source' ? item.regions : as === 'regions');
@@ -199,7 +230,7 @@ export function projectSketch(context: SketchToolCall, input: ProjectSketchInput
 
   const sketch = target.id;
   const commands: Command[] = [];
-  const out = { entries: [] as Id[], sources: [] as Id[], skipped, doubled: items.filter((item) => doubled.has(item.id)).map((item) => item.id), taken: [] as Id[], curves: [] as Id[], points: [] as Id[], helpers: [] as Id[], constraints: [] as Id[], patched: [] as Id[] };
+  const out = { entries: [] as Id[], sources: [] as Id[], skipped, doubled: items.filter((item) => doubled.has(item.id)).map((item) => item.id), splines, taken: [] as Id[], curves: [] as Id[], points: [] as Id[], helpers: [] as Id[], constraints: [] as Id[], patched: [] as Id[] };
   const entryOf = new Map<Id, Id>();
   for (const item of made) {
     const ref: SketchProjection = { type: 'sketch', sketch: from, entity: item.id, kind: item.kind, regions: as === 'own' ? false : role(item) };
@@ -233,8 +264,9 @@ export function projectSketch(context: SketchToolCall, input: ProjectSketchInput
   return { ok: true, commands, ids: out };
 }
 
-// The ends of a shape: a line's `a` and `b`, an arc's `start` and `end`; a circle has none.
-const endsOf = (shape: CurveShape): Id[] => (shape.type === 'line' ? [shape.a, shape.b] : shape.type === 'arc' ? [shape.start, shape.end] : []);
+// The ends of a shape: a line's `a` and `b`, an arc's `start` and `end`, a spline's first and last
+// control point (D70); a circle has none.
+const endsOf = (shape: CurveShape): Id[] => curveEnds(shape) ?? [];
 
 // The own vertices this sketch has where an own outline may end: for a place, the own point there
 // that ends an own curve forming regions, when the own ends there are one vertex (by the joins of

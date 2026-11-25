@@ -6,7 +6,7 @@
 import type { Constraint, Id } from './types';
 import { isOriginAxis } from './util';
 
-export type EntityKind = 'point' | 'line' | 'circle' | 'arc';
+export type EntityKind = 'point' | 'line' | 'circle' | 'arc' | 'spline';
 
 export interface OperandSpec {
   field: string; // jméno operandu ve vazbě

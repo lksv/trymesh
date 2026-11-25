@@ -133,7 +133,7 @@ export const SKETCH_TOOLS: Record<SketchToolName, SketchToolSpec> = {
       radius: 'the radius dimension',
       patched: 'the features whose region or wall named both lines and was given the arc, in the order of the timeline (empty when there are none; a feature that reads the corner only through the hole of a region needs no patch and is not here)',
       moved: 'sketches and plane features on a side face that starts at the corner: their plane moved with the start of its line (empty when there are none)',
-      shortened: 'features that read a line of the two by itself: extrusions and revolves whose wall runs along one of them, sketches that project an edge of a side face of either (empty when there are none)',
+      shortened: 'features that read a line of the two by itself: extrusions and revolves whose wall runs along one of them, sketches that project an edge of a side face of either or either line itself (empty when there are none)',
       entries: 'the entries of mirrors and patterns of the sketch the arc joined (updateExternal of the input form, expressions kept): an entry that lists both lines, or of two entries with the same transform that list one line each the first in the order of the entries; their copies get the copy of the arc, and every stored region that holds the copies of both lines with one copy number the copy of the arc (empty when there are none)',
     },
   },

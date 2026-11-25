@@ -4,7 +4,7 @@
 // a projection and of a copy, and updateExternal over a frozen projection. The pure functions are
 // tested in packages/engine/test/projection.test.ts; scenario 15's part is in scenario15.test.ts.
 import { describe, expect, it } from 'vitest';
-import type { Command, Engine, EngineState, Id, SketchFeature, SketchProjection, SketchResult } from '@trymesh/engine';
+import { type Command, type Engine, type EngineState, type Id, type SketchFeature, type SketchProjection, type SketchResult, type SketchToolInputs, freshIds, repairsByDefault, sketchTool } from '@trymesh/engine';
 import { point, standInBoard } from './board-kit';
 import { XY, addExtrude, addSketch, cap, constrain, dimension, newEngine, onFace, rectLoop, rectangle, run, side, status, volume } from './kit';
 
@@ -284,3 +284,110 @@ describe('when the source changes (D69)', () => {
   });
 });
 
+
+// A sketch tool run in a sketch of the engine's state, its batch executed; or the refusal.
+type Made = { ids: Record<string, Id[]>; state: EngineState };
+function tool<K extends keyof SketchToolInputs>(engine: Engine, sketch: Id, name: K, input: SketchToolInputs[K], prefix: string): Made | string {
+  const state = engine.getState();
+  const made = sketchTool(name, { sketch: sketchOf(state, sketch), result: resultOf(state, sketch), parameters: state.evaluation.parameters, document: state.document }, input, freshIds(state.document, prefix));
+  return made.ok ? { ids: made.ids, state: run(engine, { type: 'batch', commands: made.commands }) } : made.message;
+}
+const made = (answer: Made | string): Made => {
+  if (typeof answer === 'string') throw new Error(answer);
+  return answer;
+};
+
+describe('a projection at the plug-in points of 6e (D69)', () => {
+  // `src` on XY: a line `l` from (0, 0) to (20, 0) crossed by a line `x` at x = 15, a circle `k`
+  // crossed by `x` too; `dst` projects `l`, `k`, and the point `e` (the end of `l`) as a point.
+  function crossed(engine: Engine, flag = false): EngineState {
+    run(
+      engine,
+      addSketch('src', XY),
+      point('src', 'p1', 0, 0),
+      point('src', 'e', 20, 0),
+      point('src', 'x1', 15, -5),
+      point('src', 'x2', 15, 30),
+      point('src', 'kc', 15, 20),
+      line('src', 'l', 'p1', 'e'),
+      line('src', 'x', 'x1', 'x2'),
+      { type: 'addCurve', sketch: 'src', id: 'k', curve: { type: 'circle', center: 'kc' }, radius: 4 },
+      ...['p1', 'e', 'x1', 'x2', 'kc'].map((p) => fixed('src', `f${p}`, p, ...(({ p1: [0, 0], e: [20, 0], x1: [15, -5], x2: [15, 30], kc: [15, 20] }) as Record<string, [number, number]>)[p])),
+    );
+    return run(engine, plane('dstPl', 3), addSketch('dst', onPlane('dstPl')), project('dst', 'pl', 'src', 'l', 'line', flag), project('dst', 'pk', 'src', 'k', 'circle'), project('dst', 'pe', 'src', 'e', 'point'));
+  }
+
+  it('readersOf: a sketch that projects a shortened line is in shortened; one that projects a removed curve or a circle turned into an arc is in broken; a projected end stays', () => {
+    let engine = newEngine();
+    crossed(engine);
+    // the end of `l` beyond `x` goes: `l` is shortened, its end `e` stays (dst names it), held on the line
+    let answer = made(tool(engine, 'src', 'trim', { curve: 'l', at: [18, 0], repair: 'off' }, 't'));
+    expect(answer.ids.shortened).toEqual(['dst']);
+    expect(answer.ids.broken).toEqual([]);
+    expect(sketchOf(answer.state, 'src').points.e).toBeDefined();
+    expect(status(answer.state).dst).toBe('ok');
+    near(at(answer.state, 'dst', 'pl/b'), [15, 0]);
+    near(at(answer.state, 'dst', 'pe'), [20, 0]);
+    // the circle trimmed into an arc under its ID
+    engine = newEngine();
+    crossed(engine);
+    answer = made(tool(engine, 'src', 'trim', { curve: 'k', at: [19, 20], repair: 'off' }, 't'));
+    expect(answer.ids.broken).toEqual(['dst']);
+    expect(warningsOf(answer.state, 'dst')[0]).toContain('k of src is an arc now, not a circle');
+    // a piece removed whole: the left part of `l` after a split, trimmed away
+    engine = newEngine();
+    crossed(engine);
+    made(tool(engine, 'src', 'split', { curve: 'l' }, 's'));
+    answer = made(tool(engine, 'src', 'trim', { curve: 'l', at: [5, 0], repair: 'off' }, 't'));
+    expect(answer.ids.broken).toEqual(['dst']);
+    expect(warningsOf(answer.state, 'dst')[0]).toContain('src has no line l');
+  });
+
+  it('repairsByDefault: on when a later sketch projects a curve of the sketch with the flag', () => {
+    const engine = newEngine();
+    crossed(engine);
+    expect(repairsByDefault(engine.getState().document, 'src')).toBe(false);
+    run(engine, { type: 'updateExternal', sketch: 'dst', id: 'pl', ref: { type: 'sketch', sketch: 'src', entity: 'l', kind: 'line', regions: true } } as Command);
+    expect(repairsByDefault(engine.getState().document, 'src')).toBe(true);
+  });
+
+  it('sketchContacts: an own curve across a flagged projection is fix none with the reason', () => {
+    const engine = newEngine();
+    crossed(engine, true);
+    run(engine, point('dst', 'q1', 5, -5), point('dst', 'q2', 5, 5), line('dst', 'own', 'q1', 'q2'), fixed('dst', 'fq1', 'q1', 5, -5), fixed('dst', 'fq2', 'q2', 5, 5));
+    const outcome = engine.query('sketchContacts', { sketch: 'dst' });
+    if (!outcome.ok) throw new Error(outcome.error.message);
+    expect(outcome.result.contacts).toEqual([
+      expect.objectContaining({
+        curves: ['own', 'pl'],
+        fix: 'none',
+        why: 'pl is a projection that forms regions and is not cut: draw an own outline over it (the sketch tool projectSketch with as: "own") and take the flag off, or remove the curve that meets it',
+      }),
+    ]);
+  });
+
+  it('a trim in a sketch that also holds a flagged projected outline: the profile in memory is the step\'s, and the feature over the outline is followed, not pending', () => {
+    const engine = newEngine();
+    chain(engine);
+    const s = 'padSk';
+    const PAD = ['ya0', 'ya1', 'ya2', 'ya3', 'yl0', 'yl1', 'yl2', 'yl3'];
+    run(engine, addSketch(s, onPlane('framePl')), ...[0, 1, 2, 3].flatMap((i) => [project(s, `ya${i}`, 'frame', `fa${i}`, 'arc', true), project(s, `yl${i}`, 'frame', `fl${i}`, 'line', true)]));
+    run(engine, point(s, 'q1', -5, -5), point(s, 'q2', 5, -5), point(s, 'q3', 5, 5), point(s, 'q4', -5, 5), line(s, 'n1', 'q1', 'q2'), line(s, 'n2', 'q2', 'q3'), line(s, 'n3', 'q3', 'q4'), line(s, 'n4', 'q4', 'q1'));
+    run(engine, addExtrude('pad', s, [PAD], 1));
+    let state = run(engine, point(s, 'q5', -8, 0), point(s, 'q6', 8, 0), line(s, 'n5', 'q5', 'q6'));
+    expect(resultOf(state, s).valid).toBe(false);
+    for (const [i, place] of ([[-7, 0], [7, 0]] as const).entries()) {
+      const answer = made(tool(engine, s, 'trim', { ...(i === 0 ? { curve: 'n5' } : {}), at: [...place] }, 't'));
+      expect(answer.ids.pending).toEqual([]);
+      state = answer.state;
+    }
+    expect(resultOf(state, s).valid).toBe(true);
+    expect(status(state).pad).toBe('ok');
+    expect(regionsOf(state, s)).toContainEqual(PAD);
+    // the same for the fillet: a corner of the own pocket inside the flagged outline
+    const filleted = made(tool(engine, s, 'fillet', { corner: 'q3', radius: 1 }, 'f'));
+    expect(resultOf(filleted.state, s).valid).toBe(true);
+    expect(status(filleted.state).pad).toBe('ok');
+    expect(regionsOf(filleted.state, s)).toContainEqual(PAD);
+  });
+});

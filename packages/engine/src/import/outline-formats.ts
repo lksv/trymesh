@@ -10,10 +10,14 @@ import { checkArgs } from '../query/check';
 import type { ArgPath, Evaluation, Id, ImportedCurve, OutlineReadWith, Vec2 } from '../types';
 import { has } from '../util';
 import { dxf } from './dxf';
-import { type AnyOutlineFormat, ImportFailure, type OutlineCatalog, type OutlineFormat, type OutlineOptions, type ReadOutline } from './spec';
+import { importFormatOf } from './index';
+import { type AnyImportFormat, type AnyOutlineFormat, ImportFailure, type OutlineCatalog, type OutlineFormat, type OutlineOptions, type ReadOutline } from './spec';
 import { svg } from './svg';
 
 export const OUTLINE_FORMATS: OutlineCatalog = { dxf, svg };
+
+// The outline format of a path by its extension, as `importFormatOf` names a mesh format.
+export const outlineFormatOf = (path: string): OutlineFormat | undefined => importFormatOf(path, OUTLINE_FORMATS as unknown as Record<string, AnyImportFormat>) as OutlineFormat | undefined;
 
 // ---------------------------------------------------------------- the report
 

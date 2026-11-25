@@ -24,7 +24,7 @@ import {
   printedBodies,
   takenOver,
 } from '@trymesh/engine';
-import { type BridgeConnection, type BridgeStatus, MUTATING, changesDocument, connectBridge } from '@trymesh/mcp/bridge-client';
+import { type BridgeConnection, type BridgeStatus, MUTATING, changesDocument, connectBridge, outlineSaid } from '@trymesh/mcp/bridge-client';
 import type { ViewCapability } from '@trymesh/mcp/view-image';
 import { byId, download, h } from './dom';
 import { insideFill, keptSegments } from './draw';
@@ -224,6 +224,12 @@ export class App implements SketchHost, SceneHost {
         // the user has not dealt with.
         if (name === 'view_image') return outcome.ok && !this.note.error ? this.say('AI: a picture of the model was taken.') : undefined;
         if (!MUTATING.includes(name)) return;
+        // the import of an outline (D72) answers ok also when its command was refused, since the
+        // answer carries the report: the line reads the answer; a look at a file says nothing
+        if (name === '_outline' && outcome.ok) {
+          const said = outlineSaid(outcome.result);
+          return said ? this.say(said.text, said.error) : undefined;
+        }
         if (name === '_load') {
           if (!outcome.ok) restore?.();
           restore = undefined;

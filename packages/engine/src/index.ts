@@ -39,7 +39,8 @@ export { EXPORT_FORMATS, exportPathProblem } from './export/index';
 export { IMPORT_FORMATS, type ImportOutcome, type MeshReport, fileNameOf, fileStemOf, idFromFile, importAccept, importFormatOf, importMesh, meshNameOf } from './import/index';
 export { type AnyImportFormat, type ImportCatalog, ImportFailure, type ImportFormat, type ImportFormatSpec, type ImportFormats, type ImportOptions, type ReadTriangles } from './import/spec';
 export { STL_IMPORT_OPTIONS, UNIT_IN_MM } from './import/stl';
-export { OUTLINE_FORMATS, type OutlineOutcome, type OutlineReport, type OutlineRevision, WELD_DEFAULT, curveCounts, importOutline, outlineRevision } from './import/outline-formats';
+export { OUTLINE_FORMATS, type OutlineOutcome, type OutlineReport, type OutlineRevision, WELD_DEFAULT, curveCounts, importOutline, outlineFormatOf, outlineRevision } from './import/outline-formats';
+export { OUTLINE_LIMITS } from './imported-curve';
 export { type AnyOutlineFormat, OUTLINE_SHARED_OPTIONS, type OutlineCatalog, type OutlineFormat, type OutlineFormatSpec, type OutlineFormats, type OutlineOptions, type ReadOutline } from './import/spec';
 export { DXF_OPTIONS } from './import/dxf';
 export { SVG_OPTIONS } from './import/svg';
@@ -107,5 +108,7 @@ export { AXIS_CURVES, type SketchCurve, type SketchGeometry, type SolvedCurves, 
 export { DUPLICATE, type ProjectedKind, REGIONS_ON_A_POINT, type SketchMap, UNDER_ORIGIN, degreesText, projectionEntities, sketchMap } from './references/projection';
 export { PROJECT_SKETCH_IDS, type ProjectSketchInput } from './sketch-project';
 export type { SketchSource, SketchSourcesResult, SourceEntity } from './query/sketch-sources';
+export { ENTRY_PAGE_POSITIONS, type EntryCurvesResult, type ListedCurve } from './query/entry-curves';
+export { REGION_PAGE_IDS, type RegionRow, type SketchRegionsResult } from './query/sketch-regions';
 // The geometry of a spline (D70): its Bezier pieces, its polyline, where it runs.
 export { MAX_SPLINE_POINTS, MIN_SPLINE_POINTS, bsplineBeziers, splineBeziers, splineBox, splinePolyline, splineThrough } from './spline';

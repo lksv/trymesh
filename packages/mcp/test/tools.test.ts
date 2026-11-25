@@ -406,7 +406,7 @@ describe('sketch tools', () => {
     expect(changesDocument(engine, 'execute', { command: sketch('other'), extra: 1 })).toBe(false);
     expect(changesDocument(engine, 'sketch_tool', { sketch: 's', tool: 'polygon', input: hexagon, dryRun: true })).toBe(false);
     expect(changesDocument(engine, 'undo', { steps: 2 })).toBe(false);
-    expect(MUTATING).toEqual(['execute', 'sketch_tool', 'undo', 'redo', '_load']);
+    expect(MUTATING).toEqual(['execute', 'sketch_tool', 'undo', 'redo', '_load', '_outline']);
     expect(engine.save()).toBe(before);
   });
 

@@ -47,6 +47,20 @@ import {
   kindOf,
   solvedCurves,
   type SketchPattern,
+  type ImportedCurve,
+  type ListedCurve,
+  OUTLINE_FORMATS,
+  OUTLINE_LIMITS,
+  type OutlineFormat,
+  type OutlineReport,
+  type OutlineRevision,
+  type RegionRef,
+  type SketchOutline,
+  documentIds,
+  fileStemOf,
+  importOutline,
+  outlineFormatOf,
+  outlineRevision,
   type SketchResult,
   poseNote,
   printedBodies,
@@ -347,9 +361,12 @@ function documentsInfo(state: EngineState): { documents?: Json[] } {
 function documentShown(document: Document): unknown {
   const meshes = Object.entries(document.meshes);
   const documents = Object.entries(document.documents ?? {});
-  if (meshes.length === 0 && documents.length === 0) return document;
+  const features = document.features.map(featureShown);
+  const shortened = features.some((feature, i) => feature !== document.features[i]);
+  if (meshes.length === 0 && documents.length === 0 && !shortened) return document;
   return {
     ...document,
+    ...(shortened ? { features } : {}),
     ...(meshes.length
       ? { meshes: Object.fromEntries(meshes.map(([id, mesh]) => [id, { ...(mesh.name !== undefined ? { name: mesh.name } : {}), omitted: `positions and triangles: ${mesh.positions.length + mesh.triangles.length} characters of base64; save_document writes them` }])) }
       : {}),
@@ -569,12 +586,15 @@ function derivedDetail(feature: SketchFeature, entry: Id, solved: SketchResult |
 // one entry and that are equal (the outer loop up to the copy number, the area as written, the
 // number of holes) are one row with the reference of the first and `copies: { entry, numbers }`;
 // every other region is a row of its own.
-function regionRows(feature: SketchFeature, solved: SketchResult | undefined): Json[] {
+// The rows are capped (D72): at most `SKETCH_SHOWN.regions` and the count of the rest
+// (`regionsNotListed`); an outer loop of more than `SKETCH_SHOWN.loop` IDs is printed short with the
+// call of the query sketchRegions that gives it whole.
+function regionRows(feature: SketchFeature, solved: SketchResult | undefined): { regions: Json[]; regionsNotListed?: Json } {
   const rows: { [key: string]: Json }[] = [];
   const groups = new Map<string, { row: { [key: string]: Json }; numbers: number[] }>();
-  for (const region of solved?.regions ?? []) {
+  for (const [index, region] of (solved?.regions ?? []).entries()) {
     const area = round(region.loops.reduce((sum, loop) => sum + loopArea(loop), 0));
-    const row: { [key: string]: Json } = { ref: region.ref as unknown as Json, area, holes: region.loops.length - 1 };
+    const row: { [key: string]: Json } = { ref: shownRef(feature.id, region.ref, index), area, holes: region.loops.length - 1 };
     const loop = region.ref.outerLoop;
     const entry = loop[0]?.split('/')[0];
     const n = entry !== undefined && Object.prototype.hasOwnProperty.call(feature.external, entry) && kindOf(feature.external[entry]).source === 'derived' ? copyNumber(entry, loop[0]) : undefined;
@@ -595,11 +615,85 @@ function regionRows(feature: SketchFeature, solved: SketchResult | undefined): J
     if (group.numbers.length < 2) continue;
     group.row.copies = { entry: JSON.parse(key)[0] as string, numbers: rangesOf(group.numbers) };
   }
-  return rows;
+  if (rows.length <= SKETCH_SHOWN.regions) return { regions: rows };
+  return { regions: rows.slice(0, SKETCH_SHOWN.regions), regionsNotListed: { count: rows.length - SKETCH_SHOWN.regions, more: `the query sketchRegions with { sketch: "${feature.id}" } lists every region with its whole reference, a page at a time` } };
 }
+// What get_document prints of an outline of more than `OUTLINE_LIMITS.listed` curves, in the place of
+// its curves, on each of its paths (the whole document, one feature, a feature of a stored document).
+export const OUTLINE_OMITTED = (count: number): string => `${count} curves; get_sketch lists the first ${OUTLINE_LIMITS.listed}, the query entryCurves the rest, and save_document writes them`;
+// A feature as get_document prints it: a sketch with its large outlines shortened.
+function featureShown(feature: Feature): Feature {
+  if (feature.type !== 'sketch') return feature;
+  const large = Object.entries(feature.external).filter(([, ref]) => ref.type === 'outline' && Object.keys(ref.curves).length > OUTLINE_LIMITS.listed);
+  if (large.length === 0) return feature;
+  const external = { ...feature.external } as Record<Id, unknown>;
+  for (const [id, ref] of large) external[id] = { ...ref, curves: OUTLINE_OMITTED(Object.keys((ref as SketchOutline).curves).length) };
+  return { ...feature, external } as unknown as Feature;
+}
+
+// The row of an outline in get_sketch, in the place of the generic row of an entry: the fields with
+// their expressions, what it was read with, the counts, the box as placed, and the first curves at
+// their places, bounded by curves and by positions (a spline without `through`, which the query
+// entryCurves gives); the rest is that query.
+function outlineDetail(engine: Engine, feature: SketchFeature, entry: Id): Record<string, Json> {
+  const ref = feature.external[entry] as SketchOutline;
+  const input = entryInput(feature, entry) as unknown as Record<string, Json>;
+  const counts: Record<ImportedCurve['type'], number> = { line: 0, arc: 0, circle: 0, spline: 0 };
+  for (const curve of Object.values(ref.curves)) counts[curve.type]++;
+  const total = Object.keys(ref.curves).length;
+  const page = engine.query('entryCurves', { sketch: feature.id, entry, max: OUTLINE_LIMITS.listed });
+  const listed: Json[] = [];
+  let positions = 0;
+  let box: [number, number, number, number] | undefined;
+  if (page.ok && page.result.status === 'ok') {
+    for (const curve of page.result.curves) {
+      const held = curve.type === 'spline' ? curve.control.length : curve.type === 'arc' ? 3 : curve.type === 'line' ? 2 : 1;
+      if (listed.length > 0 && positions + held > OUTLINE_LIMITS.listedPoints) break;
+      positions += held;
+      const { through: _, ...shown } = curve as ListedCurve & { through?: unknown };
+      listed.push(roundedResult(shown) as Json);
+    }
+  }
+  // the box as placed, from the solved positions of the entry's points and its radii
+  const solved = engine.getState().evaluation.features[feature.id]?.sketch;
+  if (solved) {
+    const grow = (x: number, y: number, r = 0): void => {
+      box = box ? [Math.min(box[0], x - r), Math.min(box[1], y - r), Math.max(box[2], x + r), Math.max(box[3], y + r)] : [x - r, y - r, x + r, y + r];
+    };
+    for (const [id, p] of Object.entries(solved.points)) if (id.startsWith(`${entry}/`)) grow(p.x, p.y);
+    for (const [id, r] of Object.entries(solved.radii)) if (id.startsWith(`${entry}/`) && solved.points[`${id}/center`]) grow(solved.points[`${id}/center`].x, solved.points[`${id}/center`].y, r);
+  }
+  const { curves: _, ...fields } = input;
+  return {
+    ...fields,
+    source: 'reference',
+    counts,
+    ...(box ? { box: (box as number[]).map(round) } : {}),
+    curves: listed,
+    listed: listed.length,
+    total,
+    ...(listed.length < total ? { more: `the query entryCurves with { sketch: "${feature.id}", entry: "${entry}", from: ${listed.length} } lists the rest` } : {}),
+  };
+}
+
+// The rows of get_sketch's regions, capped: at most SKETCH_SHOWN.regions rows and the count of the
+// rest; an outer loop of more than SKETCH_SHOWN.loop IDs printed as its count, its first IDs, the
+// entries they are under, its index among the regions, and the call of sketchRegions that gives it.
+export const SKETCH_SHOWN = { regions: 50, loop: 20 } as const;
+
+// the reference of a region as get_sketch prints it: whole up to SKETCH_SHOWN.loop IDs
+function shownRef(sketch: Id, ref: RegionRef, index: number): Json {
+  const loop = ref.outerLoop;
+  if (loop.length <= SKETCH_SHOWN.loop) return ref as unknown as Json;
+  const entries = [...new Set(loop.filter((id) => id.includes('/')).map((id) => id.split('/')[0]))];
+  return { count: loop.length, first: loop.slice(0, SKETCH_SHOWN.loop), entries, index, whole: `query sketchRegions with { sketch: "${sketch}", index: ${index} }` };
+}
+
 
 // The advice of the open ends of copies (D68): the entries the listed ends belong to, and the cure
 // by the transform of the entry of the first (a row of marks is open on purpose).
+// The cure of an open end of an imported outline (D72).
+export const OUTLINE_OPEN_END = 'Curves of an imported outline close where their ends are within 1e-6 mm: import the file again with a larger `weld` (the report of the import lists the gaps), or end an own curve at the open end';
 export function openEndAdvice(feature: SketchFeature, solved: SketchResult | undefined): string | undefined {
   const open = solved?.openEnds;
   if (!open || open.count === 0 || open.ends.length === 0) return undefined;
@@ -622,10 +716,13 @@ export function openEndAdvice(feature: SketchFeature, solved: SketchResult | und
         : transform === 'linear'
           ? 'choose a spacing, a length or a count that brings the copies together, or leave them open if that is meant (a row of marks or of open shapes is open on purpose)'
           : 'end an own curve at it, or project the edge that continues it';
+  const outline = ref?.type === 'outline';
   const where =
     first.reason === 'twoVertices'
       ? `\`${first.end}\` lands where ${first.near.map((id) => `\`${id}\``).join(' and ')} lie without being joined: join them by \`coincident\`.`
-      : `\`${first.end}\` is ${round(first.distance)} mm from ${first.near.length ? `\`${first.near[0]}\`` : 'every other end'}. ${derived(entries[0]) ? 'Copies close' : 'Projected curves close'} with what lies at their ends within 1e-6 mm: ${cure}.`;
+      : outline
+        ? `\`${first.end}\` is ${round(first.distance)} mm from ${first.near.length ? `\`${first.near[0]}\`` : 'every other end'}. ${OUTLINE_OPEN_END}.`
+        : `\`${first.end}\` is ${round(first.distance)} mm from ${first.near.length ? `\`${first.near[0]}\`` : 'every other end'}. ${derived(entries[0]) ? 'Copies close' : 'Projected curves close'} with what lies at their ends within 1e-6 mm: ${cure}.`;
   const named = (list: Id[]): string => list.map((entry) => `\`${entry}\``).join(', ');
   const [copies, projected] = [entries.filter(derived), entries.filter((entry) => !derived(entry))];
   const whose = [...(copies.length > 0 ? [`copies of ${named(copies)}`] : []), ...(projected.length > 0 ? [named(projected)] : [])].join(' and of ');
@@ -707,7 +804,9 @@ function sketchDetail(engine: Engine, id: string): unknown {
       ...(diagnosis.removable.includes(constraint) ? { surplus: true } : {}),
     })),
     external: Object.entries(feature.external).map(([external, ref]) =>
-      kindOf(ref).source === 'derived'
+      ref.type === 'outline'
+        ? { id: external, ...outlineDetail(engine, feature, external) }
+        : kindOf(ref).source === 'derived'
         ? { id: external, ...derivedDetail(feature, external, solved, position) }
         : {
             id: external,
@@ -715,7 +814,7 @@ function sketchDetail(engine: Engine, id: string): unknown {
             ...entryDetail(feature, external, position, solved?.radii),
           },
     ),
-    regions: regionRows(feature, solved),
+    ...regionRows(feature, solved),
     profileValid: solved?.valid ?? false,
     diagnosis: diagnosis as unknown as Json,
     advice,
@@ -843,6 +942,18 @@ export function changesDocument(engine: Engine, name: string, args: Record<strin
   if (name === 'undo') return state.canUndo;
   if (name === 'redo') return state.canRedo;
   if (name === 'execute') return typeof args.command === 'object' && args.command !== null && changes(args.command as Command);
+  if (name === OUTLINE_BRIDGE_TOOL) {
+    // a look at a file changes nothing; a placement or a replacement is previewed as prepared
+    if (args.sketch === undefined || args.sketch === null) return false;
+    try {
+      const { file, rest } = outlineCall(args);
+      const prepared = prepareOutline(engine, file, rest);
+      return prepared.command !== undefined && changes(prepared.command);
+    } catch (error) {
+      if (error instanceof ToolError) return false;
+      throw error;
+    }
+  }
   if (name === 'sketch_tool') {
     if (args.preview === true) return false;
     try {
@@ -855,6 +966,162 @@ export function changesDocument(engine: Engine, name: string, args: Record<strin
   return true;
 }
 
+// ---------------------------------------------------------------- the import of an outline (D72)
+
+// The tool `import_outline` of the server reads the file and hands its bytes, with the arguments, to
+// `outlineInto`, which runs where the engine is: on the server's own engine, or in the app over the
+// bridge as the internal tool `_outline` (as `_load` carries a document). So a replacement reads
+// the stored options from the document it changes, and both routes give one answer.
+// - `prepareOutline` changes nothing: it resolves the format and the options, reads the file and
+//   makes the command. It throws `ToolError` for what is refused before any command.
+// - `outlineInto` is `prepareOutline`, then `execute` of that command when a sketch was named. A
+//   command the engine refuses comes back inside an answer (`refused`), since it carries the report.
+export const OUTLINE_BRIDGE_TOOL = '_outline';
+export interface OutlineArgs {
+  format?: string;
+  options?: Record<string, unknown>;
+  sketch?: Id;
+  id?: Id;
+  replace?: boolean;
+  remove?: Id[];
+  name?: string;
+  x?: number | string;
+  y?: number | string;
+  turn?: number | string;
+  anchor?: 'origin' | 'center';
+  regions?: boolean;
+}
+export interface PreparedOutline {
+  report: OutlineReport;
+  id?: Id;
+  command?: Command;
+  revision?: OutlineRevision;
+  next: string[];
+}
+export interface ImportOutlineAnswer {
+  file: string;
+  report: OutlineReport;
+  entry?: { sketch: Id; id: Id };
+  revision?: OutlineRevision;
+  refused?: string;
+  sketch?: unknown;
+  problems?: unknown;
+  next: string;
+}
+
+// The bytes of a file from their base64 (the arguments of a bridged call are JSON, and bytes do not
+// survive it). A text longer than the base64 of the largest file is refused before it is decoded.
+export function outlineBytes(text: unknown): Uint8Array {
+  if (typeof text !== 'string') throw new ToolError('argument "file.base64": a text is expected');
+  if (text.length > 4 * Math.ceil(OUTLINE_LIMITS.bytes / 3)) throw new ToolError(`tooLarge: the file is longer than ${OUTLINE_LIMITS.bytes} bytes`);
+  let binary: string;
+  try {
+    binary = atob(text);
+  } catch {
+    throw new ToolError('argument "file.base64": not base64');
+  }
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+const OUTLINE_FIELDS_GIVEN = ['x', 'y', 'turn', 'anchor', 'regions', 'name'] as const;
+// The ID of a new entry from the name of a file: its stem reduced to the characters of an ID,
+// numbered while the sketch or the document has it.
+function outlineEntryId(document: Document, sketch: SketchFeature, file: string): Id {
+  const stem = fileStemOf(file).replace(/[^A-Za-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '') || 'outline';
+  const base = /^[A-Za-z_]/.test(stem) ? stem : `o_${stem}`;
+  const used = new Set([...documentIds(document), ...Object.keys(sketch.external)]);
+  let id = base;
+  for (let n = 2; used.has(id) || id === 'origin'; n++) id = `${base}_${n}`;
+  return id;
+}
+
+export function prepareOutline(engine: Engine, file: { name: string; bytes: Uint8Array }, args: OutlineArgs): PreparedOutline {
+  const document = engine.getState().document;
+  const next: string[] = [];
+  if (args.sketch === undefined && (args.replace || args.remove)) throw new ToolError('`replace` and `remove` need `sketch`');
+  if (args.remove !== undefined && !args.replace) throw new ToolError('`remove` goes with `replace`: it removes constraints that hold entities a revised file takes away');
+  if (args.replace && args.id === undefined) throw new ToolError('`replace` needs `id`, the entry to replace');
+  const sketch = args.sketch === undefined ? undefined : sketchOf(engine, args.sketch);
+  const stored = sketch && args.replace ? (Object.prototype.hasOwnProperty.call(sketch.external, args.id as string) ? sketch.external[args.id as string] : undefined) : undefined;
+  if (sketch && args.replace && stored?.type !== 'outline') throw new ToolError(`the sketch "${sketch.id}" has no outline "${args.id}" to replace${stored ? ` (it is ${stored.type})` : ''}`);
+  const storedWith = stored?.type === 'outline' ? stored.readWith : undefined;
+  // the format: given, else what the extension names, else the entry's
+  const format = (args.format ?? outlineFormatOf(file.name) ?? storedWith?.format) as OutlineFormat | undefined;
+  if (format === undefined) throw new ToolError(`the format of "${file.name}" cannot be told from its extension; give \`format\` (${Object.keys(OUTLINE_FORMATS).join(', ')})`);
+  if (!Object.prototype.hasOwnProperty.call(OUTLINE_FORMATS, format)) throw new ToolError(`argument "format": there is no outline format "${format}"; the formats are ${Object.keys(OUTLINE_FORMATS).join(', ')}`);
+  // the options: given, whole; left out, those the entry stores when the format is its own
+  let options = args.options;
+  if (options === undefined && storedWith) {
+    if (storedWith.format === format) {
+      const { format: _, ...rest } = storedWith;
+      options = rest;
+      next.push(`The file was read with the options the entry stores (${JSON.stringify(rest)}); give \`options\` to read it otherwise (\`{}\` reads every layer with the defaults).`);
+    } else next.push(`The entry was read from ${storedWith.format}, this file is ${format}: its stored options were not used.`);
+  }
+  if (stored && !storedWith) next.push('The entry does not store the options of its first import; the file was read with those given or the defaults.');
+  const read = importOutline(format, file.bytes, options as never);
+  if (!read.ok) throw new ToolError(`${read.error.code}: ${read.error.message}`);
+  if (!sketch) return { report: read.report, next };
+  const given: Record<string, unknown> = {};
+  for (const field of OUTLINE_FIELDS_GIVEN) if (args[field] !== undefined) given[field] = args[field];
+  if (stored) {
+    const before = (stored as SketchOutline).curves;
+    const revision = outlineRevision(before, read.curves);
+    const update: Command = { type: 'updateExternal', sketch: sketch.id, id: args.id as Id, ref: { type: 'outline', curves: read.curves, readWith: read.report.readWith, ...given } } as Command;
+    const remove = (args.remove ?? []).map((constraint): Command => ({ type: 'removeConstraint', sketch: sketch.id, id: constraint }) as Command);
+    return { report: read.report, id: args.id, revision, command: remove.length ? ({ type: 'batch', commands: [...remove, update] } as Command) : update, next };
+  }
+  const id = args.id ?? outlineEntryId(document, sketch, file.name);
+  const name = given.name ?? fileStemOf(file.name).trim().slice(0, 200);
+  const command = { type: 'addExternal', sketch: sketch.id, id, ref: { type: 'outline', curves: read.curves, readWith: read.report.readWith, ...given, ...(name ? { name } : {}) } } as Command;
+  return { report: read.report, id, command, next };
+}
+
+export function outlineInto(engine: Engine, file: { name: string; bytes: Uint8Array }, args: OutlineArgs): ImportOutlineAnswer {
+  const prepared = prepareOutline(engine, file, args);
+  const report = roundedResult(prepared.report) as OutlineReport;
+  if (!prepared.command || args.sketch === undefined || prepared.id === undefined) {
+    return { file: file.name, report, next: [...prepared.next, 'Nothing was placed. Name a `sketch` to place the outline in it (and `x`, `y`, `turn`, `anchor`), or give `options` (the layers, the unit, the weld) to read the file otherwise.'].join(' ') };
+  }
+  const result = engine.execute(prepared.command);
+  if (!result.ok) return { file: file.name, report, ...(prepared.revision ? { revision: prepared.revision } : {}), refused: commandProblem(result), next: [...prepared.next, 'Nothing was changed. A revision that takes away an entity a constraint holds is refused: repeat the call with those constraints in `remove`.'].join(' ') };
+  const answer = outcome(result) as { problems: Json; sketches: { id: Id }[] };
+  const brief = answer.sketches.find((sketch) => sketch.id === args.sketch);
+  const solved = result.state.evaluation.features[args.sketch]?.sketch;
+  return {
+    file: file.name,
+    report,
+    entry: { sketch: args.sketch, id: prepared.id },
+    ...(prepared.revision ? { revision: prepared.revision } : {}),
+    sketch: { ...(brief ?? {}), ...(solved?.openEnds ? { openEnds: solved.openEnds.count } : {}) } as Json,
+    problems: answer.problems,
+    next: [
+      ...prepared.next,
+      `The curves are \`${prepared.id}/l1\` … as \`report.ids\` counts them (their points \`${prepared.id}/l1/a\`, \`${prepared.id}/a1/center\` …); the query entryCurves lists them with their places. The query sketchRegions with \`curve: "${prepared.id}/l1"\` gives the region a curve bounds, whole, to extrude. Constrain own geometry to the entities, or move the outline by \`updateExternal\` (\`x\`, \`y\`, \`turn\`, \`anchor\`).`,
+    ].join(' '),
+  };
+}
+
+// The arguments of the internal tool `_outline`: those of `import_outline` without `path`, and the
+// file as `{ name, base64 }`.
+function outlineCall(args: Record<string, unknown>): { file: { name: string; bytes: Uint8Array }; rest: OutlineArgs } {
+  const { file, ...rest } = args as { file?: { name?: unknown; base64?: unknown } };
+  if (typeof file !== 'object' || file === null || typeof file.name !== 'string') throw new ToolError('argument "file": `{ name, base64 }` is expected');
+  return { file: { name: file.name, bytes: outlineBytes(file.base64) }, rest: Object.fromEntries(Object.entries(rest).filter(([, value]) => value !== null)) as OutlineArgs };
+}
+
+// What the app's status line says after a call of `_outline`, from its answer: nothing for a look
+// (as for a query), the placement, or the refusal as an error.
+export function outlineSaid(answer: unknown): { text: string; error: boolean } | undefined {
+  const given = answer as Partial<ImportOutlineAnswer> | undefined;
+  if (!given || typeof given !== 'object') return undefined;
+  if (given.refused) return { text: `AI: the outline was not imported: ${given.refused}`, error: true };
+  if (given.entry) return { text: `AI: imported the outline ${given.entry.id} into ${given.entry.sketch}`, error: false };
+  return undefined;
+}
+
 const NONE: JsonSchema = { type: 'object', properties: {}, additionalProperties: false };
 const COMMAND: JsonSchema = {
   type: 'object',
@@ -865,7 +1132,7 @@ const COMMAND: JsonSchema = {
 
 // Nástroje, které mění dokument (včetně vnitřního načtení).
 // (`_export` and `query` preview a command of their caller; they write nothing.)
-export const MUTATING: readonly string[] = ['execute', 'sketch_tool', 'undo', 'redo', '_load'];
+export const MUTATING: readonly string[] = ['execute', 'sketch_tool', 'undo', 'redo', '_load', '_outline'];
 
 // Seznam nástrojů. Sestavuje se při každém dotazu, protože popisy vycházejí z katalogu enginu.
 export function tools(): Tool[] {
@@ -902,7 +1169,7 @@ export function tools(): Tool[] {
         if (id === undefined) return documentShown(document);
         const feature = document.features.find((f) => f.id === id);
         if (!feature) throw new ToolError(`feature "${id}" v dokumentu není`);
-        return feature;
+        return featureShown(feature);
       },
     },
     {
@@ -1091,6 +1358,11 @@ export function tools(): Tool[] {
     { name: '_insertion', description: '', inputSchema: NONE, hidden: true, run: (engine, args) => insertionPreview(engine, args) },
     // Dotaz bez účinku: s odpovědí přijde serveru i pořadové číslo dokumentu v aplikaci.
     { name: '_ping', description: '', inputSchema: NONE, hidden: true, run: () => null },
+    // the import of an outline where the engine is (D72): the file as base64, see outlineInto
+    { name: OUTLINE_BRIDGE_TOOL, description: '', inputSchema: NONE, hidden: true, run: (engine, args) => {
+        const { file, rest } = outlineCall(args);
+        return outlineInto(engine, file, rest);
+      } },
     {
       name: '_load',
       description: '',

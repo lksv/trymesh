@@ -4,7 +4,7 @@ import type { Engine } from '@trymesh/engine';
 import { HOST_OPERATIONS, type Host, type HostOperationSet, callHostOperation, hostOperationProblems, isHostOperation } from './host';
 import { MUTATING, type ToolOutcome, callProblem, callTool, tools } from './tools';
 
-export { MUTATING, changesDocument } from './tools';
+export { MUTATING, changesDocument, outlineSaid } from './tools';
 
 // Stejná hlavička jako na straně serveru (bridge.ts); tady zvlášť, aby se do prohlížeče netáhl kód pro Node.
 const BRIDGE_HEADER = 'x-trymesh-bridge';

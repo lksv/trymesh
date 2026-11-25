@@ -164,3 +164,54 @@ describe('the engine’s own SVG read back (D72)', () => {
     expect(volume(after.evaluation.bodies.copy.solid)).toBeCloseTo(volume(after.evaluation.bodies.pcb.solid), 6);
   });
 });
+
+describe('the queries entryCurves and sketchRegions over an outline (D72)', () => {
+  it('the curves of an entry by kind and by page; a spline with its control points', () => {
+    const { curves } = read('dxf', boardDxf(60), { layers: ['Edge.Cuts'] });
+    const engine = newEngine();
+    run(engine, addSketch('s', XY), addOutline('s', 'o', { curves: { ...curves, s1: { type: 'spline', points: [[0, -10], [5, -5], [10, -15], [15, -10]] } } }));
+    const ask = (args: Record<string, unknown>) => {
+      const answer = engine.query('entryCurves', { sketch: 's', ...args } as never);
+      if (!answer.ok) throw new Error(answer.error.message);
+      return answer.result;
+    };
+    expect(ask({ entry: 'o' })).toMatchObject({ status: 'ok', total: 13, from: 0 });
+    const circles = ask({ entry: 'o', kind: 'circle' });
+    expect(circles.curves.map((curve) => curve.id)).toEqual(['o/c1', 'o/c2', 'o/c3', 'o/c4']);
+    expect(circles.curves[0]).toMatchObject({ type: 'circle', radius: 1.6, regions: true });
+    expect(ask({ entry: 'o', from: 11, max: 1 }).curves.map((curve) => curve.id)).toEqual(['o/c4']);
+    const [spline] = ask({ entry: 'o', kind: 'spline' }).curves;
+    expect(spline).toMatchObject({ id: 'o/s1', type: 'spline', closed: false, control: [[0, -10], [5, -5], [10, -15], [15, -10]] });
+    expect(ask({ entry: 'nothing' }).status).toBe('noEntry');
+    const arc = ask({ entry: 'o', kind: 'arc' }).curves[0] as { sweep: number };
+    expect(arc.sweep).toBeCloseTo(Math.PI / 2, 9);
+  });
+
+  it('the regions by a curve of the outer loop or of a hole, the holes listed, the pages', () => {
+    const { curves } = read('dxf', boardDxf(60), { layers: ['Edge.Cuts'] });
+    const engine = newEngine();
+    run(engine, addSketch('s', XY), addOutline('s', 'o', { curves }));
+    const ask = (args: Record<string, unknown>) => {
+      const answer = engine.query('sketchRegions', { sketch: 's', ...args } as never);
+      if (!answer.ok) throw new Error(answer.error.message);
+      return answer.result;
+    };
+    const all = ask({});
+    expect(all).toMatchObject({ status: 'ok', total: 5, from: 0 });
+    const board = all.regions.find((region) => region.holes === 4);
+    expect(board?.ref.outerLoop).toHaveLength(8);
+    // the loops are polylines within the chord tolerance
+    expect(Math.abs((board?.area ?? 0) - (2400 - (4 - Math.PI) * 9 - 4 * Math.PI * 1.6 * 1.6))).toBeLessThan(0.3);
+    expect(board?.box.map((v) => Math.round(v))).toEqual([100, 80, 160, 120]);
+    // a curve of a hole keeps the board and the disc it bounds
+    const byHole = ask({ curve: 'o/c1' });
+    expect(byHole.total).toBe(2);
+    expect(byHole.regions.map((region) => region.holes).sort()).toEqual([0, 4]);
+    expect(ask({ curve: 'o/c1', from: 1 }).regions).toHaveLength(1);
+    const listed = ask({ curve: 'o/l1', holes: true });
+    expect(listed.total).toBe(1);
+    expect(listed.regions[0].holeLoops?.map((loop) => loop.join())).toEqual(expect.arrayContaining(['o/c1', 'o/c2', 'o/c3', 'o/c4']));
+    expect(ask({ index: board?.index }).regions[0].ref).toEqual(board?.ref);
+    expect(ask({ max: 2 }).regions).toHaveLength(2);
+  });
+});

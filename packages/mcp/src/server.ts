@@ -1,16 +1,16 @@
 // MCP server: nástroje nad enginem pro AI. Engine je buď vlastní (dokument ze souboru), nebo engine
 // běžící aplikace připojené přes most; nástroje jsou v obou případech tytéž.
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, dirname, resolve } from 'node:path';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
-import { type Command, EXPORT_FORMATS, type Engine, IMPORT_FORMATS, type Document, type ImportFormat, type MeshReport, documentIds, exportPathProblem, fileStemOf, idFromFile, importFormatOf, importMesh, meshNameOf, namedBySections } from '@trymesh/engine';
+import { type Command, EXPORT_FORMATS, type Engine, IMPORT_FORMATS, type Document, type ImportFormat, type MeshReport, documentIds, exportPathProblem, OUTLINE_FORMATS, OUTLINE_LIMITS, fileStemOf, idFromFile, importFormatOf, importMesh, meshNameOf, namedBySections } from '@trymesh/engine';
 import type { Bridge } from './bridge';
 import { Failure, type OutFile, type Wording, writeExport } from './export-writer';
 import { hostOperations } from './api';
 import { HOST_OPERATIONS, type HostOperationSet, hostOperationProblems, isHostOperation, noAppText } from './host';
-import { type Json, type JsonSchema, type ToolAnswer, type ToolOutcome, ToolError, argumentProblem, callTool, storedDocument, tools } from './tools';
+import { type Json, type JsonSchema, OUTLINE_BRIDGE_TOOL, type ToolAnswer, type ToolOutcome, ToolError, argumentProblem, callTool, storedDocument, tools } from './tools';
 
 export interface TrymeshServerOptions {
   engine: Engine; // vlastní engine serveru; použije se, když není připojená aplikace
@@ -166,6 +166,52 @@ export function createTrymeshServer(options: TrymeshServerOptions): Server {
         await writeFile(target, json);
         remember(session, target);
         return { file: target, bytes: Buffer.byteLength(json) };
+      },
+    },
+    {
+      name: 'import_outline',
+      description:
+        `Reads a 2D outline (${Object.entries(OUTLINE_FORMATS).map(([format, spec]) => `${format}: .${spec.extensions.join(', .')}`).join('; ')}) for a sketch: a board of a PCB tool, a drawing for a laser cutter (D72). ` +
+        'Without `sketch` it only reads the file and answers with the report: the curves by kind, the unit and where it came from, the layers of the file with what each holds, what was left out, what the weld did, the open ends and the nearest gaps, the bounds, notes. Look first, then place. ' +
+        'With `sketch` it places the curves as an entry `outline` of `external` (addExternal under `id`, by default from the name of the file; one undo step): fixed reference geometry that forms regions, at `x`, `y` (mm) and `turn` (rad, each may be an expression) by its `anchor` (`origin` of the file or the `center` of its box). Its curves are `<id>/l1`, `<id>/a1`, `<id>/c1`, `<id>/s1` … by kind and order of the file, their points `<id>/l1/a`, `<id>/c1/center`, `<id>/s1/0` … (`report.ids` says the last numbers and the unused ones). ' +
+        'With `replace: true` and `id` it reads a revised file into that entry (updateExternal): with the options the entry stores unless `options` is given, keeping the placement and the IDs by kind and order; the answer has `revision`. A revision that takes away an entity a constraint holds is refused (nothing changes); `remove` lists constraints to remove in the same step. ' +
+        'Options of the formats (`layers`, `unit`, `weld`) are in describe_api, section Outline formats. The answer never holds the curves: get_sketch lists the first, the query entryCurves the rest, the query sketchRegions the regions to extrude.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: 'path of the file' },
+          format: { type: 'string', enum: Object.keys(OUTLINE_FORMATS), description: 'the format; by default the extension of the path decides (for a replacement, else the format of the entry)' },
+          options: { type: 'object', description: 'the options of the format: `layers` (a list of names), `unit`, `weld` (mm)' },
+          sketch: { type: 'string', description: 'the sketch to place the outline in; without it the file is only read' },
+          id: { type: 'string', description: 'the ID of the entry; by default from the name of the file' },
+          replace: { type: 'boolean', description: 'read a revised file into the entry `id`' },
+          remove: { type: 'array', items: { type: 'string' }, description: 'with replace: constraints of the sketch to remove in the same step' },
+          name: { type: 'string', description: 'the name of the entry, for people; by default the name of the file' },
+          x: { type: ['number', 'string'], description: 'mm, a number or an expression' },
+          y: { type: ['number', 'string'], description: 'mm, a number or an expression' },
+          turn: { type: ['number', 'string'], description: 'rad, a number or an expression (deg(90))' },
+          anchor: { type: 'string', enum: ['origin', 'center'], description: 'what stands at (x, y): the origin of the file or the centre of its box' },
+          regions: { type: 'boolean', description: 'whether the curves bound regions (true by default)' },
+        },
+        required: ['path'],
+        additionalProperties: false,
+      },
+      run: async (args) => {
+        const session = bridge?.session();
+        const target = path(args, true) as string;
+        let bytes: Uint8Array;
+        try {
+          const size = (await stat(target)).size;
+          if (size > OUTLINE_LIMITS.bytes) throw new Failure(`tooLarge: the file has ${size} bytes, more than ${OUTLINE_LIMITS.bytes}`);
+          bytes = new Uint8Array(await readFile(target));
+        } catch (error) {
+          if (error instanceof Failure) throw error;
+          throw new Failure(`the file cannot be read: ${error instanceof Error ? error.message : String(error)}`);
+        }
+        const { path: _, ...rest } = args;
+        // the bytes go where the engine is, over the bridge as base64 (D72)
+        const answer = (await must(session, OUTLINE_BRIDGE_TOOL, { ...rest, file: { name: basename(target), base64: Buffer.from(bytes).toString('base64') } })) as { [key: string]: Json };
+        return { ...answer, file: target };
       },
     },
     {

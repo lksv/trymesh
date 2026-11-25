@@ -217,7 +217,7 @@ export class App implements SketchHost, SceneHost {
         if (!isDraft(this.mode)) return;
         if (changesDocument(this.engine, name, args)) this.setMode({ kind: 'model' });
       },
-      onCall: (name, outcome) => {
+      onCall: (name, outcome, args) => {
         // A picture is drawn off the screen: nothing shows that one was taken but this line. It
         // is a question, like the others the AI asks without a word here: one that is refused
         // says nothing (the AI has the reason), and one that is taken does not replace an error
@@ -225,8 +225,11 @@ export class App implements SketchHost, SceneHost {
         if (name === 'view_image') return outcome.ok && !this.note.error ? this.say('AI: a picture of the model was taken.') : undefined;
         if (!MUTATING.includes(name)) return;
         // the import of an outline (D72) answers ok also when its command was refused, since the
-        // answer carries the report: the line reads the answer; a look at a file says nothing
-        if (name === '_outline' && outcome.ok) {
+        // answer carries the report: the line reads the answer. A look at a file is a question and
+        // says nothing, also when the file cannot be read; a placement that fails is said in words,
+        // not by the name of the internal tool
+        if (name === '_outline') {
+          if (!outcome.ok) return args.sketch === undefined || args.sketch === null ? undefined : this.say(`AI: the outline was not imported: ${outcome.error}`, true);
           const said = outlineSaid(outcome.result);
           return said ? this.say(said.text, said.error) : undefined;
         }

@@ -3,6 +3,7 @@
 // entry, and a line in the map `ImportFormats` added by declaration merging. A format only turns
 // bytes into the corners of triangles in millimetres; the weld, the walls, the shells, the checks and
 // the report are the same for every format.
+import { OUTLINE_LIMITS } from '../imported-curve';
 import type { ArgSpecs, ArgsOf, RunArgsOf } from '../query/args';
 import type { ImportedCurve } from '../types';
 
@@ -91,6 +92,7 @@ export const OUTLINE_SHARED_OPTIONS = {
     kind: 'list',
     of: { kind: 'text' },
     min: 1,
+    max: OUTLINE_LIMITS.layers,
     title: 'Layers',
     summary: 'Only the curves on these layers, by name (DXF: the layer of an entity; SVG: the `id` or the `inkscape:label` of a group the element is in). Without it every layer; the report of an import lists the layers of the file with what they hold.',
     optional: true,

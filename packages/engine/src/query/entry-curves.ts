@@ -32,10 +32,14 @@ export type ListedCurve = { id: Id; regions: boolean } & (
 // - `status`: `unavailable` when the sketch did not evaluate, `noEntry` when it has no such entry;
 //   `curves` is then empty.
 // - `total`: the curves of the entry of the kind asked for; `from`: the number passed over.
+// - `next`: the `from` of the next page, `total` when the page reached the end. A curve without a
+//   position yet (a copy whose point is not solved) is passed over and not listed, so `next` is not
+//   always `from` plus the curves listed.
 export interface EntryCurvesResult {
   status: 'ok' | 'unavailable' | 'noEntry';
   total: number;
   from: number;
+  next: number;
   curves: ListedCurve[];
 }
 
@@ -82,17 +86,19 @@ export const entryCurves: QuerySpec<typeof ENTRY_CURVES_ARGS, EntryCurvesResult>
   summary:
     'The curves of one entry of `external` of a sketch at their places, a page at a time: of an imported outline (get_sketch lists its first curves only), of a projection, or the copies of a mirror or pattern. A spline comes with its control points (`control`: `<id>/<i>` stands at `control[i]`), which constraints and projections may name, and where it runs.',
   returns:
-    '`status` (ok, unavailable, noEntry), `total` (the curves of the kind asked for), `from`, and `curves`, each with its `id`, `regions` and its place in mm in the sketch: a line `a`, `b`; a circle `center`, `radius`; an arc `center`, `start`, `end`, `sweep` (rad, counter-clockwise); a spline `through`, `box`, `control`, `closed`. A page ends at `max` curves or when they hold 2500 positions, but never before its first curve: ask again with `from` for the rest.',
+    '`status` (ok, unavailable, noEntry), `total` (the curves of the kind asked for), `from`, `next` (the `from` of the next page; `total` at the end), and `curves`, each with its `id`, `regions` and its place in mm in the sketch: a line `a`, `b`; a circle `center`, `radius`; an arc `center`, `start`, `end`, `sweep` (rad, counter-clockwise); a spline `through`, `box`, `control`, `closed`. A page ends at `max` curves or when they hold 2500 positions, but never before its first curve: ask again with `from: next` for the rest.',
   args: ENTRY_CURVES_ARGS,
   run: (context, { sketch, entry, kind, from, max }) => {
     const state = context.sketch(sketch);
-    if (!state) return { status: 'unavailable', total: 0, from, curves: [] };
-    if (!has(state.feature.external, entry)) return { status: 'noEntry', total: 0, from, curves: [] };
+    if (!state) return { status: 'unavailable', total: 0, from, next: from, curves: [] };
+    if (!has(state.feature.external, entry)) return { status: 'noEntry', total: 0, from, next: from, curves: [] };
     const all = context.memo([state], `entryCurves ${entry} ${kind ?? ''}`, () => [...state.curves.values()].filter((curve) => (curve.id === entry || curve.id.startsWith(`${entry}/`)) && (kind === undefined || curve.shape.type === kind)));
     const curves: ListedCurve[] = [];
     let held = 0;
-    for (const curve of all.slice(from)) {
+    let next = Math.min(from, all.length);
+    for (; next < all.length; next++) {
       if (curves.length >= max) break;
+      const curve = all[next];
       const listed = listedCurve(curve.id, curve.shape, curve.regions, state.geometry);
       if (!listed) continue;
       const count = positions(listed);
@@ -100,6 +106,6 @@ export const entryCurves: QuerySpec<typeof ENTRY_CURVES_ARGS, EntryCurvesResult>
       curves.push(listed);
       held += count;
     }
-    return { status: 'ok', total: all.length, from, curves };
+    return { status: 'ok', total: all.length, from, next, curves };
   },
 };

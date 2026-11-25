@@ -3,7 +3,7 @@
 // the weld be changed (the bytes are read again), and places it (`addExternal`) or replaces the file
 // of an entry (`updateExternal`, with the constraints that hold an entity that would go removed in
 // the same batch when the checkbox says so). The app only composes the command.
-import { type Command, type Id, OUTLINE_FORMATS, type OutlineFormat, type OutlineOutcome, type OutlineRevision, type SketchFeature, type SketchOutline, constraintOperands, curveCounts, documentIds, fileStemOf, importAccept, importOutline, outlineFormatOf, outlineRevision } from '@trymesh/engine';
+import { type Command, type Id, OUTLINE_FORMATS, type OutlineFormat, type OutlineOutcome, OUTLINE_SHARED_OPTIONS, type SketchFeature, type SketchOutline, WELD_DEFAULT, curveCounts, fileStemOf, importAccept, importOutline, outlineEntryId, outlineFormatOf, outlineRevision, updateHolds } from '@trymesh/engine';
 import { h } from '../dom';
 import { valueText } from '../fields';
 import type { SketchHost, SketchMode } from '../sketch-mode';
@@ -53,23 +53,12 @@ export function outlineFileButton(host: SketchHost, m: SketchMode, label: string
   return [h('button', { textContent: label, title, onclick: () => input.click() }), input];
 }
 
-// The ID of a new entry from the name of its file, numbered while the document has it.
-function entryId(host: SketchHost, feature: SketchFeature, file: string): Id {
-  const stem = fileStemOf(file).replace(/[^A-Za-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '') || 'outline';
-  const base = /^[A-Za-z_]/.test(stem) ? stem : `o_${stem}`;
-  const used = new Set([...documentIds(host.doc), ...Object.keys(feature.external)]);
-  let id = base;
-  for (let n = 2; used.has(id) || id === 'origin'; n++) id = `${base}_${n}`;
-  return id;
-}
-
-// The constraints of the sketch that name an entity of the entry the revision takes away.
-function holding(feature: SketchFeature, entry: Id, revision: OutlineRevision): Id[] {
-  const gone = new Set(revision.removed.map((local) => `${entry}/${local}`));
-  const goes = (id: Id): boolean => gone.has(id) || [...gone].some((curve) => id.startsWith(`${curve}/`));
-  return Object.entries(feature.constraints)
-    .filter(([, c]) => constraintOperands(c).some(goes))
-    .map(([id]) => id);
+// The constraints of the sketch that hold an entity of the entry the new curves take away or change
+// in kind (a control point of a spline with fewer points, an arc read as a circle): the engine's
+// rule of an update (`updateHolds`), so the checkbox offers what the update would be refused for.
+function holding(feature: SketchFeature, entry: Id, curves: SketchOutline['curves']): Id[] {
+  const before = feature.external[entry] as SketchOutline;
+  return updateHolds(feature, entry, before, { ...before, curves }).constraints;
 }
 
 export function outlineDraftPanel(host: SketchHost, m: SketchMode, feature: SketchFeature): HTMLElement[] {
@@ -86,9 +75,15 @@ export function outlineDraftPanel(host: SketchHost, m: SketchMode, feature: Sket
   // the unit and the weld
   const units = (OUTLINE_FORMATS[draft.format].options as { unit: { options: readonly string[] } }).unit.options;
   const unit = h('select', { onchange: () => ((draft.options = { ...draft.options, ...(unit.value ? { unit: unit.value } : { unit: undefined }) }), again()) }, h('option', { value: '', textContent: about ? `as the file says (${about.unit})` : 'as the file says', selected: draft.options.unit === undefined }), ...units.map((u) => h('option', { value: u, textContent: u, selected: draft.options.unit === u })));
-  const weld = h('input', { className: 'value', value: String(draft.options.weld ?? 0.01), title: 'mm: an open end is put on an end of another curve this close', onchange: () => {
-    const value = Number(weld.value);
-    if (Number.isFinite(value) && value >= 0 && value <= 1) draft.options = { ...draft.options, weld: value };
+  const range = OUTLINE_SHARED_OPTIONS.weld.spec;
+  const weld = h('input', { className: 'value', value: String(draft.options.weld ?? WELD_DEFAULT), title: 'mm: an open end is put on an end of another curve this close', onchange: () => {
+    const value = weld.value.trim() === '' ? Number.NaN : Number(weld.value);
+    if (!(Number.isFinite(value) && value >= range.min.value && value <= range.max.value)) {
+      // said, and the field shows the weld the file is read with again
+      weld.value = String(draft.options.weld ?? WELD_DEFAULT);
+      return host.say(`The weld is a number of ${range.min.value} to ${range.max.value} mm; the file stays read with ${weld.value} mm.`, true);
+    }
+    draft.options = { ...draft.options, weld: value };
     again();
   } });
   out.push(h('div', { className: 'buttons' }, h('label', {}, 'Unit', unit), h('label', {}, 'Weld (mm)', weld)));
@@ -128,7 +123,7 @@ export function outlineDraftPanel(host: SketchHost, m: SketchMode, feature: Sket
     const entry = draft.replace;
     const before = (feature.external[entry] as SketchOutline | undefined)?.curves;
     const revision = outcome.ok && before ? outlineRevision(before, outcome.curves) : undefined;
-    const held = revision ? holding(feature, entry, revision) : [];
+    const held = outcome.ok && before ? holding(feature, entry, outcome.curves) : [];
     if (revision) {
       out.push(h('p', { className: 'hint' }, `${revision.kept} stay (${revision.changed} of them changed), ${revision.added.length} come, ${revision.removed.length} go${revision.removed.length ? ` (${revision.removed.join(', ')})` : ''}${revision.renamed.length ? `; renamed by a swap: ${revision.renamed.map((r) => `${r.was} → ${r.id}`).join(', ')}` : ''}.`));
       if (held.length) {
@@ -150,7 +145,7 @@ export function outlineDraftPanel(host: SketchHost, m: SketchMode, feature: Sket
   const regions = h('input', { type: 'checkbox', checked: draft.regions, onchange: () => (draft.regions = regions.checked) });
   const place = (): void => {
     if (!outcome.ok) return;
-    const id = entryId(host, feature, draft.file);
+    const id = outlineEntryId(host.doc, feature, draft.file);
     const name = fileStemOf(draft.file).trim().slice(0, 200);
     const command = { type: 'addExternal', sketch: m.id, id, ref: { type: 'outline', curves: outcome.curves, readWith: outcome.report.readWith, anchor: draft.anchor, regions: draft.regions, ...(name ? { name } : {}) } } as Command;
     if (host.run(command, `Outline ${id} placed: ${curveCounts(outcome.report.byKind)}.`)) m.outline = undefined;

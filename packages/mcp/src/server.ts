@@ -174,7 +174,7 @@ export function createTrymeshServer(options: TrymeshServerOptions): Server {
         `Reads a 2D outline (${Object.entries(OUTLINE_FORMATS).map(([format, spec]) => `${format}: .${spec.extensions.join(', .')}`).join('; ')}) for a sketch: a board of a PCB tool, a drawing for a laser cutter (D72). ` +
         'Without `sketch` it only reads the file and answers with the report: the curves by kind, the unit and where it came from, the layers of the file with what each holds, what was left out, what the weld did, the open ends and the nearest gaps, the bounds, notes. Look first, then place. ' +
         'With `sketch` it places the curves as an entry `outline` of `external` (addExternal under `id`, by default from the name of the file; one undo step): fixed reference geometry that forms regions, at `x`, `y` (mm) and `turn` (rad, each may be an expression) by its `anchor` (`origin` of the file or the `center` of its box). Its curves are `<id>/l1`, `<id>/a1`, `<id>/c1`, `<id>/s1` … by kind and order of the file, their points `<id>/l1/a`, `<id>/c1/center`, `<id>/s1/0` … (`report.ids` says the last numbers and the unused ones). ' +
-        'With `replace: true` and `id` it reads a revised file into that entry (updateExternal): with the options the entry stores unless `options` is given, keeping the placement and the IDs by kind and order; the answer has `revision`. A revision that takes away an entity a constraint holds is refused (nothing changes); `remove` lists constraints to remove in the same step. ' +
+        'With `replace: true` and `id` it reads a revised file into that entry (updateExternal): with the options the entry stores unless `options` is given, keeping the placement and the IDs by kind and order; the answer has `revision`, and `hold`, the constraints that name an entity the file takes away or changes in kind. Such a revision is refused (nothing changes) unless they are in `remove`, the constraints to remove in the same step. ' +
         'Options of the formats (`layers`, `unit`, `weld`) are in describe_api, section Outline formats. The answer never holds the curves: get_sketch lists the first, the query entryCurves the rest, the query sketchRegions the regions to extrude.',
       inputSchema: {
         type: 'object',
@@ -210,8 +210,10 @@ export function createTrymeshServer(options: TrymeshServerOptions): Server {
         }
         const { path: _, ...rest } = args;
         // the bytes go where the engine is, over the bridge as base64 (D72)
-        const answer = (await must(session, OUTLINE_BRIDGE_TOOL, { ...rest, file: { name: basename(target), base64: Buffer.from(bytes).toString('base64') } })) as { [key: string]: Json };
-        return { ...answer, file: target };
+        const outcome = await call(session, OUTLINE_BRIDGE_TOOL, { ...rest, file: { name: basename(target), base64: Buffer.from(bytes).toString('base64') } });
+        // an app older than this server has no `_outline`: said as for `_export`
+        if (!outcome.ok) throw new Failure(session !== undefined && outcome.error === `neznámý nástroj "${OUTLINE_BRIDGE_TOOL}"` ? 'the connected app is older than this server and cannot import an outline; reload the app' : outcome.error);
+        return { ...(outcome.result as { [key: string]: Json }), file: target };
       },
     },
     {

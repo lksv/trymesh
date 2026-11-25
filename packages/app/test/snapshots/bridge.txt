@@ -872,7 +872,7 @@
   status: AI: undo
   view: 2 scene(s) set
 
-=== 14. the AI looks at an outline file: nothing changes, and the status line says nothing new
+=== 14. the AI adds a sketch for an outline
   engine: execute({"type":"addFeature","feature":{"id":"so","name":"Outline","suppressed":false,"type":"sketch","plane":{"kind":"base","plane":"XY"},"points":{},"radii":{},"curves":{},"constraints":{},"external":{},"solved":{"inputs":"","external":{}}}}) -> ok
   features: so
   feature so:
@@ -894,7 +894,13 @@
   status: AI: execute
   view: 1 scene(s) set
 
-=== 15. the AI places the outline in a sketch: the status line names the entry and the sketch
+=== 15. the AI looks at an outline file: nothing changes, and the status line says nothing new
+  view: 0 scene(s) set
+
+=== 16. the AI looks at a file that cannot be read: a question refused, the status line says nothing new
+  view: 0 scene(s) set
+
+=== 17. the AI places the outline in a sketch: the status line names the entry and the sketch
   engine: execute({"type":"addExternal","sketch":"so","id":"sq","ref":{"type":"outline","curves":{"l1":{"type":"line","a":[0,0],"b":[10,0]},"l2":{"type":"line","a":[10,0],"b":[10,-10]},"l3":{"type":"line","a":[10,-10],"b":[0,-10]},"l4":{"type":"line","a":[0,-10],"b":[0,0]}},"readWith":{"format":"svg"},"name":"square"}}) -> ok
   feature so:
     + external sq: {"type":"outline","name":"square","readWith":{"format":"svg"},"curves":{"l1":{"type":"line","a":[0,0],"b":[10,0]},"l2":{"type":"line","a":[10,0],"b":[10,-10]},"l3":{"type":"line","a":[10,-10],"b":[0,-10]},"l4":{"type":"line","a":[0,-10],"b":[0,0]}},"x":0,"y":0,"turn":0,"anchor":"origin","regions":true}
@@ -915,12 +921,16 @@
     - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 24.249
     - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 24.249
 
-=== 16. a second placement under the same ID is refused inside the answer: the status line says so as an error
+=== 18. a second placement under the same ID is refused inside the answer: the status line says so as an error
   engine: execute({"type":"addExternal","sketch":"so","id":"sq","ref":{"type":"outline","curves":{"l1":{"type":"line","a":[0,0],"b":[10,0]},"l2":{"type":"line","a":[10,0],"b":[10,-10]},"l3":{"type":"line","a":[10,-10],"b":[0,-10]},"l4":{"type":"line","a":[0,-10],"b":[0,0]}},"readWith":{"format":"svg"},"name":"square"}}) -> invalidCommand: addExternal.id: ID "sq" už v dokumentu je
   status: AI: the outline was not imported: invalidCommand: addExternal.id: ID "sq" už v dokumentu je  [error]
   view: 0 scene(s) set
 
-=== 17. the connection is switched off
+=== 19. a placement of a file that cannot be read fails: the status line says it in words, as an error
+  status: AI: the outline was not imported: unreadable: svg: the tag <svg that starts at character 0 is not closed: the file is cut short  [error]
+  view: 0 scene(s) set
+
+=== 20. the connection is switched off
   toolbar:
     +   button title="Propojit s MCP serverem (packages/mcp): AI pak čte a mění dokument otevřený v aplikaci": "AI"
     -   button.active title="Propojit s MCP serverem (packages/mcp): AI pak čte a mění dokument otevřený v aplikaci": "AI: připojeno"

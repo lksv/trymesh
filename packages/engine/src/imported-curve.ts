@@ -2,6 +2,7 @@
 // the validator of the kind holds them to, and their box. A leaf, so that the kind
 // (references/outline.ts) and the import (import/outline-formats.ts) share the rule without one
 // importing the other: whatever the import answers, the validator takes.
+import { MAX_NUMBER } from './catalog';
 import { splineBox } from './spline';
 import type { ImportedCurve, Vec2 } from './types';
 import { LENGTH_TOLERANCE } from './util';
@@ -19,6 +20,8 @@ import { LENGTH_TOLERANCE } from './util';
 //   by that difference).
 // - `listed`, `listedPoints`: how many curves `get_sketch` lists of one outline (and above how many
 //   `get_document` leaves the curves out), and how many positions those curves may hold together.
+// - `text`, `layers`: the most characters of the name of an entry and of a name of a layer, and the
+//   most layers an import (and `readWith`) names.
 // - `bytes`, `read`, `readControl`, `readSpline`: what a reader takes before it refuses with
 //   `tooLarge`, checked while it reads and before the weld: the bytes of the file, the curves read
 //   from the layers asked for, the control points of all the spline curves it has made so far, and
@@ -33,6 +36,8 @@ export const OUTLINE_LIMITS = {
   arcMost: 1e-7,
   listed: 50,
   listedPoints: 500,
+  text: 200,
+  layers: 100,
   bytes: 8_000_000,
   read: 8000,
   readControl: 8000,
@@ -52,7 +57,10 @@ export const OUTLINE_REFUSALS = {
   noLength: (what: string): string => `${what}: the line has no length`,
   noRadius: (what: string): string => `${what}: the radius is under the length tolerance`,
   arcEnds: (what: string, off: number, most: number): string => `${what}: the start and the end of the arc are ${off} mm off one radius about its centre (at most ${most}); move the centre onto the bisector of the two`,
-  arcWhole: (what: string): string => `${what}: the start and the end of the arc are one place; a whole turn is a circle`,
+  arcWhole: (what: string): string => `${what}: the start and the end of the arc are within the length tolerance of each other; a whole turn is a circle`,
+  range: (what: string): string => `${what}: a position or a radius is not a finite number within ±${MAX_NUMBER}`,
+  text: (what: string): string => `${what}: a text of at most ${OUTLINE_LIMITS.text} characters is expected`,
+  layers: (what: string): string => `${what}: a list of 1 to ${OUTLINE_LIMITS.layers} layer names is expected`,
   missingCurves: (what: string): string => `${what}.curves: the curves of the outline are expected (the tool import_outline reads them from a file)`,
 };
 
@@ -70,11 +78,18 @@ export function arcTolerance(curve: Extract<ImportedCurve, { type: 'arc' }>): nu
   return Math.min(OUTLINE_LIMITS.arc * scale, OUTLINE_LIMITS.arcMost);
 }
 
-// What the validator refuses of one curve whose positions are finite numbers, or undefined. The
-// rule is that a curve has an extent: a line at least the length tolerance long, a radius at least
-// the tolerance, an arc with its ends on one radius and not one place, a spline of 3 to 64 points
-// whose control polygon is at least the tolerance long, closed only by its first point again.
+// The numbers of a curve: its positions and its radius.
+const numbersOf = (curve: ImportedCurve): number[] =>
+  curve.type === 'line' ? [...curve.a, ...curve.b] : curve.type === 'circle' ? [...curve.center, curve.radius] : curve.type === 'arc' ? [...curve.center, ...curve.start, ...curve.end] : curve.points.flat();
+
+// What the validator refuses of one curve, or undefined. Every number is finite and within the
+// engine's range first (the weld computes places, so it may hold one that is not); then the rule is
+// that a curve has an extent: a line at least the length tolerance long, a radius at least the
+// tolerance, an arc with its ends on one radius and further apart than the tolerance (and the most
+// the placement moves an end, `arcMost`: a nearly whole turn is a circle), a spline of 3 to 64
+// points whose control polygon is at least the tolerance long, closed only by its first point again.
 export function curveProblem(curve: ImportedCurve, what: string): string | undefined {
+  if (!numbersOf(curve).every((v) => Math.abs(v) <= MAX_NUMBER)) return OUTLINE_REFUSALS.range(what);
   switch (curve.type) {
     case 'line':
       return distance(curve.a, curve.b) < LENGTH_TOLERANCE ? OUTLINE_REFUSALS.noLength(what) : undefined;
@@ -83,7 +98,7 @@ export function curveProblem(curve: ImportedCurve, what: string): string | undef
     case 'arc': {
       const [rs, re] = [distance(curve.start, curve.center), distance(curve.end, curve.center)];
       if (rs < LENGTH_TOLERANCE) return OUTLINE_REFUSALS.noRadius(what);
-      if (curve.start[0] === curve.end[0] && curve.start[1] === curve.end[1]) return OUTLINE_REFUSALS.arcWhole(what);
+      if (distance(curve.start, curve.end) < LENGTH_TOLERANCE + OUTLINE_LIMITS.arcMost) return OUTLINE_REFUSALS.arcWhole(what);
       const most = arcTolerance(curve);
       return Math.abs(rs - re) > most ? OUTLINE_REFUSALS.arcEnds(what, Math.abs(rs - re), most) : undefined;
     }

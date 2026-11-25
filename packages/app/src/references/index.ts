@@ -23,14 +23,17 @@ export const PICKER_LIMIT = 100;
 // Every entity of every entry of the kinds a picker asks for (all without `kinds`), in the order of
 // `external` and within an entry in the order of its kind, with the entry it belongs to and the word
 // of its kind for the pickers (`tag`); of each entry at most the first `PICKER_LIMIT` of those kinds
-// (the kind first, then the limit: 34 lines of an outline do not hide its circles, D72). All read the
-// index of the engine, built once per sketch.
+// (the kind first, then the limit: 34 lines of an outline do not hide its circles, D72). Of an
+// imported outline the centres of its circles and arcs come before its other points, so that a
+// point picker over a board of many lines still offers its mounting holes (the review of 6f); the
+// limit stays for the rest. All read the index of the engine, built once per sketch.
 export function entryEntities(sketch: SketchFeature, kinds?: (kind: EntityKind) => boolean): { id: Id; kind: EntityKind; entry: Id; tag: string }[] {
   const index = entityIndex(sketch);
   return [...index.byEntry].flatMap(([entry, ids]) => {
     const tag = referenceUi(sketch.external[entry]).tag;
     const asked = ids.map((id) => ({ id, kind: (index.entities.get(id) as { kind: EntityKind }).kind, entry, tag })).filter((entity) => !kinds || kinds(entity.kind));
-    return asked.slice(0, PICKER_LIMIT);
+    const centresFirst = sketch.external[entry].type === 'outline' ? [...asked.filter((entity) => entity.id.endsWith('/center')), ...asked.filter((entity) => !entity.id.endsWith('/center'))] : asked;
+    return centresFirst.slice(0, PICKER_LIMIT);
   });
 }
 

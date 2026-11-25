@@ -689,7 +689,9 @@ export declare function listedCurve(curve: SketchCurve, geometry: { points: Reco
 export const SKETCH_REGIONS_ARGS = {
   sketch: { kind: 'sketch', title: 'Sketch' },
   curve: { kind: 'text', title: 'Curve', summary: 'Only the regions bounded by this curve, by its ID in the sketch (own, of an entry, or a copy).', optional: true },
-  index: { kind: 'number', title: 'Region', summary: 'Only the region at this place among the regions of the sketch, as a row of get_sketch gives it.', optional: true, spec: { title: 'Place of the region', unit: 'count', integer: true, min: { value: 0 }, default: 0 } },
+  // no default (corrected after the implementation): the check of the arguments fills a default in,
+  // so with `default: 0` every call would have listed the first region alone
+  index: { kind: 'number', title: 'Region', summary: 'Only the region at this place among the regions of the sketch, as a row of get_sketch gives it.', optional: true, spec: { title: 'Place of the region', unit: 'count', integer: true, min: { value: 0 } } },
   holes: { kind: 'flag', title: 'Holes', summary: 'List the curves of the holes of each region too; without it only their count.', optional: true },
   from: { kind: 'number', title: 'From', summary: 'How many of the regions that match to pass over, for the next page.', optional: true, spec: { title: 'Regions to pass over', unit: 'count', integer: true, min: { value: 0 }, default: 0 } },
   max: { kind: 'number', title: 'Most regions', summary: 'The most regions to list; `total` counts all that match.', optional: true, spec: { title: 'Most regions to list', unit: 'count', integer: true, min: { value: 1 }, max: { value: 100 }, default: 20 } },

@@ -8,6 +8,7 @@
 // jeho počet stupňů volnosti není spolehlivý (cyklus shodných délek, úsečka stažená do bodu)
 // a opakované řešení je pomalé.
 import { CONSTRAINTS } from './catalog';
+import { commonEnd } from './common-end';
 import { curvePoints } from './sketch-content';
 import type { Constraint, Curve, FreeEntity, Id, SolveInput, Vec2 } from './types';
 import { ORIGIN, unreachable } from './util';
@@ -61,6 +62,9 @@ const centerOf = (g: Geometry, id: Id): Vec2 => g.point((g.curve(id) as Extract<
 type Equations = (g: Geometry) => number[];
 // Drží ostatní vazby (bez tečností) bod na kružnici nebo oblouku?
 type Held = (point: Id, round: Id) => boolean;
+// The end of the arc the adapter takes as the common end of a tangency of a line and an arc only
+// because two fixed points lie at one place (`commonEnd` with `byPlace`, D72), or undefined.
+type JoinedByPlace = (line: Id, arc: Id) => Id | undefined;
 // Varianta vazby daného typu (i když ji typy sdružují s jinou, jako horizontal a vertical).
 type Variant<C, T> = C extends { type: infer U } ? (T extends U ? C : never) : never;
 type Of<T extends Constraint['type']> = Variant<Constraint, T>;
@@ -76,7 +80,7 @@ const neverAnOperand = (what: string): never => {
 // a berou se z něj délky, kterými se dělí rovnice s nulovou pravou stranou: dělitel je pak
 // konstanta a rovnice zůstane hladká. Rovnice závisí jen na rozdílech poloh, ne na počátku.
 // Význam musí odpovídat adaptéru solveru; hlídá to test, že vyřešená skica rovnice splňuje.
-const EQUATIONS: { [T in Constraint['type']]: (c: Of<T>, g0: Geometry, held: Held) => Equations } = {
+const EQUATIONS: { [T in Constraint['type']]: (c: Of<T>, g0: Geometry, held: Held, joined: JoinedByPlace) => Equations } = {
   coincident: (c) => (g) => sub(g.point(c.a), g.point(c.b)),
   pointOnCurve: (c, g0) => {
     const curve = g0.curve(c.curve);
@@ -125,7 +129,7 @@ const EQUATIONS: { [T in Constraint['type']]: (c: Of<T>, g0: Geometry, held: Hel
   // dvojnásobný kořen. Tečnost pak znamená, že poloměr v tom bodě je kolmý na úsečku, respektive
   // že oba středy a společný bod leží na přímce. Když bod na kružnici leží jen shodou okolností
   // nebo až díky tečnosti samé, platí obecná podoba: jinak by z rozboru vypadl poloměr.
-  tangent: (c, g0, held) => {
+  tangent: (c, g0, held, joined) => {
     const [first, second] = g0.curve(c.a).type === 'line' ? [c.a, c.b] : [c.b, c.a];
     const onCircle = (point: Id, round: Id, size: number): boolean => Math.abs(len(sub(g0.point(point), centerOf(g0, round))) - g0.radius(round)) <= SHARED * nonZero(size);
     const ends = (round: Id): Id[] => {
@@ -152,6 +156,17 @@ const EQUATIONS: { [T in Constraint['type']]: (c: Of<T>, g0: Geometry, held: Hel
           return (g) => {
             const u = direction(g, first);
             return [dot(sub(centerOf(g, second), g.point(shared)), u) / nonZero(len(u))];
+          };
+        }
+        // The adapter's rule by place: an end of the arc on a fixed point within the fixed join of
+        // a fixed end of the line. The adapter then solves the radius to that end square to the
+        // line, so the analysis reads that equation, also where the end of the line lies off the
+        // circle by more than SHARED of the size (an own arc under 1 mm; the review of 6f, kind 1).
+        const end = joined(first, second);
+        if (end !== undefined) {
+          return (g) => {
+            const u = direction(g, first);
+            return [dot(sub(centerOf(g, second), g.point(end)), u) / nonZero(len(u))];
           };
         }
         const side = (g: Geometry): number => {
@@ -423,13 +438,20 @@ export class SketchAnalysis {
 
     // Tečnost se ptá, jestli bod drží na kružnici ostatní vazby. Proto se nejdřív spočítají řádky
     // všeho ostatního; z nich se (jen když je to potřeba) postaví báze, proti které se otázka řeší.
+    const ends = { points: input.points, fixed };
+    const joined: JoinedByPlace = (line, arc) => {
+      const [l, a] = [input.curves[line], input.curves[arc]];
+      if (l?.type !== 'line' || a?.type !== 'arc') return undefined;
+      const found = commonEnd(l, a, input.constraints, ends);
+      return found?.byPlace ? found.end : undefined;
+    };
     const arcRows = Object.values(input.curves).flatMap((curve) => (curve.type === 'arc' ? derive(() => arcRule(curve), [curve.center, curve.start, curve.end]) : []));
     this.order = Object.keys(input.constraints);
     const operands = (c: Constraint): Id[] => CONSTRAINTS[c.type].operands.map((operand) => (c as unknown as Record<string, Id>)[operand.field]);
     const rowsOf = (id: Id, held: Held): (Float64Array | undefined)[] => {
       const c = input.constraints[id];
-      const build = EQUATIONS[c.type] as (c: Constraint, g0: Geometry, held: Held) => Equations;
-      return derive((g0) => build(c, g0, held), operands(c));
+      const build = EQUATIONS[c.type] as (c: Constraint, g0: Geometry, held: Held, joined: JoinedByPlace) => Equations;
+      return derive((g0) => build(c, g0, held, joined), operands(c));
     };
     const built = new Map<Id, (Float64Array | undefined)[]>();
     for (const id of this.order) if (input.constraints[id].type !== 'tangent') built.set(id, rowsOf(id, () => false));

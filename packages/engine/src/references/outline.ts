@@ -77,16 +77,23 @@ export function storedCurves(v: unknown, what: string): Record<Id, ImportedCurve
   return curves;
 }
 
+// A text of an entry, bounded.
+function text(v: unknown, what: string): string {
+  const out = string(v, what);
+  if (out.length > OUTLINE_LIMITS.text) fail(OUTLINE_REFUSALS.text(what));
+  return out;
+}
+
 function readWith(v: unknown, what: string): OutlineReadWith | undefined {
   if (v === undefined || v === null) return undefined;
   const o = object(v, what);
   onlyFields(o, ['format', 'layers', 'unit', 'weld'], what, 'the options of an import');
-  const out: OutlineReadWith = { format: string(o.format, `${what}.format`) };
+  const out: OutlineReadWith = { format: text(o.format, `${what}.format`) };
   if (o.layers !== undefined) {
-    if (!Array.isArray(o.layers) || o.layers.length === 0) fail(`${what}.layers: a list of at least one layer name is expected`);
-    out.layers = (o.layers as unknown[]).map((layer, i) => string(layer, `${what}.layers[${i}]`));
+    if (!Array.isArray(o.layers) || o.layers.length === 0 || o.layers.length > OUTLINE_LIMITS.layers) fail(OUTLINE_REFUSALS.layers(`${what}.layers`));
+    out.layers = (o.layers as unknown[]).map((layer, i) => text(layer, `${what}.layers[${i}]`));
   }
-  if (o.unit !== undefined) out.unit = string(o.unit, `${what}.unit`);
+  if (o.unit !== undefined) out.unit = text(o.unit, `${what}.unit`);
   if (o.weld !== undefined) {
     out.weld = finite(o.weld, `${what}.weld`);
     if (out.weld < 0) fail(`${what}.weld: a tolerance is not negative`);
@@ -220,6 +227,28 @@ export function outlineGeometry(id: Id, ref: SketchOutline, value: PlacedOutline
   return geometry;
 }
 
+// The box of an outline as placed in its sketch: its curves at their places (`outlineGeometry`),
+// an arc by the extremes of its circle within its sweep and a spline by the box of its curve
+// (`outlineBox`), not by the points of the entry alone.
+export function placedOutlineBox(id: Id, ref: SketchOutline): { min: Vec2; max: Vec2 } | undefined {
+  const geometry = outlineGeometry(id, ref, placeOutline(ref));
+  const at = (point: Id): Vec2 => [geometry.points[point].x, geometry.points[point].y];
+  const placed = Object.entries(ref.curves).map(([local, curve]): ImportedCurve => {
+    const k = `${id}/${local}`;
+    switch (curve.type) {
+      case 'line':
+        return { type: 'line', a: at(`${k}/a`), b: at(`${k}/b`) };
+      case 'circle':
+        return { type: 'circle', center: at(`${k}/center`), radius: curve.radius };
+      case 'arc':
+        return { type: 'arc', center: at(`${k}/center`), start: at(`${k}/start`), end: at(`${k}/end`) };
+      case 'spline':
+        return { type: 'spline', points: (geometry.curves[k] as Extract<CurveShape, { type: 'spline' }>).points.map(at) };
+    }
+  });
+  return outlineBox(placed);
+}
+
 // A stored value read back: an outline's placement by its form.
 function storedPlacement(stored: unknown, what: string): PlacedOutline | undefined {
   const o = object(stored, what);
@@ -239,16 +268,17 @@ function validate(context: Parameters<ReferenceKindSpec<SketchOutline, PlacedOut
   onlyFields(o, OUTLINE_FIELDS, what, 'an imported outline');
   const curves = storedCurves(o.curves, what);
   const { fields } = context;
-  const name = o.name === undefined ? '' : string(o.name, `${what}.name`);
+  const name = o.name === undefined ? '' : text(o.name, `${what}.name`);
   const options = readWith(o.readWith, `${what}.readWith`);
   return {
     type: 'outline',
     ...(name !== '' ? { name } : {}),
     ...(options ? { readWith: options } : {}),
     curves,
-    x: fields.number(o.x ?? 0, `external/${id}/x`, OUTLINE_PLACE, `${what}.x`),
-    y: fields.number(o.y ?? 0, `external/${id}/y`, OUTLINE_PLACE, `${what}.y`),
-    turn: fields.number(o.turn ?? 0, `external/${id}/turn`, OUTLINE_TURN, `${what}.turn`),
+    // left out is the default; `null` is no number and is refused, not read as 0
+    x: fields.number(o.x === undefined ? 0 : o.x, `external/${id}/x`, OUTLINE_PLACE, `${what}.x`),
+    y: fields.number(o.y === undefined ? 0 : o.y, `external/${id}/y`, OUTLINE_PLACE, `${what}.y`),
+    turn: fields.number(o.turn === undefined ? 0 : o.turn, `external/${id}/turn`, OUTLINE_TURN, `${what}.turn`),
     anchor: o.anchor === undefined ? 'origin' : oneOf(o.anchor, OUTLINE_ANCHORS, `${what}.anchor`),
     regions: o.regions === undefined ? OUTLINE_REGIONS_DEFAULT : boolean(o.regions, `${what}.regions`),
   };

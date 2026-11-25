@@ -7,10 +7,11 @@
 import { emptyDocument } from '../document';
 import { OUTLINE_LIMITS, curveProblem, outlineBox } from '../imported-curve';
 import { checkArgs } from '../query/check';
-import type { ArgPath, Evaluation, Id, ImportedCurve, OutlineReadWith, Vec2 } from '../types';
+import { documentIds } from '../sketch-content';
+import type { ArgPath, Document, Evaluation, Id, ImportedCurve, OutlineReadWith, SketchFeature, Vec2 } from '../types';
 import { has } from '../util';
 import { dxf } from './dxf';
-import { importFormatOf } from './index';
+import { fileStemOf, importFormatOf } from './index';
 import { type AnyImportFormat, type AnyOutlineFormat, ImportFailure, type OutlineCatalog, type OutlineFormat, type OutlineOptions, type ReadOutline } from './spec';
 import { svg } from './svg';
 
@@ -18,6 +19,18 @@ export const OUTLINE_FORMATS: OutlineCatalog = { dxf, svg };
 
 // The outline format of a path by its extension, as `importFormatOf` names a mesh format.
 export const outlineFormatOf = (path: string): OutlineFormat | undefined => importFormatOf(path, OUTLINE_FORMATS as unknown as Record<string, AnyImportFormat>) as OutlineFormat | undefined;
+
+// The ID of a new entry of an outline from the name of its file: its stem reduced to the characters
+// of an ID (`o_` before a leading digit), numbered while the document or the sketch has it. The
+// app's draft and the tool import_outline both name an entry so.
+export function outlineEntryId(document: Document, sketch: SketchFeature, file: string): Id {
+  const stem = fileStemOf(file).replace(/[^A-Za-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '') || 'outline';
+  const base = /^[A-Za-z_]/.test(stem) ? stem : `o_${stem}`;
+  const used = new Set([...documentIds(document), ...Object.keys(sketch.external)]);
+  let id = base;
+  for (let n = 2; used.has(id) || id === 'origin'; n++) id = `${base}_${n}`;
+  return id;
+}
 
 // ---------------------------------------------------------------- the report
 
@@ -599,6 +612,9 @@ export function importOutline<F extends OutlineFormat>(format: F, bytes: Uint8Ar
   const checked = checkArgs(spec.options, options, NO_STATE);
   if (!checked.ok) return refused('invalidArguments', `${format}: ${checked.message}`, { arg: checked.arg });
   const given = checked.value as { layers?: string[]; unit?: string; weld?: number };
+  // a name of a layer is stored in `readWith`, which the validator of the kind bounds
+  const long = given.layers?.findIndex((layer) => layer.length > OUTLINE_LIMITS.text) ?? -1;
+  if (long >= 0) return refused('invalidArguments', `${format}: a name of a layer has at most ${OUTLINE_LIMITS.text} characters`, { arg: ['layers', long] });
   let read: ReadOutline;
   try {
     read = spec.read(bytes, checked.value as never);

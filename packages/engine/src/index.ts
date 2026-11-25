@@ -25,6 +25,7 @@ export {
 export { bodyRefs, bodySource, featuresWithInserted, generatorOf, insertedFeature, producesTool, sourceChain, sourceRoot } from './features/index';
 export { INSERT_FIELDS } from './features/insert';
 export { entryOrder } from './references/derive';
+export { FIXED_JOIN, type TangentEnds, commonEnd } from './common-end';
 export { insertedFaceName } from './recompute/insertion';
 export { MAX_INSERT_DEPTH } from './sections/documents';
 export { GRID_STRIDE, MAX_PATTERN_PLACES } from './features/pattern';
@@ -39,9 +40,9 @@ export { EXPORT_FORMATS, exportPathProblem } from './export/index';
 export { IMPORT_FORMATS, type ImportOutcome, type MeshReport, fileNameOf, fileStemOf, idFromFile, importAccept, importFormatOf, importMesh, meshNameOf } from './import/index';
 export { type AnyImportFormat, type ImportCatalog, ImportFailure, type ImportFormat, type ImportFormatSpec, type ImportFormats, type ImportOptions, type ReadTriangles } from './import/spec';
 export { STL_IMPORT_OPTIONS, UNIT_IN_MM } from './import/stl';
-export { OUTLINE_FORMATS, type OutlineOutcome, type OutlineReport, type OutlineRevision, WELD_DEFAULT, curveCounts, importOutline, outlineFormatOf, outlineRevision } from './import/outline-formats';
+export { OUTLINE_FORMATS, type OutlineOutcome, type OutlineReport, type OutlineRevision, WELD_DEFAULT, curveCounts, importOutline, outlineEntryId, outlineFormatOf, outlineRevision } from './import/outline-formats';
 export { OUTLINE_LIMITS } from './imported-curve';
-export { OUTLINE_ANCHORS, OUTLINE_PLACE, OUTLINE_TURN } from './references/outline';
+export { OUTLINE_ANCHORS, OUTLINE_PLACE, OUTLINE_TURN, placedOutlineBox } from './references/outline';
 export { type AnyOutlineFormat, OUTLINE_SHARED_OPTIONS, type OutlineCatalog, type OutlineFormat, type OutlineFormatSpec, type OutlineFormats, type OutlineOptions, type ReadOutline } from './import/spec';
 export { DXF_OPTIONS } from './import/dxf';
 export { SVG_OPTIONS } from './import/svg';
@@ -99,7 +100,7 @@ export {
   sketchTool,
 } from './sketch-tools';
 export { CUT_IDS, type CutIds, type CurveChanges, type CurvePredicates, type ExtendInput, type PieceShape, type RemovedStretch, type Repair, type SketchContact, type SplitInput, type TrimInput, curvePredicates, curveUnder, extendEnd, extendReach, readersOf, repairsByDefault, trimPiece } from './sketch-cut';
-export { type EntityIndex, REFERENCE_KINDS, derivedOrigin, entityIndex, entityOf, kindOf } from './references/index';
+export { type EntityIndex, REFERENCE_KINDS, type UpdateHolds, derivedOrigin, entityIndex, entityOf, kindOf, updateHolds } from './references/index';
 export type { AnyKind, EntryKindName } from './references/spec';
 export { type ContactKind, type ContactPoint, type CurveContacts, type TightPlace, curveContacts, profileOf, profileProblem } from './sketch';
 export { type SketchBase, type SketchWorld, cutInMemory, sketchWorld, stepBase, toolBase } from './references/world';

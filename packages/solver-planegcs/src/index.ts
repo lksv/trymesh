@@ -2,7 +2,8 @@
 // Kontrakt portu je v docs/architecture.md, sekce SketchSolver.
 import { Algorithm, DebugMode, GcsWrapper, SolveStatus, init_planegcs_module } from '@salusoft89/planegcs';
 import type { SketchPrimitive } from '@salusoft89/planegcs';
-import type { Constraint, Curve, Id, Point2, SketchSolver, SolveInput, SolveResult } from '@trymesh/engine';
+import { commonEnd } from '@trymesh/engine';
+import type { Constraint, Curve, Id, Point2, SketchSolver, SolveInput, SolveResult, TangentEnds } from '@trymesh/engine';
 
 export interface PlanegcsOptions {
   // Kde najít planegcs.wasm (v browseru); v Node se najde sám.
@@ -303,53 +304,9 @@ function buildPrimitives(input: SolveInput, drag?: SolveInput['drag'], without?:
 
 // Každá varianta vazby enginu má právě jeden protějšek v knihovně; liší se jen podle druhu křivky.
 // (A fixed point is the exception with two primitives and is translated by the caller.)
-// Two fixed points this close are one end of a tangency (D72), and, when the arc of the tangency is
-// fixed too, also this close relative to its radius.
-export const FIXED_JOIN = 1e-6;
-// What decides one end: the points of the input (read only for fixed points) and the fixed set.
-interface Ends {
-  points: Record<Id, Point2>;
-  fixed: ReadonlySet<Id>;
-}
-// Whether two ends are one end: one ID, or two fixed points at one place (D72): at most
-// `FIXED_JOIN` mm apart and, when the arc is fixed (`radius`), within `FIXED_JOIN` of its radius.
-// The end of a line of an imported outline and the start of the arc beside it are two IDs at one
-// place, as those of two projections of 6b that meet are.
-function sameEnd(p: Id, q: Id, radius: number | undefined, ends: Ends): boolean {
-  if (p === q) return true;
-  if (!ends.fixed.has(p) || !ends.fixed.has(q)) return false;
-  const [a, b] = [ends.points[p], ends.points[q]];
-  if (!a || !b) return false;
-  const d = Math.hypot(a.x - b.x, a.y - b.y);
-  return d <= FIXED_JOIN && (radius === undefined || d <= FIXED_JOIN * radius);
-}
-
-// A tangency of a line and an arc at a common end (D52). An end of the arc (`start` or `end`) and an
-// end of the line (`a` or `b`) are one end (`sameEnd`), or one coincident constraint of the input
-// names two points that are one end with an end of the arc and with an end of the line. So the rule
-// reads the same from either side: an own line held on the point of an outline's curve beside the
-// arc, an own arc held on it, an own line that starts at `origin` where a fixed arc starts (D72).
-// Decided from the curves and constraints and from the positions and the radius of fixed entities
-// only (numbers of the input, never a variable of the estimate); a chain of two joins or an end held
-// on the line by pointOnCurve is not read.
-function commonEnd(line: Extract<Curve, { type: 'line' }>, arc: Extract<Curve, { type: 'arc' }>, constraints: Record<Id, Constraint>, ends: Ends): Id | undefined {
-  const lineEnds = [line.a, line.b];
-  const arcEnds = [arc.start, arc.end];
-  const fixedArc = ends.fixed.has(arc.center) && ends.fixed.has(arc.start) && ends.fixed.has(arc.end);
-  const [c, s] = [ends.points[arc.center], ends.points[arc.start]];
-  const radius = fixedArc && c && s ? Math.hypot(s.x - c.x, s.y - c.y) : undefined;
-  const one = (p: Id, q: Id): boolean => sameEnd(p, q, radius, ends);
-  const ofLine = (p: Id): boolean => lineEnds.some((q) => one(p, q));
-  const shared = arcEnds.find((p) => ofLine(p));
-  if (shared !== undefined) return shared;
-  // the start before the end and the constraints by ID, so that the order of the keys of the
-  // input does not matter (a line both of whose ends are joined to the ends of the arc)
-  const joins = Object.keys(constraints)
-    .sort()
-    .map((id) => constraints[id])
-    .filter((c): c is Extract<Constraint, { type: 'coincident' }> => c.type === 'coincident');
-  return arcEnds.find((p) => joins.some((c) => (one(c.a, p) && ofLine(c.b)) || (one(c.b, p) && ofLine(c.a))));
-}
+// A tangency of a line and an arc at a common end (D52, D72): the rule is the engine's `commonEnd`,
+// which the analysis of the sketch reads too, so that the two never disagree about the form.
+type Ends = TangentEnds;
 
 // A spline is never an operand of a constraint (D70): the engine refuses it before the solver.
 const neverASpline = (id: Id): never => {
@@ -450,7 +407,7 @@ function translate(id: Id, c: Exclude<Constraint, { type: 'fixed' }>, curves: Re
         // change. "The radius to the common end is square to the line" says the same wherever the
         // line has a length, without the double root (D52; the engine's analysis reads it so too).
         const [l, a] = [curves[first] as Extract<Curve, { type: 'line' }>, curves[second] as Extract<Curve, { type: 'arc' }>];
-        const shared = commonEnd(l, a, constraints, ends);
+        const shared = commonEnd(l, a, constraints, ends)?.end;
         if (shared !== undefined) return { type: 'perpendicular_pppp', l1p1_id: a.center, l1p2_id: shared, l2p1_id: l.a, l2p2_id: l.b };
         return { type: 'tangent_la', l_id: first, a_id: second };
       }

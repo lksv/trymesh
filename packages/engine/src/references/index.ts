@@ -61,6 +61,42 @@ const answersEntity = (ref: ExternalRef): boolean => {
   return kind.source === 'reference' && kind.entity !== undefined;
 };
 
+// What the constraints of the sketch hold of an entry that an update would take away or change
+// (parts 2 and 3 of the rule below, by the operands): `gone`, the entities the entry would no
+// longer have with the constraints that name each; `changed`, those of another kind (counted only
+// when the kind of either entry answers `entity`, D72). The constraints to remove with the update
+// are those of both (`constraints`, each once, in the order of the sketch). The app's draft of a
+// revised file and the tool import_outline read it, so they offer what the rule refuses.
+export interface UpdateHolds {
+  gone: { entity: Id; constraints: Id[] }[];
+  changed: { entity: Id; was: EntityKind; will: EntityKind; constraints: Id[] }[];
+  constraints: Id[];
+}
+export function updateHolds(sketch: SketchFeature, id: Id, before: ExternalRef, after: ExternalRef): UpdateHolds {
+  const byOperand = answersEntity(before) || answersEntity(after);
+  const gone = new Map<Id, Id[]>();
+  const changed = new Map<Id, { was: EntityKind; will: EntityKind; constraints: Id[] }>();
+  const holding = new Set<Id>();
+  for (const [constraint, c] of Object.entries(sketch.constraints)) {
+    for (const operand of new Set(constraintOperands(c))) {
+      if (operand !== id && !operand.startsWith(`${id}/`)) continue;
+      const was = entryEntity(sketch, id, before, operand);
+      if (was === undefined) continue;
+      const will = entryEntity(sketch, id, after, operand);
+      if (will === undefined) {
+        gone.set(operand, [...(gone.get(operand) ?? []), constraint]);
+        holding.add(constraint);
+      } else if (will !== was && byOperand) {
+        const found = changed.get(operand);
+        if (found) found.constraints.push(constraint);
+        else changed.set(operand, { was, will, constraints: [constraint] });
+        holding.add(constraint);
+      }
+    }
+  }
+  return { gone: [...gone].map(([entity, constraints]) => ({ entity, constraints })), changed: [...changed].map(([entity, found]) => ({ entity, ...found })), constraints: [...holding] };
+}
+
 // What an update of an entry may not do, or undefined:
 // 1. turn reference geometry into derived geometry or back (the source decides whether constraints
 //    may name its entities, D68);
@@ -79,25 +115,10 @@ export function updateProblem(sketch: SketchFeature, id: Id, before: ExternalRef
     const [was, will] = [kindOf(before).entities(id, before, sketch), kindOf(after).entities(id, after, sketch)];
     if (Object.keys(will).some((entity) => has(was, entity) && was[entity] !== will[entity])) return 'druh promítnutí změnit nejde';
   }
-  const gone = new Map<Id, Id[]>();
-  const changed = new Map<Id, { was: EntityKind; will: EntityKind; constraints: Id[] }>();
-  for (const [constraint, c] of Object.entries(sketch.constraints)) {
-    for (const operand of new Set(constraintOperands(c))) {
-      if (operand !== id && !operand.startsWith(`${id}/`)) continue;
-      const was = entryEntity(sketch, id, before, operand);
-      if (was === undefined) continue;
-      const will = entryEntity(sketch, id, after, operand);
-      if (will === undefined) gone.set(operand, [...(gone.get(operand) ?? []), constraint]);
-      else if (will !== was && byOperand) {
-        const found = changed.get(operand);
-        if (found) found.constraints.push(constraint);
-        else changed.set(operand, { was, will, constraints: [constraint] });
-      }
-    }
-  }
-  if (gone.size > 0) return ENTITY_TAKEN(id, [...gone].map(([entity, constraints]) => ({ entity, constraints })));
+  const { gone, changed } = updateHolds(sketch, id, before, after);
+  if (gone.length > 0) return ENTITY_TAKEN(id, gone);
   const [first] = changed;
-  if (first) return ENTITY_KIND_CHANGED(first[0], first[1].was, first[1].will, first[1].constraints);
+  if (first) return ENTITY_KIND_CHANGED(first.entity, first.was, first.will, first.constraints);
   return undefined;
 }
 

@@ -468,7 +468,8 @@ export interface SketchProjection {
 // - `circle`: `radius` at least the length tolerance.
 // - `arc`: counter-clockwise from `start` to `end` about `center`; the two ends on one radius within
 //   1e-9 mm per mm of the largest coordinate of the arc (at least 1e-9) and never more than 1e-7 mm;
-//   `start` equal to `end` is no arc (a whole turn is a `circle`).
+//   `start` and `end` within 1.1e-6 mm of each other (the length tolerance and the 1e-7 an end may
+//   move) are no arc (a whole turn is a `circle`). Every number is finite and within ±1e9.
 // - `spline`: the control points of a spline of the sketch (CurveShape `spline`): 3 to 64, the first
 //   again as the last closes it (then at least 4). Control points may stand at one place (a node
 //   without a handle); the spline as a whole has an extent.
@@ -512,9 +513,10 @@ export type ImportedCurve =
 //   constraint and is not projected. An own curve that crosses an outline that forms regions makes
 //   the profile invalid for good: switch `regions` off and draw the outline as own curves in a
 //   later sketch (the sketch tool projectSketch with `as: 'own'`), then cut that.
-// - `name`: for people, the name of the file. An empty one is no name.
+// - `name`: for people, the name of the file, at most 200 characters. An empty one is no name.
 // - `readWith`: what the file was read with (the format, the layers, the unit, the weld), written by
-//   the import and repeated by a replacement, so that a revised file is read as the first was.
+//   the import and repeated by a replacement, so that a revised file is read as the first was; texts
+//   of at most 200 characters, at most 100 layers.
 // - A revised file: `updateExternal` with the new `curves` (the tool import_outline with
 //   `replace`); fields left out of the update keep what the entry has. An entity keeps its ID when
 //   the file lists it at the same place among the curves of its kind; nothing is matched by
@@ -545,7 +547,7 @@ export interface OutlineReadWith {
 }
 // The input form of an outline in `addExternal`: the curves, and what a command may leave out with
 // its default (`x`, `y`, `turn` 0; `anchor` `origin`; `regions` true). A numeric field may be an
-// expression. In `updateExternal` every field but `type` may be left out and then keeps what the
+// expression; `null` is no number. In `updateExternal` every field but `type` may be left out and then keeps what the
 // entry has, an expression too; `curves` given replaces the stored outline whole. So the flag is
 // switched, or the outline moved, without sending the curves again: `{ type: 'outline', regions:
 // false }`. `name: ''` and `readWith: null` clear the two optional fields.

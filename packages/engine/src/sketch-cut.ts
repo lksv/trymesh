@@ -223,17 +223,18 @@ export function contactFix(a: SketchCurve, b: SketchCurve, kind: ContactKind | '
   // take the projection's end in. Not listed, also when the own curve is a spline (the review of
   // 6d, F3).
   if (flagged && kind === 'ends') return undefined;
-  // asked before the spline: a spline of an outline is not moved by its control points (D72)
-  if (flagged) {
-    const entry = outlineOf(sketch, flagged.id);
-    if (entry !== undefined) return { fix: 'none', why: OUTLINE_NOT_CUT(flagged.id, entry) };
-    const ref = sketch.external[flagged.id] as SketchProjection;
-    return { fix: 'none', why: flaggedNotCut(flagged.id, ref.sketch, ref.entity) };
-  }
+  // a curve of an imported outline, asked before the spline: a spline of an outline is not moved by
+  // its control points (D72); a flagged projection keeps its place after the spline rule (6b, 6d)
+  const outlineEntry = flagged && outlineOf(sketch, flagged.id);
+  if (flagged && outlineEntry) return { fix: 'none', why: OUTLINE_NOT_CUT(flagged.id, outlineEntry) };
   // a spline (D70): not cut and holds no point; two ends at one place are joined without re-pointing it
   const spline = [a, b].find((curve) => curve.shape.type === 'spline');
   if (spline) return kind === 'ends' ? { fix: 'join' } : { fix: 'none', why: a.id === b.id ? SPLINE_SELF_WHY(a.id) : SPLINE_CONTACT_WHY(spline.id) };
   const stuck = [a, b].find((curve) => !predicates.mayCut(curve));
+  if (flagged) {
+    const ref = sketch.external[flagged.id] as SketchProjection;
+    return { fix: 'none', why: flaggedNotCut(flagged.id, ref.sketch, ref.entity) };
+  }
   if (stuck) {
     const why = stuck.source === 'own' ? `the circle "${stuck.id}" is an operand of a generated profile, which takes a whole circle` : `"${stuck.id}" is ${stuck.source === 'reference' ? 'reference' : 'derived'} geometry, which no tool cuts`;
     return { fix: 'none', why };

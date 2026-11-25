@@ -5,10 +5,12 @@
 // and listed (`skipped`); the limits are checked while it reads. A curve without extent is read as
 // it is written: it takes its place in the order of the file (its local ID) and is left out by the
 // weld. docs/d36/6f-outline-import/design.md, "The readers: DXF".
+import { MAX_NUMBER } from '../catalog';
 import { OUTLINE_LIMITS } from '../imported-curve';
 import type { ArgSpecs, RunArgsOf } from '../query/args';
 import { bsplineBeziers } from '../spline';
 import type { ImportedCurve, Vec2 } from '../types';
+import { LENGTH_TOLERANCE } from '../util';
 import { ImportFailure, OUTLINE_SHARED_OPTIONS, type OutlineFormatSpec, type ReadOutline } from './spec';
 
 export const DXF_OPTIONS = {
@@ -57,6 +59,33 @@ const tooLarge = (message: string): never => {
 };
 const dist = (a: Vec2, b: Vec2): number => Math.hypot(a[0] - b[0], a[1] - b[1]);
 
+// The text of a DXF. A file of AutoCAD 2007 or later is UTF-8; an older one is in the code page its
+// header names (`$DWGCODEPAGE`, `ANSI_1250` for Central Europe), which UTF-8 cannot read: the bytes
+// are then decoded in that code page (the header itself is ASCII), and in windows-1252 when it names
+// none the platform knows, with a note. Without this, `Vrstva_č` and `Vrstva_ř` would both be
+// `Vrstva_�`, one layer.
+const CODE_PAGES: Record<string, string> = table({ ANSI_874: 'windows-874', ANSI_932: 'shift_jis', ANSI_936: 'gbk', ANSI_949: 'euc-kr', ANSI_950: 'big5', ANSI_1250: 'windows-1250', ANSI_1251: 'windows-1251', ANSI_1252: 'windows-1252', ANSI_1253: 'windows-1253', ANSI_1254: 'windows-1254', ANSI_1255: 'windows-1255', ANSI_1256: 'windows-1256', ANSI_1257: 'windows-1257', ANSI_1258: 'windows-1258' });
+function decodeDxf(bytes: Uint8Array): { text: string; note?: string } {
+  try {
+    return { text: new TextDecoder('utf-8', { fatal: true }).decode(bytes) };
+  } catch {
+    // not UTF-8: the code page of the header, read from the ASCII of the file
+    const ascii = new TextDecoder('windows-1252').decode(bytes);
+    const at = ascii.indexOf('$DWGCODEPAGE');
+    const [code, value] = at < 0 ? [] : ascii.slice(at, at + 200).split(/\r\n|\r|\n/).slice(1, 3).map((line) => line.trim());
+    const named = code === '3' && value ? value : undefined;
+    const label = named !== undefined ? CODE_PAGES[named.toUpperCase()] : undefined;
+    if (label !== undefined) {
+      try {
+        return { text: new TextDecoder(label).decode(bytes), note: `The file is not UTF-8: its texts (layer names) are read in the code page ${named} of its header ($DWGCODEPAGE).` };
+      } catch {
+        // a code page this platform does not decode: windows-1252 below
+      }
+    }
+    return { text: ascii, note: `The file is not UTF-8 and its header names ${named !== undefined ? `the code page ${named}, which is not read` : 'no code page ($DWGCODEPAGE)'}: its texts (layer names) are read in windows-1252, so a letter outside it may be another letter.` };
+  }
+}
+
 // A group: its code, its value (trimmed) and the line of its code in the file, from 1.
 type Group = [number, string, number];
 // The groups of the file up to the group `0 EOF`, which has to be there: what follows it is not
@@ -71,8 +100,8 @@ function groups(text: string): Group[] {
   for (let i = 0; i < lines.length; i += 2) {
     const written = lines[i].trim();
     if (written === '' && lines.slice(i).every((line) => line.trim() === '')) break; // blank lines at the end
-    const code = Number(written);
-    if (written === '' || !Number.isInteger(code)) unreadable(`line ${i + 1}: a group code is expected, not "${lines[i].slice(0, 20)}"`);
+    const code = /^[+-]?\d+$/.test(written) ? Number(written) : Number.NaN;
+    if (!Number.isInteger(code)) unreadable(`line ${i + 1}: a group code is expected, not "${lines[i].slice(0, 20)}"`);
     if (i + 1 >= lines.length) unreadable(`line ${i + 1}: the group code ${code} has no value; the file is cut short`);
     const value = lines[i + 1].trim();
     if (code === DXF_READS.comment) continue;
@@ -83,18 +112,24 @@ function groups(text: string): Group[] {
   return unreadable('the file is cut short: no EOF');
 }
 
+// A decimal number as DXF writes it; `Number` alone would also take `0x10`, `0b1`, `Infinity` and an
+// empty text (as 0).
+const DECIMAL = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/;
 // The number of a group, never an empty value read as 0.
 function numberOf([code, value, line]: Group, of: string): number {
-  const number = value === '' ? Number.NaN : Number(value);
+  const number = DECIMAL.test(value) ? Number(value) : Number.NaN;
   if (!Number.isFinite(number)) unreadable(`line ${line + 1}: the group ${code} of ${of} is "${value}", not a number`);
   return number;
 }
 
 // An arc from `p` to `q` with the bulge `b` (the tangent of a quarter of the angle it turns by,
 // positive counter-clockwise), as a counter-clockwise arc: its centre is
-// `(p + q) / 2 + ((1 − b²) / (4b)) · perp(q − p)`.
+// `(p + q) / 2 + ((1 − b²) / (4b)) · perp(q − p)`. A bulge whose arc lies within the tolerance of a
+// join of its chord (the sagitta |b| · chord / 2) is a line: a bulge of numerical noise (1e-16) would
+// put the centre of a 10 mm segment 1e16 mm away.
 function bulgeArc(p: Vec2, q: Vec2, b: number): ImportedCurve {
   const [dx, dy] = [q[0] - p[0], q[1] - p[1]];
+  if ((Math.abs(b) * Math.hypot(dx, dy)) / 2 <= LENGTH_TOLERANCE) return { type: 'line', a: p, b: q };
   const k = (1 - b * b) / (4 * b);
   const center: Vec2 = [(p[0] + q[0]) / 2 - k * dy, (p[1] + q[1]) / 2 + k * dx];
   return b > 0 ? { type: 'arc', center, start: p, end: q } : { type: 'arc', center, start: q, end: p };
@@ -149,7 +184,7 @@ type DxfOptions = RunArgsOf<typeof DXF_OPTIONS>;
 
 export function readDxf(bytes: Uint8Array, options: DxfOptions): ReadOutline {
   if (bytes.length > OUTLINE_LIMITS.bytes) tooLarge(`the file has ${bytes.length} bytes, more than ${OUTLINE_LIMITS.bytes}`);
-  const text = new TextDecoder('utf-8').decode(bytes);
+  const { text, note: decodedNote } = decodeDxf(bytes);
   const all = groups(text);
   let insunits: number | undefined;
   let measurement: number | undefined;
@@ -187,7 +222,7 @@ export function readDxf(bytes: Uint8Array, options: DxfOptions): ReadOutline {
   if (options.unit === undefined && insunits !== undefined && insunits !== 0 && fromHeader === undefined) unreadable(`the unit $INSUNITS ${insunits} is not read; give the option unit (${Object.keys(UNITS).filter((u) => u !== 'uin' && u !== 'yd').join(', ')})`);
   const [unit, unitFrom]: [string, 'option' | 'file' | 'default'] = options.unit !== undefined ? [options.unit, 'option'] : fromHeader !== undefined ? [fromHeader, 'file'] : ['mm', 'default'];
   const scale = UNITS[unit];
-  const notes: string[] = [];
+  const notes: string[] = decodedNote ? [decodedNote] : [];
   if (unitFrom === 'default') notes.push(measurement === 0 ? 'The header states no unit ($INSUNITS) and says imperial ($MEASUREMENT 0): the file is read in millimetres; give the option unit "in" if it is drawn in inches.' : 'The file states no unit ($INSUNITS): it is read in millimetres.');
   const mm = (v: number): number => v * scale;
   const curves: ReadOutline['curves'] = [];
@@ -202,9 +237,20 @@ export function readDxf(bytes: Uint8Array, options: DxfOptions): ReadOutline {
     return numberOf(found, entity[0][1]);
   };
   const every = (entity: Group[], code: number): number[] => entity.filter(([c]) => c === code).map((group) => numberOf(group, entity[0][1]));
+  // the radius of a CIRCLE or an ARC (group 40), in mm; one under 0 is no radius of a drawing
+  const radiusOf = (entity: Group[]): number => {
+    const r = number(entity, 40);
+    if (r < 0) unreadable(`line ${entity[0][2]}: ${entity[0][1]} with the radius ${r} (group 40), under 0`);
+    return mm(r);
+  };
   let control = 0;
-  const take = (layer: string, made: ImportedCurve[]): void => {
+  // every place and radius the reader computed (the unit, a bulge, the angles of an ARC) is a finite
+  // number within the engine's range, as the validator of the kind takes it
+  const take = (layer: string, made: ImportedCurve[], line: number, type: string): void => {
     for (const curve of made) {
+      const numbers = curve.type === 'line' ? [...curve.a, ...curve.b] : curve.type === 'circle' ? [...curve.center, curve.radius] : curve.type === 'arc' ? [...curve.center, ...curve.start, ...curve.end] : curve.points.flat();
+      const wrong = numbers.find((v) => !(Math.abs(v) <= MAX_NUMBER));
+      if (wrong !== undefined) unreadable(`line ${line}: ${type} gives a place or a radius of ${wrong} mm, not a finite number within ±${MAX_NUMBER} (the unit is ${unit})`);
       if (curves.length >= OUTLINE_LIMITS.read) tooLarge(`more than ${OUTLINE_LIMITS.read} curves on the layers read; an outline holds ${OUTLINE_LIMITS.curves}`);
       if (curve.type === 'spline') {
         control += curve.points.length;
@@ -245,7 +291,7 @@ export function readDxf(bytes: Uint8Array, options: DxfOptions): ReadOutline {
     }
     if (type === 'SEQEND') {
       // also the end of the attributes of an INSERT, which is no polyline
-      if (polyline?.wanted) take(polyline.layer, chain(polyline.vertices, polyline.closed));
+      if (polyline?.wanted) take(polyline.layer, chain(polyline.vertices, polyline.closed), polyline.line, 'POLYLINE');
       polyline = undefined;
       continue;
     }
@@ -264,7 +310,7 @@ export function readDxf(bytes: Uint8Array, options: DxfOptions): ReadOutline {
       case 'LINE':
         // in world coordinates: an extrusion direction neither mirrors it nor leaves it out
         if (!wanted) break;
-        take(layer, [{ type: 'line', a: [mm(number(entity, 10)), mm(number(entity, 20))], b: [mm(number(entity, 11)), mm(number(entity, 21))] }]);
+        take(layer, [{ type: 'line', a: [mm(number(entity, 10)), mm(number(entity, 20))], b: [mm(number(entity, 11)), mm(number(entity, 21))] }], at, type);
         z(entity);
         break;
       case 'CIRCLE': {
@@ -274,7 +320,7 @@ export function readDxf(bytes: Uint8Array, options: DxfOptions): ReadOutline {
           skip('CIRCLE (tilted extrusion)');
           break;
         }
-        take(layer, [{ type: 'circle', center: [(side === 'down' ? -1 : 1) * mm(number(entity, 10)), mm(number(entity, 20))], radius: mm(number(entity, 40)) }]);
+        take(layer, [{ type: 'circle', center: [(side === 'down' ? -1 : 1) * mm(number(entity, 10)), mm(number(entity, 20))], radius: radiusOf(entity) }], at, type);
         z(entity);
         break;
       }
@@ -286,19 +332,19 @@ export function readDxf(bytes: Uint8Array, options: DxfOptions): ReadOutline {
           break;
         }
         const center: Vec2 = [(side === 'down' ? -1 : 1) * mm(number(entity, 10)), mm(number(entity, 20))];
-        const r = mm(number(entity, 40));
+        const r = radiusOf(entity);
         const [d0, d1] = [number(entity, 50), number(entity, 51)];
         z(entity);
         // equal angles, or a whole turn apart: a circle
         const turn = (((d1 - d0) % 360) + 360) % 360;
         if (turn < 1e-9 || 360 - turn < 1e-9) {
-          take(layer, [{ type: 'circle', center, radius: r }]);
+          take(layer, [{ type: 'circle', center, radius: r }], at, type);
           break;
         }
         const [a0, a1] = [(d0 * Math.PI) / 180, (d1 * Math.PI) / 180];
         // mirrored, the arc runs the other way: counter-clockwise from the image of its end
         const [from, to] = side === 'down' ? [Math.PI - a1, Math.PI - a0] : [a0, a1];
-        take(layer, [{ type: 'arc', center, start: [center[0] + r * Math.cos(from), center[1] + r * Math.sin(from)], end: [center[0] + r * Math.cos(to), center[1] + r * Math.sin(to)] }]);
+        take(layer, [{ type: 'arc', center, start: [center[0] + r * Math.cos(from), center[1] + r * Math.sin(from)], end: [center[0] + r * Math.cos(to), center[1] + r * Math.sin(to)] }], at, type);
         break;
       }
       case 'LWPOLYLINE': {
@@ -322,7 +368,7 @@ export function readDxf(bytes: Uint8Array, options: DxfOptions): ReadOutline {
         }
         if (vertices.length > 0 && !vertices[vertices.length - 1].y) unreadable(`line ${at}: a vertex of LWPOLYLINE without its y (group 20)`);
         declared(entity, 90, vertices.length, 'vertices');
-        take(layer, chain(vertices, (number(entity, 70, 0) & 1) === 1));
+        take(layer, chain(vertices, (number(entity, 70, 0) & 1) === 1), at, type);
         z(entity);
         break;
       }
@@ -361,7 +407,7 @@ export function readDxf(bytes: Uint8Array, options: DxfOptions): ReadOutline {
           const made = splineCurves(points, knots, degree, at);
           if ('skipped' in made) skip(made.skipped);
           else {
-            take(layer, made.curves);
+            take(layer, made.curves, at, type);
             z(entity);
           }
         }

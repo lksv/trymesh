@@ -186,8 +186,10 @@ const LID_REGION = ['c1', 'c2', 'c3', 'm/1/c1', 'm/1/c2', 'm/1/c3', 'm/1/r1', 'm
 export function board(): EngineState {
   const { curves, report } = boardFile(60);
   // the report: 12 curves (4 lines, 4 arcs, 4 circles), nothing welded, nothing open; the layers
-  // of the file with what they hold, the courtyard and the text among them
-  if (report.curves !== 12 || report.open !== 0 || !same(report.byKind, { line: 4, circle: 4, arc: 4, spline: 0 }) || !same(Object.keys(report.about.layers), ['Edge.Cuts', 'F.CrtYd', 'F.SilkS'])) fail('the report');
+  // of the file with what they hold, the courtyard and the text among them. (`byKind` in the order
+  // the report gives its keys, line, arc, circle, spline: `same` compares JSON; corrected after the
+  // implementation here and in the three other checks of `byKind`.)
+  if (report.curves !== 12 || report.open !== 0 || !same(report.byKind, { line: 4, arc: 4, circle: 4, spline: 0 }) || !same(Object.keys(report.about.layers), ['Edge.Cuts', 'F.CrtYd', 'F.SilkS'])) fail('the report');
   // `readWith` is what the file was read with ({ format: 'dxf', layers: ['Edge.Cuts'] }): a
   // replacement repeats it
   run(sketch('board', XY), outline('board', 'pcbo', { type: 'outline', name: 'board.dxf', readWith: report.readWith, curves, anchor: 'center' }));
@@ -795,7 +797,7 @@ export function ownFiles(): boolean {
     return c.type === 'arc' && d.type === 'arc' ? far(c.start, d.start) < 1e-9 && far(c.center, d.center) < 1e-9 : c.type === d.type;
   });
   const back = run(sketch('pcbBack', XY), outline('pcbBack', 'o', { type: 'outline', curves: a.curves }), extrude('pcbAgain', 'pcbBack', [Object.keys(a.curves).filter((id) => id[0] !== 'c').map((id) => `o/${id}`)], '1.6', 'new'));
-  return same(a.report.byKind, { line: 4, circle: 4, arc: 8, spline: 0 }) && same(Object.keys(a.curves), Object.keys(b.curves)) && apart && b.report.about.unit === '1 mm per unit' && near(volumeOf(back, 'pcbAgain'), volumeOf(state, 'pcb'), 1e-9);
+  return same(a.report.byKind, { line: 4, arc: 8, circle: 4, spline: 0 }) && same(Object.keys(a.curves), Object.keys(b.curves)) && apart && b.report.about.unit === '1 mm per unit' && near(volumeOf(back, 'pcbAgain'), volumeOf(state, 'pcb'), 1e-9);
 }
 
 // Units and layers. A file in inches without `layers` is read whole and scaled; the option `unit`
@@ -838,7 +840,7 @@ export function splines(): boolean {
   const listed = entryCurves({ sketch: 'splSk', entry: 'o', kind: 'spline' }).curves[0];
   const pieces = read(importOutline('dxf', bytes(unevenSplineDxf()))).report.byKind;
   return (
-    same(report.byKind, { line: 1, circle: 0, arc: 0, spline: 1 }) &&
+    same(report.byKind, { line: 1, arc: 0, circle: 0, spline: 1 }) &&
     same(report.about.skipped, { 'SPLINE (rational)': 1, ELLIPSE: 1 }) &&
     s1.type === 'spline' &&
     s1.points.length === 6 &&
@@ -924,7 +926,7 @@ export function svgSubset(): boolean {
   return (
     same(Object.keys(all.report.about.layers), ['cut', 'engrave']) &&
     report.about.unit === '0.5 mm per unit' &&
-    same(report.byKind, { line: 8, circle: 1, arc: 6, spline: 2 }) &&
+    same(report.byKind, { line: 8, arc: 6, circle: 1, spline: 2 }) &&
     same(report.bounds, { min: [10, -40], max: [70, -5] }) &&
     a1.type === 'arc' &&
     same(a1, { type: 'arc', center: [47, -8], start: [50, -8], end: [47, -5] }) &&

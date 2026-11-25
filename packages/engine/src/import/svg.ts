@@ -10,17 +10,20 @@
 //   their relative forms. Data that does not parse is `unreadable`; a well-formed path with an
 //   elliptical arc is left out whole and listed. The scanner is lazy, so the limits stop a huge path
 //   where they are reached.
-// - `rect` (with `rx` equal to `ry`), `circle`, `ellipse` with equal radii, `line`, `polyline`,
-//   `polygon`; lengths with `px`, `mm`, `cm`, `in`, `pt`, `pc` at 96 user units per inch.
+// - `rect` (with `rx` equal to `ry` once each is clamped to half its side), `circle`, `ellipse`
+//   with equal radii, `line`, `polyline`, `polygon`; lengths with `px`, `mm`, `cm`, `in`, `pt`,
+//   `pc` at 96 user units per inch.
 // - `transform` (translate, rotate, scale, skewX, skewY, matrix) on any element; lines and splines
 //   take any of them with an inverse, a circle or an arc only a similarity.
 // - Millimetres from the option `unit`, or `width`, `height` and the `viewBox` of the root. The y of
 //   SVG points down: every place is read as (x, −y).
 // - Everything left out is counted in `about.skipped`.
 // docs/d36/6f-outline-import/design.md, "The readers: SVG".
+import { MAX_NUMBER } from '../catalog';
 import { OUTLINE_LIMITS } from '../imported-curve';
 import type { ArgSpecs, RunArgsOf } from '../query/args';
 import type { ImportedCurve, Vec2 } from '../types';
+import { LENGTH_TOLERANCE } from '../util';
 import { ImportFailure, OUTLINE_SHARED_OPTIONS, type OutlineFormatSpec, type ReadOutline } from './spec';
 
 export const SVG_OPTIONS = {
@@ -61,7 +64,9 @@ const similar = (m: Matrix): boolean => {
   return l1 > 0 && l2 > 0 && Math.abs(l1 - l2) <= 1e-9 * Math.max(l1, l2) && Math.abs(m[0] * m[2] + m[1] * m[3]) <= 1e-9 * l1 * l2;
 };
 
-const NUMBER = '[+-]?(?:\\d+\\.?\\d*|\\.\\d+)(?:[eE][+-]?\\d+)?';
+// unambiguous (the digits before a point are one run), so that no pattern built on it backtracks
+// over the ways to split a run of digits: a text of 40,000 digits is read in linear time
+const NUMBER = '[+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)(?:[eE][+-]?\\d+)?';
 // A list of numbers separated by white space and commas, and nothing else (`viewBox`, `points`, the
 // arguments of a transform). Numbers may follow each other without a separator (`1-2`, `.5.5`).
 function numberList(text: string, what: string): number[] {
@@ -80,9 +85,19 @@ function numberList(text: string, what: string): number[] {
 }
 
 const rad = (deg: number): number => (deg * Math.PI) / 180;
+// One transform of a list, read where the last one ended (sticky): a text that is no list fails at
+// its first place that does not fit, after one pass over it.
+const TRANSFORM = /[\s,]*([A-Za-z]+)\s*\(([^)]*)\)/y;
 function transformOf(text: string | undefined, what: string): Matrix {
   let m = IDENTITY;
-  const rest = (text ?? '').replace(/([A-Za-z]+)\s*\(([^)]*)\)/g, (_, name: string, args: string) => {
+  const list = text ?? '';
+  let i = 0;
+  for (;;) {
+    TRANSFORM.lastIndex = i;
+    const found = TRANSFORM.exec(list);
+    if (!found) break;
+    i = TRANSFORM.lastIndex;
+    const [, name, args] = found;
     const v = numberList(args, `${what}, the transform ${name}`);
     const count = (...allowed: number[]): void => {
       if (!allowed.includes(v.length)) throw unreadable(`${what}: the transform ${name} takes ${allowed.join(' or ')} numbers, not ${v.length}`);
@@ -108,9 +123,9 @@ function transformOf(text: string | undefined, what: string): Matrix {
       count(6);
       m = times(m, v as Matrix);
     } else throw unreadable(`${what}: the transform ${name} is not one of SVG`);
-    return '';
-  });
-  if (/[^\s,]/.test(rest)) throw unreadable(`${what}: the transform "${text}" is not a list of transforms`);
+  }
+  // what the last transform left: white space and commas only
+  if (/[^\s,]/.test(list.slice(i))) throw unreadable(`${what}: the transform "${list.slice(0, 80)}" is not a list of transforms`);
   return m;
 }
 
@@ -173,7 +188,11 @@ function* tags(text: string): Generator<Tag> {
     if (lt < 0) break;
     if (text.startsWith('<!--', lt)) i = until(lt, '-->', 'a comment');
     else if (text.startsWith('<?', lt)) i = until(lt, '?>', 'a processing instruction');
-    else if (text.startsWith('<![CDATA[', lt)) i = until(lt, ']]>', 'a CDATA section');
+    else if (text.startsWith('<![CDATA[', lt)) {
+      // character data: text, which outside the root element is no part of a document
+      if (open.length === 0) throw unreadable(`a CDATA section outside the root element (at character ${lt})`);
+      i = until(lt, ']]>', 'a CDATA section');
+    }
     else if (text.startsWith('<!DOCTYPE', lt)) {
       const end = until(lt, '>', 'a DOCTYPE');
       if (text.slice(lt, end).includes('[')) throw unreadable(`a DOCTYPE with declarations of its own (at character ${lt}) is not read`);
@@ -298,12 +317,17 @@ function* scanPath(d: string, what: string): Generator<Segment> {
 // An arc of SVG from `p` to `q` (not one place) with the radius `r` (not 0) and the two flags, in
 // the axes of its element: `sweep` 1 runs towards growing angles of those axes. Its centre (SVG
 // 1.1, F.6.5; a radius under half the chord is raised to it, F.6.6), and the arc as one that runs
-// towards growing angles from `start` to `end`.
-function svgArc(p: Vec2, q: Vec2, radius: number, large: boolean, sweep: boolean): { center: Vec2; start: Vec2; end: Vec2 } {
+// towards growing angles from `start` to `end`. Undefined when the arc is a small arc that lies
+// within `flat` (the tolerance of a join, in the units of the element) of its chord (its sagitta `r − √(r² − d²)`, d half the chord, as
+// `d² / (r + √(r² − d²))`): it is read as a line, not as a circle whose centre may lie beyond the
+// range of the engine (`A1e12 1e12` over 10 mm).
+function svgArc(p: Vec2, q: Vec2, radius: number, large: boolean, sweep: boolean, flat: number): { center: Vec2; start: Vec2; end: Vec2 } | undefined {
   const half: Vec2 = [(p[0] - q[0]) / 2, (p[1] - q[1]) / 2];
   const d = Math.hypot(half[0], half[1]);
   const r = Math.max(Math.abs(radius), d);
-  const k = (large !== sweep ? 1 : -1) * (Math.sqrt(Math.max(0, r * r - d * d)) / d);
+  const root = Math.sqrt(Math.max(0, r * r - d * d));
+  if (!large && (d * d) / (r + root) <= flat) return undefined;
+  const k = (large !== sweep ? 1 : -1) * (root / d);
   const center: Vec2 = [(p[0] + q[0]) / 2 + k * half[1], (p[1] + q[1]) / 2 - k * half[0]];
   return sweep ? { center, start: p, end: q } : { center, start: q, end: p };
 }
@@ -324,8 +348,11 @@ export function readSvg(bytes: Uint8Array, options: RunArgsOf<typeof SVG_OPTIONS
   let control = 0; // the control points of the splines taken
   const skipped: Record<string, number> = Object.create(null);
   const skip = (what: string): void => void (skipped[what] = (skipped[what] ?? 0) + 1);
-  // the stack of open elements: the transform into millimetres with y up, the layers, whether its content is skipped
-  const stack: { matrix: Matrix; layers: string[]; skipped: boolean }[] = [];
+  // The stack of open elements: the transform into millimetres with y up, the layer (the innermost
+  // named group, '' outside any), whether a layer asked for holds it, and whether its content is
+  // skipped. Nothing is copied per level, so the memory follows the depth, not its square.
+  const stack: { matrix: Matrix; layer: string; selected: boolean; skipped: boolean }[] = [];
+  const asked = options.layers;
   let root: Matrix | undefined;
   let unit = 'px';
   let paths = 0;
@@ -359,11 +386,18 @@ export function readSvg(bytes: Uint8Array, options: RunArgsOf<typeof SVG_OPTIONS
         scale = slice ? Math.max(sx, sy) : Math.min(sx, sy);
         if (apart > 1e-6) notes.push(`width over the viewBox gives ${Number(sx.toPrecision(9))} mm per unit and height ${Number(sy.toPrecision(9))}; the ${slice ? 'larger is taken, as a viewer fills the size with the drawing (slice)' : 'smaller is taken, as a viewer fits the drawing'}${apart > 1e-3 ? ' (they differ by more than a thousandth: give the option unit if the size is wrong)' : ''}`);
         unitFrom = 'file';
-      } else notes.push('the root gives no size (width, height and viewBox): read at 96 units per inch; give the option unit if the drawing is in another unit');
+      } else if (a.width === undefined && a.height === undefined && !box) notes.push('the root gives no size (width, height and viewBox): read at 96 units per inch; give the option unit if the drawing is in another unit');
+      else {
+        // what the root gives is not enough for millimetres: say what is missing, not "no size"
+        const given = [a.width !== undefined ? `width="${a.width}"` : '', a.height !== undefined ? `height="${a.height}"` : '', box ? 'a viewBox' : ''].filter((part) => part !== '').join(', ');
+        const percent = [a.width, a.height].some((v) => v !== undefined && v.trim().endsWith('%'));
+        const why = percent ? 'a width or height in % is a share of the page, not a size, so the viewBox alone gives no millimetres' : !box ? 'without a viewBox a user unit is a px' : 'millimetres need a width and a height in a unit beside the viewBox';
+        notes.push(`the root gives ${given}: ${why}; read at 96 units per inch; give the option unit if the drawing is in another unit`);
+      }
       unit = options.unit ?? (unitFrom === 'file' ? `${Number(scale.toPrecision(9))} mm per unit` : 'px');
       // millimetres, y up; the user space as it is: the origin of the viewBox moves nothing
       root = [scale, 0, 0, -scale, 0, 0];
-      if (tag.open) stack.push({ matrix: root, layers: [], skipped: false });
+      if (tag.open) stack.push({ matrix: root, layer: '', selected: asked === undefined, skipped: false });
       continue;
     }
     if (!root) throw unreadable(`not an SVG file: the first element is <${tag.name}>, not <svg> (at character ${tag.at})`);
@@ -371,23 +405,27 @@ export function readSvg(bytes: Uint8Array, options: RunArgsOf<typeof SVG_OPTIONS
     const label = a.id !== undefined ? `<${tagName} id="${a.id}">` : `the <${tagName}> at character ${tag.at}`;
     const hidden = top.skipped || SKIPPED_CONTENT.has(tagName);
     if (hidden) {
-      if (tag.open) stack.push({ matrix: top.matrix, layers: top.layers, skipped: true });
+      if (tag.open) stack.push({ ...top, skipped: true });
       continue;
     }
     const matrix = times(top.matrix, transformOf(a.transform, label));
     const name = a['inkscape:label'] ?? a.id;
-    const on = tagName === 'g' && name !== undefined ? [...top.layers, name] : top.layers;
+    const named = tagName === 'g' && name !== undefined;
+    const layer = named ? name : top.layer;
+    // a group asked for holds everything in it
+    const selected = top.selected || (named && asked !== undefined && asked.includes(name));
     const nested = tagName === 'svg';
-    if (tag.open) stack.push({ matrix, layers: on, skipped: nested });
-    if (tagName === 'g') continue;
-    const layer = on[on.length - 1] ?? '';
     const shape = SHAPES.has(tagName);
     const listed = LISTED.has(tagName) || nested;
+    // the content of what is listed (the tspan of a text) is counted with it, not on its own
+    if (tag.open) stack.push({ matrix, layer, selected, skipped: listed });
+    if (tagName === 'g') continue;
     if (shape || listed) {
       layers[layer] ??= Object.create(null) as Record<string, number>;
       layers[layer][tagName] = (layers[layer][tagName] ?? 0) + 1;
     }
-    if (options.layers !== undefined && !on.some((l) => options.layers?.includes(l))) continue;
+    // '' asks for what is in no named group (the layer the report lists it under)
+    if (!selected && !(layer === '' && asked?.includes(''))) continue;
     if (listed) {
       skip(nested ? 'svg (nested)' : tagName);
       continue;
@@ -400,9 +438,10 @@ export function readSvg(bytes: Uint8Array, options: RunArgsOf<typeof SVG_OPTIONS
     const [before, controlBefore] = [curves.length, control];
     const take = (curve: ImportedCurve): void => {
       if (curves.length >= OUTLINE_LIMITS.read) throw new ImportFailure('tooLarge', `more than ${OUTLINE_LIMITS.read} curves on the layers read; an outline holds ${OUTLINE_LIMITS.curves}`);
-      // after the transforms every place and radius is a finite number
+      // after the transforms every place and radius is a finite number within the engine's range
       const places = curve.type === 'line' ? [curve.a, curve.b] : curve.type === 'circle' ? [curve.center, [curve.radius, 0] as Vec2] : curve.type === 'arc' ? [curve.center, curve.start, curve.end] : curve.points;
       if (!places.every((p) => Number.isFinite(p[0]) && Number.isFinite(p[1]))) throw unreadable(`${label}: its transform gives a place that is no finite number`);
+      if (!places.every((p) => Math.abs(p[0]) <= MAX_NUMBER && Math.abs(p[1]) <= MAX_NUMBER)) throw unreadable(`${label}: it gives a place or a radius beyond ±${MAX_NUMBER} mm, the range of the engine`);
       if (curve.type === 'spline') {
         control += curve.points.length;
         if (control > OUTLINE_LIMITS.readControl) throw new ImportFailure('tooLarge', `more than ${OUTLINE_LIMITS.readControl} control points of splines on the layers read; the splines of an outline hold ${OUTLINE_LIMITS.control} together`);
@@ -468,10 +507,12 @@ export function readSvg(bytes: Uint8Array, options: RunArgsOf<typeof SVG_OPTIONS
       if (odd !== undefined) leaveOut(`length in ${odd}`);
       else if (w < 0 || h < 0 || rx < 0 || ry < 0) throw unreadable(`${label}: a size under 0`);
       else if (w === 0 || h === 0) skip('rect (no size)');
-      else if (!same(rx, ry)) leaveOut('rx and ry differ: elliptical corners');
+      // SVG clamps each radius to its half of the side (1.1, 9.2): rx="10" on a rect 10 wide and 40
+      // high gives elliptical corners 5 by 10, which are no arcs of a sketch
+      else if (!same(Math.min(rx, w / 2), Math.min(ry, h / 2))) leaveOut('rx and ry differ: elliptical corners');
       else if (rx > 0 && !round) leaveOut('uneven transform');
       else {
-        const r = Math.min(rx, w / 2, h / 2);
+        const r = Math.min(rx, w / 2);
         line([x + r, y], [x + w - r, y]);
         line([x + w, y + r], [x + w, y + h - r]);
         line([x + w - r, y + h], [x + r, y + h]);
@@ -513,7 +554,11 @@ export function readSvg(bytes: Uint8Array, options: RunArgsOf<typeof SVG_OPTIONS
           } else if (rx === 0 || ry === 0) line(here, next);
           else if (!same(rx, ry)) unsupported = 'A with two radii (an elliptical arc)';
           else if (!round) unsupported = 'uneven transform';
-          else arc(svgArc(here, next, rx, p[3] !== 0, p[4] !== 0));
+          else {
+            const made = svgArc(here, next, rx, p[3] !== 0, p[4] !== 0, LENGTH_TOLERANCE / scale);
+            if (made) arc(made);
+            else line(here, next);
+          }
           here = next;
         } else if (command === 'C' || command === 'S') {
           const c1 = command === 'C' ? to(p[0], p[1]) : mirror(cubic);
@@ -541,7 +586,7 @@ export function readSvg(bytes: Uint8Array, options: RunArgsOf<typeof SVG_OPTIONS
 export const svg: OutlineFormatSpec<typeof SVG_OPTIONS> = {
   title: 'SVG',
   summary:
-    'SVG 1.1 as a drawing program writes it: path (M, L, H, V, Z, C, S, Q, T and A with equal radii, absolute and relative), rect (round corners with rx equal to ry), circle, ellipse with equal radii, line, polyline, polygon, under any transform (a circle or an arc only under one that keeps it round). The y of SVG points down, so a place is read as (x, −y). Millimetres from width, height and viewBox of the root, or the option unit. Layers are the groups an element is in, by inkscape:label or id. Text, images, use, a nested svg, elliptical arcs and lengths in % or em are left out and listed; CSS, fills and strokes are not read (a filled shape is its outline, a hidden one is read). A file that is not well formed is refused.',
+    'SVG 1.1 as a drawing program writes it: path (M, L, H, V, Z, C, S, Q, T and A with equal radii, absolute and relative), rect (round corners whose rx and ry, each clamped to half its side, are equal), circle, ellipse with equal radii, line, polyline, polygon, under any transform (a circle or an arc only under one that keeps it round). The y of SVG points down, so a place is read as (x, −y). Millimetres from width, height and viewBox of the root, or the option unit. Layers are the groups an element is in, by inkscape:label or id. Text, images, use, a nested svg, elliptical arcs and lengths in % or em are left out and listed; CSS, fills and strokes are not read (a filled shape is its outline, a hidden one is read). A file that is not well formed is refused.',
   extensions: ['svg'],
   options: SVG_OPTIONS,
   read: readSvg,

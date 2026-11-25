@@ -56,11 +56,13 @@ import {
   type OutlineRevision,
   type RegionRef,
   type SketchOutline,
-  documentIds,
   fileStemOf,
   importOutline,
+  outlineEntryId,
   outlineFormatOf,
   outlineRevision,
+  placedOutlineBox,
+  updateHolds,
   type SketchResult,
   poseNote,
   printedBodies,
@@ -644,7 +646,10 @@ function outlineDetail(engine: Engine, feature: SketchFeature, entry: Id): Recor
   const page = engine.query('entryCurves', { sketch: feature.id, entry, max: OUTLINE_LIMITS.listed });
   const listed: Json[] = [];
   let positions = 0;
-  let box: [number, number, number, number] | undefined;
+  // where the next page starts: the query's `next` when this row lists its whole page; cut short by
+  // the positions, the count listed (the page starts at 0, and a curve of an outline always has its
+  // place, so the query passed none over before it)
+  let next = 0;
   if (page.ok && page.result.status === 'ok') {
     for (const curve of page.result.curves) {
       const held = curve.type === 'spline' ? curve.control.length : curve.type === 'arc' ? 3 : curve.type === 'line' ? 2 : 1;
@@ -653,26 +658,22 @@ function outlineDetail(engine: Engine, feature: SketchFeature, entry: Id): Recor
       const { through: _, ...shown } = curve as ListedCurve & { through?: unknown };
       listed.push(roundedResult(shown) as Json);
     }
+    next = listed.length === page.result.curves.length ? page.result.next : listed.length;
   }
-  // the box as placed, from the solved positions of the entry's points and its radii
-  const solved = engine.getState().evaluation.features[feature.id]?.sketch;
-  if (solved) {
-    const grow = (x: number, y: number, r = 0): void => {
-      box = box ? [Math.min(box[0], x - r), Math.min(box[1], y - r), Math.max(box[2], x + r), Math.max(box[3], y + r)] : [x - r, y - r, x + r, y + r];
-    };
-    for (const [id, p] of Object.entries(solved.points)) if (id.startsWith(`${entry}/`)) grow(p.x, p.y);
-    for (const [id, r] of Object.entries(solved.radii)) if (id.startsWith(`${entry}/`) && solved.points[`${id}/center`]) grow(solved.points[`${id}/center`].x, solved.points[`${id}/center`].y, r);
-  }
+  // the box as placed: the curves at their places (an arc by its extremes within its sweep, a spline
+  // by its curve), not the points of the entry alone
+  const placed = placedOutlineBox(entry, ref);
+  const box = placed ? [placed.min[0], placed.min[1], placed.max[0], placed.max[1]] : undefined;
   const { curves: _, ...fields } = input;
   return {
     ...fields,
     source: 'reference',
     counts,
-    ...(box ? { box: (box as number[]).map(round) } : {}),
+    ...(box ? { box: box.map(round) } : {}),
     curves: listed,
     listed: listed.length,
     total,
-    ...(listed.length < total ? { more: `the query entryCurves with { sketch: "${feature.id}", entry: "${entry}", from: ${listed.length} } lists the rest` } : {}),
+    ...(next < total ? { more: `the query entryCurves with { sketch: "${feature.id}", entry: "${entry}", from: ${next} } lists the rest` } : {}),
   };
 }
 
@@ -991,11 +992,15 @@ export interface OutlineArgs {
   anchor?: 'origin' | 'center';
   regions?: boolean;
 }
+// - `hold`: of a replacement, the constraints of the sketch that name an entity the new curves take
+//   away or change in kind (the engine's `updateHolds`), with the entity each names; the update is
+//   refused unless they are in `remove`.
 export interface PreparedOutline {
   report: OutlineReport;
   id?: Id;
   command?: Command;
   revision?: OutlineRevision;
+  hold?: { constraint: Id; entities: Id[] }[];
   next: string[];
 }
 export interface ImportOutlineAnswer {
@@ -1003,6 +1008,7 @@ export interface ImportOutlineAnswer {
   report: OutlineReport;
   entry?: { sketch: Id; id: Id };
   revision?: OutlineRevision;
+  hold?: { constraint: Id; entities: Id[] }[];
   refused?: string;
   sketch?: unknown;
   problems?: unknown;
@@ -1026,16 +1032,6 @@ export function outlineBytes(text: unknown): Uint8Array {
 }
 
 const OUTLINE_FIELDS_GIVEN = ['x', 'y', 'turn', 'anchor', 'regions', 'name'] as const;
-// The ID of a new entry from the name of a file: its stem reduced to the characters of an ID,
-// numbered while the sketch or the document has it.
-function outlineEntryId(document: Document, sketch: SketchFeature, file: string): Id {
-  const stem = fileStemOf(file).replace(/[^A-Za-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '') || 'outline';
-  const base = /^[A-Za-z_]/.test(stem) ? stem : `o_${stem}`;
-  const used = new Set([...documentIds(document), ...Object.keys(sketch.external)]);
-  let id = base;
-  for (let n = 2; used.has(id) || id === 'origin'; n++) id = `${base}_${n}`;
-  return id;
-}
 
 export function prepareOutline(engine: Engine, file: { name: string; bytes: Uint8Array }, args: OutlineArgs): PreparedOutline {
   const document = engine.getState().document;
@@ -1069,12 +1065,16 @@ export function prepareOutline(engine: Engine, file: { name: string; bytes: Uint
   if (stored) {
     const before = (stored as SketchOutline).curves;
     const revision = outlineRevision(before, read.curves);
+    const holds = updateHolds(sketch, args.id as Id, stored, { ...(stored as SketchOutline), curves: read.curves });
+    const entities = new Map<Id, Id[]>();
+    for (const { entity, constraints } of [...holds.gone, ...holds.changed]) for (const constraint of constraints) entities.set(constraint, [...(entities.get(constraint) ?? []), entity]);
+    const hold = holds.constraints.map((constraint) => ({ constraint, entities: entities.get(constraint) ?? [] }));
     const update: Command = { type: 'updateExternal', sketch: sketch.id, id: args.id as Id, ref: { type: 'outline', curves: read.curves, readWith: read.report.readWith, ...given } } as Command;
     const remove = (args.remove ?? []).map((constraint): Command => ({ type: 'removeConstraint', sketch: sketch.id, id: constraint }) as Command);
-    return { report: read.report, id: args.id, revision, command: remove.length ? ({ type: 'batch', commands: [...remove, update] } as Command) : update, next };
+    return { report: read.report, id: args.id, revision, ...(hold.length ? { hold } : {}), command: remove.length ? ({ type: 'batch', commands: [...remove, update] } as Command) : update, next };
   }
   const id = args.id ?? outlineEntryId(document, sketch, file.name);
-  const name = given.name ?? fileStemOf(file.name).trim().slice(0, 200);
+  const name = given.name ?? fileStemOf(file.name).trim().slice(0, OUTLINE_LIMITS.text);
   const command = { type: 'addExternal', sketch: sketch.id, id, ref: { type: 'outline', curves: read.curves, readWith: read.report.readWith, ...given, ...(name ? { name } : {}) } } as Command;
   return { report: read.report, id, command, next };
 }
@@ -1086,7 +1086,17 @@ export function outlineInto(engine: Engine, file: { name: string; bytes: Uint8Ar
     return { file: file.name, report, next: [...prepared.next, 'Nothing was placed. Name a `sketch` to place the outline in it (and `x`, `y`, `turn`, `anchor`), or give `options` (the layers, the unit, the weld) to read the file otherwise.'].join(' ') };
   }
   const result = engine.execute(prepared.command);
-  if (!result.ok) return { file: file.name, report, ...(prepared.revision ? { revision: prepared.revision } : {}), refused: commandProblem(result), next: [...prepared.next, 'Nothing was changed. A revision that takes away an entity a constraint holds is refused: repeat the call with those constraints in `remove`.'].join(' ') };
+  const held = prepared.hold?.filter(({ constraint }) => !(args.remove ?? []).includes(constraint)) ?? [];
+  if (!result.ok)
+    return {
+      file: file.name,
+      report,
+      ...(prepared.revision ? { revision: prepared.revision } : {}),
+      ...(prepared.hold ? { hold: prepared.hold } : {}),
+      refused: commandProblem(result),
+      // the advice of a revision only for a replacement, and only when constraints hold what goes
+      next: [...prepared.next, 'Nothing was changed.', ...(args.replace && held.length ? [`A revision that takes away an entity a constraint holds, or changes its kind, is refused: repeat the call with \`remove: ${JSON.stringify([...(args.remove ?? []), ...held.map(({ constraint }) => constraint)])}\` (\`hold\` lists what each names).`] : [])].join(' '),
+    };
   const answer = outcome(result) as { problems: Json; sketches: { id: Id }[] };
   const brief = answer.sketches.find((sketch) => sketch.id === args.sketch);
   const solved = result.state.evaluation.features[args.sketch]?.sketch;
@@ -1099,9 +1109,21 @@ export function outlineInto(engine: Engine, file: { name: string; bytes: Uint8Ar
     problems: answer.problems,
     next: [
       ...prepared.next,
-      `The curves are \`${prepared.id}/l1\` … as \`report.ids\` counts them (their points \`${prepared.id}/l1/a\`, \`${prepared.id}/a1/center\` …); the query entryCurves lists them with their places. The query sketchRegions with \`curve: "${prepared.id}/l1"\` gives the region a curve bounds, whole, to extrude. Constrain own geometry to the entities, or move the outline by \`updateExternal\` (\`x\`, \`y\`, \`turn\`, \`anchor\`).`,
+      outlinePlacedNext(prepared.id, result.state.document, args.sketch),
     ].join(' '),
   };
+}
+
+// The advice after a placement, by the curves the entry holds: the first of them, and the points of
+// the kinds it has (an outline of circles only has no `l1`).
+function outlinePlacedNext(id: Id, document: Document, sketch: Id): string {
+  const feature = document.features.find((f) => f.id === sketch) as SketchFeature | undefined;
+  const ref = feature?.external[id] as SketchOutline | undefined;
+  const curves = ref?.type === 'outline' ? Object.entries(ref.curves) : [];
+  const first = curves[0]?.[0] ?? 'l1';
+  const point: Record<ImportedCurve['type'], string> = { line: 'a', circle: 'center', arc: 'center', spline: '0' };
+  const examples = [...new Map(curves.map(([local, curve]) => [curve.type, `\`${id}/${local}/${point[curve.type]}\``])).values()].join(', ');
+  return `The curves are \`${id}/${first}\` … as \`report.ids\` counts them (their points ${examples} …); the query entryCurves lists them with their places. The query sketchRegions with \`curve: "${id}/${first}"\` gives the region a curve bounds, whole, to extrude. Constrain own geometry to the entities, or move the outline by \`updateExternal\` (\`x\`, \`y\`, \`turn\`, \`anchor\`).`;
 }
 
 // The arguments of the internal tool `_outline`: those of `import_outline` without `path`, and the

@@ -1274,41 +1274,65 @@ describe('scenario 15, steps 4, 6 and 7: the lid with spline grips (6d, D70)', (
 });
 
 describe('scenario 15 assembled: the board imported from its DXF, the cover built on it, the revised file (6f, D72)', () => {
-  // one document through the steps, in order (calls.ts of 6f, `scenario`)
+  // One document through the steps, in order (calls.ts of 6f, `scenario`). Each step first brings
+  // the document of the kit to the step before it, so an `it` runs alone too (`-t "step 4"`): in a
+  // run of the whole describe nothing is built twice. `reached` counts the steps the document holds.
+  const STEPS: (() => unknown)[] = [
+    () => (s15.fresh(), s15.board()),
+    () => s15.skeletonAndBase(),
+    () => s15.lid(),
+    () => s15.vents(),
+    () => (s15.floorNotch(), s15.lidNotch()),
+  ];
+  let reached = 0;
+  const upTo = (step: number): void => {
+    if (reached > step) reached = 0; // a step again: the document from the start
+    while (reached < step) STEPS[reached++]();
+  };
+  const take = <T>(step: number, run: () => T): T => {
+    upTo(step);
+    const out = run();
+    reached = step + 1;
+    return out;
+  };
   it('step 1: the board from board.dxf, placed by its centre and extruded', () => {
-    s15.fresh();
-    expect(s15.boardChecks(s15.board())).toBe(true);
+    expect(s15.boardChecks(take(0, () => (s15.fresh(), s15.board())))).toBe(true);
   });
   it('steps 2 and 3: the skeleton projects the board, the floor, the rim and the standoffs', () => {
-    expect(s15.baseChecks(s15.skeletonAndBase())).toBe(true);
+    expect(s15.baseChecks(take(1, () => s15.skeletonAndBase()))).toBe(true);
   });
   it('step 4: the lid held on projections of the sides, mirrored', () => {
-    const state = s15.lid();
+    const state = take(2, () => s15.lid());
     expect(s15.allOk(state)).toBe(true);
     expect(Math.abs(s15.volumeOf(state, 'lid') - s15.lidByHand(60))).toBeLessThan(s15.LID_ALLOWANCE);
   });
   it('step 5: two rows of vents', () => {
-    const state = s15.vents();
+    const state = take(3, () => s15.vents());
     expect(s15.allOk(state)).toBe(true);
     expect(Math.abs(s15.volumeOf(state, 'lid') - (s15.lidByHand(60) - 7 * s15.SLOT * 2))).toBeLessThan(s15.LID_ALLOWANCE);
   });
   it('step 6: the notch of the floor and the round notch of the lid', () => {
-    expect(s15.allOk(s15.floorNotch())).toBe(true);
-    expect(s15.notchChecks(s15.lidNotch())).toBe(true);
+    const [floor, lid] = take(4, () => [s15.floorNotch(), s15.lidNotch()] as const);
+    expect(s15.allOk(floor)).toBe(true);
+    expect(s15.notchChecks(lid)).toBe(true);
   });
   it('step 7: vents 7, 3 and 5; the revised file 2 mm wider; the volumes by the query mass; the section of the lid read back', () => {
-    expect(s15.ventCount()).toBe(true);
-    expect(s15.revisedFile()).toBe(true);
-    expect(s15.volumes()).toBe(true);
-    expect(s15.lidSection()).toBe(true);
+    take(5, () => {
+      expect(s15.ventCount()).toBe(true);
+      expect(s15.revisedFile()).toBe(true);
+      expect(s15.volumes()).toBe(true);
+      expect(s15.lidSection()).toBe(true);
+    });
   });
   it('the placement on a model of its own: the anchor, the turn as an expression, setField, the rename of its parameter', () => {
     expect(s15.placement()).toBe(true);
+    reached = 0; // the document of the kit is another one now
   });
   it('the flag off and on, and a loop of own and imported curves', () => {
     s15.fresh();
     expect(s15.flag()).toBe(true);
     s15.fresh();
     expect(s15.mixedLoop()).toBe(true);
+    reached = 0;
   });
 });

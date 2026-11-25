@@ -289,7 +289,7 @@ describe('catalog of numeric fields', () => {
       { path: 'extent/distance', value: 12, expr: 'h' },
     ]);
     expect(fieldsOf(feature(doc, 'P1'))).toMatchObject([{ path: 'offset', value: 3, spec: { unit: 'mm' } }]);
-    expect(fieldsOf(feature(doc, 'E1'))).toBe(fieldsOf(feature(doc, 'E1'))); // pamatuje se podle feature
+    expect(fieldsOf(feature(doc, 'E1'))).toBe(fieldsOf(feature(doc, 'E1'))); // remembered by the feature
   });
 
   it('the static field description matches what validation reads', () => {

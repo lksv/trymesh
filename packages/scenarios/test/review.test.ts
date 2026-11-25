@@ -1,4 +1,4 @@
-// Nálezy z revize enginu ověřené proti skutečným adaptérům, a chybové kódy, které dosud neměly test.
+// Findings of the review of the engine checked against the real adapters, and error codes that had no test yet.
 import type { Command, EngineState, FaceName, ImportedCurve, SketchFeature, SketchOutline } from '@trymesh/engine';
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
@@ -23,8 +23,8 @@ const plate = (width = 40, height = 30, thickness = 10) => {
   return engine;
 };
 
-describe('profil ze solveru', () => {
-  it('čtvrtkruh s tečnami: obě oblasti se najdou při každém natočení', () => {
+describe('the profile from the solver', () => {
+  it('a quarter circle with tangents: both regions are found at every rotation', () => {
     for (let i = 0; i < 24; i++) {
       const angle = 0.13 + i * 0.26;
       const turn = (x: number, y: number): [number, number] => [x * Math.cos(angle) - y * Math.sin(angle), x * Math.sin(angle) + y * Math.cos(angle)];
@@ -50,11 +50,11 @@ describe('profil ze solveru', () => {
         ),
       );
       const regions = state.evaluation.features.S1.sketch!.regions.map((r) => r.ref.outerLoop.join(','));
-      expect(regions, `natočení ${angle.toFixed(2)}`).toEqual(['arc,cv,wc', 'arc,vz,zw']);
+      expect(regions, `rotation ${angle.toFixed(2)}`).toEqual(['arc,cv,wc', 'arc,vz,zw']);
     }
   });
 
-  it('čtverec těsně pod kružnicí: profil je neplatný a extrude to řekne, místo aby vzniklo vadné těleso', () => {
+  it('a square just inside a circle: the profile is invalid and the extrude says so instead of making a faulty body', () => {
     const engine = newEngine();
     const corners = [0, 1, 2, 3].map((i) => [9.997 * Math.cos(0.02 + (i * Math.PI) / 2), 9.997 * Math.sin(0.02 + (i * Math.PI) / 2)]);
     run(
@@ -71,8 +71,8 @@ describe('profil ze solveru', () => {
   });
 });
 
-describe('bez účinku', () => {
-  it('drobný výstupek na velké desce účinek má', () => {
+describe('no effect', () => {
+  it('a tiny boss on a large plate has an effect', () => {
     const engine = plate(200, 200, 50);
     const state = run(engine, addSketch('S2', onFace('E1', cap('E1'))), rectangle('S2', 'b', 100, 100, 1, 1, null), addExtrude('E2', 'S2', [rectLoop('b')], 1, 'add', 'E1'));
     expectAllOk(state);
@@ -80,7 +80,7 @@ describe('bez účinku', () => {
     expect(faceNames(state, 'E1')).toContain('E2/endCap');
   });
 
-  it('tenký kolík na desce účinek má; přidání uvnitř tělesa ne', () => {
+  it('a thin pin on a plate has an effect; an addition inside the body does not', () => {
     const engine = plate();
     const pin = run(engine, addSketch('S2', onFace('E1', cap('E1'))), circle('S2', 'k', 20, 15, 0.05), addExtrude('E2', 'S2', [['k']], 1, 'add', 'E1'));
     expect(status(pin).E2).toBe('ok');
@@ -89,8 +89,8 @@ describe('bez účinku', () => {
   });
 });
 
-describe('razítko řešení', () => {
-  it('bod smazaný a v téže dávce přidaný pod stejným ID jinde se vyřeší znovu', () => {
+describe('the stamp of the solution', () => {
+  it('a point deleted and added elsewhere under the same ID in the same batch is solved again', () => {
     const engine = plate();
     const sketch = engine.getState().document.features[0] as SketchFeature;
     const lost = Object.entries(sketch.constraints).filter(([, c]) => ['"r3"', '"rb"', '"rc"'].some((id) => JSON.stringify(c).includes(id)));
@@ -111,14 +111,14 @@ describe('razítko řešení', () => {
   });
 });
 
-describe('scénář 6b: nálitek přichycený na krajní bod promítnuté hrany', () => {
-  // rozměry, které float32 neuloží přesně: krajní bod promítnuté hrany má přesnost sítě
+describe('scenario 6b: a boss attached to an end point of a projected edge', () => {
+  // sizes that float32 does not store exactly: the end point of a projected edge has the precision of the mesh
   for (const [width, height, thickness] of [
     [40.1, 30.1, 10.1],
     [33.3, 27.7, 9.9],
     [123.456, 78.9, 12.34],
   ]) {
-    it(`deska ${width} × ${height} × ${thickness}`, () => {
+    it(`plate ${width} × ${height} × ${thickness}`, () => {
       const engine = plate(width, height, thickness);
       run(
         engine,
@@ -128,7 +128,7 @@ describe('scénář 6b: nálitek přichycený na krajní bod promítnuté hrany'
           rectangle('S3', 'n', width - 10, height - 10, 10, 10, null),
         ),
       );
-      // pravý horní roh nálitku na krajní bod promítnuté hrany místo kót šířky a výšky
+      // the top right corner of the boss on the end point of the projected edge instead of the dimensions of the width and the height
       run(engine, batch({ type: 'removeConstraint', sketch: 'S3', id: 'nw' }, { type: 'removeConstraint', sketch: 'S3', id: 'nh' }, constrain('S3', 'snap', { type: 'coincident', a: 'n3', b: 'right/b' })));
       const state = run(engine, addExtrude('E3', 'S3', [rectLoop('n')], 5, 'add', 'E1'));
       expectAllOk(state);
@@ -144,8 +144,8 @@ describe('scénář 6b: nálitek přichycený na krajní bod promítnuté hrany'
   }
 });
 
-describe('chybové kódy', () => {
-  it('skica na válcové stěně: nonPlanarFace', () => {
+describe('error codes', () => {
+  it('a sketch on a cylindrical face: nonPlanarFace', () => {
     const engine = newEngine();
     run(engine, addSketch('S1', XY), circle('S1', 'k', 0, 0, 10), addExtrude('E1', 'S1', [['k']], 10));
     const state = run(engine, addSketch('S2', onFace('E1', side('E1', 'k'))));
@@ -153,7 +153,7 @@ describe('chybové kódy', () => {
     expect(state.evaluation.features.S2.sketch).toBeUndefined();
   });
 
-  it('promítnutí hrany kolmé na rovinu skici: degenerateProjection; úsečky jako kružnice: unsupportedProjection', () => {
+  it('projecting an edge perpendicular to the plane of the sketch: degenerateProjection; a line as a circle: unsupportedProjection', () => {
     const engine = plate();
     const vertical = { a: side('E1', 'ra'), b: side('E1', 'rb') };
     const top = { a: cap('E1'), b: side('E1', 'rb') };
@@ -169,7 +169,7 @@ describe('chybové kódy', () => {
       ['unsupportedProjection', 'round'],
       ['degenerateProjection', 'up'],
     ]);
-    // skica s nepoužitelným promítnutím dál funguje
+    // a sketch with an unusable projection still works
     expect(status(run(engine, rectangle('S2', 'q', 5, 5, 4, 4, null), addExtrude('E2', 'S2', [rectLoop('q')], 2, 'add', 'E1'))).E2).toBe('ok');
   });
 });

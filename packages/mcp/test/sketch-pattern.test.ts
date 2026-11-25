@@ -51,7 +51,7 @@ describe('the entries of a sketch in describe_api (D68)', () => {
     expect(text).toContain(ENTRY_KIND_FIXTURE);
     for (const kind of kinds) expect(text).toContain(`  example: ${JSON.stringify(kind.example)}`);
     // the hand-written sentence for the edge went
-    expect(text).not.toContain('Promítnutá hrana (addExternal)');
+    expect(text).not.toContain('Projected edge (addExternal)');
     for (const kind of kinds) {
       const engine = newEngine();
       fixture(engine);

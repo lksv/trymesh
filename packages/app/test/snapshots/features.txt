@@ -4499,7 +4499,7 @@
     - face e4 #10 #f97316 opacity 0.3
     - face e4 #11 #f97316 opacity 0.3
 
-=== 67. Zrušit: nothing is changed
+=== 67. Cancel: nothing is changed
   toolbar:
     +   button title="Ctrl+Z": "↶ Undo"
     -   button disabled title="Ctrl+Z": "↶ Undo"

@@ -42,13 +42,13 @@ describe('names for a human', () => {
 
 describe('the text of an issue', () => {
   it('names the bodies and features of issues that refer to them', () => {
-    expect(text({ code: 'noEffect', message: 'Operace těleso nezměnila.', refs: ['plate', 'P/1'] })).toBe('Operace těleso nezměnila. (Plate, Pattern 5 / 1)');
-    expect(text({ code: 'brokenReference', message: 'Odkaz neplatí.', refs: ['hole2'] })).toBe('Odkaz neplatí. (hole2)');
-    expect(text({ code: 'brokenReference', message: 'Odkaz neplatí.', refs: ['x1/center'] })).toBe('Odkaz neplatí. (x1/center)');
-    expect(text({ code: 'emptyResult', message: 'Operace by odebrala celé těleso.' })).toBe('Operace by odebrala celé těleso.');
+    expect(text({ code: 'noEffect', message: 'The operation did not change the body.', refs: ['plate', 'P/1'] })).toBe('The operation did not change the body. (Plate, Pattern 5 / 1)');
+    expect(text({ code: 'brokenReference', message: 'The reference is not valid.', refs: ['hole2'] })).toBe('The reference is not valid. (hole2)');
+    expect(text({ code: 'brokenReference', message: 'The reference is not valid.', refs: ['x1/center'] })).toBe('The reference is not valid. (x1/center)');
+    expect(text({ code: 'emptyResult', message: 'The operation would remove the whole body.' })).toBe('The operation would remove the whole body.');
     // refs of other issues are constraints or field paths and stay out of the text
-    expect(text({ code: 'sketchConflict', message: 'Vazby si odporují.', refs: ['plate', 'k2'] })).toBe('Vazby si odporují.');
-    expect(text({ code: 'invalidExpression', message: 'Výraz nejde vyhodnotit.', refs: ['extent/distance'] })).toBe('Výraz nejde vyhodnotit.');
+    expect(text({ code: 'sketchConflict', message: 'The constraints contradict each other.', refs: ['plate', 'k2'] })).toBe('The constraints contradict each other.');
+    expect(text({ code: 'invalidExpression', message: 'The expression cannot be evaluated.', refs: ['extent/distance'] })).toBe('The expression cannot be evaluated.');
   });
 
   it('a combine (D56): an invalidClearance names its tool and the faces, a kernelFailure its tool; a tag of a combine reads as its pocket', () => {
@@ -64,16 +64,16 @@ describe('the text of an issue', () => {
   });
 
   it('a pattern names the copy once, by the name of its feature, whatever the issue is', () => {
-    expect(text({ code: 'emptyResult', message: 'Operace by odebrala celé těleso.', refs: [{ copy: 1, feature: 'hole' }, 'plate'] })).toBe('Operace by odebrala celé těleso. (copy 1 of Hole, Plate)');
-    expect(text({ code: 'kernelFailure', message: 'Jádro selhalo. (not closed)', refs: [{ copy: 4, feature: 'hole' }] })).toBe('Jádro selhalo. (not closed) (copy 4 of Hole)');
-    expect(text({ code: 'noEffect', message: 'Operace těleso nezměnila.', refs: [{ copy: 1, feature: 'hole', targets: ['plate'] }, { copy: 3, feature: 'gone', targets: ['plate'] }] })).toBe('Operace těleso nezměnila. (copy 1 of Hole, copy 3 of gone)');
-    expect(text({ code: 'brokenReference', message: 'Odkaz neplatí.', refs: [{ copy: 2, feature: 'hole' }, 'P/9'] })).toBe('Odkaz neplatí. (copy 2 of Hole, Pattern 5 / 9)');
+    expect(text({ code: 'emptyResult', message: 'The operation would remove the whole body.', refs: [{ copy: 1, feature: 'hole' }, 'plate'] })).toBe('The operation would remove the whole body. (copy 1 of Hole, Plate)');
+    expect(text({ code: 'kernelFailure', message: 'The kernel failed. (not closed)', refs: [{ copy: 4, feature: 'hole' }] })).toBe('The kernel failed. (not closed) (copy 4 of Hole)');
+    expect(text({ code: 'noEffect', message: 'The operation did not change the body.', refs: [{ copy: 1, feature: 'hole', targets: ['plate'] }, { copy: 3, feature: 'gone', targets: ['plate'] }] })).toBe('The operation did not change the body. (copy 1 of Hole, copy 3 of gone)');
+    expect(text({ code: 'brokenReference', message: 'The reference is not valid.', refs: [{ copy: 2, feature: 'hole' }, 'P/9'] })).toBe('The reference is not valid. (copy 2 of Hole, Pattern 5 / 9)');
     // a grid (D53): the copies are named in the detail of the engine, the paths of refs stay out
     expect(text({ code: 'invalidPattern', message: 'The counts, the directions and the spans do not make a pattern. (the copies 1 and 1000 would stand in one place)', refs: ['transform/direction', 'transform/count', 'transform/span/spacing', 'transform/second/direction', 'transform/second/count', 'transform/second/span/spacing'] })).toBe(
       'The counts, the directions and the spans do not make a pattern. (the copies 1 and 1000 would stand in one place)',
     );
     expect(text({ code: 'invalidPattern', message: 'The counts, the directions and the spans do not make a pattern. (the copy 1001 would stand in the place of the original)', refs: ['transform/direction'] })).toBe('The counts, the directions and the spans do not make a pattern. (the copy 1001 would stand in the place of the original)');
-    expect(text({ code: 'noEffect', message: 'Operace těleso nezměnila.', refs: [{ copy: 1002, feature: 'hole', targets: ['plate'] }] })).toBe('Operace těleso nezměnila. (copy 1002 of Hole)');
+    expect(text({ code: 'noEffect', message: 'The operation did not change the body.', refs: [{ copy: 1002, feature: 'hole', targets: ['plate'] }] })).toBe('The operation did not change the body. (copy 1002 of Hole)');
     // things that only look like a copy
     expect(text({ code: 'noEffect', message: 'm', refs: [{ copy: '1', feature: 'hole' }, null, 3, { outerLoop: ['a'] }] })).toBe('m');
   });

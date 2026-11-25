@@ -531,7 +531,7 @@ describe('the app, driven as a user drives it', () => {
     h.type(h.field('Number of teeth'), '14');
     h.record('the form of the gear, a change typed');
     h.press('panel', 'Cancel');
-    h.record('Zrušit: nothing is changed');
+    h.record('Cancel: nothing is changed');
     doubleClick(h, 'Pattern 1');
     h.record('the form of the pattern');
     tick(h, 'Extrude 3');

@@ -1,6 +1,7 @@
-// Rozbor určenosti skici (engine/src/analysis.ts) proti skutečnému solveru: rovnice vazeb musí
-// popisovat totéž co solver a rozbor musí dát správnou odpověď i tam, kde ji solver nedává.
-// Případy „nálezy z revize" jsou z nezávislé revize diagnostiky.
+// The analysis of how far a sketch is constrained (engine/src/analysis.ts) against the real solver:
+// the equations of the constraints must describe the same as the solver, and the analysis must give
+// the right answer even where the solver does not. The cases "findings of the review" come from an
+// independent review of the diagnosis.
 import { describe, expect, it } from 'vitest';
 import type { Command, Constraint, Engine, Id, SketchFeature, SolveInput } from '@trymesh/engine';
 import { SketchAnalysis } from '../../engine/src/analysis';
@@ -17,7 +18,7 @@ const sketchWith = (...commands: Command[]): Engine => {
 };
 const dofOf = (engine: Engine, sketch: Id = 'S1') => engine.getState().evaluation.features[sketch].sketch!.degreesOfFreedom;
 
-// Vstup rozboru ze stavu enginu (skica bez promítnuté geometrie).
+// The input of the analysis from the state of the engine (a sketch without projected geometry).
 function inputOf(engine: Engine, id: Id = 'S1'): SolveInput {
   const state = engine.getState();
   const feature = state.document.features.find((f) => f.id === id) as SketchFeature;
@@ -27,9 +28,9 @@ function inputOf(engine: Engine, id: Id = 'S1'): SolveInput {
   return { points, radii: solved.radii, curves: feature.curves, constraints, fixed: ['origin'] };
 }
 
-describe('rovnice vazeb odpovídají solveru', () => {
-  // Pro každý typ vazby skica od ruky, ve které vazba něco změní. Tabulka je úplná z typů:
-  // nová vazba bez případu se nepřeloží.
+describe('the equations of the constraints match the solver', () => {
+  // For each type of constraint a freehand sketch in which the constraint changes something. The table
+  // is complete by its type: a new constraint without a case does not compile.
   const base = [point('a', 1, 2), point('b', 21, 5), point('c', 18, 19), point('d', -3, 14), point('w', -4, 25), point('m', 40, 10), point('n', 62, 12), line('ab', 'a', 'b'), line('cd', 'c', 'd'), circle('k', 'm', 6), circle('q', 'n', 9)];
   const withArc = [point('s', 50, 30), point('e', 38, 41), point('z', 40, 30), arc('r', 'z', 's', 'e')];
   const cases: Record<Constraint['type'], Constraint[]> = {
@@ -60,7 +61,7 @@ describe('rovnice vazeb odpovídají solveru', () => {
       { type: 'tangent', a: 'r', b: 'cd' },
       { type: 'tangent', a: 'q', b: 'r' },
     ],
-    // body na opačných stranách osy; se dvěma body na téže straně volné osy solver osu stáhne do bodu
+    // points on opposite sides of the axis; with two points on the same side of a free axis the solver collapses the axis to a point
     symmetric: [
       { type: 'symmetric', a: 'a', b: 'w', line: 'cd' },
       { type: 'symmetric', a: 'w', b: 'a', line: 'cd' },
@@ -85,11 +86,11 @@ describe('rovnice vazeb odpovídají solveru', () => {
   };
 
   for (const [type, variants] of Object.entries(cases)) {
-    it(`${type}: vyřešená skica rovnice splňuje a vazba ubere tolik volnosti, kolik má rovnic`, () => {
+    it(`${type}: the solved sketch satisfies the equations and the constraint removes as many degrees of freedom as it has equations`, () => {
       variants.forEach((constraint, i) => {
         const engine = sketchWith(...base, ...withArc);
         const before = new SketchAnalysis(inputOf(engine));
-        expect(before.degreesOfFreedom).toBe(2 * 10 + 2 - 1); // deset bodů, dva poloměry, podmínka oblouku
+        expect(before.degreesOfFreedom).toBe(2 * 10 + 2 - 1); // ten points, two radii, the rule of the arc
         expect(before.residual).toBeLessThan(1e-7);
         run(engine, constrain('S1', `x${i}`, constraint));
         expect(engine.getState().evaluation.features.S1.status, `${type} ${i}`).toBe('ok');
@@ -120,12 +121,12 @@ describe('rovnice vazeb odpovídají solveru', () => {
     }
   });
 
-  it('měřítko: stejná skica o pět řádů větší i menší dá stejný rozbor', () => {
+  it('scale: the same sketch five orders of magnitude larger and smaller gives the same analysis', () => {
     for (const scale of [1e-4, 1, 1e5]) {
       const engine = newEngine();
       run(engine, addSketch('S1', XY), rectangle('S1', 'r', 3 * scale, 2 * scale, 40 * scale, 30 * scale, null), constrain('S1', 'par', { type: 'parallel', a: 'ra', b: 'rc' }), dimension('S1', 'diag', { type: 'distance', a: 'r1', b: 'r3' }, 50 * scale));
       const d = engine.diagnoseSketch('S1');
-      expect(d, `měřítko ${scale}`).toMatchObject({ status: 'solved', degreesOfFreedom: 0, removable: ['par', 'diag'], free: [] });
+      expect(d, `scale ${scale}`).toMatchObject({ status: 'solved', degreesOfFreedom: 0, removable: ['par', 'diag'], free: [] });
       expect(engine.explainConstraint('S1', 'par').impliedBy).toEqual(['rh1', 'rh2']);
       run(engine, { type: 'removeConstraint', sketch: 'S1', id: 'rx' });
       expect(engine.diagnoseSketch('S1').free.map((entity) => [entity.id, entity.freedom])).toEqual([['r1', 1], ['r2', 1], ['r3', 1], ['r4', 1]]);
@@ -133,8 +134,8 @@ describe('rovnice vazeb odpovídají solveru', () => {
   });
 });
 
-describe('nálezy z revize diagnostiky', () => {
-  it('úsečka, kterou solver stáhl do bodu: volnost ani nadbytečnost se nerozsypou', () => {
+describe('findings of the review of the diagnosis', () => {
+  it('a line the solver collapsed to a point: neither the freedom nor the redundancy falls apart', () => {
     const engine = sketchWith(point('p0', -3.84, -16.24), point('p1', -20.93, -15.8), point('p2', 22.04, -9.92), point('p3', 32.58, -3.21), point('p4', -39.22, -6.77), line('l0', 'p2', 'p1'), line('l1', 'origin', 'p3'), line('l2', 'p0', 'p2'), line('l3', 'p2', 'p4'));
     run(
       engine,
@@ -150,7 +151,7 @@ describe('nálezy z revize diagnostiky', () => {
     expect(d.free.length).toBeGreaterThan(0);
   });
 
-  it('cyklus shodných délek v trojúhelníku: jedna rovnost je navíc a trojúhelník má volnou velikost', () => {
+  it('a cycle of equal lengths in a triangle: one equality is redundant and the triangle has a free size', () => {
     const engine = sketchWith(point('a', 0.2, 0.1), point('b', 10.3, 0.4), point('c', 4.6, 8.9), line('l1', 'a', 'b'), line('l2', 'b', 'c'), line('l3', 'c', 'a'));
     run(engine, constrain('S1', 'fix', { type: 'coincident', a: 'a', b: 'origin' }), constrain('S1', 'h', { type: 'horizontal', line: 'l1' }), constrain('S1', 'e12', { type: 'equalLength', a: 'l1', b: 'l2' }), constrain('S1', 'e23', { type: 'equalLength', a: 'l2', b: 'l3' }), constrain('S1', 'e31', { type: 'equalLength', a: 'l3', b: 'l1' }));
     const d = engine.diagnoseSketch('S1');
@@ -159,10 +160,11 @@ describe('nálezy z revize diagnostiky', () => {
       { id: 'b', kind: 'point', freedom: 1 },
       { id: 'c', kind: 'point', freedom: 1 },
     ]);
-    expect(dofOf(engine)).toBe(1); // stav skici vychází ze stejného rozboru
+    expect(dofOf(engine)).toBe(1); // the state of the sketch comes from the same analysis
     expect(engine.explainConstraint('S1', 'e31')).toEqual({ redundant: true, impliedBy: ['e12', 'e23'] });
-    // Velikost je opravdu volná: bod b jde odtáhnout a trojúhelník zůstane rovnostranný. Solver
-    // tu nadbytečnou rovnost sám nepozná a s ní tažení odmítne; po jejím odebrání projde.
+    // The size really is free: point b can be dragged away and the triangle stays equilateral. The
+    // solver does not recognise the redundant equality itself and refuses the drag with it; after it
+    // is removed the drag passes.
     run(engine, { type: 'removeConstraint', sketch: 'S1', id: 'e31' }, { type: 'dragPoint', sketch: 'S1', point: 'b', x: 20, y: 0 });
     expect(engine.diagnoseSketch('S1')).toMatchObject({ degreesOfFreedom: 1, redundant: [] });
     const p = engine.getState().evaluation.features.S1.sketch!.points;
@@ -170,7 +172,7 @@ describe('nálezy z revize diagnostiky', () => {
     expect(Math.hypot(p.c.x, p.c.y)).toBeCloseTo(20, 4);
   });
 
-  it('čtverec ze shodných délek: jediná kóta velikosti není navíc; vysvětlení je nejmenší', () => {
+  it('a square of equal lengths: the only dimension of the size is not redundant; the explanation is the smallest', () => {
     const engine = newEngine();
     run(engine, addSketch('S1', XY), rectangle('S1', 'r', 0, 0, 40, 30), { type: 'removeConstraint', sketch: 'S1', id: 'rh' }, constrain('S1', 'eq', { type: 'equalLength', a: 'ra', b: 'rb' }), constrain('S1', 'eq2', { type: 'equalLength', a: 'rb', b: 'rc' }));
     const d = engine.diagnoseSketch('S1');
@@ -188,7 +190,7 @@ describe('nálezy z revize diagnostiky', () => {
     expect(other.diagnoseSketch('S1').removable).toEqual(['eq1', 'eq2', 'perp', 'par']);
   });
 
-  it('drážka: bod dotyku, který se hýbat nemůže, není mezi volnými', () => {
+  it('a slot: a point of tangency that cannot move is not among the free ones', () => {
     const engine = sketchWith(point('a', 0.1, -4.8), point('b', 20.2, -5.1), point('c', 19.7, 5.2), point('d', -0.3, 4.9), point('m1', 0.2, 0.1), point('m2', 20.1, -0.2), line('bot', 'a', 'b'), line('top', 'c', 'd'), arc('right', 'm2', 'b', 'c'), arc('left', 'm1', 'd', 'a'));
     run(
       engine,
@@ -203,13 +205,13 @@ describe('nálezy z revize diagnostiky', () => {
     );
     const d = engine.diagnoseSketch('S1');
     expect(d).toMatchObject({ status: 'solved', degreesOfFreedom: 1, redundant: [] });
-    // volná je výška pravého středu; s ní se hýbe horní úsečka, spodní zůstává
+    // the height of the right centre is free; the top line moves with it, the bottom one stays
     expect(d.free).toEqual([
       { id: 'c', kind: 'point', freedom: 1 },
       { id: 'd', kind: 'point', freedom: 1 },
       { id: 'm2', kind: 'point', freedom: 1 },
     ]);
-    // pravidlo o ukotvení platí: zafixování kteréhokoli volného bodu skicu určí
+    // the rule of anchoring holds: fixing any of the free points fully constrains the sketch
     for (const free of d.free) {
       const p = engine.getState().evaluation.features.S1.sketch!.points[free.id];
       const pinned = engine.preview(batch(dimension('S1', 'px', { type: 'horizontalDistance', a: 'origin', b: free.id }, p.x), dimension('S1', 'py', { type: 'verticalDistance', a: 'origin', b: free.id }, p.y)));
@@ -217,24 +219,24 @@ describe('nálezy z revize diagnostiky', () => {
     }
   });
 
-  it('tečnost ve společném bodě: vazba se počítá, i když je v řešení dvojnásobným kořenem', () => {
-    // úsečka končí v začátku oblouku
+  it('tangency at a shared point: the constraint counts even though it is a double root in the solution', () => {
+    // the line ends at the start of the arc
     let engine = sketchWith(point('a', 0, 0.3), point('b', 10, -0.2), point('m', 10.4, 5.1), point('e', 15.2, 4.7), line('ab', 'a', 'b'), arc('r', 'm', 'b', 'e'));
     expect(engine.diagnoseSketch('S1').degreesOfFreedom).toBe(7);
     run(engine, constrain('S1', 't', { type: 'tangent', a: 'ab', b: 'r' }));
     expect(engine.diagnoseSketch('S1')).toMatchObject({ status: 'solved', degreesOfFreedom: 6, redundant: [] });
-    // konec úsečky drží na kružnici samostatná vazba
+    // a separate constraint holds the end of the line on the circle
     engine = sketchWith(point('a', 0, 0.3), point('b', 10, -0.2), point('m', 10.4, 5.1), line('ab', 'a', 'b'), circle('k', 'm', 5));
     run(engine, constrain('S1', 'on', { type: 'pointOnCurve', point: 'b', curve: 'k' }), constrain('S1', 't', { type: 'tangent', a: 'k', b: 'ab' }));
     expect(engine.diagnoseSketch('S1')).toMatchObject({ status: 'solved', degreesOfFreedom: 5, redundant: [] });
-    // dva oblouky hladce navazují ve společném bodě
+    // two arcs join smoothly at a shared point
     engine = sketchWith(point('m1', 0, 0), point('s', -5, 0.2), point('q', 0.3, 5), point('m2', 0.1, 9.8), point('e', 5.2, 10.1), arc('r1', 'm1', 'q', 's'), arc('r2', 'm2', 'q', 'e'));
     expect(engine.diagnoseSketch('S1').degreesOfFreedom).toBe(8);
     run(engine, constrain('S1', 't', { type: 'tangent', a: 'r1', b: 'r2' }));
     expect(engine.diagnoseSketch('S1')).toMatchObject({ status: 'solved', degreesOfFreedom: 7, redundant: [] });
   });
 
-  it('nulová vzdálenost je totožnost: vysvětlení ji pojmenuje', () => {
+  it('a zero distance is a coincidence: the explanation names it', () => {
     const engine = sketchWith(point('a', 3, 4), point('b', 3.5, 4.2));
     run(engine, dimension('S1', 'd0', { type: 'distance', a: 'a', b: 'b' }, 0), constrain('S1', 'co', { type: 'coincident', a: 'a', b: 'b' }));
     expect(engine.diagnoseSketch('S1')).toMatchObject({ status: 'solved', degreesOfFreedom: 2, redundant: ['d0', 'co'], removable: ['co'] });
@@ -242,7 +244,7 @@ describe('nálezy z revize diagnostiky', () => {
     expect(engine.explainConstraint('S1', 'co')).toEqual({ redundant: true, impliedBy: ['d0'] });
   });
 
-  it('cena: třicet obdélníků (240 vazeb) se rozebere za zlomek sekundy', () => {
+  it('cost: thirty rectangles (240 constraints) are analysed in a fraction of a second', () => {
     const engine = newEngine();
     run(engine, addSketch('S1', XY), batch(...Array.from({ length: 30 }, (_, i) => rectangle('S1', `q${i}_`, 50 * i, 0, 40, 30, null))), { type: 'removeConstraint', sketch: 'S1', id: 'q7_w' }, dimension('S1', 'extra', { type: 'distance', a: 'q3_1', b: 'q3_3' }, 50));
     const started = performance.now();
@@ -252,27 +254,28 @@ describe('nálezy z revize diagnostiky', () => {
     expect(d).toMatchObject({ status: 'solved', degreesOfFreedom: 1, removable: ['extra'] });
     expect(d.free.map((entity) => entity.id)).toEqual(['q7_2', 'q7_3']);
     expect(explained.impliedBy).toEqual(['q3_h1', 'q3_v1', 'q3_w', 'q3_h']);
-    expect(elapsed).toBeLessThan(2000); // obvykle kolem 0,1 s; rezerva na vytížený stroj
+    expect(elapsed).toBeLessThan(2000); // usually around 0.1 s; a margin for a busy machine
   });
 });
 
-describe('nálezy z druhé revize rozboru', () => {
+describe('findings of the second review of the analysis', () => {
   const freedoms = (engine: Engine) => engine.diagnoseSketch('S1').free.map((entity) => [entity.id, entity.freedom]);
 
-  it('tečnost, jejíž bod dotyku padne do konce úsečky jen díky jiné vazbě: poloměr se neztratí', () => {
-    // poloměr m→b kolmý na úsečku: dotyk je v b, ale na kružnici b drží až tečnost sama
+  it('a tangency whose point of contact falls on the end of the line only thanks to another constraint: the radius is not lost', () => {
+    // the radius m→b perpendicular to the line: the contact is at b, but only the tangency itself holds b on the circle
     const engine = sketchWith(point('a', 0, 0.3), point('b', 30, -0.2), point('m', 29.5, 8), line('ab', 'a', 'b'), circle('k', 'm', 6), line('rad', 'm', 'b'));
     run(engine, constrain('S1', 'perp', { type: 'perpendicular', a: 'rad', b: 'ab' }), constrain('S1', 't', { type: 'tangent', a: 'ab', b: 'k' }));
     expect(engine.diagnoseSketch('S1')).toMatchObject({ status: 'solved', degreesOfFreedom: 5, redundant: [], removable: [] });
-    // S vazbou, která b na kružnici drží sama, je jedna z těch tří navíc (kterákoli plyne ze
-    // zbylých dvou). Rozbor pak tečnost bere jako kolmost poloměru a nabídne k odebrání ji.
+    // With a constraint that holds b on the circle by itself, one of the three is redundant (any of
+    // them follows from the other two). The analysis then takes the tangency as the perpendicularity
+    // of the radius and offers it for removal.
     run(engine, constrain('S1', 'on', { type: 'pointOnCurve', point: 'b', curve: 'k' }));
     expect(engine.diagnoseSketch('S1')).toMatchObject({ degreesOfFreedom: 5, redundant: ['perp', 't'], removable: ['t'] });
     run(engine, { type: 'removeConstraint', sketch: 'S1', id: 't' });
     expect(engine.diagnoseSketch('S1')).toMatchObject({ degreesOfFreedom: 5, redundant: [] });
   });
 
-  it('tečnost, jejíž bod dotyku padne do rohu shodou rozměrů: kružnice je určená', () => {
+  it('a tangency whose point of contact falls on a corner by a coincidence of sizes: the circle is constrained', () => {
     const engine = newEngine();
     run(engine, addSketch('S1', XY), rectangle('S1', 'r', 0, 0, 40, 30), point('m', 39, 11), circle('k', 'm', 8), dimension('S1', 'mx', { type: 'horizontalDistance', a: 'origin', b: 'm' }, 40), dimension('S1', 'my', { type: 'verticalDistance', a: 'origin', b: 'm' }, 10));
     expect(engine.diagnoseSketch('S1')).toMatchObject({ degreesOfFreedom: 1, free: [{ id: 'k', kind: 'radius', freedom: 1 }] });
@@ -281,8 +284,8 @@ describe('nálezy z druhé revize rozboru', () => {
     expect(engine.diagnoseSketch('S1')).toMatchObject({ status: 'solved', degreesOfFreedom: 0, redundant: [], free: [] });
   });
 
-  it('oblouk tečný ke kružnici, jehož konec na ní leží jen díky tečnosti: poloměr kružnice se neztratí', () => {
-    // středy a konec oblouku drží na přímce pomocná úsečka; dotyk je pak v konci oblouku
+  it('an arc tangent to a circle whose end lies on it only thanks to the tangency: the radius of the circle is not lost', () => {
+    // a helper line holds the centres and the end of the arc on one line; the contact is then at the end of the arc
     const engine = sketchWith(point('m1', 0, 0), point('s', -5, 0.2), point('q', 5.1, 0.1), point('m2', 12, 0.3), arc('r', 'm1', 'q', 's'), circle('k', 'm2', 6.5), line('axis', 'm1', 'm2'));
     run(engine, constrain('S1', 'on', { type: 'pointOnCurve', point: 'q', curve: 'axis' }));
     const before = engine.diagnoseSketch('S1').degreesOfFreedom;
@@ -291,7 +294,7 @@ describe('nálezy z druhé revize rozboru', () => {
     expect(freedoms(engine)).toContainEqual(['m2', 2]);
   });
 
-  it('body, které splynou jen na přesnost solveru: vazby mezi nimi se počítají', () => {
+  it('points that coincide only to the precision of the solver: the constraints between them count', () => {
     let engine = sketchWith(point('a', 3, 4), point('b', 3.5, 4.2));
     run(engine, dimension('S1', 'd0', { type: 'distance', a: 'a', b: 'b' }, 0));
     expect(engine.diagnoseSketch('S1')).toMatchObject({ status: 'solved', degreesOfFreedom: 2, redundant: [] });
@@ -306,18 +309,18 @@ describe('nálezy z druhé revize rozboru', () => {
     expect(engine.diagnoseSketch('S1')).toMatchObject({ status: 'solved', degreesOfFreedom: 3, removable: ['dl', 'vd'] });
   });
 
-  it('volnost entit při větší volnosti skici: každý bod má oba směry', () => {
+  it('the freedom of entities when the sketch has more freedom: each point has both directions', () => {
     const engine = sketchWith(point('a', 0, 0.3), point('b', 30, -0.2), point('c', 2, 10.4), point('d', 28, 9.7), line('ab', 'a', 'b'), line('cd', 'c', 'd'));
     run(engine, constrain('S1', 'h', { type: 'horizontal', line: 'ab' }), constrain('S1', 'par', { type: 'parallel', a: 'ab', b: 'cd' }));
     expect(engine.diagnoseSketch('S1').degreesOfFreedom).toBe(6);
     expect(freedoms(engine)).toEqual([['a', 2], ['b', 2], ['c', 2], ['d', 2]]);
-    // bez vazeb: deset bodů, každý dva směry
+    // without constraints: ten points, each with two directions
     const loose = sketchWith(...Array.from({ length: 10 }, (_, i) => point(`p${i}`, 7 * i, i * i)));
     expect(freedoms(loose)).toEqual(Array.from({ length: 10 }, (_, i) => [`p${i}`, 2]));
   });
 
-  it('stejně dlouhé kolmé úsečky: rovnice kolmosti zůstanou hladké', () => {
-    // čtyřúhelník ze čtyř kolmostí a tří shodných délek je čtverec s volnou polohou, natočením a velikostí
+  it('perpendicular lines of equal length: the equations of perpendicularity stay smooth', () => {
+    // a quadrilateral of four perpendicularities and three equal lengths is a square with a free position, rotation and size
     const engine = sketchWith(point('a', 0.2, 0.1), point('b', 20.3, 0.4), point('c', 19.8, 20.2), point('d', -0.3, 19.9), line('l1', 'a', 'b'), line('l2', 'b', 'c'), line('l3', 'c', 'd'), line('l4', 'd', 'a'));
     const perpendicular = (id: Id, a: Id, b: Id): Command => constrain('S1', id, { type: 'perpendicular', a, b });
     const equal = (id: Id, a: Id, b: Id): Command => constrain('S1', id, { type: 'equalLength', a, b });
@@ -327,11 +330,11 @@ describe('nálezy z druhé revize rozboru', () => {
     const square = newEngine();
     run(square, addSketch('S1', XY), rectangle('S1', 'r', 0, 0, 40, 40), perpendicular('p1', 'ra', 'rb'), perpendicular('p2', 'rb', 'rc'), perpendicular('p3', 'rc', 'rd'), perpendicular('p4', 'rd', 'ra'));
     expect(square.diagnoseSketch('S1')).toMatchObject({ degreesOfFreedom: 0, removable: ['p1', 'p2', 'p3', 'p4'] });
-    expect(square.explainConstraint('S1', 'rh2')).toEqual({ redundant: true, impliedBy: ['rv1', 'p2'] }); // dřív se sem přimíchala kóta výšky
+    expect(square.explainConstraint('S1', 'rh2')).toEqual({ redundant: true, impliedBy: ['rv1', 'p2'] }); // the dimension of the height used to creep in here
   });
 
-  it('malý útvar daleko od počátku: nadbytečná vazba se pozná', () => {
-    // trojúhelník daný třemi různě dlouhými stranami; pravý úhel mezi dvěma z nich je navíc
+  it('a small shape far from the origin: a redundant constraint is recognised', () => {
+    // a triangle given by three sides of different lengths; a right angle between two of them is redundant
     for (const [x, y, s] of [[1000, 300, 0.01], [1e6, 3e5, 1], [0, 0, 10]]) {
       const engine = sketchWith(point('a', x, y), point('b', x + 4.1 * s, y + 0.2 * s), point('c', x - 0.1 * s, y + 2.9 * s), line('l1', 'a', 'b'), line('l2', 'b', 'c'), line('l3', 'a', 'c'));
       run(engine, dimension('S1', 'd1', { type: 'distance', a: 'a', b: 'b' }, 4 * s), dimension('S1', 'd2', { type: 'distance', a: 'b', b: 'c' }, 5 * s), dimension('S1', 'd3', { type: 'distance', a: 'c', b: 'a' }, 3 * s), dimension('S1', 'ang', { type: 'angle', a: 'l1', b: 'l3' }, Math.PI / 2));
@@ -339,8 +342,8 @@ describe('nálezy z druhé revize rozboru', () => {
     }
   });
 
-  it('vysvětlení neobsahuje vazbu, bez které se obejde', () => {
-    // totožnost má dvě rovnice; jednu z nich v bázi zastoupí vodorovná kóta, která ale potřeba není
+  it('the explanation does not contain a constraint it can do without', () => {
+    // a coincidence has two equations; a horizontal dimension stands in for one of them in the basis, but it is not needed
     const engine = sketchWith(point('a', 3, 4), point('b', 3.4, 4.3), point('c', 20, 12));
     run(
       engine,
@@ -353,7 +356,7 @@ describe('nálezy z druhé revize rozboru', () => {
     expect(engine.explainConstraint('S1', 'hd')).toEqual({ redundant: true, impliedBy: ['co'] });
   });
 
-  it('sada k odebrání u vazeb se dvěma rovnicemi: počet rovnic sedí, počet vazeb závisí na pořadí', () => {
+  it('the set to remove for constraints with two equations: the count of equations matches, the count of constraints depends on the order', () => {
     const variants: [Command[], Id[]][] = [
       [[constrain('S1', 'co', { type: 'coincident', a: 'a', b: 'b' }), dimension('S1', 'hd', { type: 'horizontalDistance', a: 'a', b: 'b' }, 0), dimension('S1', 'vd', { type: 'verticalDistance', a: 'a', b: 'b' }, 0)], ['hd', 'vd']],
       [[dimension('S1', 'hd', { type: 'horizontalDistance', a: 'a', b: 'b' }, 0), dimension('S1', 'vd', { type: 'verticalDistance', a: 'a', b: 'b' }, 0), constrain('S1', 'co', { type: 'coincident', a: 'a', b: 'b' })], ['co']],
@@ -368,15 +371,15 @@ describe('nálezy z druhé revize rozboru', () => {
   });
 });
 
-describe('nálezy z revize souměrnosti', () => {
-  // svislá konstrukční osa dané délky z počátku a souměrná dvojice bodů
+describe('findings of the review of symmetry', () => {
+  // a vertical construction axis of a given length from the origin and a symmetric pair of points
   const symmetricPair = (): Engine => {
     const engine = sketchWith(point('top', 0.5, 30), { type: 'addCurve', sketch: 'S1', id: 'axis', curve: { type: 'line', a: 'origin', b: 'top', construction: true } }, point('a', -14, 5), point('b', 12, 8));
     run(engine, constrain('S1', 'v', { type: 'vertical', line: 'axis' }), dimension('S1', 'len', { type: 'distance', a: 'origin', b: 'top' }, 40), constrain('S1', 's', { type: 'symmetric', a: 'a', b: 'b', line: 'axis' }));
     return engine;
   };
 
-  it('souměrná dvojice, kterou další vazba stáhne na osu, není konflikt', () => {
+  it('a symmetric pair that another constraint pulls onto the axis is not a conflict', () => {
     const extras: Constraint[] = [
       { type: 'pointOnCurve', point: 'a', curve: 'axis' },
       { type: 'coincident', a: 'a', b: 'b' },
@@ -392,7 +395,7 @@ describe('nálezy z revize souměrnosti', () => {
       const p = engine.getState().evaluation.features.S1.sketch!.points;
       expect(Math.hypot(p.a.x - p.b.x, p.a.y - p.b.y)).toBeLessThan(1e-6);
       expect(p.a.x).toBeCloseTo(0, 6);
-      // dvojici jde zase rozestoupit: po odebrání vazby kótou šířky
+      // the pair can be moved apart again: after the constraint is removed, by a dimension of the width
       run(engine, { type: 'removeConstraint', sketch: 'S1', id: 'x' }, dimension('S1', 'w', { type: 'distance', a: 'a', b: 'b' }, 20));
       const q = engine.getState().evaluation.features.S1.sketch!.points;
       expect(engine.diagnoseSketch('S1')).toMatchObject({ status: 'solved', degreesOfFreedom: 1 });
@@ -401,7 +404,7 @@ describe('nálezy z revize souměrnosti', () => {
     }
   });
 
-  it('dokument se souměrnou dvojicí na ose se uloží a načte ve stejném stavu', () => {
+  it('a document with a symmetric pair on the axis saves and loads in the same state', () => {
     const engine = symmetricPair();
     run(engine, constrain('S1', 'on', { type: 'pointOnCurve', point: 'a', curve: 'axis' }));
     const other = newEngine();

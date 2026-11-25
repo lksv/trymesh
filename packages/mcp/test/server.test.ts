@@ -1,4 +1,4 @@
-// MCP server přes protokol: klient MCP v paměti, soubory na disku a most do „aplikace" (druhý engine).
+// The MCP server over the protocol: an MCP client in memory, files on disk and the bridge to the "app" (a second engine).
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { request } from 'node:http';
 import { tmpdir } from 'node:os';
@@ -47,11 +47,11 @@ afterAll(async () => {
 const emptySketch = (id: string, plane: unknown): Command => ({ type: 'addFeature', feature: { id, name: id, suppressed: false, type: 'sketch', plane, points: {}, radii: {}, curves: {}, constraints: {}, external: {}, solved: { inputs: '', external: {} } } as never });
 const until = async (condition: () => boolean, what: string) => {
   for (let i = 0; i < 200 && !condition(); i++) await new Promise((resolve) => setTimeout(resolve, 10));
-  if (!condition()) throw new Error(`nedočkal jsem se: ${what}`);
+  if (!condition()) throw new Error(`timed out waiting for: ${what}`);
 };
 
 describe('MCP server', () => {
-  it('seznam nástrojů: obecné nástroje enginu a nástroje pro soubory, se schématem vstupu', async () => {
+  it('the list of tools: the general tools of the engine and the tools for files, with an input schema', async () => {
     const session = await connect();
     const { tools } = await session.client.listTools();
     expect(tools.map((tool) => tool.name)).toEqual(['describe_api', 'get_model', 'get_document', 'get_sketch', 'get_parameters', 'explain_constraint', 'get_body', 'check_interference', 'query', 'execute', 'preview', 'sketch_tool', 'undo', 'redo', 'session_status', 'open_document', 'save_document', 'import_outline', 'import_mesh', 'insert_document', 'export_stl', 'export', 'view_image']); // the last: the operations of the app
@@ -59,20 +59,20 @@ describe('MCP server', () => {
       expect(tool.description, tool.name).not.toBe('');
       expect(tool.inputSchema.type).toBe('object');
     }
-    // vnitřní nástroje zvenku volat nejdou
+    // internal tools cannot be called from outside
     expect(await session.call('_load', { json: '{}' })).toEqual({ error: 'unknown tool "_load"' });
-    expect(await session.call('nic')).toEqual({ error: 'unknown tool "nic"' });
+    expect(await session.call('nope')).toEqual({ error: 'unknown tool "nope"' });
     const api = await session.text('describe_api');
     for (const type of Object.keys(CONSTRAINTS)) expect(api, type).toContain(`- ${type} (`);
     expect(api).toContain('```ts');
     await session.close();
   });
 
-  it('scénář: AI postaví desku s dírou, zeptá se na volnost skici, uloží a jinde otevře', async () => {
+  it('scenario: the AI builds a plate with a hole, asks about the freedom of the sketch, saves it and opens it elsewhere', async () => {
     const session = await connect();
     expect(await session.call('session_status')).toMatchObject({ engine: 'server', file: null, bridge: null });
 
-    // 1. skica od ruky s rozměry, bez ukotvení
+    // 1. a freehand sketch with dimensions, without an anchor
     const corners: [string, number, number][] = [
       ['a', 1, -1],
       ['b', 41, 1],
@@ -97,20 +97,20 @@ describe('MCP server', () => {
     });
     expect(first).toMatchObject({ ok: true, sketches: [{ id: 's1', degreesOfFreedom: 2 }] });
 
-    // 2. „proč má skica dva stupně volnosti?"
+    // 2. "why does the sketch have two degrees of freedom?"
     let sketch = await session.call('get_sketch', { sketch: 's1' });
     expect(sketch.diagnosis.degreesOfFreedom).toBe(2);
     expect(sketch.advice.join(' ')).toMatch(/position of one of the points a, b, c, d is set/);
 
-    // 3. ukotvení podle rady
+    // 3. anchoring as advised
     expect(await session.call('execute', { command: { type: 'addConstraint', sketch: 's1', id: 'fix', constraint: { type: 'coincident', a: 'a', b: 'origin' } } })).toMatchObject({ ok: true, sketches: [{ degreesOfFreedom: 0 }] });
     sketch = await session.call('get_sketch', { sketch: 's1' });
     expect(sketch.advice).toEqual(['The sketch is fully constrained.']);
 
-    // 4. vysunutí oblasti, kterou get_sketch nabídl
-    expect(await session.call('execute', { command: { type: 'addFeature', feature: { id: 'e1', name: 'Deska', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 's1', regions: [sketch.regions[0].ref] }, extent: { type: 'distance', start: 0, distance: 8 }, operation: 'new' } } })).toMatchObject({ ok: true, bodies: ['e1'], problems: [] });
+    // 4. an extrusion of the region get_sketch offered
+    expect(await session.call('execute', { command: { type: 'addFeature', feature: { id: 'e1', name: 'Plate', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 's1', regions: [sketch.regions[0].ref] }, extent: { type: 'distance', start: 0, distance: 8 }, operation: 'new' } } })).toMatchObject({ ok: true, bodies: ['e1'], problems: [] });
 
-    // 5. díra na horní stěně okótovaná k promítnuté hraně: jména stěny a hrany z get_body
+    // 5. a hole on the top face dimensioned to a projected edge: the names of the face and the edge from get_body
     const body = await session.call('get_body', { body: 'e1' });
     const top = body.faces.find((face: { label: string }) => face.label === 'e1/endCap');
     const edge = body.edges.find((candidate: { label: string }) => candidate.label === 'e1/endCap | e1/side/bc');
@@ -126,7 +126,7 @@ describe('MCP server', () => {
           { type: 'addConstraint', sketch: 's2', id: 'fromRight', constraint: { type: 'distancePointLine', point: 'm', line: 'right', value: 10, driving: true } },
           { type: 'addConstraint', sketch: 's2', id: 'y', constraint: { type: 'verticalDistance', a: 'origin', b: 'm', value: 15, driving: true } },
           { type: 'addConstraint', sketch: 's2', id: 'r', constraint: { type: 'radius', curve: 'k', value: 5, driving: true } },
-          { type: 'addFeature', feature: { id: 'e2', name: 'Díra', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 's2', regions: [{ outerLoop: ['k'] }] }, extent: { type: 'distance', start: 0, distance: -8 }, operation: 'cut', targets: ['e1'] } },
+          { type: 'addFeature', feature: { id: 'e2', name: 'Hole', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 's2', regions: [{ outerLoop: ['k'] }] }, extent: { type: 'distance', start: 0, distance: -8 }, operation: 'cut', targets: ['e1'] } },
         ],
       },
     });
@@ -139,30 +139,30 @@ describe('MCP server', () => {
     expect(model.bodies[0].volume).toBeLessThan(40 * 30 * 8 - 0.95 * Math.PI * 25 * 8);
     expect(model.bodies[0].volume).toBeGreaterThan(40 * 30 * 8 - Math.PI * 25 * 8);
 
-    // 6. změna kóty v první skice: díra drží vzdálenost od pravé hrany
+    // 6. a change of a dimension in the first sketch: the hole keeps its distance from the right edge
     expect(await session.call('execute', { command: { type: 'setConstraintValue', sketch: 's1', id: 'w', value: 60 } })).toMatchObject({ ok: true, problems: [] });
     expect((await session.call('get_sketch', { sketch: 's2' })).points[0].at[0]).toBeCloseTo(50, 5);
 
-    // 7. uložení, export a otevření v jiném serveru
-    const file = join(dir, 'deska.json');
+    // 7. saving, export and opening in another server
+    const file = join(dir, 'plate.json');
     expect(await session.call('save_document')).toEqual({ error: 'the document has no file; give "path"' });
     expect(await session.call('save_document', { path: file })).toMatchObject({ file });
-    expect(await session.call('save_document')).toMatchObject({ file }); // podruhé už bez cesty
+    expect(await session.call('save_document')).toMatchObject({ file }); // the second time without a path
     expect(await session.call('save_document', { path: null })).toMatchObject({ file }); // null counts as not given
     expect(await session.call('session_status')).toMatchObject({ file });
-    const exported = await session.call('export_stl', { path: join(dir, 'out', 'deska.stl') });
-    expect(exported.files).toEqual([{ path: join(dir, 'out', 'deska.stl'), bodies: ['e1'], triangles: expect.any(Number), bytes: expect.any(Number) }]);
+    const exported = await session.call('export_stl', { path: join(dir, 'out', 'plate.stl') });
+    expect(exported.files).toEqual([{ path: join(dir, 'out', 'plate.stl'), bodies: ['e1'], triangles: expect.any(Number), bytes: expect.any(Number) }]);
     const stl = { file: exported.files[0].path as string, bytes: exported.files[0].bytes as number };
     expect((await readFile(stl.file)).length).toBe(stl.bytes);
     expect(stl.bytes).toBe(84 + 50 * exported.files[0].triangles);
 
     const other = await connect();
-    expect(await other.call('export_stl', { path: join(dir, 'nic.stl') })).toEqual({ error: 'the model has no body to export' });
+    expect(await other.call('export_stl', { path: join(dir, 'nope.stl') })).toEqual({ error: 'the model has no body to export' });
     expect((await other.call('open_document', { path: file })).model.bodies).toEqual((await session.call('get_model')).bodies);
     expect(await other.call('get_document')).toEqual(JSON.parse(await readFile(file, 'utf8')));
-    expect(await other.call('open_document', { path: join(dir, 'chybi.json') })).toEqual({ error: expect.stringMatching(/the file cannot be read/) });
-    expect(await other.call('open_document', { path: stl.file })).toEqual({ error: expect.any(String) }); // není to dokument
-    expect((await other.call('get_model')).bodies).toHaveLength(1); // neúspěšné otevření dokument nezměnilo
+    expect(await other.call('open_document', { path: join(dir, 'missing.json') })).toEqual({ error: expect.stringMatching(/the file cannot be read/) });
+    expect(await other.call('open_document', { path: stl.file })).toEqual({ error: expect.any(String) }); // it is not a document
+    expect((await other.call('get_model')).bodies).toHaveLength(1); // the failed open did not change the document
     await Promise.all([session.close(), other.close()]);
   });
 });
@@ -207,10 +207,10 @@ describe('MCP server: bodies', () => {
     expect(await session.call('check_interference', { threshold: '0.5' })).toEqual({ error: 'argument "threshold": a number is expected' });
     expect(await session.call('check_interference', { bodies: { 0: 'base' } })).toEqual({ error: 'argument "bodies": a list is expected' });
     expect(await session.call('execute', { command: 'undo' })).toEqual({ error: 'argument "command": an object is expected' });
-    expect(await session.call('check_interference', { bodies: ['base', 'nic'] })).toEqual({ error: expect.stringContaining('the body "nic" does not exist') });
+    expect(await session.call('check_interference', { bodies: ['base', 'nope'] })).toEqual({ error: expect.stringContaining('the body "nope" does not exist') });
     expect(await session.call('check_interference', { bodies: ['Wheel'], at: 'base' })).toEqual({ error: expect.stringContaining('after the feature "base"') });
     expect(await session.call('check_interference', { threshold: -1 })).toEqual({ error: expect.stringContaining('threshold') });
-    expect(await session.call('check_interference', { at: 'nic' })).toEqual({ error: expect.stringContaining('feature "nic"') });
+    expect(await session.call('check_interference', { at: 'nope' })).toEqual({ error: expect.stringContaining('feature "nope"') });
     const model = await session.call('get_model');
     expect(model.bodies.map((body: { id: string }) => body.id)).toEqual(['base', 'Wheel', 'planets/1', 'planets/2']);
     expect(model.bodies[1]).toMatchObject({ id: 'Wheel', min: [15, expect.closeTo(-5, 1), 3], max: [25, expect.closeTo(5, 1), 8] }); // the circle is a polygon
@@ -258,7 +258,7 @@ describe('MCP server: bodies', () => {
     const some = await session.call('export_stl', { path: join(dir, 'all.stl'), bodies: ['Wheel', 'planets/1'] });
     expect(some.files).toEqual([{ path: join(dir, 'all.stl'), bodies: ['Wheel', 'planets/1'], triangles: triangles / 2, bytes: 84 + 25 * triangles }]);
     expect((await readFile(join(dir, 'all.stl'))).length).toBe(84 + 25 * triangles);
-    expect(await session.call('export_stl', { path: join(dir, 'x.stl'), bodies: ['nic'] })).toEqual({ error: expect.stringContaining('the body "nic" does not exist') });
+    expect(await session.call('export_stl', { path: join(dir, 'x.stl'), bodies: ['nope'] })).toEqual({ error: expect.stringContaining('the body "nope" does not exist') });
     expect(await session.call('export_stl', { path: join(dir, 'x.stl'), bodies: [] })).toEqual({ error: expect.stringContaining('the list is empty') });
     // arguments that are not what the schema says: refused, nothing written
     expect(await session.call('export_stl', { path: join(dir, 'pb'), perBody: 'true' })).toEqual({ error: 'argument "perBody": true or false is expected' });
@@ -351,9 +351,9 @@ describe('MCP server: bodies', () => {
     expect(await session.call('export', { format: 'stl', path: nowhere, overwrite: 'yes' })).toEqual({ error: 'argument "overwrite": true or false is expected' });
     expect(await session.call('export', { format: 'step', path: nowhere })).toEqual({ error: 'invalidArguments: there is no export format "step"; the formats are stl, 3mf, dxf, svg, partsCsv, urdf, mjcf' });
     expect(await session.call('export', { format: 'stl', path: nowhere, options: { perbody: true } })).toEqual({ error: 'invalidArguments: stl: perbody: there is no such argument' });
-    expect(await session.call('export', { format: 'stl', path: nowhere, options: { bodies: ['nic'] } })).toEqual({ error: 'notAvailable: stl: bodies[0]: the body "nic" is not in the state asked about' });
-    expect(await session.call('export', { format: 'stl', path: nowhere, at: 'nic' })).toEqual({ error: 'notAvailable: stl: `at`: the feature "nic" is not in the document' });
-    expect(await session.call('export', { format: 'stl', path: nowhere, after: { type: 'removeFeature', id: 'nic' } })).toEqual({ error: expect.stringMatching(/^after: /) });
+    expect(await session.call('export', { format: 'stl', path: nowhere, options: { bodies: ['nope'] } })).toEqual({ error: 'notAvailable: stl: bodies[0]: the body "nope" is not in the state asked about' });
+    expect(await session.call('export', { format: 'stl', path: nowhere, at: 'nope' })).toEqual({ error: 'notAvailable: stl: `at`: the feature "nope" is not in the document' });
+    expect(await session.call('export', { format: 'stl', path: nowhere, after: { type: 'removeFeature', id: 'nope' } })).toEqual({ error: expect.stringMatching(/^after: /) });
     expect(await session.call('export', { format: 'stl', path: nowhere, options: { bodies: [] } })).toEqual({ error: 'invalidArguments: stl: bodies: at least 1 item is expected' });
     await expect(readdir(nowhere)).rejects.toThrow();
     const other = await connect();
@@ -558,17 +558,17 @@ describe('MCP server: bodies', () => {
   });
 });
 
-describe('MCP server: chyby a soubory', () => {
-  it('neplatný příkaz se vrací s příznakem chyby a dokument nemění', async () => {
+describe('MCP server: errors and files', () => {
+  it('an invalid command comes back with the error flag and does not change the document', async () => {
     const session = await connect();
-    const result = (await session.client.callTool({ name: 'execute', arguments: { command: { type: 'nic' } } })) as { isError?: boolean; content: { text: string }[] };
+    const result = (await session.client.callTool({ name: 'execute', arguments: { command: { type: 'nope' } } })) as { isError?: boolean; content: { text: string }[] };
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toMatch(/^invalidCommand: /);
     expect((await session.call('get_model')).features).toEqual([]);
     await session.close();
   });
 
-  it('soubor s úvodní značkou BOM se načte, prázdný soubor je srozumitelná chyba', async () => {
+  it('a file with a leading BOM is loaded, an empty file is an understandable error', async () => {
     const session = await connect();
     await session.call('execute', { command: emptySketch('s', { kind: 'base', plane: 'XY' }) });
     const saved = join(dir, 'bom.json');
@@ -581,7 +581,7 @@ describe('MCP server: chyby a soubory', () => {
     await Promise.all([session.close(), other.close()]);
   });
 
-  it('velký výsledek se vypíše úsporně, malý s odsazením', async () => {
+  it('a large result is printed compactly, a small one indented', async () => {
     const session = await connect();
     const points = Array.from({ length: 1500 }, (_, i) => ({ type: 'addPoint', sketch: 's', id: `p${i}`, x: i, y: i % 7 }));
     await session.call('execute', { command: { type: 'batch', commands: [emptySketch('s', { kind: 'base', plane: 'XY' }), ...points] } });
@@ -591,7 +591,7 @@ describe('MCP server: chyby a soubory', () => {
   });
 });
 
-describe('most do běžící aplikace', () => {
+describe('the bridge to the running app', () => {
   let bridge: Bridge;
   beforeAll(async () => {
     bridge = await startBridge(0);
@@ -600,28 +600,28 @@ describe('most do běžící aplikace', () => {
     await bridge.close();
   });
 
-  it('nástroje pracují nad enginem aplikace, dokud je připojená; pak nad vlastním enginem serveru', async () => {
+  it('the tools work over the engine of the app while it is connected; then over the server\'s own engine', async () => {
     const session = await connect({ bridge });
-    const app = newEngine(); // engine „aplikace"
+    const app = newEngine(); // the engine of the "app"
     const seen: string[] = [];
     let status: BridgeStatus = 'off';
     const connection = connectBridge(app, { url: `http://127.0.0.1:${bridge.port}`, retryMs: 20, onStatus: (next) => (status = next), onCall: (name) => seen.push(name) });
-    await until(() => status === 'connected' && bridge.connected(), 'připojení aplikace');
+    await until(() => status === 'connected' && bridge.connected(), 'the app connected');
     expect(await session.call('session_status')).toMatchObject({ engine: 'app', bridge: { port: bridge.port, appConnected: true } });
 
-    // příkaz od AI se provede v aplikaci a aplikace o něm ví (posluchač enginu)
+    // a command from the AI runs in the app and the app knows of it (a listener of the engine)
     let notified = 0;
     app.subscribe(() => notified++);
     expect(await session.call('execute', { command: emptySketch('s', { kind: 'base', plane: 'XZ' }) })).toMatchObject({ ok: true, features: 1 });
     expect(app.getState().document.features.map((feature) => feature.id)).toEqual(['s']);
     expect(session.engine.getState().document.features).toEqual([]);
     expect(notified).toBe(1);
-    expect(seen).toEqual(['_ping', 'execute']); // _ping: dotaz serveru na dokument při session_status
-    // chyba nástroje a výsledek dotazu projdou mostem beze změny
-    expect(await session.call('get_sketch', { sketch: 'nic' })).toEqual({ error: 'the sketch "nic" is not in the document' });
+    expect(seen).toEqual(['_ping', 'execute']); // _ping: the server's query for the document during session_status
+    // an error of a tool and the result of a query pass through the bridge unchanged
+    expect(await session.call('get_sketch', { sketch: 'nope' })).toEqual({ error: 'the sketch "nope" is not in the document' });
     expect((await session.call('get_model')).features).toEqual([expect.objectContaining({ id: 's', status: 'ok' })]);
-    // soubory: dokument aplikace se uloží serverem
-    const file = join(dir, 'z-aplikace.json');
+    // files: the document of the app is saved by the server
+    const file = join(dir, 'from-app.json');
     await session.call('save_document', { path: file });
     expect(JSON.parse(await readFile(file, 'utf8'))).toEqual(app.getState().document);
     // bodies of the app: the collision query runs there and the server writes the files it gets back
@@ -629,44 +629,44 @@ describe('most do běžící aplikace', () => {
     const built = await session.call('execute', { command: { type: 'batch', commands: [{ type: 'addCurve', sketch: 's', id: 'k', curve: { type: 'circle', center: 'origin' }, radius: 5 }, disc('low', 0), disc('high', 3)] } });
     expect(built).toMatchObject({ ok: true, bodies: ['low', 'high'] });
     expect(await session.call('check_interference')).toMatchObject({ pairs: [{ a: 'high', b: 'low' }], fits: [], failed: [], checked: 1 });
-    expect(await session.call('check_interference', { bodies: ['low', 'nic'] })).toEqual({ error: expect.stringContaining('the body "nic" does not exist') });
-    const parts = await session.call('export_stl', { path: join(dir, 'z-aplikace'), perBody: true, bodies: ['high'] });
-    expect(parts.files).toEqual([{ path: join(dir, 'z-aplikace', 'high.stl'), bodies: ['high'], triangles: expect.any(Number), bytes: expect.any(Number) }]);
+    expect(await session.call('check_interference', { bodies: ['low', 'nope'] })).toEqual({ error: expect.stringContaining('the body "nope" does not exist') });
+    const parts = await session.call('export_stl', { path: join(dir, 'from-app'), perBody: true, bodies: ['high'] });
+    expect(parts.files).toEqual([{ path: join(dir, 'from-app', 'high.stl'), bodies: ['high'], triangles: expect.any(Number), bytes: expect.any(Number) }]);
     expect((await readFile(parts.files[0].path)).length).toBe(84 + 50 * parts.files[0].triangles);
     // a format of the catalog is exported by the engine of the app; a previewed command stays a preview there
-    const viaCatalog = await session.call('export', { format: 'stl', path: join(dir, 'z-aplikace', 'low.stl'), after: { type: 'removeFeature', id: 'high' } });
-    expect(viaCatalog.files).toEqual([{ path: join(dir, 'z-aplikace', 'low.stl'), bodies: ['low'], triangles: parts.files[0].triangles, bytes: 84 + 50 * parts.files[0].triangles }]);
+    const viaCatalog = await session.call('export', { format: 'stl', path: join(dir, 'from-app', 'low.stl'), after: { type: 'removeFeature', id: 'high' } });
+    expect(viaCatalog.files).toEqual([{ path: join(dir, 'from-app', 'low.stl'), bodies: ['low'], triangles: parts.files[0].triangles, bytes: 84 + 50 * parts.files[0].triangles }]);
     expect(Object.keys(app.getState().evaluation.bodies)).toEqual(['low', 'high']);
     expect(session.engine.getState().document.features).toEqual([]);
 
-    // po odpojení pracují nástroje nad vlastním enginem serveru
+    // after the disconnect the tools work over the server's own engine
     connection.stop();
-    await until(() => !bridge.connected(), 'odpojení aplikace');
+    await until(() => !bridge.connected(), 'the app disconnected');
     expect(status).toBe('off');
     expect(await session.call('session_status')).toMatchObject({ engine: 'server', bridge: { appConnected: false } });
     expect((await session.call('get_model')).features).toEqual([]);
     await session.close();
   });
 
-  it('uložení bez cesty patří dokumentu, se kterým se pracuje: soubor serveru a soubor aplikace se nepletou', async () => {
+  it('a save without a path belongs to the document being worked on: the file of the server and the file of the app are not mixed up', async () => {
     const serverPath = join(dir, 'server-model.json');
     const appPath = join(dir, 'app-model.json');
     const session = await connect({ bridge });
-    // vlastní dokument serveru se souborem
+    // the server's own document with a file
     await session.call('execute', { command: emptySketch('server_only', { kind: 'base', plane: 'XY' }) });
     await session.call('save_document', { path: serverPath });
     const ids = async (path: string) => JSON.parse(await readFile(path, 'utf8')).features.map((feature: { id: string }) => feature.id);
 
-    // připojí se aplikace s jiným dokumentem: ten soubor nemá, uložení bez cesty nesmí přepsat soubor serveru
+    // an app with another document connects: it has no file, a save without a path must not overwrite the file of the server
     const app = newEngine();
     expect(app.execute(emptySketch('app_only', { kind: 'base', plane: 'XZ' })).ok).toBe(true);
     let status: BridgeStatus = 'off';
     let connection = connectBridge(app, { url: `http://127.0.0.1:${bridge.port}`, retryMs: 20, onStatus: (next) => (status = next) });
-    await until(() => status === 'connected' && bridge.connected(), 'připojení aplikace');
+    await until(() => status === 'connected' && bridge.connected(), 'the app connected');
     expect(await session.call('session_status')).toMatchObject({ engine: 'app', file: null });
     expect(await session.call('save_document')).toEqual({ error: 'the document has no file; give "path"' });
     expect(await ids(serverPath)).toEqual(['server_only']);
-    // dokument aplikace dostane vlastní soubor
+    // the document of the app gets a file of its own
     await session.call('save_document', { path: appPath });
     expect(await session.call('session_status')).toMatchObject({ engine: 'app', file: appPath });
     await session.call('execute', { command: emptySketch('app_second', { kind: 'base', plane: 'XY' }) });
@@ -674,66 +674,66 @@ describe('most do běžící aplikace', () => {
     expect(await ids(appPath)).toEqual(['app_only', 'app_second']);
     expect(await ids(serverPath)).toEqual(['server_only']);
 
-    // po odpojení platí zase soubor serveru; soubor aplikace zůstane nedotčený
+    // after the disconnect the file of the server applies again; the file of the app stays untouched
     connection.stop();
-    await until(() => !bridge.connected(), 'odpojení aplikace');
+    await until(() => !bridge.connected(), 'the app disconnected');
     expect(await session.call('session_status')).toMatchObject({ engine: 'server', file: serverPath });
     await session.call('save_document');
     expect(await ids(serverPath)).toEqual(['server_only']);
     expect(await ids(appPath)).toEqual(['app_only', 'app_second']);
 
-    // nové připojení aplikace je nový dokument: soubor z minulého připojení se na něj nepřenáší
+    // a new connection of the app is a new document: the file of the previous connection does not carry over to it
     connection = connectBridge(newEngine(), { url: `http://127.0.0.1:${bridge.port}`, retryMs: 20, onStatus: (next) => (status = next) });
-    await until(() => status === 'connected' && bridge.connected(), 'druhé připojení aplikace');
+    await until(() => status === 'connected' && bridge.connected(), 'the app connected a second time');
     expect(await session.call('session_status')).toMatchObject({ engine: 'app', file: null });
     connection.stop();
-    await until(() => !bridge.connected(), 'odpojení');
+    await until(() => !bridge.connected(), 'disconnected');
     await session.close();
   });
 
-  it('výměna dokumentu v aplikaci: soubor předchozího dokumentu novému nepatří', async () => {
-    const first = join(dir, 'prvni-dokument.json');
-    const second = join(dir, 'druhy-dokument.json');
+  it('the document replaced in the app: the file of the previous document does not belong to the new one', async () => {
+    const first = join(dir, 'first-document.json');
+    const second = join(dir, 'second-document.json');
     const session = await connect({ bridge });
     const app = newEngine();
     let status: BridgeStatus = 'off';
     const connection = connectBridge(app, { url: `http://127.0.0.1:${bridge.port}`, retryMs: 20, onStatus: (next) => (status = next) });
-    await until(() => status === 'connected' && bridge.connected(), 'připojení aplikace');
+    await until(() => status === 'connected' && bridge.connected(), 'the app connected');
     const ids = async (path: string) => JSON.parse(await readFile(path, 'utf8')).features.map((feature: { id: string }) => feature.id);
 
     await session.call('execute', { command: emptySketch('a', { kind: 'base', plane: 'XY' }) });
     await session.call('save_document', { path: first });
     expect(await session.call('session_status')).toMatchObject({ engine: 'app', file: first });
-    // uživatel v aplikaci klikne na Nový (nebo Otevřít): spojení zůstává, dokument je jiný
+    // the user clicks New (or Open) in the app: the connection stays, the document is another one
     expect(app.load(JSON.stringify({ ...app.getState().document, features: [] })).ok).toBe(true);
     connection.documentReplaced();
     await session.call('execute', { command: emptySketch('b', { kind: 'base', plane: 'XY' }) });
     expect(await session.call('save_document')).toEqual({ error: 'the document has no file; give "path"' });
     expect(await session.call('session_status')).toMatchObject({ engine: 'app', file: null });
     expect(await ids(first)).toEqual(['a']);
-    // nový dokument dostane vlastní soubor a ukládání bez cesty pak patří jemu
+    // the new document gets a file of its own and a save without a path then belongs to it
     await session.call('save_document', { path: second });
     await session.call('execute', { command: emptySketch('c', { kind: 'base', plane: 'XY' }) });
     await session.call('save_document');
     expect(await ids(second)).toEqual(['b', 'c']);
     expect(await ids(first)).toEqual(['a']);
 
-    // výměna těsně před dotazem na stav, bez jiného volání mezi tím: stav starý soubor neukáže
+    // a replacement just before the status query, with no other call in between: the status does not show the old file
     app.load(JSON.stringify({ ...app.getState().document, features: [] }));
     connection.documentReplaced();
     expect(await session.call('session_status')).toMatchObject({ engine: 'app', file: null });
-    // dokument otevřený serverem do aplikace svůj soubor má
+    // a document the server opened into the app has its file
     expect(await session.call('open_document', { path: first })).toMatchObject({ file: first });
     expect(await session.call('session_status')).toMatchObject({ engine: 'app', file: first });
     await session.call('save_document');
     expect(await ids(first)).toEqual(['a']);
     expect(await ids(second)).toEqual(['b', 'c']);
     connection.stop();
-    await until(() => !bridge.connected(), 'odpojení');
+    await until(() => !bridge.connected(), 'disconnected');
     await session.close();
   });
 
-  it('obsluha aplikace: úklid před změnou dostane argumenty; výjimka v ní ani po ní nenechá volajícího bez odpovědi', async () => {
+  it('the handler of the app: the clean-up before a change gets the arguments; an exception in it or after it does not leave the caller without an answer', async () => {
     const session = await connect({ bridge });
     const app = newEngine();
     const before: [string, unknown][] = [];
@@ -745,10 +745,10 @@ describe('most do běžící aplikace', () => {
       onStatus: (next) => (status = next),
       beforeCall: (name, args) => before.push([name, args]),
       onCall: () => {
-        if (failAfter) throw new Error('chyba v obsluze');
+        if (failAfter) throw new Error('an error in the handler');
       },
     });
-    await until(() => status === 'connected' && bridge.connected(), 'připojení aplikace');
+    await until(() => status === 'connected' && bridge.connected(), 'the app connected');
     const command = emptySketch('s', { kind: 'base', plane: 'XY' });
     await session.call('execute', { command });
     await session.call('get_model');
@@ -764,33 +764,33 @@ describe('most do běžící aplikace', () => {
     expect(Object.keys((app.getState().document.features[0] as { curves: object }).curves)).toEqual(['c1', 'c2', 'c3', 'c4']);
     expect(await session.call('sketch_tool', { sketch: 's', tool: 'rectangle', input: { first: input.first } })).toEqual({ error: 'rectangle: the input "opposite" is missing' });
     await session.call('undo');
-    // výjimka po provedení: odpověď dorazí a spojení zůstane
+    // an exception after the run: the answer arrives and the connection stays
     failAfter = true;
     expect(await session.call('execute', { command: emptySketch('s2', { kind: 'base', plane: 'XY' }) })).toMatchObject({ ok: true, features: 2 });
     expect(bridge.connected()).toBe(true);
     failAfter = false;
-    // výjimka posluchače enginu: změna je zapsaná a hlášení to říká
+    // an exception of a listener of the engine: the change is written and the report says so
     const unsubscribe = app.subscribe(() => {
-      throw new Error('posluchač spadl');
+      throw new Error('the listener crashed');
     });
     const failed = await session.call('execute', { command: emptySketch('s3', { kind: 'base', plane: 'XY' }) });
-    expect(failed.error).toMatch(/an error occurred in the app \(the change may already have been made, check the state\): posluchač spadl/);
+    expect(failed.error).toMatch(/an error occurred in the app \(the change may already have been made, check the state\): the listener crashed/);
     unsubscribe();
     expect((await session.call('get_model')).features).toHaveLength(3);
     connection.stop();
-    await until(() => !bridge.connected(), 'odpojení');
+    await until(() => !bridge.connected(), 'disconnected');
     await session.close();
   });
 
-  it('připojit se smí jen stránka z tohoto počítače; druhá aplikace nahradí první', async () => {
+  it('only a page from this computer may connect; a second app replaces the first', async () => {
     const url = `http://127.0.0.1:${bridge.port}`;
     const header = { 'x-trymesh-bridge': '1' };
     expect((await fetch(`${url}/events`, { headers: { ...header, Origin: 'https://example.com' } })).status).toBe(403);
-    // bez vlastní hlavičky (obrázek nebo požadavek bez CORS z cizí stránky) se připojit nejde
+    // without the custom header (an image or a request without CORS from a foreign page) it cannot connect
     expect((await fetch(`${url}/events`)).status).toBe(403);
     expect((await fetch(`${url}/reply`, { method: 'POST', body: '{}' })).status).toBe(403);
     expect(bridge.connected()).toBe(false);
-    // cizí jméno v hlavičce Host (přesměrování DNS) se odmítne i s hlavičkou
+    // a foreign name in the Host header (DNS rebinding) is refused even with the custom header
     const status = (host: string) =>
       new Promise<number>((done, fail) => {
         request({ host: '127.0.0.1', port: bridge.port, path: '/events', headers: { ...header, Host: host } }, (response) => {
@@ -803,7 +803,7 @@ describe('most do běžící aplikace', () => {
     expect(await status(`evil.example:${bridge.port}`)).toBe(403);
     expect(await status(`localhost:${bridge.port + 1}`)).toBe(403);
     expect(bridge.connected()).toBe(false);
-    // svolení pro stránku z tohoto počítače včetně vlastní hlavičky
+    // permission for a page from this computer, including the custom header
     const preflight = await fetch(`${url}/reply`, { method: 'OPTIONS', headers: { Origin: 'http://localhost:5173', 'Access-Control-Request-Headers': 'x-trymesh-bridge' } });
     expect(preflight.status).toBe(204);
     expect(preflight.headers.get('access-control-allow-headers')).toContain('x-trymesh-bridge');
@@ -812,16 +812,16 @@ describe('most do běžící aplikace', () => {
     expect(local.headers.get('access-control-allow-origin')).toBe('http://localhost:5173');
     expect(await local.json()).toEqual({ service: 'trymesh-mcp-bridge', connected: false });
 
-    // Vytlačená aplikace se znovu nepřipojuje: jinak by si obě spojení přebíraly dokola
-    // a příkaz od AI by mohl změnit nesprávný dokument.
+    // A displaced app does not reconnect: otherwise the two connections would keep taking over from
+    // each other and a command from the AI could change the wrong document.
     const [first, second] = [newEngine(), newEngine()];
     const states: Record<string, BridgeStatus[]> = { one: [], two: [] };
     let displaced = 0;
     const one = connectBridge(first, { url, retryMs: 10, onStatus: (next) => states.one.push(next), onDisplaced: () => displaced++ });
-    await until(() => states.one.at(-1) === 'connected', 'první aplikace');
+    await until(() => states.one.at(-1) === 'connected', 'the first app');
     const two = connectBridge(second, { url, retryMs: 10, onStatus: (next) => states.two.push(next), onDisplaced: () => displaced++ });
-    await until(() => states.two.at(-1) === 'connected' && states.one.at(-1) === 'off', 'druhá aplikace nahradí první');
-    await new Promise((resolve) => setTimeout(resolve, 150)); // mnohonásobek prodlevy mezi pokusy
+    await until(() => states.two.at(-1) === 'connected' && states.one.at(-1) === 'off', 'the second app replaces the first');
+    await new Promise((resolve) => setTimeout(resolve, 150)); // many times the delay between attempts
     expect(states.one).toEqual(['connecting', 'connected', 'off']);
     expect(states.two).toEqual(['connecting', 'connected']);
     expect(displaced).toBe(1);
@@ -829,19 +829,19 @@ describe('most do běžící aplikace', () => {
     await session.call('execute', { command: emptySketch('s', { kind: 'base', plane: 'XY' }) });
     expect(second.getState().document.features).toHaveLength(1);
     expect(first.getState().document.features).toHaveLength(0);
-    // vytlačenou aplikaci jde připojit znovu jen výslovně (tlačítkem AI): pak převezme spojení ona
+    // a displaced app can reconnect only explicitly (by the AI button): then it takes over the connection
     const again = connectBridge(first, { url, retryMs: 10, onStatus: (next) => states.one.push(next) });
-    await until(() => states.one.at(-1) === 'connected' && states.two.at(-1) === 'off', 'první aplikace se připojí znovu');
+    await until(() => states.one.at(-1) === 'connected' && states.two.at(-1) === 'off', 'the first app reconnects');
     await session.call('execute', { command: emptySketch('t', { kind: 'base', plane: 'XY' }) });
     expect(first.getState().document.features.map((feature) => feature.id)).toEqual(['t']);
     again.stop();
     one.stop();
     two.stop();
-    await until(() => !bridge.connected(), 'odpojení');
+    await until(() => !bridge.connected(), 'disconnected');
     await session.close();
   });
 
-  it('obsazený port: most se neotevře a server může běžet bez něj', async () => {
+  it('a port in use: the bridge does not open and the server can run without it', async () => {
     await expect(startBridge(bridge.port)).rejects.toThrow();
   });
 });

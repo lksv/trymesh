@@ -1,4 +1,4 @@
-// The modules of the engine import one way (docs/architecture.md, "Struktura repozitáře"). A cycle
+// The modules of the engine import one way (docs/architecture/repository.md, "Structure of the repository"). A cycle
 // between them can load in one import order and break in another: a module that reads a binding of
 // the other at its top level gets it before it is set. The tests of the engine all start from
 // document.ts or engine.ts, so they would not see it.

@@ -1,5 +1,5 @@
-// Kreslicí nástroje a vazby z výběru proti skutečnému enginu: příkazy, které UI sestaví, musí
-// engine přijmout a výsledek musí odpovídat tomu, co uživatel nakreslil.
+// Drawing tools and constraints from a selection against the real engine: the commands the UI builds
+// must be accepted by the engine and the result must match what the user drew.
 import { CONSTRAINTS, type Command, type Constraint, type DimensionShape, type Engine, type ExtrudeFeature, type Id, type SketchFeature, type SketchResult, type SketchToolCall, createEngine, duplicateOf, emptySketch, isOriginAxis, nearestCurvePoint } from '@trymesh/engine';
 import { createManifoldKernel } from '@trymesh/kernel-manifold';
 import { createPlanegcsSolver } from '@trymesh/solver-planegcs';
@@ -45,7 +45,7 @@ import { type Shape, type SketchView, anchorOf, closestOn, hitCurve, hitPoint, i
 
 const deps = { solver: await createPlanegcsSolver(), kernel: await createManifoldKernel() };
 
-// Engine se skicou `s` na rovině XY a čítačem ID jako v aplikaci.
+// An engine with a sketch `s` on the plane XY and a counter of IDs as in the app.
 function setup(): { engine: Engine; newId: (prefix: string) => Id; run: (commands: Command[] | undefined) => void; view: () => SketchView; tool: () => SketchToolCall; sketch: () => SketchFeature; result: () => SketchResult } {
   const engine = createEngine(deps);
   let counter = 0;
@@ -54,7 +54,7 @@ function setup(): { engine: Engine; newId: (prefix: string) => Id; run: (command
     const outcome = engine.execute(command);
     if (!outcome.ok) throw new Error(outcome.error.message);
   };
-  execute({ type: 'addFeature', feature: emptySketch('s', 'Skica', { kind: 'base', plane: 'XY' }) });
+  execute({ type: 'addFeature', feature: emptySketch('s', 'Sketch', { kind: 'base', plane: 'XY' }) });
   const sketch = () => engine.getState().document.features.find((f) => f.id === 's') as SketchFeature;
   const result = () => engine.getState().evaluation.features.s.sketch as SketchResult;
   return {
@@ -75,18 +75,18 @@ const free = (x: number, y: number): Anchor => ({ at: [x, y] });
 const onPoint = (view: SketchView, id: Id): Anchor => ({ at: view.points.get(id)!.at, snap: { kind: 'point', id } });
 const types = (sketch: SketchFeature): string[] => Object.values(sketch.constraints).map((c) => c.type).sort();
 
-describe('kreslicí nástroje', () => {
-  it('obdélník od počátku: čtyři úsečky, jedna oblast, volná jen šířka a výška', () => {
+describe('drawing tools', () => {
+  it('a rectangle from the origin: four lines, one region, only the width and the height free', () => {
     const t = setup();
     t.run(rectangleCommands('s', t.tool(), onPoint(t.view(), 'origin'), free(30, 20), t.newId));
-    expect(Object.keys(t.sketch().points)).toHaveLength(3); // čtvrtý roh je počátek
+    expect(Object.keys(t.sketch().points)).toHaveLength(3); // the fourth corner is the origin
     expect(Object.keys(t.sketch().curves)).toHaveLength(4);
     expect(types(t.sketch())).toEqual(['horizontal', 'horizontal', 'vertical', 'vertical']);
     expect(t.result().regions).toHaveLength(1);
     expect(t.result().degreesOfFreedom).toBe(2);
   });
 
-  it('konstrukční režim: křivky nástroje jsou pomocné, vazby vznikají stejně a profil netvoří', () => {
+  it('construction mode: the curves of the tool are construction geometry, the constraints arise the same and they make no profile', () => {
     const t = setup();
     t.run(asConstruction(rectangleCommands('s', t.tool(), onPoint(t.view(), 'origin'), free(30, 20), t.newId)!));
     expect(Object.values(t.sketch().curves).map((curve) => curve.construction)).toEqual([true, true, true, true]);
@@ -94,17 +94,17 @@ describe('kreslicí nástroje', () => {
     expect(t.result().regions).toHaveLength(0);
     expect(t.result().degreesOfFreedom).toBe(2);
     expect([...t.view().curves.values()].filter((curve) => curve.own).every((curve) => curve.construction)).toBe(true);
-    // kružnice a oblouk; běžná křivka nakreslená potom konstrukční není
+    // a circle and an arc; an ordinary curve drawn afterwards is not construction geometry
     t.run(asConstruction(circleCommands('s', t.view(), free(50, 0), free(55, 0), t.newId)!));
     t.run(asConstruction(arcCommands('s', t.view(), free(80, 0), free(90, 0), free(80, 10), t.newId)!));
     t.run(lineCommands('s', t.view(), free(0, 40), free(10, 40), t.newId)!.commands);
     expect(Object.values(t.sketch().curves).map((curve) => curve.construction === true)).toEqual([true, true, true, true, true, true, false]);
-    // příkazy bez křivek zůstávají beze změny
+    // commands without curves stay unchanged
     const point = pointCommands('s', t.view(), free(5, 5), t.newId) as Command[];
     expect(asConstruction(point)).toEqual(point);
   });
 
-  it('obdélník s nulovou šířkou nebo ze dvou stejných bodů nevznikne', () => {
+  it('a rectangle of zero width or from two equal points is not made', () => {
     const t = setup();
     expect(rectangleCommands('s', t.tool(), free(1, 1), free(1, 5), t.newId)).toBeUndefined();
     expect(rectangleCommands('s', t.tool(), onPoint(t.view(), 'origin'), onPoint(t.view(), 'origin'), t.newId)).toBeUndefined();
@@ -139,7 +139,7 @@ describe('kreslicí nástroje', () => {
     expect(polygonCommands('s', t.tool(), onPoint(t.view(), 'origin'), onPoint(t.view(), 'origin'), DEFAULT_POLYGON, t.newId)).toBeUndefined();
   });
 
-  it('řetěz úseček sdílí body a uzavře se na první bod', () => {
+  it('a chain of lines shares points and closes on the first point', () => {
     const t = setup();
     const first = lineCommands('s', t.view(), free(0, 5), free(10, 5), t.newId, 'horizontal');
     t.run(first?.commands);
@@ -153,11 +153,11 @@ describe('kreslicí nástroje', () => {
     expect(Object.keys(t.sketch().curves)).toHaveLength(3);
     expect(types(t.sketch())).toEqual(['horizontal', 'vertical']);
     expect(t.result().regions).toHaveLength(1);
-    // úsečka z bodu do téhož bodu nevznikne
+    // a line from a point to the same point is not made
     expect(lineCommands('s', t.view(), onPoint(t.view(), start), onPoint(t.view(), start), t.newId)).toBeUndefined();
   });
 
-  it('přichycení na křivku přidá vazbu bodu na křivce a bod leží na ní', () => {
+  it('a snap to a curve adds a point-on-curve constraint and the point lies on it', () => {
     const t = setup();
     t.run(lineCommands('s', t.view(), free(0, 0.5), free(20, 0.5), t.newId)?.commands);
     const line = Object.keys(t.sketch().curves)[0];
@@ -165,13 +165,13 @@ describe('kreslicí nástroje', () => {
     expect(types(t.sketch())).toEqual(['pointOnCurve']);
     const added = Object.values(t.sketch().constraints)[0] as Extract<Constraint, { type: 'pointOnCurve' }>;
     expect(t.result().points[added.point].y).toBeCloseTo(0.5, 6);
-    // samotný bod: na křivce s vazbou, na existujícím bodě nic
+    // a point alone: on a curve with a constraint, on an existing point nothing
     expect(pointCommands('s', t.view(), onPoint(t.view(), 'origin'), t.newId)).toBeUndefined();
     t.run(pointCommands('s', t.view(), { at: [15, 0.4], snap: { kind: 'curve', id: line } }, t.newId));
     expect(types(t.sketch())).toEqual(['pointOnCurve', 'pointOnCurve']);
   });
 
-  it('kružnice: poloměr z druhého kliknutí; přichycení obvodu na bod přidá vazbu', () => {
+  it('a circle: the radius from the second click; a snap of the circumference to a point adds a constraint', () => {
     const t = setup();
     t.run(pointCommands('s', t.view(), free(10, 0), t.newId));
     const point = Object.keys(t.sketch().points)[0];
@@ -182,7 +182,7 @@ describe('kreslicí nástroje', () => {
     expect(circleCommands('s', t.view(), free(4, 0), free(4, 0), t.newId)).toBeUndefined();
   });
 
-  it('oblouk: volný konec se posune na poloměr začátku a oblouk vede proti směru hodin', () => {
+  it('an arc: the free end moves to the radius of the start and the arc runs counterclockwise', () => {
     const t = setup();
     t.run(arcCommands('s', t.view(), free(0, 0), free(10, 0), free(0, 25), t.newId));
     const arc = [...t.view().curves.values()][0];
@@ -192,9 +192,9 @@ describe('kreslicí nástroje', () => {
     expect(arcCommands('s', t.view(), free(0, 0), free(0, 0), free(5, 5), t.newId)).toBeUndefined();
   });
 
-  it('konec na promítnutém bodě: nový vlastní bod s vazbou totožnosti', () => {
+  it('an end on a projected point: a new own point with a coincident constraint', () => {
     const t = setup();
-    // kvádr 30 × 20 × 10 a skica na jeho horní stěně s promítnutou hranou
+    // a box 30 × 20 × 10 and a sketch on its top face with a projected edge
     t.run(rectangleCommands('s', t.tool(), onPoint(t.view(), 'origin'), free(30, 20), t.newId));
     const loop = Object.keys(t.sketch().curves).sort();
     const execute = (command: Command) => expect(t.engine.execute(command)).toMatchObject({ ok: true });
@@ -212,7 +212,7 @@ describe('kreslicí nástroje', () => {
     execute({ type: 'batch', commands: line!.commands });
     expect(types(sketch2())).toEqual(['coincident']);
     const curve = Object.values(sketch2().curves)[0] as { a: Id };
-    expect(curve.a).not.toBe('x/a'); // křivka na promítnutý bod neodkazuje
+    expect(curve.a).not.toBe('x/a'); // the curve does not refer to the projected point
     expect(state().evaluation.features.s2.sketch!.points[curve.a]).toMatchObject({ x: expect.closeTo(corner.at[0], 6), y: expect.closeTo(corner.at[1], 6) });
   });
 });
@@ -250,8 +250,8 @@ describe('the fillet and the re-point (D52)', () => {
   });
 });
 
-describe('vazby a kóty z výběru', () => {
-  // trojúhelník p1 (0,0) – p2 (12,0) – p3 (12,9), kružnice a oblouk stranou
+describe('constraints and dimensions from a selection', () => {
+  // a triangle p1 (0,0) – p2 (12,0) – p3 (12,9), a circle and an arc aside
   function shapes() {
     const t = setup();
     const a = lineCommands('s', t.view(), free(1, 1), free(13, 1), t.newId)!;
@@ -266,7 +266,7 @@ describe('vazby a kóty z výběru', () => {
     return { t, view, bottom, right, circle: curves.find((c) => c.shape.type === 'circle')!.id, arc: curves.find((c) => c.shape.type === 'arc')!.id, corner: a.end, start: view.curves.get(bottom)!.points[0], top: b.end };
   }
 
-  it('typ kóty podle výběru odpovídá tabulce v docs/ui.md', () => {
+  it('the type of a dimension by the selection matches the table in docs/ui.md', () => {
     const s = shapes();
     const kind = (ids: Id[], variant: 'auto' | 'horizontal' | 'vertical' = 'auto') => dimensionFor(variant, s.view, ids);
     expect(kind([s.start, s.top])).toMatchObject({ type: 'distance', a: s.start, b: s.top, value: 15, driving: true });
@@ -275,14 +275,14 @@ describe('vazby a kóty z výběru', () => {
     expect(kind([s.bottom, s.right])).toMatchObject({ type: 'angle', a: s.bottom, b: s.right, value: expect.closeTo(Math.PI / 2, 9) });
     expect(kind([s.circle])).toMatchObject({ type: 'diameter', curve: s.circle, value: 8 });
     expect(kind([s.arc])).toMatchObject({ type: 'radius', curve: s.arc, value: 5 });
-    expect(kind([s.top, s.start], 'horizontal')).toMatchObject({ type: 'horizontalDistance', a: s.top, b: s.start, value: -12 }); // orientovaná: b − a
+    expect(kind([s.top, s.start], 'horizontal')).toMatchObject({ type: 'horizontalDistance', a: s.top, b: s.start, value: -12 }); // signed: b − a
     expect(kind([s.right], 'vertical')).toMatchObject({ type: 'verticalDistance', value: 9 });
     expect(kind([s.circle], 'horizontal')).toBeUndefined();
     expect(kind([s.start, s.top, s.corner])).toBeUndefined();
     expect(kind([])).toBeUndefined();
   });
 
-  it('kóty z výběru engine přijme a skica zůstane bez konfliktu', () => {
+  it('the engine accepts dimensions from a selection and the sketch stays without a conflict', () => {
     const s = shapes();
     for (const ids of [[s.start, s.top], [s.bottom], [s.bottom, s.right], [s.circle], [s.arc]]) {
       const d = dimensionFor('auto', s.t.view(), ids);
@@ -292,7 +292,7 @@ describe('vazby a kóty z výběru', () => {
     expect(s.t.engine.getState().evaluation.features.s.status).toBe('ok');
   });
 
-  it('měření v UI používá stejné konvence jako referenční kóty enginu', () => {
+  it('measuring in the UI uses the same conventions as the reference dimensions of the engine', () => {
     const s = shapes();
     const dimensions: DimensionShape[] = [
       { type: 'distance', a: s.start, b: s.top },
@@ -307,11 +307,11 @@ describe('vazby a kóty z výběru', () => {
     s.t.run(dimensions.map((shape, i): Command => ({ type: 'addConstraint', sketch: 's', id: `ref${i}`, constraint: { ...shape, value: 1, driving: false } })));
     const view = s.t.view();
     dimensions.forEach((shape, i) => expect(measure(shape, view), shape.type).toBeCloseTo(s.t.result().measurements[`ref${i}`], 9));
-    expect(measure({ type: 'distance', a: s.start, b: 'chybí' }, view)).toBeUndefined();
+    expect(measure({ type: 'distance', a: s.start, b: 'missing' }, view)).toBeUndefined();
   });
 
-  it('vazby bez zvláštního pravidla se nabízejí podle katalogu enginu: souměrnost a střed úsečky', () => {
-    // seznam geometrických vazeb je katalog bez kót, takže nová vazba enginu v něm je sama
+  it('constraints without a special rule are offered by the catalog of the engine: symmetry and the midpoint of a line', () => {
+    // the list of geometric constraints is the catalog without dimensions, so a new constraint of the engine is in it by itself
     expect(GEOMETRIC_KINDS).toEqual(['coincident', 'pointOnCurve', 'horizontal', 'vertical', 'parallel', 'perpendicular', 'equalLength', 'tangent', 'symmetric', 'midpoint', 'equalRadius', 'fixed']);
     expect(Object.keys(CONSTRAINTS).filter((type) => !GEOMETRIC_KINDS.includes(type as (typeof GEOMETRIC_KINDS)[number]))).toEqual(['distance', 'distancePointLine', 'horizontalDistance', 'verticalDistance', 'angle', 'radius', 'diameter']);
 
@@ -326,28 +326,28 @@ describe('vazby a kóty z výběru', () => {
       { type: 'addConstraint', sketch: 's', id: 'v', constraint: { type: 'vertical', line: 'axis' } },
     ]);
     const offer = (kind: Parameters<typeof geometricFor>[0], ids: Id[]) => geometricFor(kind, t.view(), ids);
-    // operandy se přiřadí podle druhu, na pořadí výběru osy a bodů nezáleží
+    // the operands are assigned by kind; the order in which the axis and the points are selected does not matter
     expect(offer('symmetric', ['l', 'r', 'axis'])).toEqual([{ type: 'symmetric', a: 'l', b: 'r', line: 'axis' }]);
     expect(offer('symmetric', ['axis', 'r', 'l'])).toEqual([{ type: 'symmetric', a: 'r', b: 'l', line: 'axis' }]);
     expect(offer('symmetric', ['l', 'r'])).toBeUndefined();
-    expect(offer('symmetric', ['l', 'axis', 'k'])).toBeUndefined(); // kružnice místo druhého bodu
+    expect(offer('symmetric', ['l', 'axis', 'k'])).toBeUndefined(); // a circle instead of the second point
     expect(offer('symmetric', ['l', 'r', 'm', 'axis'])).toBeUndefined();
     expect(offer('midpoint', ['axis', 'm'])).toEqual([{ type: 'midpoint', point: 'm', line: 'axis' }]);
     expect(offer('midpoint', ['m', 'k'])).toBeUndefined();
     expect(offer('midpoint', ['m'])).toBeUndefined();
-    // výběr, který by engine odmítl vlastním pravidlem vazby, se nenabízí
-    expect(offer('symmetric', ['origin', 'r', 'axis'])).toBeUndefined(); // souměrný bod je koncem osy
+    // a selection the engine would refuse by a rule of the constraint itself is not offered
+    expect(offer('symmetric', ['origin', 'r', 'axis'])).toBeUndefined(); // the symmetric point is an end of the axis
     expect(offer('symmetric', ['top', 'r', 'axis'])).toBeUndefined();
-    expect(offer('midpoint', ['top', 'axis'])).toBeUndefined(); // středem by byl konec úsečky
+    expect(offer('midpoint', ['top', 'axis'])).toBeUndefined(); // the midpoint would be an end of the line
     expect(offer('symmetric', ['l', 'l', 'axis'])).toBeUndefined();
-    // engine nabídnuté vazby přijme a geometrie jim odpovídá
+    // the engine accepts the offered constraints and the geometry matches them
     t.run([...offer('symmetric', ['l', 'r', 'axis'])!, ...offer('midpoint', ['axis', 'm'])!].map((constraint): Command => ({ type: 'addConstraint', sketch: 's', id: t.newId('k'), constraint })));
     const p = t.result().points;
     expect(t.result().conflicting).toEqual([]);
     expect(p.l.x).toBeCloseTo(-p.r.x, 6);
     expect(p.l.y).toBeCloseTo(p.r.y, 6);
     expect([p.m.x, p.m.y]).toEqual([expect.closeTo(0, 6), expect.closeTo(p.top.y / 2, 6)]);
-    // popisek vazby v pohledu leží u jejích operandů: souměrnost na ose mezi body, střed v bodě
+    // the label of a constraint in the view sits at its operands: symmetry on the axis between the points, the midpoint at the point
     const anchor = (type: Constraint['type']) => anchorOf(Object.values(t.sketch().constraints).find((c) => c.type === type)!, t.view())!;
     expect(anchor('symmetric')[0]).toBeCloseTo(0, 6);
     expect(anchor('symmetric')[1]).toBeGreaterThan(p.l.y);
@@ -356,7 +356,7 @@ describe('vazby a kóty z výběru', () => {
     expect(operandsOf({ type: 'symmetric', a: 'l', b: 'r', line: 'axis' })).toEqual(['l', 'r', 'axis']);
   });
 
-  it('geometrické vazby se nabízejí jen pro vhodný výběr', () => {
+  it('geometric constraints are offered only for a fitting selection', () => {
     const s = shapes();
     const offer = (kind: Parameters<typeof geometricFor>[0], ids: Id[]) => geometricFor(kind, s.view, ids);
     expect(offer('coincident', [s.start, s.top])).toEqual([{ type: 'coincident', a: s.start, b: s.top }]);
@@ -368,8 +368,8 @@ describe('vazby a kóty z výběru', () => {
     expect(offer('equalLength', [s.bottom])).toBeUndefined();
     expect(offer('tangent', [s.bottom, s.circle])).toEqual([{ type: 'tangent', a: s.bottom, b: s.circle }]);
     expect(offer('tangent', [s.arc, s.circle])).toEqual([{ type: 'tangent', a: s.arc, b: s.circle }]);
-    expect(offer('tangent', [s.bottom, s.right])).toBeUndefined(); // dvě úsečky
-    // každou nabídnutou vazbu engine přijme
+    expect(offer('tangent', [s.bottom, s.right])).toBeUndefined(); // two lines
+    // the engine accepts every offered constraint
     for (const kind of ['horizontal', 'perpendicular', 'tangent'] as const) {
       const ids = kind === 'tangent' ? [s.bottom, s.circle] : kind === 'horizontal' ? [s.bottom] : [s.bottom, s.right];
       s.t.run(offer(kind, ids)!.map((constraint): Command => ({ type: 'addConstraint', sketch: 's', id: s.t.newId('k'), constraint })));
@@ -416,13 +416,13 @@ describe('vazby a kóty z výběru', () => {
   });
 });
 
-describe('test zásahu', () => {
-  it('bod má dosah, při shodě vyhrává vlastní bod; křivka se bere nejbližší', () => {
+describe('hit test', () => {
+  it('a point has a reach, an own point wins a tie; the nearest curve is taken', () => {
     const t = setup();
-    t.run(lineCommands('s', t.view(), free(0, 0), free(10, 0), t.newId)?.commands); // začíná volným bodem přesně na počátku
+    t.run(lineCommands('s', t.view(), free(0, 0), free(10, 0), t.newId)?.commands); // starts with a free point exactly at the origin
     const view = t.view();
     const own = [...view.points.values()].find((p) => p.own && p.at[0] === 0)!;
-    expect(hitPoint(view, [0.2, 0.1], 0.5)?.id).toBe(own.id); // počátek leží na stejném místě, vlastní bod má přednost
+    expect(hitPoint(view, [0.2, 0.1], 0.5)?.id).toBe(own.id); // the origin lies in the same place, the own point takes precedence
     expect(hitPoint(view, [0.2, 0.1], 0.5, (id) => id === own.id)?.id).toBe('origin');
     expect(hitPoint(view, [5, 3], 0.5)).toBeUndefined();
     expect(hitCurve(view, [5, 0.3], 0.5)?.id).toBe([...view.curves.keys()][0]);
@@ -432,7 +432,7 @@ describe('test zásahu', () => {
     expect(hitCurve(view, [11, 0], 0.5, isOriginAxis)).toBeUndefined();
   });
 
-  it('nejbližší bod oblouku mimo jeho rozsah je bližší konec', () => {
+  it('the nearest point of an arc outside its range is the nearer end', () => {
     const arc = { type: 'arc' as const, center: [0, 0] as [number, number], radius: 10, from: 0, sweep: Math.PI / 2 };
     expect(closestOn(arc, [20, 20])).toEqual([expect.closeTo(7.0711, 3), expect.closeTo(7.0711, 3)]);
     expect(closestOn(arc, [5, -8])).toEqual([expect.closeTo(10, 9), expect.closeTo(0, 9)]);
@@ -440,11 +440,11 @@ describe('test zásahu', () => {
     const points = polyline(arc);
     expect(points[0]).toEqual([10, 0]);
     expect(points[points.length - 1]).toEqual([expect.closeTo(0, 9), expect.closeTo(10, 9)]);
-    expect(polyline({ type: 'circle', center: [1, 1], radius: 2 })).toHaveLength(97); // uzavřená
+    expect(polyline({ type: 'circle', center: [1, 1], radius: 2 })).toHaveLength(97); // closed
   });
 });
 
-describe('nálezy z revize aplikace', () => {
+describe('findings of the review of the app', () => {
   it('review of D52: the row Re-point is not offered for a point the curve has already', () => {
     const t = setup();
     t.run(lineCommands('s', t.view(), free(0, 0), free(10, 0), t.newId)!.commands);
@@ -458,25 +458,25 @@ describe('nálezy z revize aplikace', () => {
     expect(repointSelection(t.view(), [arc, b])).toEqual({ curve: arc, to: b });
   });
 
-  it('dvojklik nástrojem Úsečka nevytvoří úsečku nulové délky', () => {
+  it('a double click with the Line tool does not make a line of zero length', () => {
     const t = setup();
-    // dvě kliknutí na stejné prázdné místo
+    // two clicks on the same empty place
     expect(lineCommands('s', t.view(), free(3, 3), free(3, 3), t.newId)).toBeUndefined();
-    // druhé kliknutí na konci právě nakreslené úsečky: přichytí se na její konec a řetěz skončí
+    // the second click at the end of the line just drawn: it snaps to its end and the chain ends
     const first = lineCommands('s', t.view(), free(0, 5), free(10, 5), t.newId)!;
     t.run(first.commands);
     expect(lineCommands('s', t.view(), onPoint(t.view(), first.end), onPoint(t.view(), first.end), t.newId)).toBeUndefined();
-    // i bez přichycení (kurzor spočítaný před vznikem bodu) úsečka do stejného místa nevznikne
+    // even without a snap (the cursor computed before the point existed) a line to the same place is not made
     expect(lineCommands('s', t.view(), onPoint(t.view(), first.end), free(10, 5), t.newId)).toBeUndefined();
     expect(Object.keys(t.sketch().curves)).toHaveLength(1);
     expect(t.result().valid).toBe(true);
-    expect(arcCommands('s', t.view(), free(0, 0), free(5, 0), free(9, 0), t.newId)).toBeUndefined(); // konec na začátku
+    expect(arcCommands('s', t.view(), free(0, 0), free(5, 0), free(9, 0), t.newId)).toBeUndefined(); // the end at the start
   });
 
-  it('úhlová kóta těsně u −180° se uloží jako 180° a engine ji přijme', () => {
+  it('an angle dimension just by −180° is stored as 180° and the engine accepts it', () => {
     const t = setup();
     t.run(lineCommands('s', t.view(), free(0, 5), free(10, 5), t.newId)?.commands);
-    t.run(lineCommands('s', t.view(), free(10, 8), free(0, 8.02), t.newId)?.commands); // skoro protisměrná
+    t.run(lineCommands('s', t.view(), free(10, 8), free(0, 8.02), t.newId)?.commands); // almost opposite
     const [first, second] = Object.keys(t.sketch().curves);
     for (const pair of [[first, second], [second, first]]) {
       const d = dimensionFor('auto', t.view(), pair)!;
@@ -488,51 +488,51 @@ describe('nálezy z revize aplikace', () => {
     expect(normalizeAngle(0.5)).toBe(0.5);
   });
 
-  it('nová kóta má hodnotu zaokrouhlenou bez desetinného šumu', () => {
+  it('a new dimension has a value rounded without decimal noise', () => {
     const t = setup();
     t.run(lineCommands('s', t.view(), free(0, 0.5), free(4.3512, 0.5), t.newId)?.commands);
     expect(dimensionFor('auto', t.view(), Object.keys(t.sketch().curves))?.value).toBe(4.35);
   });
 
-  it('smazání: sdílené body zůstanou, osiřelé zmizí; promítnutí bez geometrie jde zrušit', () => {
+  it('deletion: shared points stay, orphaned ones go; a projection without geometry can be removed', () => {
     const t = setup();
     t.run(rectangleCommands('s', t.tool(), free(5, 5), free(15, 12), t.newId));
     t.run(lineCommands('s', t.view(), free(30, 0.5), free(40, 0.5), t.newId)?.commands);
     const lone = Object.keys(t.sketch().curves)[4];
     const sideOfRectangle = Object.keys(t.sketch().curves)[0];
     t.run(deleteCommands('s', t.sketch(), t.view(), [sideOfRectangle]));
-    expect([Object.keys(t.sketch().curves).length, Object.keys(t.sketch().points).length]).toEqual([4, 6]); // rohy drží sousední strany
+    expect([Object.keys(t.sketch().curves).length, Object.keys(t.sketch().points).length]).toEqual([4, 6]); // the corners are held by the neighbouring sides
     t.run(deleteCommands('s', t.sketch(), t.view(), [lone]));
     expect([Object.keys(t.sketch().curves).length, Object.keys(t.sketch().points).length]).toEqual([3, 4]);
-    // bod sdílený dvěma stranami vezme obě a s nimi roh, který zůstal sám
+    // a point shared by two sides takes both and with them the corner that was left alone
     const corner = t.view().curves.get(Object.keys(t.sketch().curves)[0])!.points[1];
     t.run(deleteCommands('s', t.sketch(), t.view(), [corner]));
     expect(Object.keys(t.sketch().curves)).toHaveLength(1);
     expect(deleteCommands('s', t.sketch(), t.view(), ['origin'])).toEqual([]);
-    // promítnutí, které přepočet nedokázal promítnout, v pohledu není, ale smazat jde
+    // a projection the recompute could not project is not in the view, but it can be deleted
     const broken: SketchFeature = { ...t.sketch(), external: { x: { type: 'edge', body: 'e', edge: { a: { feature: 'e', role: 'endCap' }, b: { feature: 'e', role: 'startCap' } }, kind: 'line' } } };
     expect(sketchView(broken, t.result()).curves.has('x')).toBe(false);
     expect(deleteCommands('s', broken, sketchView(broken, t.result()), ['x'])).toEqual([{ type: 'removeExternal', sketch: 's', id: 'x' }]);
   });
 
-  it('promítnutá kružnice je v pohledu jako pevná křivka se středem', () => {
+  it('a projected circle is in the view as a fixed curve with a centre', () => {
     const t = setup();
     const feature: SketchFeature = { ...t.sketch(), external: { x: { type: 'edge', body: 'e', edge: { a: { feature: 'e', role: 'endCap' }, b: { feature: 'e', role: 'side', curve: 'k' } }, kind: 'circle' } } };
     const view = sketchView(feature, { ...t.result(), points: { ...t.result().points, 'x/center': { x: 3, y: 4 } }, radii: { x: 2 }, curves: { x: { shape: { type: 'circle', center: 'x/center' }, source: 'reference', regions: false } } });
     expect(view.curves.get('x')).toEqual({ id: 'x', own: false, construction: false, points: ['x/center'], shape: { type: 'circle', center: [3, 4], radius: 2 } });
     expect(view.points.get('x/center')).toEqual({ id: 'x/center', at: [3, 4], own: false });
-    expect([kindOf(view, 'x'), kindOf(view, 'x/center'), kindOf(view, 'origin'), kindOf(view, 'není')]).toEqual(['circle', 'point', 'point', undefined]);
+    expect([kindOf(view, 'x'), kindOf(view, 'x/center'), kindOf(view, 'origin'), kindOf(view, 'absent')]).toEqual(['circle', 'point', 'point', undefined]);
     const diameter: Constraint = { type: 'diameter', curve: 'x', value: 4, driving: false };
     expect(operandsOf(diameter)).toEqual(['x']);
     expect(anchorOf(diameter, view)).toEqual([expect.closeTo(3 + Math.SQRT2, 9), expect.closeTo(4 + Math.SQRT2, 9)]);
     expect(anchorOf({ type: 'distance', a: 'origin', b: 'x/center', value: 5, driving: false }, view)).toEqual([1.5, 2]);
-    expect(anchorOf({ type: 'distance', a: 'origin', b: 'není', value: 5, driving: false }, view)).toBeUndefined();
+    expect(anchorOf({ type: 'distance', a: 'origin', b: 'absent', value: 5, driving: false }, view)).toBeUndefined();
     expect(operandsOf({ type: 'pointOnCurve', point: 'p', curve: 'c' })).toEqual(['p', 'c']);
   });
 
-  it('rozpracované vysunutí: chybějící cíl se sám nepřepíše', () => {
-    const draft: ExtrudeFeature = { id: 'e2', name: 'e2', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 's', regions: [{ outerLoop: ['c1'] }] }, extent: { type: 'distance', start: 0, distance: 5 }, operation: 'add', targets: ['smazané'] };
-    expect(changeExtrude(draft, { distance: 8 }, ['e1'])).toMatchObject({ extent: { type: 'distance', start: 0, distance: 8 }, targets: ['smazané'] });
+  it('an extrusion draft: a missing target is not rewritten by itself', () => {
+    const draft: ExtrudeFeature = { id: 'e2', name: 'e2', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 's', regions: [{ outerLoop: ['c1'] }] }, extent: { type: 'distance', start: 0, distance: 5 }, operation: 'add', targets: ['deleted'] };
+    expect(changeExtrude(draft, { distance: 8 }, ['e1'])).toMatchObject({ extent: { type: 'distance', start: 0, distance: 8 }, targets: ['deleted'] });
     expect(changeExtrude(draft, { target: 'e1' }, ['e1']).targets).toEqual(['e1']);
     expect(changeExtrude(draft, { sketch: 's9', regions: [] }, ['e1']).profile).toEqual({ type: 'regions', sketch: 's9', regions: [] });
     expect(changeExtrude(draft, { operation: 'new' }, ['e1'])).not.toHaveProperty('targets');
@@ -575,7 +575,7 @@ describe('nálezy z revize aplikace', () => {
     expect(draftCommand(all, true, 3)).toEqual({ type: 'updateFeature', id: 'e2', patch: { profile: { ...all.profile, offset: null }, extent: { type: 'throughAll', side: 'both', from: null }, operation: 'cut', targets: ['e1'] } });
 
     expect(draftCommand(draft, false, 3)).toEqual({ type: 'addFeature', feature: draft, index: 3 });
-    expect(draftCommand(draft, true, 3)).toEqual({ type: 'updateFeature', id: 'e2', patch: { profile: { ...draft.profile, offset: null }, extent: { ...draft.extent, taper: null, from: null }, operation: 'add', targets: ['smazané'] } });
+    expect(draftCommand(draft, true, 3)).toEqual({ type: 'updateFeature', id: 'e2', patch: { profile: { ...draft.profile, offset: null }, extent: { ...draft.extent, taper: null, from: null }, operation: 'add', targets: ['deleted'] } });
     expect(draftCommand({ ...draft, operation: 'new', targets: undefined }, true, 3)).not.toHaveProperty('patch.targets');
     // a plane without a second plane or a tilt removes them by name (D60)
     expect(draftCommand({ id: 'r', name: 'r', suppressed: false, type: 'plane', base: { kind: 'base', plane: 'XY' }, offset: 4 }, true, 0)).toEqual({ type: 'updateFeature', id: 'r', patch: { base: { kind: 'base', plane: 'XY' }, offset: 4, midplaneWith: null, tilt: null } });
@@ -959,7 +959,7 @@ describe('nálezy z revize aplikace', () => {
     expect(changePattern(row, { second: { count: 3 } }, choices).transform).toEqual(row.transform);
   });
 
-  it('bod uvnitř smyčky', () => {
+  it('a point inside a loop', () => {
     const square = [0, 0, 10, 0, 10, 10, 0, 10];
     expect([insideLoop(square, [5, 5]), insideLoop(square, [15, 5]), insideLoop(square, [5, -1]), insideLoop(new Float64Array(square), [9.9, 0.1])]).toEqual([true, false, false, true]);
   });

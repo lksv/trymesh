@@ -1,8 +1,8 @@
-// Náhodné testy adaptéru. Generuje posloupnosti sjednocení a rozdílů kvádrů, trojbokých hranolů
-// a válců, jejichž stěny často lícují, dosedají nebo se částečně překrývají, v obecně natočené
-// poloze. Výsledek porovnává se dvěma nezávislými orákuly:
-//   - mřížkový model (jen kvádry): přesný objem a očekávaná čísla stěn s jejich plochami,
-//   - 2D řezy (všechny případy): objem a povrch z průřezů po vrstvách.
+// Random tests of the adapter. It generates sequences of unions and differences of boxes, triangular
+// prisms and cylinders whose faces are often flush, touch or partly overlap, in a generally rotated
+// position. It compares the result with two independent oracles:
+//   - a grid model (boxes only): the exact volume and the expected face numbers with their areas,
+//   - 2D slices (all cases): the volume and the surface area from cross-sections layer by layer.
 import type { Solid } from '@trymesh/engine';
 import { IDENTITY, type Loop, type PrismIds, type TestFrame, circle, describe, idsOf, inspect, kernel, prism, rect, rotation } from './testkit';
 
@@ -26,7 +26,7 @@ export function randomFrame(r: Random): TestFrame {
   return { o: [r() * 40 - 20, r() * 40 - 20, r() * 40 - 20], x: rotate([1, 0, 0]), y: rotate([0, 1, 0]), n: rotate([0, 0, 1]) };
 }
 
-// ---------------------------------------------------------------- mřížkový model
+// ---------------------------------------------------------------- grid model
 
 const X = [-10, 0, 10, 20, 30, 40, 50];
 const Y = [-10, 0, 10, 20, 30, 40];
@@ -46,7 +46,7 @@ const DIRS = [
 const OPPOSITE = [1, 0, 3, 2, 5, 4];
 const cellFaceArea = (i: number, j: number, k: number, d: number) =>
   d < 2 ? (Y[j + 1] - Y[j]) * (Z[k + 1] - Z[k]) : d < 4 ? (X[i + 1] - X[i]) * (Z[k + 1] - Z[k]) : (X[i + 1] - X[i]) * (Y[j + 1] - Y[j]);
-// číslo stěny nástroje podle směru vnější normály: pořadí stran hranolu je −y, +x, +y, −x
+// the face number of the tool by the direction of the outer normal: the order of the prism's sides is −y, +x, +y, −x
 const toolLabel = (ids: PrismIds, d: number) => [ids.sides[1], ids.sides[3], ids.sides[2], ids.sides[0], ids.end, ids.start][d];
 
 interface Box {
@@ -57,7 +57,7 @@ interface Box {
   z0: number;
   z1: number;
 }
-// solid: buňky s materiálem; labels: pro každou hraniční stěnu buňky množina možných čísel stěn
+// solid: the cells with material; labels: for each boundary face of a cell the set of possible face numbers
 interface Model {
   solid: Uint8Array;
   labels: Map<number, number[]>;
@@ -109,7 +109,7 @@ function applyOp(model: Model, op: 'union' | 'difference', box: Box, ids: PrismI
         possible = [...fromOld, ...fromTool];
       } else {
         const wasEmpty = !(n >= 0 && model.solid[n] === 1);
-        // nástroj jen dosedá zvenku, nebo nová stěna po nástroji
+        // the tool only touches from outside, or a new face left by the tool
         possible = wasEmpty ? [...(old ?? []), ...(neighbourInTool ? [toolLabel(ids, OPPOSITE[q])] : [])] : [toolLabel(ids, OPPOSITE[q])];
       }
       labels.set(c * 6 + q, [...new Set(possible)]);
@@ -120,8 +120,8 @@ function applyOp(model: Model, op: 'union' | 'difference', box: Box, ids: PrismI
 
 function modelStats(model: Model) {
   let volume = 0;
-  const sure = new Map<number, number>(); // plocha, kterou stěna jistě má
-  const maybe = new Map<number, number>(); // plocha, o kterou se dělí s jinou stěnou v téže rovině
+  const sure = new Map<number, number>(); // the area the face surely has
+  const maybe = new Map<number, number>(); // the area it shares with another face in the same plane
   eachCell((i, j, k, c) => {
     if (!model.solid[c]) return;
     volume += (X[i + 1] - X[i]) * (Y[j + 1] - Y[j]) * (Z[k + 1] - Z[k]);
@@ -135,8 +135,8 @@ function modelStats(model: Model) {
   return { volume, sure, maybe };
 }
 
-// Těleso, které se dotýká samo sebe jen hranou nebo vrcholem, není uzavřená plocha: takové případy
-// se u kvádrů negenerují.
+// A body that touches itself only at an edge or a vertex is not a closed surface: such cases are
+// not generated for boxes.
 function isManifold(solid: Uint8Array): boolean {
   for (let k = 0; k <= NZ; k++) {
     for (let j = 0; j <= NY; j++) {
@@ -165,23 +165,23 @@ function isManifold(solid: Uint8Array): boolean {
   return solid.includes(1);
 }
 
-// ---------------------------------------------------------------- generátor
+// ---------------------------------------------------------------- generator
 
 export interface FuzzOp {
   op: 'union' | 'difference';
   kind: 'box' | 'circle' | 'triangle';
   ids: PrismIds;
   loop: Loop;
-  nominal?: Loop; // obrys bez odchylky boku
+  nominal?: Loop; // the outline without the deviation of a side
   z0: number;
   z1: number;
 }
 export interface FuzzCase {
   frame: TestFrame;
   ops: FuzzOp[];
-  model: Model | null; // jen když jsou všechny nástroje kvádry
-  // Odchylka boku nad přesností float32 (3e-5) je mimo rozsah, pro který je adaptér navržený:
-  // takový případ smí skončit chybou, ale ne potichu špatným výsledkem.
+  model: Model | null; // only when all tools are boxes
+  // A deviation of a side above the precision of float32 (3e-5) is outside the range the adapter is
+  // designed for: such a case may end in an error, but not silently in a wrong result.
   mayReject: boolean;
 }
 
@@ -224,7 +224,7 @@ export function generate(seed: number): FuzzCase {
       if (a === b) b = (a + 1) % Z.length;
       const z0 = Z[Math.min(a, b)];
       const z1 = Z[Math.max(a, b)];
-      // shodné válcové plochy (stejný střed i poloměr, překryv ve výšce) adaptér neřeší: negenerovat
+      // coincident cylindrical surfaces (the same centre and radius, an overlap in height) are not handled by the adapter: do not generate them
       if (usedCircles.some((u) => u.cx === cx && u.cy === cy && u.radius === radius && u.z0 < z1 && z0 < u.z1)) {
         n--;
         continue;
@@ -234,8 +234,9 @@ export function generate(seed: number): FuzzCase {
       continue;
     }
     if (withTriangles && r() < 0.6) {
-      // trojboký hranol: tři ze čtyř rohů obdélníku na mřížce; přepona dává šikmou stěnu,
-      // která s přeponou jiného hranolu na stejné úhlopříčce lícuje nebo na ni dosedá
+      // a triangular prism: three of the four corners of a rectangle on the grid; the hypotenuse
+      // gives a slanted face that is flush with or touches the hypotenuse of another prism on the
+      // same diagonal
       const b = randomBox(r);
       const skip = Math.floor(r() * 4);
       ops.push({ op, kind: 'triangle', ids: { ...ids, sides: ids.sides.slice(0, 3) }, loop: rect(b.x0, b.y0, b.x1, b.y1).filter((_, i) => i !== skip), z0: b.z0, z1: b.z1 });
@@ -251,8 +252,8 @@ export function generate(seed: number): FuzzCase {
     } while (!isManifold(next.solid) && tries < 50);
     if (tries >= 50) break;
     model = next;
-    // odchylka boku: 3e-6 napodobuje přichycení na bod s přesností float32, 3e-5 leží mezi
-    // přesností float32 a tolerancí jádra
+    // the deviation of a side: 3e-6 imitates a snap to a point with the precision of float32, 3e-5
+    // lies between the precision of float32 and the tolerance of the kernel
     const jitter = r() < 0.3 ? pick(r, [3e-6, -3e-6, 3e-5, -3e-5]) : 0;
     if (Math.abs(jitter) > 1e-5) mayReject = true;
     ops.push({ op, kind: 'box', ids, loop: rect(box.x0, box.y0, box.x1 + jitter, box.y1), nominal: rect(box.x0, box.y0, box.x1, box.y1), z0: box.z0, z1: box.z1 });
@@ -260,7 +261,7 @@ export function generate(seed: number): FuzzCase {
   return { frame, ops, model: ops.some((o) => o.kind !== 'box') ? null : model, mayReject };
 }
 
-// ---------------------------------------------------------------- orákulum z 2D řezů
+// ---------------------------------------------------------------- oracle from 2D slices
 
 export function sliceOracle(ops: FuzzOp[]): { volume: number; area: number } {
   const { CrossSection } = kernel.wasm;
@@ -270,8 +271,8 @@ export function sliceOracle(ops: FuzzOp[]): { volume: number; area: number } {
     owned.push(s);
     return s;
   };
-  // simplify: sjednocení mnohoúhelníků, které se dotýkají kolineárními hranami, nechává v obrysu
-  // štěrbinu nulové šířky
+  // simplify: a union of polygons that touch along collinear edges leaves a slit of zero width
+  // in the outline
   const perimeter = (section: Section) =>
     keep(section.simplify(1e-6))
       .toPolygons()
@@ -284,14 +285,14 @@ export function sliceOracle(ops: FuzzOp[]): { volume: number; area: number } {
       let section: Section | null = null;
       for (const op of ops) {
         if (!(op.z0 <= Z[k] && op.z1 >= Z[k + 1])) continue;
-        const p = keep(new CrossSection([op.nominal ?? op.loop])); // bez odchylky: ta je pod tolerancí jádra
+        const p = keep(new CrossSection([op.nominal ?? op.loop])); // without the deviation: it is below the tolerance of the kernel
         section = section === null ? (op.op === 'difference' ? null : p) : keep(op.op === 'union' ? section.add(p) : section.subtract(p));
       }
       const height = Z[k + 1] - Z[k];
       const a = section ? section.area() : 0;
       volume += a * height;
       if (section) area += perimeter(section) * height;
-      // vodorovné plochy mezi vrstvami: co je v jedné a není ve druhé
+      // horizontal faces between layers: what is in one and not in the other
       if (previous || section) {
         const both = previous && section ? keep(previous.intersect(section)).area() : 0;
         area += (previous ? previous.area() : 0) + a - 2 * both;
@@ -305,7 +306,7 @@ export function sliceOracle(ops: FuzzOp[]): { volume: number; area: number } {
   }
 }
 
-// ---------------------------------------------------------------- běh a kontrola
+// ---------------------------------------------------------------- run and check
 
 export function run(ops: FuzzOp[], frame: TestFrame): Solid {
   let body: Solid | null = null;
@@ -316,14 +317,15 @@ export function run(ops: FuzzOp[], frame: TestFrame): Solid {
   return body as Solid;
 }
 
-// Kolik případů adaptér odmítl chybou místo výsledku: `strict` v návrhovém rozsahu, `loose` mimo něj.
+// How many cases the adapter refused by an error instead of a result: `strict` in the design range, `loose` outside it.
 export interface Rejections {
   strict: number;
   loose: number;
 }
 
-// Vrátí seznam nálezů; prázdný = případ prošel nebo ho adaptér odmítl vlastní chybou (neuzavřená
-// nebo přeložená síť). Odmítnutí není špatný výsledek, ale počítá se a test hlídá, jak je časté.
+// Returns the list of findings; empty = the case passed or the adapter refused it by its own error
+// (a mesh not closed or folded). A refusal is not a wrong result, but it is counted and the test
+// guards how frequent it is.
 export function check(seed: number, rejected?: Rejections): string[] {
   const c = generate(seed);
   let out: Solid;
@@ -335,40 +337,40 @@ export function check(seed: number, rejected?: Rejections): string[] {
       rejected[c.mayReject ? 'loose' : 'strict']++;
       return [];
     }
-    return [`výjimka: ${message}`];
+    return [`exception: ${message}`];
   }
   const problems: string[] = [];
   const d = describe(out, c.frame);
-  if (!d.closed) problems.push('síť není uzavřená');
-  // Jádro síť načte, i když není v pořádku, a potichu ji změní. Proto se porovnává, co z ní udělalo.
+  if (!d.closed) problems.push('the mesh is not closed');
+  // The kernel loads a mesh even when it is not sound, and silently changes it. Hence what it made of it is compared.
   try {
     const loaded = inspect(out);
-    if (loaded.status !== 'NoError') problems.push(`jádro výsledek nepřijme: ${loaded.status}`);
-    else if (Math.abs(loaded.volume - d.volume) > 0.05) problems.push(`jádro výsledek načte jinak: objem ${loaded.volume.toFixed(3)} místo ${d.volume.toFixed(3)}`);
+    if (loaded.status !== 'NoError') problems.push(`the kernel does not accept the result: ${loaded.status}`);
+    else if (Math.abs(loaded.volume - d.volume) > 0.05) problems.push(`the kernel loads the result differently: volume ${loaded.volume.toFixed(3)} instead of ${d.volume.toFixed(3)}`);
   } catch (error) {
-    problems.push(`jádro výsledek nepřijme: ${String(error)}`);
+    problems.push(`the kernel does not accept the result: ${String(error)}`);
   }
-  if (!d.sound) problems.push('přeložený trojúhelník');
+  if (!d.sound) problems.push('a folded triangle');
   const oracle = sliceOracle(c.ops);
-  if (Math.abs(d.volume - oracle.volume) > 0.1) problems.push(`objem ${d.volume.toFixed(3)}, řezy dávají ${oracle.volume.toFixed(3)}`);
-  if (Math.abs(d.area - oracle.area) > 0.1) problems.push(`povrch ${d.area.toFixed(3)}, řezy dávají ${oracle.area.toFixed(3)}`);
+  if (Math.abs(d.volume - oracle.volume) > 0.1) problems.push(`volume ${d.volume.toFixed(3)}, the slices give ${oracle.volume.toFixed(3)}`);
+  if (Math.abs(d.area - oracle.area) > 0.1) problems.push(`surface area ${d.area.toFixed(3)}, the slices give ${oracle.area.toFixed(3)}`);
   if (c.model) {
     const m = modelStats(c.model);
-    if (Math.abs(d.volume - m.volume) > 0.1) problems.push(`objem ${d.volume.toFixed(3)}, mřížka dává ${m.volume}`);
+    if (Math.abs(d.volume - m.volume) > 0.1) problems.push(`volume ${d.volume.toFixed(3)}, the grid gives ${m.volume}`);
     for (const id of new Set([...d.faces.keys(), ...m.sure.keys(), ...m.maybe.keys()])) {
       const got = d.faces.get(id)?.area ?? 0;
       const lo = m.sure.get(id) ?? 0;
       const hi = lo + (m.maybe.get(id) ?? 0);
-      if (got < lo - 0.05 || got > hi + 0.05) problems.push(`stěna ${id}: plocha ${got.toFixed(3)}, čekáno ${lo === hi ? lo : `${lo} až ${hi}`}`);
+      if (got < lo - 0.05 || got > hi + 0.05) problems.push(`face ${id}: area ${got.toFixed(3)}, expected ${lo === hi ? lo : `${lo} to ${hi}`}`);
     }
   } else if (c.frame !== IDENTITY) {
-    // s válci a trojbokými hranoly: čísla stěn se musí shodovat s během v osové poloze
+    // with cylinders and triangular prisms: the face numbers must match a run in the axis-aligned position
     try {
       const reference = idsOf(run(c.ops, IDENTITY));
       const got = idsOf(out);
-      if (JSON.stringify(reference) !== JSON.stringify(got)) problems.push(`stěny ${JSON.stringify(got)}, osově ${JSON.stringify(reference)}`);
+      if (JSON.stringify(reference) !== JSON.stringify(got)) problems.push(`faces ${JSON.stringify(got)}, axis-aligned ${JSON.stringify(reference)}`);
     } catch (error) {
-      problems.push(`výjimka v osové poloze: ${String(error)}`);
+      problems.push(`exception in the axis-aligned position: ${String(error)}`);
     }
   }
   return problems;

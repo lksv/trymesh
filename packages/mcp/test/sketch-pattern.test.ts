@@ -44,7 +44,7 @@ describe('the entries of a sketch in describe_api (D68)', () => {
   it('every kind of the registry is described with its source, summary, fields and example, and every example runs over the fixture', () => {
     const kinds = entryKinds();
     expect(kinds.map((kind) => kind.type)).toEqual(Object.keys(REFERENCE_KINDS));
-    expect(kinds.map((kind) => kind.source)).toEqual(['reference', 'derived']);
+    expect(kinds.map((kind) => kind.source)).toEqual(['reference', 'derived', 'reference']);
     expect(kinds.find((kind) => kind.type === 'pattern')?.fields).toEqual(['external/row/transform/count (Count, count, an integer, in the interval [1, 200])', 'external/row/transform/span/spacing (Spacing, mm, non-zero)']);
     const text = apiText();
     expect(text).toContain('# Entries of a sketch');

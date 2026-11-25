@@ -1033,3 +1033,59 @@ describe('the review of the implementation of 6c (D68): copies under the sketch 
     expect(refused).toContain('would meet "a/1/Z" at [-8, 5]');
   });
 });
+
+describe('the design review of D69 (6b): planes parallel only within the tolerance', () => {
+  const pt6 = (s: string, id: string, x: number, y: number): Command => ({ type: 'addPoint', sketch: s, id, x, y });
+  const fix6 = (s: string, p: string, x: number, y: number): Command => constrain(s, `f${p}`, { type: 'fixed', point: p, x, y });
+  const tiltedPlane = (id: string, axis: 'X' | 'Y', angle: number): Command => ({ type: 'addFeature', feature: { id, name: id, suppressed: false, type: 'plane', base: XY, offset: 5, tilt: { axis: { kind: 'base', axis }, angle } } }) as Command;
+  const projectOf = (s: string, id: string, source: string, entity: string, kind: 'line' | 'arc'): Command => ({ type: 'addExternal', sketch: s, id, ref: { type: 'sketch', sketch: source, entity, kind, regions: true } }) as Command;
+
+  // the second round, finding 3: every point projected along the normal and the arc's end then put
+  // on its circle opened a quarter disc of radius 300 at 9e-5 rad by 1.2e-6 mm, the sketch `ok` and
+  // `valid` with no region; the rigid map keeps its joints, its lengths and its radii
+  it('a closed chain of lines and an arc keeps its joints and its region at tilts of 5e-5 and 9e-5 rad about each axis', () => {
+    for (const radius of [300, 1000]) {
+      const engine = newEngine();
+      const s = 'disc';
+      run(engine, addSketch(s, XY), pt6(s, 'c', 0, 0), pt6(s, 'a', radius, 0), pt6(s, 'b', 0, radius), { type: 'addCurve', sketch: s, id: 'q', curve: { type: 'arc', center: 'c', start: 'a', end: 'b' } }, { type: 'addCurve', sketch: s, id: 'l1', curve: { type: 'line', a: 'b', b: 'c' } }, { type: 'addCurve', sketch: s, id: 'l2', curve: { type: 'line', a: 'c', b: 'a' } }, fix6(s, 'c', 0, 0), fix6(s, 'a', radius, 0), fix6(s, 'b', 0, radius));
+      for (const axis of ['X', 'Y'] as const) {
+        for (const angle of [5e-5, 9e-5]) {
+          const t = `t${axis}${angle}`.replace(/[.-]/g, '_');
+          const state = run(engine, tiltedPlane(`${t}Pl`, axis, angle), addSketch(t, { kind: 'plane', feature: `${t}Pl` }), projectOf(t, `${t}q`, s, 'q', 'arc'), projectOf(t, `${t}1`, s, 'l1', 'line'), projectOf(t, `${t}2`, s, 'l2', 'line'));
+          const r = state.evaluation.features[t].sketch as SketchResult6;
+          expect(r.regions.map((region) => region.ref.outerLoop), `${radius} ${axis} ${angle}`).toEqual([[`${t}1`, `${t}2`, `${t}q`]]);
+          const p = (id: string): [number, number] => [r.points[id.replace(/^x/, t)].x, r.points[id.replace(/^x/, t)].y];
+          const d = (a: string, b: string): number => Math.hypot(p(a)[0] - p(b)[0], p(a)[1] - p(b)[1]);
+          expect(d('xq/start', 'xq/center')).toBeCloseTo(radius, 9);
+          expect(d('xq/end', 'xq/center')).toBeCloseTo(radius, 9);
+          expect(d('x2/a', 'x2/b')).toBeCloseTo(radius, 9);
+          expect(d('xq/end', 'x1/a')).toBe(0);
+        }
+      }
+      const beyond = run(engine, tiltedPlane('farPl', 'X', 1.5e-4), addSketch('far', { kind: 'plane', feature: 'farPl' }), projectOf('far', 'farq', s, 'q', 'arc'));
+      expect(beyond.evaluation.features.far.warnings.map((w) => w.code)).toEqual(['unsupportedProjection']);
+    }
+  });
+
+  // the light read of the fixes, a nit: a projected edge goes along the normal, a projection from
+  // a sketch by the rigid map; 1 m from the origin at 9e-5 rad they are d · θ² / 2 apart, more than
+  // the joins take, and openEnds says so (a known limit)
+  it('a projected edge and a projection from a sketch of one corner, 1 m out at 9e-5 rad, stay apart and openEnds says how far', () => {
+    const engine = newEngine();
+    run(engine, addSketch('S1', XY), rectangle('S1', 'r', 1000, 0, 10, 10, null), addExtrude('E1', 'S1', [rectLoop('r')], 5));
+    run(engine, tiltedPlane('tPl', 'Y', 9e-5), addSketch('T', { kind: 'plane', feature: 'tPl' }));
+    run(engine, { type: 'addExternal', sketch: 'T', id: 'e', ref: { type: 'edge', body: 'E1', edge: { a: cap('E1', 'startCap'), b: side('E1', 'ra') }, kind: 'line' } } as Command);
+    run(engine, ...['rb', 'rc', 'rd'].map((l) => projectOf('T', `x${l}`, 'S1', l, 'line')));
+    const [a, b] = ['e/a', 'e/b'].map((id) => (engine.getState().evaluation.features.T.sketch as SketchResult6).points[id]);
+    const state = run(engine, pt6('T', 'n1', a.x, a.y), pt6('T', 'n2', b.x, b.y), { type: 'addCurve', sketch: 'T', id: 'n', curve: { type: 'line', a: 'n1', b: 'n2' } }, constrain('T', 'k1', { type: 'coincident', a: 'n1', b: 'e/a' }), constrain('T', 'k2', { type: 'coincident', a: 'n2', b: 'e/b' }));
+    const r = state.evaluation.features.T.sketch as SketchResult6;
+    expect(r.regions).toEqual([]);
+    const apart = r.openEnds?.ends.filter((end) => end.reason === 'apart') ?? [];
+    expect(apart.length).toBeGreaterThan(0);
+    for (const end of apart) {
+      expect(end.distance).toBeGreaterThan(1e-6);
+      expect(end.distance).toBeLessThan((1010 * 9e-5 * 9e-5) / 2 + 1e-7);
+    }
+  });
+});
+type SketchResult6 = { points: Record<string, { x: number; y: number }>; regions: { ref: { outerLoop: string[] } }[]; openEnds?: { ends: { end: string; reason: string; distance: number }[] } };

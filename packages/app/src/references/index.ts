@@ -4,11 +4,12 @@
 import { type EntityKind, type ExternalRef, type Id, type SketchFeature, entityIndex, kindOf } from '@trymesh/engine';
 import { edge } from './edge';
 import { pattern } from './pattern';
+import { projection } from './projection';
 import type { ReferenceUi } from './spec';
 
 export type { EntryControl, ReferenceUi } from './spec';
 
-export const REFERENCE_UI: { readonly [T in ExternalRef['type']]: ReferenceUi<Extract<ExternalRef, { type: T }>> } = { edge, pattern };
+export const REFERENCE_UI: { readonly [T in ExternalRef['type']]: ReferenceUi<Extract<ExternalRef, { type: T }>> } = { edge, pattern, sketch: projection };
 
 // The row of an entry (one cast, as the registries of the engine have).
 export const referenceUi = (ref: ExternalRef): ReferenceUi<ExternalRef> => REFERENCE_UI[ref.type] as ReferenceUi<ExternalRef>;

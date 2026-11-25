@@ -6,8 +6,8 @@
 import type { EntityKind } from '../catalog';
 import type { Entity } from '../sketch-content';
 import type { State } from '../recompute/state';
-import type { CurveShape, ExternalRef, FaceName, Frame, Id, IssueCode, OpenEnds, Point2, Projected, ResultCurve, SketchFeature } from '../types';
-import type { Dict, FeatureRef, ValidationContext } from '../validation';
+import type { CurveShape, ExternalRef, FaceName, Frame, Id, IssueCode, OpenEnds, Point2, Projected, ResultCurve, SketchFeature, Vec2 } from '../types';
+import { type Dict, type FeatureRef, type ValidationContext, fail, finite, object } from '../validation';
 import type { SketchBase } from './world';
 
 // Where a curve or a point of a sketch comes from: drawn in it (`own`, the solver moves it), an
@@ -63,18 +63,29 @@ export interface KindBase<R> {
   entities(id: Id, ref: R, sketch: SketchFeature): Record<Id, EntityKind>;
 }
 
+// Why a reference could not be computed: the code of the warning and a detail for its message
+// ("board has no circle bh3"), D69.
+export interface ReferenceFailure {
+  code: IssueCode;
+  detail: string;
+}
+
 // A kind of reference geometry: computed before the solver from the state before the sketch, fixed
 // for the solver; constraints may name its entities.
-// - `compute`: its value from the state before the sketch, or the code of the warning.
+// - `compute`: its value from the state before the sketch, or the code of the warning, bare or with
+//   a detail (D69).
 // - `value`: the last valid value stored in `solved.external` read for this reference; it fails for
 //   a value that is malformed and answers undefined for one that does not fit the reference.
 // - `geometry`: the entities the value gives, fixed for the solver. The value, not the geometry,
 //   goes into the stamp of the sketch.
+// - `keepsValue`: whether `updateExternal` from `before` to `after` keeps the stored value (the same
+//   source, another flag; D69). Absent: never, the value belonged to the source replaced.
 export interface ReferenceKindSpec<R, V> extends KindBase<R> {
   source: 'reference';
-  compute(ref: R, context: ReferenceContext): V | IssueCode;
+  compute(ref: R, context: ReferenceContext): V | IssueCode | ReferenceFailure;
   value(stored: unknown, ref: R, what: string): V | undefined;
   geometry(id: Id, ref: R, value: V): EntryGeometry;
+  keepsValue?(before: R, after: R): boolean;
 }
 
 // The failure of a derive: a warning of the sketch (`refs` the entry first), which may come with
@@ -109,7 +120,8 @@ export interface DerivedKindSpec<R> extends KindBase<R> {
 // gives it, and a reference kind its value here.
 export type EntryKindName = ExternalRef['type'];
 export interface ReferenceValues {
-  edge: Projected;
+  edge: Extract<Projected, { kind: 'line' | 'circle' }>;
+  sketch: Projected;
 }
 export type ReferenceKindName = keyof ReferenceValues & EntryKindName;
 export type DerivedKindName = Exclude<EntryKindName, ReferenceKindName>;
@@ -136,4 +148,31 @@ export interface DerivedGeometry {
 export interface ResolvedReference {
   value?: StoredValue;
   geometry: EntryGeometry;
+}
+
+// A stored value of `solved.external` by its form (`Projected`: a point, a line, a circle, an arc),
+// whatever the entry it belongs to; the `value` of a kind then says whether it fits the entry. It
+// fails for a value that is malformed.
+export function projected(v: unknown, what: string): Projected {
+  const o = object(v, what);
+  const vec2 = (value: unknown, name: string): Vec2 => {
+    if (!Array.isArray(value) || value.length !== 2) fail(`${what}.${name}: čeká se dvojice čísel`);
+    const pair = value as unknown[];
+    return [finite(pair[0], `${what}.${name}`), finite(pair[1], `${what}.${name}`)];
+  };
+  switch (o.kind) {
+    case 'point':
+      return { kind: 'point', at: vec2(o.at, 'at') };
+    case 'line':
+      return { kind: 'line', a: vec2(o.a, 'a'), b: vec2(o.b, 'b') };
+    case 'circle': {
+      const radius = finite(o.radius, `${what}.radius`);
+      if (radius <= 0) fail(`${what}.radius: poloměr musí být kladný`);
+      return { kind: 'circle', center: vec2(o.center, 'center'), radius };
+    }
+    case 'arc':
+      return { kind: 'arc', center: vec2(o.center, 'center'), start: vec2(o.start, 'start'), end: vec2(o.end, 'end') };
+    default:
+      return fail(`${what}.kind: point, line, circle or arc is expected`);
+  }
 }

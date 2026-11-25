@@ -309,9 +309,15 @@ export interface SolveStamp {
   external: Record<Id, Projected>; // poslední platné hodnoty promítnuté geometrie
 }
 
+// The value of an entry of reference geometry in the coordinates of its sketch: the last valid one
+// is stored in `solved.external` and is part of the stamp. Positions and nothing else. A projected
+// edge is a line or a circle; a projection from a sketch (SketchProjection) any of the four. The
+// `end` of an arc lies on the circle of its `start` exactly, and the arc runs counter-clockwise.
 export type Projected =
+  | { kind: 'point'; at: Vec2 }
   | { kind: 'line'; a: Vec2; b: Vec2 }
-  | { kind: 'circle'; center: Vec2; radius: number };
+  | { kind: 'circle'; center: Vec2; radius: number }
+  | { kind: 'arc'; center: Vec2; start: Vec2; end: Vec2 };
 
 export type CurveShape =
   | { type: 'line'; a: Id; b: Id } // ID bodů
@@ -328,7 +334,8 @@ export type ProjectionKind = 'line' | 'circle';
 
 // An entry of `external` of a sketch, one of two sources of geometry that is not own (D64, D68):
 // - reference geometry, computed before the solver and fixed for it; constraints of the sketch may
-//   name its entities: the projection of an edge of a body (EdgeProjection);
+//   name its entities: the projection of an edge of a body (EdgeProjection), the projection of an
+//   entity of an earlier sketch (SketchProjection, D69);
 // - derived geometry, computed after the solver from the solved own geometry; no constraint of its
 //   own sketch may name its entities: a mirror or a pattern of own curves and points
 //   (SketchPattern).
@@ -338,7 +345,10 @@ export type ProjectionKind = 'line' | 'circle';
 // its X and Y (from `origin` towards +X and +Y), fixed like projected geometry and in no entry: a
 // constraint of the sketch and an axis `{ kind: 'sketchLine', sketch, line }` may name them; they
 // are whole lines, so `midpoint` and `equalLength` do not take them (D71).
-export type ExternalRef = EdgeProjection | SketchPattern;
+export type ExternalRef = EdgeProjection | SketchPattern | SketchProjection;
+// The input form of an entry (`addExternal`, `updateExternal`): its numeric fields may be
+// expressions, and the flag `regions` of a projection from a sketch may be left out (false).
+export type ExternalInput = Input<EdgeProjection> | Input<SketchPattern> | (Omit<SketchProjection, 'regions'> & { regions?: boolean });
 
 // The projection of an edge of a body into the sketch. kind: jako co se hrana promítá
 export interface EdgeProjection {
@@ -346,6 +356,51 @@ export interface EdgeProjection {
   body: Id;
   edge: EdgeName;
   kind: ProjectionKind;
+}
+
+// The projection of one point, line, circle or arc of an earlier sketch into this sketch (D69):
+// reference geometry, fixed for the solver and computed at every recompute from the solved sketch
+// `sketch`.
+// - `sketch`: a sketch before this one on the timeline, on a plane parallel to this sketch's (either
+//   normal, any offset, any shift or turn in the plane). A plane that is not parallel (more than
+//   1e-4 rad) gives the warning `unsupportedProjection`, whose message says the angle. The query
+//   `sketchSources` says which earlier sketches are parallel and lists what each can project.
+// - `entity`: a point or a curve of it: an own point or curve (a construction curve too), `origin`,
+//   or an entity of one of its entries (`fl1`, `fl1/a`, `h/center`, a copy of a mirror `m/1/c2`).
+//   Nothing under `origin/`: this sketch has its own axes `origin/x` and `origin/y` (project the
+//   `origin` of the other sketch when its origin lies elsewhere).
+// - `kind`: the kind of `entity`, `point`, `line`, `circle` or `arc`; a command checks it against
+//   the source (get_sketch of the source and the query sketchSources list the kinds; the sketch
+//   tool projectSketch fills it in).
+// - `regions`: whether the projected curve bounds regions of this sketch, as an own curve that is
+//   not construction does. A command may leave it out: then it is `false`, and the curve is
+//   reference only, as a projected edge. `true` is refused on a point. The document always holds it.
+// - The entry is the projected entity: `<id>` (a point, or the curve), and the points of a curve
+//   are `<id>/a`, `<id>/b` (a line), `<id>/center` (a circle), `<id>/center`, `<id>/start`,
+//   `<id>/end` (an arc, counter-clockwise from `start`; on a sketch whose normal is opposite to the
+//   source's the ends swap, so it stays counter-clockwise here). Constrain own geometry to them;
+//   a constraint needs one own operand.
+// - The ends of projected curves that form regions join the curve ends at their place (within
+//   1e-6 mm): those of other such projections, of any source, and the end of an own curve that
+//   forms regions, unless two own ends there are not one point already. So eight entries projecting
+//   a rounded rectangle close into one loop. An end that stays open is in `SketchResult.openEnds`.
+// - The values follow the source at every recompute. When the source sketch is not evaluated before
+//   this one, its entity is gone or is of another kind now (a circle trimmed into an arc), the
+//   projection keeps its last values with the warning `brokenProjection`, and constraints on it
+//   keep acting. A source curve with no extent (a line of no length, an arc whose end lies on its
+//   centre) is `degenerateProjection`, likewise. The message of the warning says which.
+// - A side face of an extrusion of a region bounded by a projected curve is named by the entry's ID
+//   (`{ feature, role: 'side', curve: <id> }`).
+// - One entry per entity of the source: a second one is refused, naming the first.
+// - A projection that forms regions is never cut by the sketch tools. To get an outline they can
+//   cut, draw own curves over the projections and hold them there: the sketch tool projectSketch
+//   with `as: 'own'` does it in one batch.
+export interface SketchProjection {
+  type: 'sketch';
+  sketch: Id;
+  entity: Id;
+  kind: 'point' | 'line' | 'circle' | 'arc';
+  regions: boolean;
 }
 
 // A mirror or a pattern of own geometry of the sketch (D68), an entry of `external` computed after
@@ -1589,10 +1644,12 @@ export type WarningCode =
 
 export type IssueCode = ErrorCode | WarningCode;
 
-// A curve of a sketch that is not its own (D64): the curve of an entry of `external` with values
-// (the projection of an edge today). `shape` runs over IDs whose positions are in
-// `SketchResult.points`; the radius of a circle is in `SketchResult.radii`. `regions`: whether the
-// curve forms regions of the profile (never for the projection of an edge).
+// A curve of a sketch that is not its own (D64): the curve of an entry of `external` (a projected
+// edge, a projection from a sketch, a copy of a mirror or a pattern). `shape` runs over IDs whose
+// positions are in `SketchResult.points`; the radius of a circle is in `SketchResult.radii`.
+// `regions`: whether the curve forms regions of the profile (never for the projection of an edge;
+// for a projection from a sketch its flag `regions`; for a copy as its source, unless it lies on a
+// curve before it).
 export interface ResultCurve {
   shape: CurveShape;
   source: 'reference' | 'derived';
@@ -1615,15 +1672,17 @@ export interface SketchResult {
   measurements: Record<Id, number>; // hodnoty referenčních kót
   valid: boolean; // false: the profile is invalid (curves cross or touch away from common points, or another reason); the query `sketchContacts` says where and why, and the sketch tool `split` without a curve repairs what can be cut
   regions: { ref: RegionRef; loops: Float64Array[] }[]; // pro vykreslení a výběr
-  // Present when ends of copies of a mirror or pattern stayed open: why an outline of copies did
-  // not close (OpenEnds). An open chain is a legitimate sketch, so this is no warning.
+  // Present when ends of copies of a mirror or pattern, or of projections that form regions, stayed
+  // open: why such an outline did not close (OpenEnds). An open chain is a legitimate sketch, so
+  // this is no warning.
   openEnds?: OpenEnds;
 }
 
-// The ends of copies (curves of derived geometry that form regions) that, after every join, are the
-// end of no other curve that forms regions. The ends of copies join the curve ends at their place
-// within the length tolerance (1e-6 mm), so an outline of copies closes only where the ends meet:
-// a mirrored half has to end on the axis by a constraint (`pointOnCurve` with the axis line).
+// The ends of copies and of projections that form regions (curves that are not own and form
+// regions) that, after every join, are the end of no other curve that forms regions. Such ends join
+// the curve ends at their place within the length tolerance (1e-6 mm), so an outline of copies or
+// projections closes only where the ends meet: a mirrored half has to end on the axis by
+// a constraint (`pointOnCurve` with the axis line).
 // - `count`: how many ends are open; `ends`: at most 20 of them, those of `twoVertices` first, then
 //   by `distance`, the nearest first.
 // - `reason: 'twoVertices'`: the own ends at its place are two points that are not joined, so it
@@ -1794,9 +1853,11 @@ export type Command =
   // `expressions` at `external/<id>/…`; setField with the sketch as the feature reaches one). An
   // update replaces the whole entry: send the entry with its expressions as strings, or a number
   // removes the expression; a string equal to the expression the field has counts as unchanged. An
-  // update may not turn reference geometry into derived geometry or back.
-  | { type: 'addExternal'; sketch: Id; id: Id; ref: Input<ExternalRef> }
-  | { type: 'updateExternal'; sketch: Id; id: Id; ref: Input<ExternalRef> }
+  // update may not turn reference geometry into derived geometry or back. An update checks only the
+  // references it brings in, and an update of a projection from a sketch that keeps its `sketch`,
+  // `entity` and `kind` (its flag switched) keeps its last values, also when its source is gone.
+  | { type: 'addExternal'; sketch: Id; id: Id; ref: ExternalInput }
+  | { type: 'updateExternal'; sketch: Id; id: Id; ref: ExternalInput }
   | { type: 'removeExternal'; sketch: Id; id: Id }
   // Body properties (D48). The body of setBodyProperties and setBodyMaterial has to be one a feature
   // of the document can create: the feature exists and its type creates a body of that ID (an

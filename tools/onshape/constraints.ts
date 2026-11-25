@@ -219,17 +219,20 @@ export function mapConstraints(ctx: MapContext, list: any[]): { records: Constra
       add({ type: 'equalLength', a: A.id, b: B.id });
     } else if (t === 'EQUAL' && isRound(A) && isRound(B)) add({ type: 'equalRadius', a: A!.id, b: B!.id });
     else if (t === 'TANGENT' && isCurve(A) && isCurve(B) && !(A!.k === 'line' && B!.k === 'line')) add({ type: 'tangent', a: A!.id, b: B!.id });
-    else if ((t === 'DIAMETER' || t === 'RADIUS') && isRound(A) && !A!.ext) add({ type: t.toLowerCase(), curve: A!.id, value: value(p.length) ?? 0, driving: true }, t === 'DIAMETER' ? 2 * A!.radius! : A!.radius!);
+    else if ((t === 'DIAMETER' || t === 'RADIUS') && isRound(A) && !A!.ext) add({ type: t.toLowerCase(), curve: A!.id, value: value(p.length), driving: true }, t === 'DIAMETER' ? 2 * A!.radius! : A!.radius!);
     else if (t === 'MIDPOINT' && !p.localMidpoint) {
       const [e1, e2] = [p.localEntity1?.value, p.localEntity2?.value].map((v) => (typeof v === 'string' ? local(v) : undefined));
       const [pt, ln] = e1?.k === 'point' && e2?.k === 'line' ? [e1, e2] : e2?.k === 'point' && e1?.k === 'line' ? [e2, e1] : [undefined, undefined];
       if (pt && ln) add({ type: 'midpoint', point: pt.id, line: ln.id });
     } else if (t === 'MIRROR' && A?.k === 'point' && B?.k === 'point' && M?.k === 'line') {
-      // a mirror of two points: symmetric about the line; a pair that is one point is on the line
+      // a mirror of two points: symmetric about the line; a pair that is one point is on the line;
+      // the image of a point of the line (an end of it, the origin on an axis) is that point
       const onAxis = (q: Operand) => (M.ext === 'axis' ? q.id === 'origin' : (M.own ?? []).includes(q.id));
-      if (A.id !== B.id && !onAxis(A) && !onAxis(B)) add({ type: 'symmetric', a: A.id, b: B.id, line: M.id });
-      else if (onAxis(A) || onAxis(B)) return void Object.assign(rec, { fate: 'shared', detail: M.ext === 'axis' ? 'the origin on the mirror axis' : 'an end of the mirror line' });
-      else add({ type: 'pointOnCurve', point: A.id, curve: M.id });
+      if (A.id === B.id) {
+        if (onAxis(A)) return void Object.assign(rec, { fate: 'shared', detail: M.ext === 'axis' ? 'the origin on the mirror axis' : 'an end of the mirror line' });
+        add({ type: 'pointOnCurve', point: A.id, curve: M.id });
+      } else if (onAxis(A) || onAxis(B)) add({ type: 'coincident', a: A.id, b: B.id });
+      else add({ type: 'symmetric', a: A.id, b: B.id, line: M.id });
     } else if (t === 'MIRROR' && A && B && A.k !== 'point' && B.k !== 'point' && M?.k === 'line') {
       // a mirror of two curves that is no entry: the symmetry of their points
       if (!mirror(A, B, M)) return;
@@ -316,7 +319,9 @@ export function mapConstraints(ctx: MapContext, list: any[]): { records: Constra
     const step = (2 * Math.PI) / n;
     const spoke = (q: Id): Id | undefined => {
       if (q === pivot) return undefined; // a point of an instance at the pivot is the same in every instance
-      const sid = `${ctx.sketch}.spoke.${q.slice(ctx.sketch.length + 1)}`;
+      // a spoke of each pattern of its own: two patterns that share a point (about one pivot or two)
+      // never share a spoke, so a unit dropped takes only its own curves
+      const sid = `${ctx.sketch}.spoke${plan.index}.${q.slice(ctx.sketch.length + 1)}`;
       if (!ctx.spokes.has(sid)) { ctx.spokes.add(sid); rec.commands.push({ type: 'addCurve', sketch: ctx.sketch, id: sid, curve: { type: 'line', a: pivot, b: q, construction: true } } as any); }
       return sid;
     };
@@ -356,7 +361,8 @@ export function mapConstraints(ctx: MapContext, list: any[]): { records: Constra
   // `e`, `-(e)`, `pi - (e)`, `(e) - pi` those whose value is the measured angle fit.
   function angle(A: Operand, B: Operand, p: Record<string, any>) {
     const [da, db] = [sub2(A.ends![1], A.ends![0]), sub2(B.ends![1], B.ends![0])];
-    const th = Math.atan2(da[0] * db[1] - da[1] * db[0], da[0] * db[0] + da[1] * db[1]);
+    let th = Math.atan2(da[0] * db[1] - da[1] * db[0], da[0] * db[0] + da[1] * db[1]);
+    if (th <= -Math.PI) th += 2 * Math.PI; // atan2(-0, -1): the half turn is π in (−π, π]
     const e = expression(p.angle?.expression);
     const v = e === undefined ? undefined : expressionValue(e, ctx.parameters as any);
     const forms: [string, number][] = v === undefined ? [] : [[e!, v], [`-(${e})`, -v], [`pi - (${e})`, Math.PI - v], [`(${e}) - pi`, v - Math.PI]];

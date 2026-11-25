@@ -169,39 +169,47 @@ export interface Candidate {
   side?: string; // a circular edge: the key of its side face
   order?: [number, number]; // a circular edge: the place of its other face's feature on the timeline, start cap first
   tapered?: boolean;
+  whole?: boolean; // a circular edge: the whole circle, not an arc of it
+  piecesOf?: string; // a curve of a sketch the cut made pieces of: the curve it was before the cut
   text: string;
 }
 const fmt = (v: number) => v.toFixed(6);
 
-// The points and curves of a converted sketch, own and of its entries, in its 2D (the converter's
-// sketches on parallel planes share the 2D of their base plane).
-export function sketchCandidates(engine: any, sketch: string, kind: 'vertex' | 'edge'): Candidate[] {
+// The points and curves of a converted sketch, own and the copies of its entries `pattern`, in its 2D
+// (the converter's sketches on parallel planes share the 2D of their base plane). Its projections
+// are no candidates: an Onshape entity of a sketch is an own entity of the sketch converted from it.
+// `pieces`: the pieces of the sketch's cut, by the curve each was before the cut.
+export function sketchCandidates(engine: any, sketch: string, kind: 'vertex' | 'edge', pieces?: Map<string, string>): Candidate[] {
   const st = engine.getState();
   const f = st.document.features.find((x: any) => x.id === sketch);
   const res = st.evaluation.features[sketch]?.sketch;
   if (!f || !res) return [];
   const sc = solvedCurvesOf(f, res);
   const P = (i: string): V2 => [sc.geometry.points[i].x, sc.geometry.points[i].y];
+  // own, or of an entry `pattern` (its copies); an entry's IDs are `<entry>` or `<entry>/…`
+  const taken = (id: string, own: Record<string, unknown>) => !!own[id] || f.external?.[id.split('/')[0]]?.type === 'pattern';
   const out: Candidate[] = [];
   if (kind === 'vertex') {
     const ids = new Set<string>(Object.keys(res.points));
     for (const [, c] of sc.curves) for (const k of ['a', 'b', 'center', 'start', 'end']) if (typeof (c.shape as any)[k] === 'string') ids.add((c.shape as any)[k]);
     for (const pid of ids) {
-      if (pid === 'origin' || pid.startsWith('origin/') || !sc.geometry.points[pid]) continue;
+      if (pid === 'origin' || pid.startsWith('origin/') || !sc.geometry.points[pid] || !taken(pid, f.points)) continue;
       const at = P(pid);
       out.push({ ref: { type: 'sketch', sketch, entity: pid, kind: 'point' }, kind: 'point', at, text: `point ${pid} at ${at.map(fmt).join(',')}` });
     }
     return out;
   }
   for (const [cid, c] of sc.curves) {
-    if (cid.startsWith('origin/')) continue;
+    if (cid.startsWith('origin/') || !taken(cid, f.curves)) continue;
     const sh: any = c.shape;
-    if (sh.type === 'line') { const ends: [V2, V2] = [P(sh.a), P(sh.b)]; out.push({ ref: { type: 'sketch', sketch, entity: cid, kind: 'line' }, kind: 'line', ends, text: `line ${cid} ${ends.flat().map(fmt).join(',')}` }); }
-    else if (sh.type === 'circle') { const center = P(sh.center); const radius = sc.geometry.radii[cid]; out.push({ ref: { type: 'sketch', sketch, entity: cid, kind: 'circle' }, kind: 'circle', center, radius, text: `circle ${cid} at ${center.map(fmt).join(',')} r ${fmt(radius)}` }); }
+    const of = pieces?.get(cid);
+    const piece = of ? { piecesOf: of } : {};
+    if (sh.type === 'line') { const ends: [V2, V2] = [P(sh.a), P(sh.b)]; out.push({ ref: { type: 'sketch', sketch, entity: cid, kind: 'line' }, kind: 'line', ends, ...piece, text: `line ${cid} ${ends.flat().map(fmt).join(',')}` }); }
+    else if (sh.type === 'circle') { const center = P(sh.center); const radius = sc.geometry.radii[cid]; out.push({ ref: { type: 'sketch', sketch, entity: cid, kind: 'circle' }, kind: 'circle', center, radius, ...piece, text: `circle ${cid} at ${center.map(fmt).join(',')} r ${fmt(radius)}` }); }
     else if (sh.type === 'arc') {
       const [center, s, e] = [P(sh.center), P(sh.start), P(sh.end)];
       const radius = Math.hypot(s[0] - center[0], s[1] - center[1]);
-      out.push({ ref: { type: 'sketch', sketch, entity: cid, kind: 'arc' }, kind: 'arc', center, radius, span: [Math.atan2(s[1] - center[1], s[0] - center[0]), Math.atan2(e[1] - center[1], e[0] - center[0])], text: `arc ${cid} at ${center.map(fmt).join(',')} r ${fmt(radius)}` });
+      out.push({ ref: { type: 'sketch', sketch, entity: cid, kind: 'arc' }, kind: 'arc', center, radius, span: [Math.atan2(s[1] - center[1], s[0] - center[0]), Math.atan2(e[1] - center[1], e[0] - center[0])], ...piece, text: `arc ${cid} at ${center.map(fmt).join(',')} r ${fmt(radius)}` });
     }
   }
   return out;
@@ -228,13 +236,17 @@ export function edgeCandidates(engine: any, toBase: (w: V3) => V2, normal: V3, k
         const axis = e.circle.axis as V3;
         if (Math.abs(Math.abs(axis[0] * normal[0] + axis[1] * normal[1] + axis[2] * normal[2]) - 1) > 5e-9) continue; // 1e-4 rad
         const center = toBase(e.circle.center);
+        // a whole circle: its length that of a regular polygon of its segments around the circle (an
+        // arc of a side face, split by another face, is shorter)
+        const n = e.segments as number;
+        const whole = n >= 3 && Math.abs(e.length - 2 * n * e.circle.radius * Math.sin(Math.PI / n)) <= 1e-3 * e.length;
         const faces = [e.name.a, e.name.b];
         const side = faces.find((x: any) => x.role === 'side');
         const other = faces.find((x: any) => x !== side);
         const feature = st.document.features.find((f: any) => f.id === side?.feature);
         out.push({
           ref: { type: 'edge', body, edge: e.name, kind: 'circle' }, kind: 'circle', center, radius: e.circle.radius,
-          side: side && feature?.type === 'extrude' ? JSON.stringify(side) : undefined, tapered: !!feature?.extent?.taper,
+          side: side && feature?.type === 'extrude' ? JSON.stringify(side) : undefined, tapered: !!feature?.extent?.taper, whole,
           order: [index.get(other?.feature) ?? 1e9, other?.role === 'startCap' ? 0 : 1],
           text: `edge ${JSON.stringify(e.name)} circle at ${center.map(fmt).join(',')} r ${fmt(e.circle.radius)}`,
         });
@@ -283,18 +295,29 @@ export function fitting(cands: Candidate[], type: string, locals: { k: string; a
 }
 
 // The pick: one candidate; several only when they are the same by construction: one written entity,
-// or whole circular edges on one side face of one untapered extrusion under a constraint that uses
-// the edge as a curve (the first by the timeline, the start cap first). Anything else is not chosen.
+// circular edges on one side face of one untapered extrusion under a constraint that uses the edge
+// as a curve (the first by the timeline, the start cap first; whole or arcs of the face's circle:
+// pointOnCurve and equalRadius read only the circle, which every rim of the face carries), or the pieces the cut made
+// of one curve of a sketch under a constraint that reads only their line or circle (EQUAL of round
+// curves, PARALLEL, PERPENDICULAR: the piece that kept the curve's ID, else the first). Anything
+// else is not chosen.
 export function pickCandidate(cands: Candidate[], type: string): { pick?: Candidate; why: string; others: Candidate[] } {
   const seen = new Map<string, Candidate>();
   for (const c of cands) seen.set(JSON.stringify([c.ref, c.sub ?? '']), c);
   const list = [...seen.values()];
   if (!list.length) return { why: 'no candidate fits', others: [] };
   if (list.length === 1) return { pick: list[0], why: 'one candidate', others: [] };
+  const round = (c: Candidate) => c.kind === 'circle' || c.kind === 'arc';
+  const carrierUse = (type === 'EQUAL' && list.every(round)) || ((type === 'PARALLEL' || type === 'PERPENDICULAR') && list.every((c) => c.kind === 'line'));
+  if (carrierUse && list.every((c) => c.ref.type === 'sketch' && !c.sub && c.piecesOf && c.piecesOf === list[0].piecesOf && c.ref.sketch === list[0].ref.sketch)) {
+    const keeper = list.find((c) => c.ref.entity === c.piecesOf) ?? list[0];
+    return { pick: keeper, why: `${list.length} pieces of one curve the cut made: the same line or circle by construction`, others: list.filter((c) => c !== keeper) };
+  }
   const curveUse = type === 'COINCIDENT' || type === 'EQUAL';
   if (curveUse && list.every((c) => c.kind === 'circle' && c.side && !c.tapered && c.side === list[0].side)) {
     const sorted = [...list].sort((a, b) => a.order![0] - b.order![0] || a.order![1] - b.order![1]);
-    return { pick: sorted[0], why: `${list.length} whole circular edges on one side face of an untapered extrusion: the same by construction, the first by the timeline`, others: sorted.slice(1) };
+    const what = list.every((c) => c.whole) ? 'whole circular edges' : 'circular edges (arcs of its circle)';
+    return { pick: sorted[0], why: `${list.length} ${what} on one side face of an untapered extrusion: the same by construction, the first by the timeline`, others: sorted.slice(1) };
   }
   return { why: `${list.length} candidates that are not the same by construction`, others: list };
 }

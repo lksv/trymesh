@@ -73,12 +73,15 @@ export async function convertStudio(input: Input, eid: string, report: Report, o
   // studio of its source, a helper copy too) and from an importDerived (`<studio>:derived:<feature>`).
   const madeFrom = new Map<string, Id[]>();
   const madeBy = new Map<string, Converted[]>(); // the Onshape feature that created the regions -> every sketch it brought
+  const converted = new Map<Id, Converted>(); // every sketch converted, helper copies too, by its ID
+  const sketchOf = (sid: Id) => converted.get(sid);
   const sketchesFor = (studio: string) => (cls: IdClass & { what: 'sketch' | 'derived' }): Id[] => madeFrom.get(cls.what === 'sketch' ? `${studio}:${cls.feature}` : `${studio}:derived:${cls.feature}`) ?? [];
   const sketchFrom = (fid: Id, id: Id, name: string, f: any, geom: any, by: string, place: SketchPlace, madeKeys: string[]) => {
     const frame = sketchFrame(geom.sketchMatrix);
     if (!frame) { report.note(`${name}: the sketch plane is not parallel to a base plane, left out`); return; }
     const conv = convertSketch(engine, report, id, name, planeOf(frame), frame, f, geom, place);
     if (!conv) return;
+    converted.set(id, conv);
     for (const k of madeKeys) madeFrom.set(k, [...(madeFrom.get(k) ?? []), id]);
     if (place.helper) return;
     sketches.set(by, conv);
@@ -96,7 +99,7 @@ export async function convertStudio(input: Input, eid: string, report: Report, o
     if (f.suppressed) { report.note(`${name}: suppressed in Onshape, left out`); continue; }
     switch (f.featureType) {
       case 'newSketch':
-        sketchFrom(f.featureId, id, name, f, sketchesOf(eid).find((s) => s.featureId === f.featureId), f.featureId, { studio: studioName, ops: opsOf(eid), helper: false, onshapeRegions: dump.created[f.featureId]?.faces?.length, sketchesFor: sketchesFor(eid) }, [`${eid}:${f.featureId}`]);
+        sketchFrom(f.featureId, id, name, f, sketchesOf(eid).find((s) => s.featureId === f.featureId), f.featureId, { studio: studioName, ops: opsOf(eid), helper: false, onshapeRegions: dump.created[f.featureId]?.faces?.length, sketchesFor: sketchesFor(eid), sketchOf }, [`${eid}:${f.featureId}`]);
         break;
       case 'importDerived': {
         // the sketches of another studio of the document: copied in (inserting a document, D62,
@@ -120,9 +123,9 @@ export async function convertStudio(input: Input, eid: string, report: Report, o
             const g = srcFeatures.find((y) => y.featureId === cls.feature);
             if (!g) continue;
             report.note(`${name}: "${g.name}" of "${input.elementName(src)}" copied as a helper: the derived sketch is held on it`);
-            sketchFrom(f.featureId, `${id}_${sane(g.name)}`, `${name} (${input.elementName(src)}: ${g.name}, a helper)`, g, sketchesOf(src).find((y) => y.featureId === g.featureId), `helper:${g.featureId}`, { studio: studioName, ops: srcOps, helper: true, onshapeRegions: srcCreated[g.featureId]?.faces?.length, derivedFrom: `${input.elementName(src)}/${g.featureId}`, sketchesFor: sketchesFor(src) }, [`${src}:${g.featureId}`]);
+            sketchFrom(f.featureId, `${id}_${sane(g.name)}`, `${name} (${input.elementName(src)}: ${g.name}, a helper)`, g, sketchesOf(src).find((y) => y.featureId === g.featureId), `helper:${g.featureId}`, { studio: studioName, ops: srcOps, helper: true, onshapeRegions: srcCreated[g.featureId]?.faces?.length, derivedFrom: `${input.elementName(src)}/${g.featureId}`, sketchesFor: sketchesFor(src), sketchOf }, [`${src}:${g.featureId}`]);
           }
-          sketchFrom(f.featureId, `${id}_${sane(sf.name)}`, `${name} (${input.elementName(src)}: ${sf.name})`, sf, sketchesOf(src).find((s) => s.featureId === sf.featureId), f.featureId, { studio: studioName, ops: srcOps, helper: false, onshapeRegions: srcCreated[sf.featureId]?.faces?.length, derivedFrom: `${input.elementName(src)}/${sf.featureId}`, sketchesFor: sketchesFor(src) }, [`${src}:${sf.featureId}`, `${eid}:derived:${f.featureId}`]);
+          sketchFrom(f.featureId, `${id}_${sane(sf.name)}`, `${name} (${input.elementName(src)}: ${sf.name})`, sf, sketchesOf(src).find((s) => s.featureId === sf.featureId), f.featureId, { studio: studioName, ops: srcOps, helper: false, onshapeRegions: srcCreated[sf.featureId]?.faces?.length, derivedFrom: `${input.elementName(src)}/${sf.featureId}`, sketchesFor: sketchesFor(src), sketchOf }, [`${src}:${sf.featureId}`, `${eid}:derived:${f.featureId}`]);
         }
         report.note(`${name}: sketches derived from "${input.elementName(src)}" copied in`);
         break;
@@ -458,8 +461,18 @@ export async function convertStudio(input: Input, eid: string, report: Report, o
   for (const [fid, r] of Object.entries(engine.getState().evaluation.features)) if (r.status === 'error') report.note(`feature ${fid}: error ${r.error?.code} ${r.error?.message?.slice(0, 200)}`);
   if (starts.from + starts.number) report.note(`starts at a face (D66): ${starts.from} written as \`from\`, ${starts.number} as numbers`);
   const document = JSON.parse(engine.save());
-  // a parameter that only a helper copy reads is not in use by the part
+  // a parameter that only a helper copy reads is not in use by the part; one that a helper copy
+  // reads and a sketch of the part projects from it is
   const helpers = new Set(report.promisesOf(studioName).helpers);
-  report.parametersInUse[studioName] = [...parametersNamed(document, document.features.filter((x: any) => !helpers.has(x.id))).names].sort();
+  const byId = new Map<Id, any>(document.features.map((x: any) => [x.id, x]));
+  const reached = new Set<Id>();
+  const reach = (fid: Id) => {
+    const f = byId.get(fid);
+    if (!f || reached.has(fid)) return;
+    reached.add(fid);
+    for (const x of Object.values(f.external ?? {}) as any[]) if (x.type === 'sketch') reach(x.sketch);
+  };
+  for (const f of document.features) if (!helpers.has(f.id)) reach(f.id);
+  report.parametersInUse[studioName] = [...parametersNamed(document, document.features.filter((x: any) => reached.has(x.id))).names].sort();
   return { document, bodies, names };
 }

@@ -72,9 +72,20 @@ function contactOf(u: Shape, v: Shape): 'cross' | 'touch' | 'ends' | 'same' | fa
   return Math.abs(d - (u.r + v.r)) < eps || Math.abs(d - Math.abs(u.r - v.r)) < eps ? 'touch' : 'cross';
 }
 
+// What the rule of the entry needs of the sketch: the axis a default plane is seen as (undefined:
+// none), whether an external pivot is a point the sketch has (the origin), and the 2D of the base
+// plane (a reflection about an axis is one there, not in the Onshape sketch's own 2D).
+export interface EntryContext {
+  axisOf: (id: string) => 'origin/x' | 'origin/y' | undefined;
+  pivotKnown: (id: string) => boolean;
+  toBase: (p: V2) => V2;
+}
+// The kinds an entry copies; a seed or an image of another kind (a spline) keeps the plan out.
+const COPIED = new Set(['skPoint', 'skLineSegment', 'skCircle', 'skArc']);
+
 // The rule of the entry, rules 1 to 4, on Onshape's IDs before any point is welded. `forbidden`:
 // entries that rule 5 or 6 dropped on an earlier build of the sketch.
-export function planEntries(feature: any, geom: any, forbidden: Set<number>, axisKnown: (id: string) => boolean): EntryPlan[] {
+export function planEntries(feature: any, geom: any, forbidden: Set<number>, ec: EntryContext): EntryPlan[] {
   const E = new Map<string, any>((geom.entities as any[]).map((e) => [e.sketchEntityId, e]));
   const at = (v: string): V2 | undefined => { const e = E.get(v); return e?.position2d ? [e.position2d.x * 1000, e.position2d.y * 1000] : undefined; };
   const same = (a?: V2, b?: V2) => !!a && !!b && Math.hypot(a[0] - b[0], a[1] - b[1]) <= 1e-6;
@@ -96,24 +107,38 @@ export function planEntries(feature: any, geom: any, forbidden: Set<number>, axi
       if (c.constraintType !== 'CIRCULAR_PATTERN') plan.why = 'a linear pattern (not on the model; lost)';
       else if (p.openPattern?.value) plan.why = 'an open pattern (its angle is not in the dump)';
       else if (count === undefined) plan.why = 'its count does not convert';
-      else if (p.localPivot?.value) plan.pivot = p.localPivot.value;
-      else { const ext = p.externalPivot?.queries?.[0]?.deterministicIds?.[0]; if (ext) plan.pivotExternal = ext; else plan.why = 'no pivot'; }
+      else if (p.localPivot?.value) {
+        plan.pivot = p.localPivot.value;
+        if (E.get(plan.pivot!)?.sketchEntityType !== 'skPoint') plan.why = 'the pivot is not a point of the sketch';
+      } else {
+        const ext = p.externalPivot?.queries?.[0]?.deterministicIds?.[0];
+        if (ext) plan.pivotExternal = ext;
+        // a projected pivot (an own point tied by coincident to an entry) is not implemented
+        if (!ext) plan.why = 'no pivot';
+        else if (!ec.pivotKnown(ext)) plan.why = 'the pivot is a projected point (not implemented: only the origin or a point of the sketch)';
+      }
       plans.push(plan);
     } else if (c.constraintType === 'MIRROR' && p.localFirst && p.localSecond && E.get(p.localFirst.value)?.sketchEntityType !== 'skPoint') {
       const ext = p.externalMirror?.queries?.[0]?.deterministicIds?.[0];
       const plan: EntryPlan = { index, constraint: c, type: 'mirror', seeds: [p.localFirst.value], images: new Set(), imageCurves: [p.localSecond.value], rows: [[p.localFirst.value, p.localSecond.value]], info: new Map(), exempt: new Set() };
       if (p.localMirror?.value) plan.axis = p.localMirror.value;
-      else if (ext && axisKnown(ext)) { plan.axis = ext; plan.axisExternal = true; }
+      else if (ext && ec.axisOf(ext)) { plan.axis = ext; plan.axisExternal = true; }
       else plan.why = 'the mirror line is not identified';
       plans.push(plan);
     }
   });
-  // rules 1 and 2 for a plan as it stands (a mirror is tried both ways round)
-  const reflectFn = (plan: EntryPlan) => {
-    if (plan.axisExternal) return plan.axis === 'JEC' ? ([x, y]: V2): V2 => [-x, y] : plan.axis === 'JCC' ? ([x, y]: V2): V2 => [x, -y] : undefined;
+  // only points, lines, circles and arcs are copied
+  for (const plan of plans) if (!plan.why && [...plan.seeds, ...plan.imageCurves].some((v) => !COPIED.has(E.get(v)?.sketchEntityType))) plan.why = 'a seed or an image is not a point, a line, a circle or an arc';
+  // rules 1 and 2 for a plan as it stands (a mirror is tried both ways round); the reflection takes
+  // a point of the Onshape sketch to its image in the 2D of the base plane
+  const reflectFn = (plan: EntryPlan): ((p: V2) => V2) => {
+    if (plan.axisExternal) {
+      const axis = ec.axisOf(plan.axis!);
+      return (p: V2): V2 => { const [x, y] = ec.toBase(p); return axis === 'origin/x' ? [x, -y] : [-x, y]; };
+    }
     const ax = E.get(plan.axis!);
     const [a, b] = [at(ax.startPointId)!, at(ax.endPointId)!];
-    return ([x, y]: V2): V2 => { const [dx, dy] = [b[0] - a[0], b[1] - a[1]]; const t = ((x - a[0]) * dx + (y - a[1]) * dy) / (dx * dx + dy * dy); return [2 * (a[0] + t * dx) - x, 2 * (a[1] + t * dy) - y]; };
+    return ([x, y]: V2): V2 => { const [dx, dy] = [b[0] - a[0], b[1] - a[1]]; const t = ((x - a[0]) * dx + (y - a[1]) * dy) / (dx * dx + dy * dy); return ec.toBase([2 * (a[0] + t * dx) - x, 2 * (a[1] + t * dy) - y]); };
   };
   const orient = (plan: EntryPlan, seed: string, image: string) => {
     plan.seeds = [seed];
@@ -122,7 +147,7 @@ export function planEntries(feature: any, geom: any, forbidden: Set<number>, axi
     plan.images = withPoints(E, [image]);
     plan.info = new Map([[image, { j: 1, seed }]]);
     const refl = reflectFn(plan);
-    if (refl) for (const ip of points(E, image)) for (const sp of points(E, seed)) if (same(at(ip), refl(at(sp)!))) plan.info.set(ip, { j: 1, seed: sp });
+    for (const ip of points(E, image)) for (const sp of points(E, seed)) { const [u, v] = [at(ip), at(sp)]; if (u && v && same(ec.toBase(u), refl(v))) plan.info.set(ip, { j: 1, seed: sp }); }
   };
   const rule12 = (plan: EntryPlan): string | undefined => {
     plan.exempt = new Set();
@@ -190,6 +215,8 @@ export function planEntries(feature: any, geom: any, forbidden: Set<number>, axi
   const copies = new Set<string>();
   for (const plan of plans) if (!plan.why) { if ([...plan.images].some((v) => copies.has(v))) plan.why = 'an image is a copy of another entry'; else for (const v of plan.images) copies.add(v); }
   for (const plan of plans) if (!plan.why && [...withPoints(E, plan.seeds)].some((v) => copies.has(v))) plan.why = 'a seed is a copy of another entry';
+  // the pivot of a pattern is a point the sketch has: not a copy of another entry (an image is not made)
+  for (const plan of plans) if (!plan.why && plan.pivot && copies.has(plan.pivot)) plan.why = 'the pivot is a copy of another entry';
   return plans;
 }
 

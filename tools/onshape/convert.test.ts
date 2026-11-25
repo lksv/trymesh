@@ -13,10 +13,10 @@
 import { execSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { test } from 'vitest';
+import { expect, test } from 'vitest';
 import { AssemblyConverter } from './assembly';
 import { Input, Report, engineNow, newEngine, sane, settings } from './common';
-import { type Summary, compareSummaries, fingerprint, finalFate, recordForSummary, tally, tallyTables } from './fates';
+import { type Summary, compareSummaries, fingerprint, finalFate, recordForSummary, sourceFingerprint, tally, tallyTables } from './fates';
 import { FAILING, documentProbe, probeLines } from './probe';
 import { type Overrides, convertStudio } from './studio';
 
@@ -89,7 +89,7 @@ test('convert', async () => {
   const perSketch: Summary['perSketch'] = {};
   for (const s of Object.values(report.sketches)) perSketch[s.key] = s.counts;
   const summary: Summary = {
-    run: { commit: git('git rev-parse HEAD'), dirty: git('git status --porcelain -- tools/onshape') !== '', fingerprint: fingerprint(resolve(dir)), overrides: process.env.ONSHAPE_OVERRIDES, settings: { probe: process.env.ONSHAPE_PROBE !== '0', ...settings }, seconds },
+    run: { commit: git('git rev-parse HEAD'), dirty: git('git status --porcelain -- tools/onshape') !== '', source: sourceFingerprint(__dirname), fingerprint: fingerprint(resolve(dir)), overrides: process.env.ONSHAPE_OVERRIDES, settings: { probe: process.env.ONSHAPE_PROBE !== '0', ...settings }, seconds },
     tally: t,
     helperTally: tally(helpers),
     perSketch,
@@ -112,6 +112,9 @@ test('convert', async () => {
     for (const l of c.grown) report.note(`  ${l}`);
     report.note(`changed fates and causes: ${c.changed.join('; ') || 'none'}`);
     writeFileSync(join(out, 'comparison.json'), JSON.stringify(c, null, 1));
+    writeFileSync(join(out, 'report.md'), report.text());
+    // the acceptance: nothing of the strict scope differs from the baseline
+    expect(c.strict).toEqual([]);
   }
   writeFileSync(join(out, 'report.md'), report.text());
   console.log(`${file}\n${join(out, 'report.md')}\n${join(out, 'summary.json')}\nlost ${t.fates.lost} of ${t.constraints}: ${JSON.stringify(t.fates)} ${JSON.stringify(Object.fromEntries(Object.entries(t.causes).filter(([, n]) => n)))}`);

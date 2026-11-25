@@ -1,9 +1,9 @@
 // The check (design of 6h, "The check"): what passes, the units, the ladder, the sketch's probe and
 // the removal of implied constraints.
-import type { Command, Constraint, Engine, Id, SketchResult } from '../../packages/engine/src/index';
+import { CONSTRAINTS, type Command, type Constraint, type Engine, type Id, type SketchResult, checkNumber } from '../../packages/engine/src/index';
 import type { Report, V2 } from './common';
 import type { ConstraintRecord } from './fates';
-import { type Change, dimensionChanges, holds, parametersNamed } from './probe';
+import { type Change, dimensionChanges, holds, parameterChanges, parametersNamed } from './probe';
 
 // What a sketch must hold to pass: Onshape's place of every own point and Onshape's radius of every
 // circle (an arc is its three points), within 1e-6.
@@ -108,28 +108,22 @@ export function parametersRead(engine: Engine, sketch: Id): Set<string> {
   return parametersNamed(doc, features).names;
 }
 
-// The changes of the sketch's probe: every parameter it reads and every literal driving dimension,
-// +3 %, +6 %, back; −3 %, −6 %, back.
+// The changes of the sketch's probe: every parameter it reads as the document's probe changes it
+// (+3 %, +6 %, back, both ways; a count ±1, ±2; a zero ±0.1, ±0.2), and every literal driving
+// dimension +3 %, +6 %, back, both ways (a second step outside the range of the field left out).
 export function sketchChanges(engine: Engine, sketch: Id, notChanged: Set<string>): Change[] {
   const doc: any = engine.getState().document;
-  const names = parametersRead(engine, sketch);
   const out: Change[] = [];
-  for (const p of doc.parameters ?? []) {
-    if (!names.has(p.name)) continue;
-    const v = Number(p.expr);
-    if (!Number.isFinite(v) || !/^-?[0-9.]+(e-?[0-9]+)?$/i.test(String(p.expr).trim())) continue;
-    for (const sg of [1, -1]) {
-      const values = v === 0 ? [sg * 0.1, sg * 0.2] : [v * (1 + sg * 0.03), v * (1 + sg * 0.06)];
-      out.push({ group: 'parameters', key: `parameter ${p.name} ${sg > 0 ? 'up' : 'down'}`, label: `parameter ${p.name} ${sg > 0 ? 'up' : 'down'}`, steps: values.map((x) => ({ type: 'setParameter', name: p.name, expr: String(+x.toFixed(9)) }) as Command), back: { type: 'setParameter', name: p.name, expr: p.expr } as Command });
-    }
-  }
+  for (const ch of parameterChanges(doc, parametersRead(engine, sketch))) if (!ch.notAvailable) out.push({ ...ch, key: `parameter ${ch.key}`, label: `parameter ${ch.label}` });
   const f = doc.features.find((x: any) => x.id === sketch);
   for (const ch of dimensionChanges(f, notChanged)) {
     if (ch.notAvailable) continue;
     const step = ch.steps[0] as any;
-    const v0 = f.constraints[step.id].value;
+    const c = f.constraints[step.id];
+    const v0 = c.value;
     const second = v0 === 0 ? 2 * step.value : v0 + 2 * (step.value - v0);
-    out.push({ ...ch, label: `dimension ${ch.label}`, steps: [step, { ...step, value: second }] });
+    const inRange = checkNumber(second, (CONSTRAINTS as any)[c.type].values.value).ok;
+    out.push({ ...ch, label: `dimension ${ch.label}`, steps: inRange ? [step, { ...step, value: second }] : [step] });
   }
   return out;
 }
@@ -219,7 +213,7 @@ export interface Implied {
   breaksBefore: string[];
   breaksAfter: string[];
   tried: number;
-  removed: { id: Id; type: string; record: string; checked: number }[];
+  removed: { id: Id; type: string; record: string; checked: number; constraint: Constraint }[];
   putBack: Id[];
   wander: string[];
   solves: number;
@@ -251,10 +245,15 @@ export function impliedConstraints(engine: Engine, sketch: Id, records: Constrai
   out.breaksAfter = [...first.breaks];
   if (!first.breaks.size) return out;
   const isDriving = (c: any) => c && 'value' in c && c.driving !== false;
+  // a removal passes as the sketch did (points and radii; a circle the cut made arcs has no radius),
+  // and frees nothing: a constraint whose removal adds a degree of freedom was not implied
+  const freedom = res().sketch?.degreesOfFreedom ?? 0;
   const passesNow = () => {
     const r = res();
     if (r.status !== 'ok' || !r.sketch || r.sketch.conflicting.length || r.sketch.valid !== true) return false;
+    if (r.sketch.degreesOfFreedom > freedom) return false;
     for (const [pid, [x, y]] of expected.points) { const q = r.sketch.points[pid]; if (!q || Math.hypot(q.x - x, q.y - y) > TOLERANCE) return false; }
+    for (const [cid, r0] of expected.radii) { const v = r.sketch.radii[cid]; if (v !== undefined && Math.abs(v - r0) > TOLERANCE) return false; }
     return true;
   };
   const gone: { id: Id; constraint: Constraint }[] = [];
@@ -318,7 +317,7 @@ export function impliedConstraints(engine: Engine, sketch: Id, records: Constrai
         r.implied = (r.implied ?? 0) + 1;
         r.ids = r.ids.filter((x) => x !== g.id);
         if (!r.ids.length) Object.assign(r, { fate: 'implied', detail: 'removed as implied' });
-        out.removed.push({ id: g.id, type: g.constraint.type, record: r.key, checked: last.checked.get(g.id) ?? 0 });
+        out.removed.push({ id: g.id, type: g.constraint.type, record: r.key, checked: last.checked.get(g.id) ?? 0, constraint: g.constraint });
       }
     } else out.note = unchecked.length ? `not kept: ${unchecked.map((g) => g.id).join(', ')} not checked at a changed state that solves` : 'not kept: the probe at the end has no fewer breaks';
   }

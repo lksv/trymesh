@@ -136,9 +136,13 @@ describe('an edge of a body', () => {
   });
 
   test('two rims of a tapered extrusion, two straight edges at one place: not chosen among', () => {
-    const rim = (side: string, tapered: boolean, cap: number) => ({ ref: { cap }, kind: 'circle' as const, side, tapered, order: [1, cap] as [number, number], text: '' });
+    const rim = (side: string, tapered: boolean, cap: number, whole = true) => ({ ref: { cap }, kind: 'circle' as const, side, tapered, whole, order: [1, cap] as [number, number], text: '' });
     expect(pickCandidate([rim('s', true, 0), rim('s', true, 1)], 'COINCIDENT').pick).toBeUndefined();
     expect(pickCandidate([rim('s', false, 1), rim('s', false, 0)], 'COINCIDENT').pick?.ref).toEqual({ cap: 0 });
+    // arcs of one side face (a rim a slot crosses): the use reads only the circle, which both carry
+    const arcs = pickCandidate([rim('s', false, 1, false), rim('s', false, 0, false)], 'COINCIDENT');
+    expect(arcs.pick?.ref).toEqual({ cap: 0 });
+    expect(arcs.why).toMatch(/arcs of its circle/);
     expect(pickCandidate([rim('s', false, 1), rim('s', false, 0)], 'DISTANCE').pick).toBeUndefined();
     const line = (n: number) => ({ ref: { n }, kind: 'line' as const, text: '' });
     expect(pickCandidate([line(1), line(2)], 'COINCIDENT').pick).toBeUndefined();

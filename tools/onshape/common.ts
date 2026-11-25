@@ -105,24 +105,28 @@ export function exec(engine: Engine, report: Report, cmd: Command, what: string)
 
 // An Onshape expression to one of trymesh: `#var` -> `var`, a unit as a factor: `3 mm` and `3*mm`
 // -> `3`, `30 deg` and `30.0*deg` -> `deg(30)`, `(a + b) * deg` -> `(a + b) * deg(1)`, `2 in` ->
-// `2 * 25.4`. Onshape names a variable with `#`; any other word is a unit, a function or a constant,
-// and a unit the converter does not know leaves the expression unconverted (undefined).
+// `2 * 25.4`, `1.5e-3 m` -> `1.5e-3 * 1000`, `#a * deg` -> `#a * deg(1)`. Onshape names a variable
+// with `#`; any other word is a unit, a function or a constant, and a unit the converter does not
+// know leaves the expression unconverted (undefined). A digit inside a name (`#gap_2mm`) is no
+// number: a number starts where no letter, digit, `_`, `#` or `.` stands before it.
 const UNITS: Record<string, string | undefined> = { mm: '', millimeter: '', cm: '10', centimeter: '10', m: '1000', meter: '1000', in: '25.4', inch: '25.4', ft: '304.8', foot: '304.8', deg: 'deg', degree: 'deg', rad: '', radian: '' };
 const WORDS = new Set(['pi', 'sin', 'cos', 'tan', 'asin', 'acos', 'atan', 'atan2', 'sqrt', 'abs', 'min', 'max', 'round', 'floor', 'ceil', 'exp', 'log', 'deg']);
+const NUMBER = String.raw`(?<![A-Za-z0-9_#.])(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][-+]?[0-9]+)?`;
+const VARIABLE = String.raw`#[A-Za-z_][A-Za-z0-9_]*(?![A-Za-z0-9_])`;
 export function expression(e: string | undefined): string | undefined {
   if (e === undefined) return undefined;
   let s = e.trim();
-  let unknown = false;
-  // a number or a closing bracket followed by a unit, with or without `*`
-  s = s.replace(/((?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:e[-+]?[0-9]+)?|\))\s*\*?\s*([A-Za-z]+)\b(?!\s*\()/g, (all, value: string, word: string) => {
+  // a number, a variable or a closing bracket followed by a unit, with or without `*`
+  s = s.replace(new RegExp(String.raw`(${NUMBER}|${VARIABLE}|\))\s*\*?\s*([A-Za-z]+)\b(?!\s*\()`, 'g'), (all, value: string, word: string) => {
     if (!(word in UNITS)) return all;
     const f = UNITS[word]!;
-    if (f === 'deg') return value === ')' ? ') * deg(1)' : `deg(${value})`;
+    if (f === 'deg') return value === ')' || value.startsWith('#') ? `${value} * deg(1)` : `deg(${value})`;
     return f ? `${value} * ${f}` : value;
   });
-  // a word that is no variable (`#`), no unit taken above, no function and no constant
-  for (const m of s.matchAll(/(#?)([A-Za-z_][A-Za-z0-9_]*)/g)) if (!m[1] && !WORDS.has(m[2])) unknown = true;
-  if (unknown) return undefined;
+  // a word that is no variable (`#`), no unit taken above, no function and no constant (the
+  // numbers taken out first, so the exponent of `1e-3` is no word)
+  const words = s.replace(new RegExp(NUMBER, 'g'), ' 0 ');
+  for (const m of words.matchAll(/(#?)([A-Za-z_][A-Za-z0-9_]*)/g)) if (!m[1] && !WORDS.has(m[2])) return undefined;
   return s.replace(/#/g, '');
 }
 export const isNumber = (s: string) => /^-?[0-9.]+(e-?[0-9]+)?$/i.test(s);

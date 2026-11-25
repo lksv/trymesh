@@ -178,7 +178,7 @@ export interface OutcomeSummary {
 }
 
 export interface Summary {
-  run: { commit: string; dirty: boolean; fingerprint: string; overrides?: string; settings: Record<string, unknown>; seconds?: number };
+  run: { commit: string; dirty: boolean; source?: string; fingerprint: string; overrides?: string; settings: Record<string, unknown>; seconds?: number };
   tally: Tally;
   helperTally: Tally;
   perSketch: Record<string, Record<Fate, number>>;
@@ -209,6 +209,17 @@ export function fingerprint(dir: string): string {
       }
     }
   };
+  walk(dir);
+  const h = createHash('sha256');
+  for (const f of files.sort()) h.update(`${f}\0${createHash('sha256').update(readFileSync(join(dir, f))).digest('hex')}\n`);
+  return h.digest('hex').slice(0, 16);
+}
+
+// The converter's own source (every `.ts` under `dir`, by path and content): with `dirty`, which code
+// a run used, so a run made before the commit of the same code can be told to be that commit's.
+export function sourceFingerprint(dir: string): string {
+  const files: string[] = [];
+  const walk = (d: string) => { for (const name of readdirSync(d)) { const p = join(d, name); if (statSync(p).isDirectory()) walk(p); else if (p.endsWith('.ts')) files.push(relative(dir, p).split('\\').join('/')); } };
   walk(dir);
   const h = createHash('sha256');
   for (const f of files.sort()) h.update(`${f}\0${createHash('sha256').update(readFileSync(join(dir, f))).digest('hex')}\n`);
@@ -249,6 +260,8 @@ export function compareSummaries(base: Summary, run: Summary): Comparison {
     if (s.helper) continue;
     const q = run.sketches[k];
     if (!q) { c.strict.push(`sketch ${k}: missing`); continue; }
+    if (s.status === 'ok' && q.status !== 'ok') c.strict.push(`sketch ${k}: status ok -> ${q.status}`);
+    if (s.valid && !q.valid) c.strict.push(`sketch ${k}: the profile valid -> ${q.valid}`);
     if (s.regions !== q.regions) c.strict.push(`sketch ${k}: regions ${s.regions} -> ${q.regions}`);
     else {
       const worst = Math.max(0, ...s.areas.map((a, i) => Math.abs(a - q.areas[i])));

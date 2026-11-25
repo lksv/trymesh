@@ -114,7 +114,7 @@ describe('patterns', () => {
     expect(pattern).toMatchObject({ fate: 'written', detail: 'by spokes' });
     const types = pattern.ids.map((id) => sketch.constraints[id].type);
     expect(types.filter((t) => t === 'angle')).toHaveLength(5); // a tree over six spokes: the sixth angle would close a ring
-    expect(Object.keys(sketch.curves).filter((c) => c.includes('.spoke.'))).toHaveLength(6);
+    expect(Object.keys(sketch.curves).filter((c) => /\.spoke\d+\./.test(c))).toHaveLength(6);
     expect(sketch.constraints[pattern.ids.find((id) => sketch.constraints[id].type === 'angle')!].value).toBeCloseTo(Math.PI / 3, 12);
     const engine = engineNow();
     engine.load(JSON.stringify(result.document));

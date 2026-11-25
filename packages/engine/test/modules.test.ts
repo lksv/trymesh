@@ -78,6 +78,12 @@ describe('modules of the engine', () => {
     expect(cycles(MODULES, (file) => readFileSync(file, 'utf8'))).toEqual([]);
   });
 
+  // The geometry of a spline (D70) is a leaf: at run time it imports util.ts alone, so the validator,
+  // the profile and the worlds of the sketch tools can all read it.
+  it('spline.ts is a leaf: it imports util.ts alone at run time', () => {
+    expect(runtimeImports(join(SRC, 'spline.ts'), MODULES, (file) => readFileSync(file, 'utf8')).map(name)).toEqual(['util.ts']);
+  });
+
   // The intersection as computed is a mesh nobody verified (D50): it is measured by the collisions
   // and never becomes a body, the input of another boolean or a file. One module calls it.
   it('the intersection as computed is asked in interference.ts alone', () => {

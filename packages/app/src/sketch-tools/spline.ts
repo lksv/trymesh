@@ -39,7 +39,8 @@ export const spline: SketchPlaceTool<undefined> = {
     if (control.length < 2) return [];
     const out = [control];
     if (control.length >= 3) {
-      const size = Math.max(...control.map((p) => dist(p, control[0])));
+      // the rule of the view: the largest side of the box of the control points
+      const size = Math.max(Math.max(...control.map((p) => p[0])) - Math.min(...control.map((p) => p[0])), Math.max(...control.map((p) => p[1])) - Math.min(...control.map((p) => p[1])));
       if (size > 0) out.push(splinePolyline(control, VIEW_TOLERANCE * size));
     }
     return out;

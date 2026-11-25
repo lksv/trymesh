@@ -166,6 +166,42 @@ describe('the broad phase of the profile (D68)', () => {
     expect(holes).toBeGreaterThan(20);
   });
 
+  // D70: the box of a spline in the broad phase is the box of its control points, which holds the
+  // curve and every polyline of it. The random sketches of the test above with one or two splines
+  // added over points of the sketch and new ones (closed now and then), against the double loop.
+  it('gives the profile of the double loop on random sketches with splines (D70)', () => {
+    const rng = random(70);
+    let [valid, regions] = [0, 0];
+    for (let k = 0; k < 4000; k++) {
+      const c = randomCase(rng);
+      const ids = Object.keys(c.geometry.points);
+      const splines = 1 + Math.floor(rng() * 2);
+      for (let j = 0; j < splines; j++) {
+        const count = 3 + Math.floor(rng() * 4);
+        const control: Id[] = [];
+        while (control.length < count) {
+          let id: Id;
+          if (rng() < 0.4) id = ids[Math.floor(rng() * ids.length)];
+          else {
+            id = `q${k}_${j}_${control.length}`;
+            c.geometry.points[id] = { x: rng() * 45 - 2.5, y: rng() * 45 - 2.5 };
+          }
+          if (!control.includes(id)) control.push(id);
+        }
+        if (rng() < 0.3) control.push(control[0]);
+        c.curves.push({ id: `sp${j}`, shape: { type: 'spline', points: control }, source: 'own', regions: true });
+      }
+      const broad = profileWith(c);
+      expect(broad, `case ${k}`).toBe(profileWith(c, ALL));
+      if (broad.startsWith('{"valid":true')) {
+        valid++;
+        if ((JSON.parse(broad) as { regions: unknown[] }).regions.length) regions++;
+      }
+    }
+    expect(valid).toBeGreaterThan(100);
+    expect(regions).toBeGreaterThan(20);
+  });
+
   // The two boxes of an arc that are wrong, each failing on one of these (design.md of 6c, "Measured").
   it('boxes an arc whose second end lies off its circle by both of its ends and its sweep', () => {
     const line = (id: Id, a: Id, b: Id): SketchCurve => ({ id, shape: { type: 'line', a, b }, source: 'own', regions: true });

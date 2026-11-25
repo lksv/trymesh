@@ -4,7 +4,7 @@
 // scenario15.test.ts again. Its names differ from docs/d36/6a2-origin-axes/calls.ts: `board` there
 // is `standInBoard` here, `OUTLINE` is `BOARD_OUTLINE`, `pcbByHand` keeps its name, and the check
 // `boardDetermined` is `expectDetermined` of scenario15.test.ts.
-import type { Command, Engine, EngineState, Id } from '@trymesh/engine';
+import type { Command, Engine, EngineState, Id, ImportedCurve, SketchOutline } from '@trymesh/engine';
 import { XY, addExtrude, addSketch, batch, constrain, run } from './kit';
 
 // The board 60 × 40, corners of radius 3, holes of 3.2 at 3.5 from the edges, 1.6 thick.
@@ -85,3 +85,37 @@ export function standInBoard(engine: Engine): EngineState {
   run(engine, addSketch(b, XY), batch(...commands));
   return run(engine, addExtrude('pcb', b, [BOARD_OUTLINE], 1.6));
 }
+
+// ---------------------------------------------------------------- the imported board (6f, D72)
+
+// The curves of the board as the reader of DXF gives them from a file a PCB tool writes (separate
+// LINE, ARC and CIRCLE entities on the layer Edge.Cuts, in page coordinates: the corner of the board
+// at (100, 80)), under the IDs the import gives them: the sides `l1` (bottom), `l2` (right), `l3`
+// (top), `l4` (left), the corners `a1` (bottom right), `a2`, `a3`, `a4` (bottom left), the holes
+// `c1` (bottom left), `c2`, `c3`, `c4` (top left).
+export function boardCurves(W = 60, H = 40, R = 3): Record<Id, ImportedCurve> {
+  const [x0, y0, x1, y1] = [100, 80, 100 + W, 80 + H];
+  const arc = (cx: number, cy: number, from: number, to: number): ImportedCurve => {
+    const at = (deg: number): [number, number] => [cx + R * Math.cos((deg * Math.PI) / 180), cy + R * Math.sin((deg * Math.PI) / 180)];
+    return { type: 'arc', center: [cx, cy], start: at(from), end: at(to) };
+  };
+  const hole = (x: number, y: number): ImportedCurve => ({ type: 'circle', center: [x, y], radius: 1.6 });
+  return {
+    l1: { type: 'line', a: [x0 + R, y0], b: [x1 - R, y0] },
+    a1: arc(x1 - R, y0 + R, 270, 360),
+    l2: { type: 'line', a: [x1, y0 + R], b: [x1, y1 - R] },
+    a2: arc(x1 - R, y1 - R, 0, 90),
+    l3: { type: 'line', a: [x1 - R, y1], b: [x0 + R, y1] },
+    a3: arc(x0 + R, y1 - R, 90, 180),
+    l4: { type: 'line', a: [x0, y1 - R], b: [x0, y0 + R] },
+    a4: arc(x0 + R, y0 + R, 180, 270),
+    c1: hole(x0 + 3.5, y0 + 3.5),
+    c2: hole(x1 - 3.5, y0 + 3.5),
+    c3: hole(x1 - 3.5, y1 - 3.5),
+    c4: hole(x0 + 3.5, y1 - 3.5),
+  };
+}
+// The outer loop of the imported board `pcbo`, sorted, as a region names it.
+export const IMPORTED_OUTLINE = (entry = 'pcbo'): Id[] => ['a1', 'a2', 'a3', 'a4', 'l1', 'l2', 'l3', 'l4'].map((local) => `${entry}/${local}`);
+// The command that places an outline in a sketch.
+export const addOutline = (sketch: Id, id: Id, ref: Partial<SketchOutline> & { curves: Record<Id, ImportedCurve> } & Record<string, unknown>): Command => ({ type: 'addExternal', sketch, id, ref: { type: 'outline', ...ref } }) as Command;

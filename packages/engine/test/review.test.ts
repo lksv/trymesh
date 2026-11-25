@@ -1273,10 +1273,11 @@ describe('the review of the implementation of 6a (D64)', () => {
       return copy;
     };
     expect(validateDocument(JSON.parse(JSON.stringify(doc)))).toEqual(doc);
-    // the text lists the kinds (6b, D69, added `sketch`; the value of a projection from a sketch is a
-    // point, a line, a circle or an arc, and the text of an unknown form says so)
-    const unknown = 'external.x1: an entry of a sketch is the projection of an edge (`edge`), a mirror or pattern of the sketch (`pattern`) or the projection of an entity of an earlier sketch (`sketch`)';
-    expect(() => validateDocument(tampered((s) => (s.external.x1 = { type: 'outline', sketch: 'S1', entity: 'l1' })))).toThrow(unknown);
+    // the text lists the kinds (6b, D69, added `sketch`, and 6f, D72, `outline`; the value of a
+    // projection from a sketch is a point, a line, a circle or an arc, and the text of an unknown form
+    // says so)
+    const unknown = 'external.x1: an entry of a sketch is the projection of an edge (`edge`), a mirror or pattern of the sketch (`pattern`), the projection of an entity of an earlier sketch (`sketch`) or an imported outline (`outline`)';
+    expect(() => validateDocument(tampered((s) => (s.external.x1 = { type: 'ellipse', sketch: 'S1', entity: 'l1' })))).toThrow(unknown);
     expect(() => validateDocument(tampered((s) => (s.external.x1 = { body: 'E1' })))).toThrow(unknown);
     expect(() => validateDocument(tampered((s) => (s.solved.external = { x1: { kind: 'ellipse', center: [0, 0] } })))).toThrow(/solved\.external\.x1\.kind: point, line, circle or arc is expected/);
     // a stored point or arc never fits the projection of an edge

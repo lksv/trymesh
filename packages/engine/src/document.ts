@@ -404,6 +404,19 @@ function withEntryExpressions(s: SketchFeature, id: Id, given: Record<FieldPath,
   return { ...rest, ...(all.length ? { expressions: Object.fromEntries(all) } : {}) };
 }
 
+// The entry an update of a kind with `partial` (an outline, D72) stands for: the fields the command
+// gives, its `undefined` ones dropped, laid over the input form of the entry (`entryInput`, with its
+// expressions), when the command's `type` is the entry's. A field left out then arrives as the
+// expression the entry has, is found unchanged, and keeps its last value without being evaluated.
+// Any other update is the whole entry.
+function partialInput(s: SketchFeature, id: Id, given: unknown): unknown {
+  const before = s.external[id];
+  const kind = kindOf(before);
+  if (kind.source !== 'reference' || !kind.partial || !isObject(given) || given.type !== before.type) return given;
+  const fields = Object.fromEntries(Object.entries(given).filter(([, value]) => value !== undefined));
+  return { ...(entryInput(s, id) as object), ...fields };
+}
+
 // The input form of one entry of `external` (as `featureInput` of a feature): its numeric fields
 // with the sketch's expressions under `external/<id>/` put back as strings. What sends
 // `updateExternal` for an entry with fields (a sketch tool that patches it, the app's form) starts
@@ -761,7 +774,7 @@ export function applyCommand(doc: Document, command: Command): Document {
         // handed to the reader as given. Every other address of the entry is set anew.
         const prefix = `external/${id}/`;
         const given: Record<FieldPath, Expr> = {};
-        let input = cmd.ref;
+        let input = partialInput(s, id, cmd.ref);
         for (const [path, expr] of Object.entries(s.expressions ?? {})) {
           if (!path.startsWith(prefix)) continue;
           const local = path.slice(prefix.length);
@@ -780,9 +793,13 @@ export function applyCommand(doc: Document, command: Command): Document {
         const fieldsOf = () => new Fields('update', given, () => evaluateParameters(doc.parameters));
         const form = { ...refContext(doc, undefined), fields: fieldsOf() };
         const shaped = externalRef(form, s, id, input, 'updateExternal.ref');
-        const keeps = kindOf(shaped).source === 'reference' && before.type === shaped.type && ((kindOf(shaped) as { keepsValue?: (a: ExternalRef, b: ExternalRef) => boolean }).keepsValue?.(before, shaped) ?? false);
-        const context = keeps ? form : { ...refContext(doc, index), fields: fieldsOf() };
-        const ref = keeps ? shaped : externalRef(context, s, id, input, 'updateExternal.ref');
+        const kindOfShaped = kindOf(shaped);
+        const keeps = kindOfShaped.source === 'reference' && before.type === shaped.type && ((kindOfShaped as { keepsValue?: (a: ExternalRef, b: ExternalRef) => boolean }).keepsValue?.(before, shaped) ?? false);
+        // an entry of reference geometry that names nothing of the model (an outline, D72) has
+        // nothing a second pass could check: its form is taken, once
+        const namesNothing = kindOfShaped.source === 'reference' && kindOfShaped.refs(shaped, prefix).length === 0 && kindOfShaped.faces(shaped).length === 0;
+        const context = keeps || namesNothing ? form : { ...refContext(doc, index), fields: fieldsOf() };
+        const ref = keeps || namesNothing ? shaped : externalRef(context, s, id, input, 'updateExternal.ref');
         // Změna druhu by změnila odvozená ID; kdo chce jiný druh, promítnutí smaže a založí nové.
         const problem = updateProblem(s, id, before, ref);
         if (problem) fail(`updateExternal: ${problem}`);

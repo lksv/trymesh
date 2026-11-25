@@ -3,7 +3,7 @@
 import type { GeometrySource, ResolvedReference } from './references/spec';
 import { AXES_GEOMETRY, constraintOperands, isDimension } from './sketch-content';
 import { bezierStartCurvature, splineBeziers, splinePolyline } from './spline';
-import type { Constraint, Curve, CurveShape, Id, Point2, Projected, RegionRef, SketchFeature, SketchResult, SolveInput, Vec2 } from './types';
+import type { Constraint, Curve, CurveShape, Id, Point2, RegionRef, SketchFeature, SketchResult, SolveInput, StoredValue, Vec2 } from './types';
 import { AXIS_REACH, LENGTH_TOLERANCE, ORIGIN, ORIGIN_AXES, cross2, dist2, dot2, fingerprint, has, isOriginAxis, len2, stableStringify, sub2, unreachable } from './util';
 
 // Použité polohy: vlastní body, počátek a body promítnuté geometrie; poloměry kružnic včetně promítnutých.
@@ -207,7 +207,8 @@ export function solverSetup(sketch: SketchFeature, references: Record<Id, Resolv
     curves[id] = shape as Curve;
   }
   for (const id of Object.keys(references).sort()) {
-    const { geometry } = references[id];
+    // of an entry whose input is narrowed (an outline, D72), what the constraints name
+    const geometry = references[id].solver ?? references[id].geometry;
     Object.assign(points, geometry.points);
     Object.assign(radii, geometry.radii);
     Object.assign(curves, geometry.curves);
@@ -220,7 +221,7 @@ export function solverSetup(sketch: SketchFeature, references: Record<Id, Resolv
     if (!available) skipped.push(id);
     else if (!isDimension(c) || c.driving) constraints[id] = c; // referenční kóty počítá engine
   }
-  const used: Record<Id, Projected> = {};
+  const used: Record<Id, StoredValue> = {};
   for (const id of Object.keys(sketch.external)) {
     const value = has(references, id) ? references[id].value : undefined;
     if (value) used[id] = value;

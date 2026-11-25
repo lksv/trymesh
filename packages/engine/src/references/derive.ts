@@ -179,6 +179,15 @@ const MAX_OPEN_ENDS = 20;
 // So two own points that are two vertices stay two, and a profile changes only where the ends of
 // curves that are not own are. Also the open ends: an end of a curve that is not own and forms
 // regions which, after every join, is the end of no other curve that forms regions.
+// Whether the two ends of a curve are one place (one point, or two within the length tolerance).
+function closedAtEnds(curve: SketchCurve, geometry: SketchGeometry): boolean {
+  const ends = curveEnds(curve.shape);
+  if (!ends) return false;
+  const [a, b] = ends;
+  if (a === b) return true;
+  return has(geometry.points, a) && has(geometry.points, b) && close(geometry.points[a], geometry.points[b]);
+}
+
 export function positionJoins(curves: readonly SketchCurve[], geometry: SketchGeometry, pairs: readonly [Id, Id][]): { joins: [Id, Id][]; openEnds?: OpenEnds } {
   const before = joinsOf(pairs, geometry);
   const endsOf = (curve: SketchCurve): End[] =>
@@ -233,7 +242,11 @@ export function positionJoins(curves: readonly SketchCurve[], geometry: SketchGe
     else atVertex.set(vertex, new Set([end.curve]));
   }
   const open: OpenEnd[] = [];
+  // a curve whose two ends are one place is closed and has no open end (a closed spline of an
+  // imported outline, D72)
+  const closedCurves = new Set(curves.filter((curve) => curve.source !== 'own' && curve.regions && closedAtEnds(curve, geometry)).map((curve) => curve.id));
   for (const end of free) {
+    if (closedCurves.has(end.curve)) continue;
     const at = atVertex.get(after(end.point)) as Set<Id>;
     if ([...at].some((curve) => curve !== end.curve)) continue;
     const vertices = refused.get(find(end.point));

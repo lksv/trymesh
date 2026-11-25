@@ -20,9 +20,9 @@ The button *Combine* on the toolbar opens the form (after *Pattern*). A new comb
 - **Tools**: a checkbox per body but the target; one that is gone stays listed as missing. A click on a body in the view sets the target of a new combine first and then ticks or unticks a tool.
 - **Keep the tools**: ticked by default; unticked, the tool bodies leave the model with the feature.
 - **Clearance** (a difference only): a number or an expression in mm; empty is none.
-- **Problems of the preview** use the texts of the engine: `invalidClearance` with its detail and the faces of the tool ("a clearance of 0.0001 mm is under ten precisions of the coordinates", "the moved c/side/cL1 comes within 0.25 mm of c/side/cL5", the faces by their keys), after which the app names the tool and the faces ("C, C – bok, C – bok"), `kernelFailure` and `emptyResult` with the tool, `noEffect` with the tools that missed.
+- **Problems of the preview** use the texts of the engine: `invalidClearance` with its detail and the faces of the tool ("a clearance of 0.0001 mm is under ten precisions of the coordinates", "the moved c/side/cL1 comes within 0.25 mm of c/side/cL5", the faces by their keys), after which the app names the tool and the faces ("C, C – side, C – side"), `kernelFailure` and `emptyResult` with the tool, `noEffect` with the tools that missed.
 
-A selected combine highlights the faces of its pockets (those with its tag); the model panel says the operation, the target, the tools, whether they are kept and the clearance with its expression. A face of a pocket is named in labels as "Motor – bok, in the pocket of tool 1 of Pocket". A combine has no body of its own, so its eye on the timeline is disabled.
+A selected combine highlights the faces of its pockets (those with its tag); the model panel says the operation, the target, the tools, whether they are kept and the clearance with its expression. A face of a pocket is named in labels as "Motor – side, in the pocket of tool 1 of Pocket". A combine has no body of its own, so its eye on the timeline is disabled.
 
 ## Split (D56)
 

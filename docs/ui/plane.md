@@ -2,18 +2,18 @@
 
 Part of [ui.md](../ui.md); how to read the tables is said there. A plane of its own: offset from a base, the midplane of the base and a second plane, tilted about an axis (D60). Implemented.
 
-## Vlastní rovina
+## A plane of its own
 
-| Funkce | Příkaz / volání | Čte |
+| Function | Command / call | Reads |
 |---|---|---|
-| Vybrat základ (rovina nebo rovinná stěna) | | `faces[i].planar`, `features[id].plane` |
-| Náhled při zadávání posunu | `preview(addFeature)` | |
+| Choose the base (a plane or a planar face) | | `faces[i].planar`, `features[id].plane` |
+| Preview while the offset is typed | `preview(addFeature)` | |
 | Pick the second plane of a midplane (D60) | UI logic (the pick armed in the form) | `faces[i].planar`, `features[id].plane` |
 | Add a tilt, choose its axis, type its angle (D60) | UI logic (`changeAxis` of the axis picker) | sketches before the plane, their points and lines; `faceSurfaces[i].kind` of a picked face |
 | Remove the midplane or the tilt (D60) | UI logic; the patch sends `null` | |
 | Draw the axis of a tilt in the preview (D60) | | `features[id].facts.axisPoint`, `axisDirection` |
-| Potvrdit | `addFeature` (plane) | |
-| Změnit posun, základ, the second plane or the tilt | `updateFeature` with `base`, `offset`, `midplaneWith` and `tilt` (`null` for a part the draft no longer has) | |
+| Confirm | `addFeature` (plane) | |
+| Change the offset, the base, the second plane or the tilt | `updateFeature` with `base`, `offset`, `midplaneWith` and `tilt` (`null` for a part the draft no longer has) | |
 
 ## The form
 

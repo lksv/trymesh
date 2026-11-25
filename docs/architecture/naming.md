@@ -2,17 +2,17 @@
 
 Part of [architecture.md](../architecture.md), the design as implemented. Names of faces and edges, the plane of a sketch on a face, profiles and regions.
 
-## Pojmenování
+## Naming
 
-### Stěny
+### Faces
 
-Stěna má strukturované jméno odvozené z původu:
+A face has a structured name derived from its origin:
 
 ```ts
 type FaceName = (
-  | { feature: Id; role: 'side'; curve: Id }     // z křivky skici; for a generated profile the side name of the catalog (`teeth`)
-  | { feature: Id; role: 'startCap' }            // víko na začátku rozsahu (při nulovém `start` v rovině skici)
-  | { feature: Id; role: 'endCap' }              // protější víko
+  | { feature: Id; role: 'side'; curve: Id }     // from a sketch curve; for a generated profile the side name of the catalog (`teeth`)
+  | { feature: Id; role: 'startCap' }            // the cap at the start of the extent (in the sketch plane when `start` is zero)
+  | { feature: Id; role: 'endCap' }              // the opposite cap
   | { feature: Id; role: 'wallSide'; curve: Id; side: 'left' | 'right' }   // a side of a wall along curves (D44)
   | { feature: Id; role: 'wallEnd'; point: Id }                            // a straight end of such a wall
   | { feature: Id; role: 'holeBore'; point: Id }                           // the bore of a hole at a point (D46)
@@ -30,17 +30,17 @@ The faces of a wall (a profile of the type `wall`, [extrude.md](extrude.md), "Pr
 
 The faces of a hole ([hole.md](hole.md)) are named by what they are and by the point, not by a count of sections, so the bore keeps its name when a plain hole becomes a counterbore or a point is added. The seat, the mouths (`startCap`) and the bottoms (`endCap`) are one face each for all points of the feature, as the caps of an extrusion with several regions are.
 
-Víko nenese označení oblasti. Všechna víka jedné extrude leží v jedné rovině, takže tvoří jednu logickou stěnu, i když je extrude složená z více oblastí. Nový výběr profilu tak víko nepřejmenuje a skici na něm se nerozbijí.
+A cap carries no mark of the region. All caps of one extrude lie in one plane, so they form one logical face, even when the extrude is made of several regions. A new choice of profile therefore does not rename the cap, and the sketches on it do not break.
 
-Každý trojúhelník tělesa nese číslo stěny, tabulka čísel → jmen patří k výsledku přepočtu. Čísla se neukládají, ukládají se jen jména.
+Every triangle of a body carries a face number; the table of numbers → names belongs to the result of the recompute. The numbers are not stored, only the names are.
 
-| Situace | Chování |
+| Situation | Behaviour |
 |---|---|
-| Booleovská operace | Trojúhelník dědí jméno stěny, ze které pochází. Horní stěna kvádru je i po vyříznutí díry „endCap extrude E1". |
-| Stěna se rozdělí na víc částí | Zůstává jednou logickou stěnou (nesouvislou). |
-| Stěna zanikne | Jméno nemá žádný trojúhelník → reference je rozbitá → feature je v chybě. |
-| Dvě stěny splynou do jedné roviny | Zůstávají dvě stěny s různými jmény. |
-| Kružnice nebo oblouk | Všechny segmenty mají stejné jméno, válcová plocha je jedna stěna. |
+| A boolean operation | A triangle inherits the name of the face it comes from. The top face of a box is still "endCap extrude E1" after a hole is cut in it. |
+| A face splits into several parts | It stays one logical face (not connected). |
+| A face disappears | No triangle has the name → the reference is broken → the feature is in error. |
+| Two faces merge into one plane | They stay two faces with different names. |
+| A circle or an arc | All segments have the same name; the cylindrical surface is one face. |
 | A copy made by a pattern | The face has the name of the face it copies with `copy` added: the pattern and the number of the copy. The original keeps its name. The copy of a grid i steps along the first direction and j along the second has the number i + 1000 · j (D53, [pattern.md](pattern.md)): one tag per face as for a row, a number with gaps that does not depend on the counts, so a larger count renames no face. `faceKey` appends `/@<pattern>:<index>` as for a row; nothing compares the numbers of two tags as numbers. |
 | A combine without a clearance (D56) | The faces keep their names, from the target or the tool; where a face of a tool lies flush on one of the target and they overlap, the overlapped part takes the tool's name (an intersection: the target's). A face may lie on two bodies, the target and a kept tool. |
 | A combine with a clearance (D56) | The faces a tool leaves are new faces: the name of the face of the tool with `{ pattern: <combine>, index: <the place of the tool in tools> }` appended, described by the moved surface. A crescent of a tool that only marks where two of its faces cross has no face in the pocket ([combine.md](combine.md)). The registry member `tagsFaces` says which features may stand in a tag. |
@@ -75,40 +75,40 @@ A face of a body an insertion brought ([insert.md](insert.md)) is named by its n
 - **A name is found by its key and then compared.** Before D68 a text field of a role took any text unquoted, so a name no feature makes could key like a real one (`{ feature: 'ring', role: 'side', curve: 'outer/@p:1' }` keyed like the side `outer` of the copy `@p:1`); since the key quotes a field that could hold a separator, no two names share a key, and the comparison stays as what holds if a later role breaks the rule. Every place that looks a face up by its key takes it only when the name at that number is the name asked for, field by field (`faceNumber` of `util.ts`: the frame of a plane on a face, the surface and the face number of a query), and an edge only when both of its faces are (`sameEdgeName`: the projection of an edge, the queries `measure`, the entities of a query, the arguments of a query).
 - **A reference** to a prefixed ID refers to its owner, which must be an insertion before the referring feature (the reference kind `insertion`; `faceRefs`, `requireFace`); an unprefixed `feature` is a feature that names faces and an unprefixed tag a pattern, as before. Nothing inside the inserted document is checked by a command: whether the face is there is the recompute's question.
 
-### Hrany (D22)
+### Edges (D22)
 
-Hrana je rozhraní dvou různě pojmenovaných stěn. Jejím jménem je neuspořádaná dvojice jmen stěn:
+An edge is the boundary between two differently named faces. Its name is the unordered pair of the face names:
 
 ```ts
-interface EdgeName { a: FaceName; b: FaceName }   // a < b v lexikografickém pořadí zápisu feature/role/curve
+interface EdgeName { a: FaceName; b: FaceName }   // a < b in the lexicographic order of the text feature/role/curve
 ```
 
-- Hrana existuje, pokud v síti sousedí aspoň jedna dvojice trojúhelníků s těmito jmény. Jinak je reference rozbitá.
-- Hrana rozdělená na víc úseků zůstává jednou logickou hranou.
-- Přímá hrana (obě stěny rovinné a různoběžné) leží na průsečnici jejich analytických rovin. Poloha a směr přímky se počítají analyticky, ze sítě se bere jen rozsah (krajní body).
-- Přímka je orientovaná směrem n_a × n_b, kde `a`, `b` jsou stěny v kanonickém pořadí jmen a n jejich normály ven z tělesa. Krajní bod `<id>/a` promítnuté úsečky je ten s menším parametrem v tomto směru. Pořadí konců se tak při přepočtu neprohodí.
+- An edge exists when at least one pair of triangles with these names are neighbours in the mesh. Otherwise the reference is broken.
+- An edge divided into several pieces stays one logical edge.
+- A straight edge (both faces planar and not parallel) lies on the intersection line of their analytic planes. The position and direction of the line are computed analytically; only the extent (the end points) is taken from the mesh.
+- The line is oriented in the direction n_a × n_b, where `a`, `b` are the faces in the canonical order of the names and n their normals out of the body. The end point `<id>/a` of the projected line is the one with the smaller parameter in this direction. So the order of the ends does not swap on a recompute.
 - On a copy made by a pattern the ends are those of this rule, not those of the source carried over (D53). A mirror reverses the cross product, so on a mirrored copy `<id>/a` is normally the image of the source's `<id>/b`; and a copy tag appended to both keys can turn their order where one key begins the other (`edge` and `edge-2`; a face and its own mirrored copy on a body copied later), which swaps the ends on a shifted or turned copy and cancels the swap on a mirrored one ([pattern.md](pattern.md), "The order of two face keys").
-- Krajní body mají přesnost sítě (viz Přesnost u SolidKernel). Přímka samotná je přesná. Geometrie přichycená na krajní bod proto dá stěny nástroje jen téměř koplanární se stěnami tělesa; s tím počítá záruka jádra č. 3.
-- Hrana mezi dvěma stěnami v téže rovině (výstupek zarovnaný s horní stěnou) má druh `coplanar`. Průsečnice neexistuje a hranice nemusí být přímá. Nekreslí se a nejde promítnout. „V téže rovině" znamená, že normály obou stěn svírají úhel pod úhlovou tolerancí enginu. Přesná rovnoběžnost nestačí: stěna z úsečky přichycené na krajní body promítnutých hran je od stěny tělesa odkloněná o zlomek úhlové vteřiny a průsečnice takových rovin by vyšla kilometry daleko.
-- Hrana se vrací jako seznam úseček (`segments`), ne jako jedna lomená čára: hrana rozdělená výřezem má víc nesouvislých úseků a jedna čára by je spojila přes prázdný prostor.
+- The end points have the precision of the mesh (see Precision under SolidKernel). The line itself is exact. Geometry snapped to an end point therefore gives tool faces only nearly coplanar with the faces of the body; guarantee no. 3 of the kernel counts with that.
+- An edge between two faces in the same plane (a boss flush with the top face) has the kind `coplanar`. There is no intersection line and the boundary need not be straight. It is not drawn and cannot be projected. "In the same plane" means that the normals of the two faces make an angle below the angular tolerance of the engine. Exact parallelism is not enough: a face from a line snapped to the end points of projected edges is tilted from the face of the body by a fraction of an arcsecond, and the intersection line of such planes would come out kilometres away.
+- An edge is returned as a list of segments (`segments`), not as one polyline: an edge divided by a cut-out has several disconnected pieces and one polyline would join them across empty space.
 - A circular edge is where the surfaces of its two faces meet in a circle (`circleBetween` in `surfaces.ts`): a plane across the axis of a cylinder or a cone, a cylinder and a cone about one axis, two cones about one axis (D45). The centre and the radius are computed from the two surfaces; the mesh only shows that the edge exists.
 - D58 ([revolve.md](revolve.md)) adds the sphere and the torus and replaces the test by `circlesBetween`, every circle two surfaces meet in, with `circleBetween(a, b, points, tolerance)` choosing of two by the points of the edge and the reach of each circle; the pairs above give the circles they gave before. `analyzeBody` decides the kind after the segments of the edge are collected and takes the chord tolerance of the document (`State.chordTolerance`). A revolve names its faces as an extrusion of the same profile (`side` with the curve, `startCap`, `endCap`, the `wall…` roles); a curve along its axis has no face.
 - D63 ([edge-blend.md](edge-blend.md)): a chamfer meets its planes in `line` edges, a cone or a torus of a circular edge meets its coaxial faces in `circle` edges, a fillet cylinder meets the planes it touches in `other` edges (a plane touching a cylinder) and a plane across it in a `circle`; the joins of the tools of a chain or a mitre of fillets are `other`.
 - Other edges (a cylinder or a cone cut by a tilted plane, two cylinders also on one axis, a cone and a tilted plane of a tapered extrusion, the edge of a cap with the side of a generated profile) have the kind `other` and cannot be projected.
 
-Pojmenování hran je zároveň předpokladem pro budoucí rovinu nakloněnou kolem hrany; the chamfer and the fillet of edges (D63) name their edges so.
+Naming edges is also a precondition for a future plane tilted about an edge; the chamfer and the fillet of edges (D63) name their edges so.
 
-### Rovina skici na stěně
+### The plane of a sketch on a face
 
-Počítá se analyticky z definice feature, ne prokládáním trojúhelníků. Souřadný systém je pravotočivý a jeho normála míří vždy **ven z tělesa**:
+It is computed analytically from the definition of the feature, not by fitting triangles. The coordinate system is right-handed and its normal always points **out of the body**:
 
-| Stěna | Počátek | Osa Y | Normála N |
+| Face | Origin | Y axis | Normal N |
 |---|---|---|---|
-| víko | počátek rodičovské skici promítnutý do roviny víka | osa Y rodičovské skici | ven z tělesa |
-| boční stěna z úsečky | počáteční bod úsečky (`a`) v rovině rodičovské skici | normála rodičovské skici | ven z tělesa |
+| a cap | the origin of the parent sketch projected into the plane of the cap | the Y axis of the parent sketch | out of the body |
+| a side face from a line | the start point of the line (`a`) in the plane of the parent sketch | the normal of the parent sketch | out of the body |
 | a side from a line moved by an offset, a side of a wall from a line | the start of the moved line in the direction of the sketch curve: the mitred corner, so it moves with the offset or the thickness | the normal of the parent sketch | out of the body |
 | an end of a wall | its corner on the left of the end curve (in the direction of the curve) | the normal of the parent sketch | out of the body |
-| boční stěna z kružnice nebo oblouku | není rovinná → chyba `nonPlanarFace` | | |
+| a side face from a circle or an arc | not planar → error `nonPlanarFace` | | |
 | the side of a generated profile | not planar → error `nonPlanarFace` | | |
 | a side of a revolve from a line across its axis (D58) | the start `a` of the line turned to the start of the turn | the direction the angle grows at the start | out of the body |
 | the caps of a partial revolve (D58) | the origin of the parent sketch turned to the start or the end | the Y axis of the parent sketch turned likewise | out of the body |
@@ -117,17 +117,17 @@ Počítá se analyticky z definice feature, ne prokládáním trojúhelníků. S
 | a chamfer of a circular edge that is a plane across its axis (D63) | as a side of a revolve from a line across its axis, the turn starting at the radial direction of the start of the piece (the model's X projected for a whole circle) | the direction the angle grows there | out of the body |
 | any other face of a chamfer or a fillet (a cone, a cylinder, a torus, a sphere) | not planar → error `nonPlanarFace` | | |
 
-Osa X se dopočítá jako Y × N. Nezávisí tedy na pořadí bodů úsečky ani na orientaci smyčky.
+The X axis is computed as Y × N. It therefore depends neither on the order of the points of the line nor on the orientation of the loop.
 
 **A curve re-pointed (D52).** A side face is named by its curve and a region by the curves of its outer loop, so `setCurvePoint`, which keeps the ID of the curve, keeps those names; that is why the fillet of a corner keeps every face of the body under its name and only adds the round face `side` (or `wallSide`) of the arc. What follows the new point is the geometry: the origin of a planar side face is the start `a` of the line, so a sketch or a plane on the side face of a line whose start was re-pointed moves along the line (the fillet names such features in `ids.moved`), and the straight end of a wall is named by the point its chain ends at (`wallEnd`), so it is renamed when that end is re-pointed.
 
 On a face of a mirrored copy (D53) the rule is the same: the origin and the Y axis are the images of those of the source face, the normal points out of the copy, and X = Y × N is the opposite of the image of the source's X. A sketch on a face of a mirrored copy is right-handed like every sketch and is not the mirror image of the same sketch on the source face: its `x` coordinates run the other way. A mirror of a mirror (an even number of mirrors among the tags of a face) is a turned copy again.
 
-Směr „ven" se bere ze sítě: je to součet normál všech trojúhelníků s daným jménem vážený plochou. Jediný trojúhelník by mohl být úzký a dát špatné znaménko. Síť zároveň ověří, že stěna stále existuje. Ze sítě se bere jen znaménko, poloha a osy jsou analytické.
+The "out" direction is taken from the mesh: it is the area-weighted sum of the normals of all triangles with the given name. A single triangle could be thin and give the wrong sign. The mesh also checks that the face still exists. Only the sign is taken from the mesh; the position and the axes are analytic.
 
-Důsledek: kladná `distance` (i kladný `start`) u extrude ze skici na stěně vždy znamená ven z tělesa, záporná dovnitř.
+Consequence: a positive `distance` (and a positive `start`) of an extrude from a sketch on a face always means out of the body, a negative one into it.
 
-**Vlastní rovina** (`PlaneFeature`) přebírá souřadný systém základu posunutý o `offset` ve směru jeho normály; with the optional parts of D60 the frame is built as the next section says.
+**A plane of its own** (`PlaneFeature`) takes the coordinate system of its base moved by `offset` in the direction of its normal; with the optional parts of D60 the frame is built as the next section says.
 
 ### The plane feature (D60)
 
@@ -161,25 +161,25 @@ The frame is published in `FeatureResult.plane` and `state.planes`, as before; a
 
 So the axis of a bore of an extrusion or of a hole is the normal of its sketch: out of the body for a sketch on a face, and a joint about a bore drilled from the top turns counter-clockwise seen from above. In a posed query the axis of a face moves with its body (`query/context.ts`), while a `sketchLine` projected from the edge of that bore stays as modelled.
 
-### Profily a oblasti
+### Profiles and regions
 
-**Spojování bodů.** Dva body skici se pro účely profilu považují za jeden, když je to tentýž bod, nebo když je spojuje vazba `coincident`, která je v použitých polohách skutečně splněná (vzdálenost do délkové tolerance enginu). Samotná existence vazby nestačí: konfliktní `coincident` mezi dvěma rohy obdélníku, která se nesplnila, profil nezmění. Spojování je tranzitivní a jde i přes počátek a promítnuté body: dva konce přichycené vazbou ke stejnému promítnutému bodu jsou jeden vrchol grafu.
+**Joining points.** For the purpose of a profile two sketch points count as one when they are the same point, or when they are joined by a `coincident` constraint that is actually satisfied in the positions used (the distance within the length tolerance of the engine). The existence of the constraint alone is not enough: a conflicting `coincident` between two corners of a rectangle that was not satisfied does not change the profile. Joining is transitive and also goes through the origin and projected points: two ends snapped by a constraint to the same projected point are one vertex of the graph.
 
-**Graf.** Křivky skici (bez konstrukčních a promítnutých) tvoří rovinný graf. Křivky se smějí dotýkat jen ve spojených bodech. Když se dvě křivky kříží nebo se k sobě jinde přiblíží pod délkovou toleranci, třeba proto, že se profil po vyřešení sám protnul, je profil neplatný a extrude nad touto skicou skončí v chybě `invalidProfile`. Totéž se ověřuje ještě jednou po rozdělení oblouků na úsečky, protože těleso vzniká z lomených čar a ty se od oblouku liší až o `chordTolerance`: když se hranice oblastí po rozdělení kříží (křivka míjí oblouk těsněji, než dělení rozliší) nebo oblast splaskne do dvou bodů (je tenčí než tolerance), je profil také neplatný. Engine tak jádru nikdy nepředá síť, která není uzavřeným tělesem. Platí to i pro tečný dotyk: kružnice tečná k hraně obdélníku, pokud nejsou jedna z nich konstrukční, zneplatní profil celé skici. Je to záměrně přísné a jednoduché; těleso s nulovou tloušťkou stěny by stejně vzniknout nemohlo.
+**The graph.** The curves of the sketch (without construction and projected ones) form a planar graph. Curves may touch only at joined points. When two curves cross or come closer than the length tolerance elsewhere, for example because the profile intersected itself after solving, the profile is invalid and an extrude over this sketch ends in the error `invalidProfile`. The same is checked once more after the arcs are divided into segments, because the body is made from polylines and those differ from the arc by up to `chordTolerance`: when the boundaries of regions cross after the division (a curve passes an arc closer than the division resolves) or a region collapses to two points (it is thinner than the tolerance), the profile is invalid too. So the engine never passes the kernel a mesh that is not a closed body. This holds for a tangent touch as well: a circle tangent to an edge of a rectangle, unless one of them is construction geometry, makes the profile of the whole sketch invalid. It is strict and simple on purpose; a body with a wall of zero thickness could not be made anyway.
 
-**Oblast** je omezená stěna tohoto grafu, tedy nejmenší uzavřená plocha, kterou křivky ohraničují. Obdélník rozdělený příčkou má dvě oblasti, ne tři. Křivky, které žádnou plochu neuzavírají, se ignorují. Oblast může mít díry: jsou to hranice dalších, do ní vnořených souvislých částí grafu.
+**A region** is a bounded face of this graph, that is the smallest closed area the curves bound. A rectangle divided by a crossbar has two regions, not three. Curves that close no area are ignored. A region may have holes: they are the boundaries of further connected parts of the graph nested in it.
 
 ```ts
-interface RegionRef { outerLoop: Id[] }   // ID křivek na vnější hranici oblasti, seřazená
+interface RegionRef { outerLoop: Id[] }   // IDs of the curves on the outer boundary of the region, sorted
 ```
 
-Díry se v referenci neukládají, odvozují se při přepočtu. Když se do skici přidá další kružnice uvnitř obdélníku, oblast „obdélník" ji automaticky dostane jako díru.
+Holes are not stored in the reference; they are derived on recompute. When another circle is added to the sketch inside a rectangle, the region "rectangle" gets it as a hole automatically.
 
-Když některá oblast z `regions` neexistuje, extrude skončí celý v chybě `noProfile`. Částečný výsledek se nevytváří. Pravidlo je záměrně striktní: i náhrada jedné křivky hranice jinou mezi stejnými body oblast zruší a uživatel musí profil vybrat znovu. Identifikace hranice body by to obešla, ale je nejednoznačná, když dva body spojuje víc křivek.
+When a region of `regions` does not exist, the whole extrude ends in the error `noProfile`. No partial result is made. The rule is strict on purpose: even replacing one curve of the boundary by another between the same points removes the region, and the user has to choose the profile again. Identifying the boundary by points would avoid that, but it is ambiguous when two points are joined by several curves.
 
-**Sousední oblasti.** Boční stěna vznikne jen z křivky, která leží na hranici (vnější nebo na hranici díry) právě jedné z vybraných oblastí. Křivka sdílená dvěma vybranými oblastmi se vyruší. Platí to pro příčku mezi dvěma polovinami obdélníku i pro kružnici mezi obdélníkem s dírou a kruhem v té díře. Jinak by uvnitř tělesa zůstala stěna.
+**Neighbouring regions.** A side face is made only from a curve that lies on the boundary (the outer one or the boundary of a hole) of exactly one of the chosen regions. A curve shared by two chosen regions cancels out. This holds for the crossbar between two halves of a rectangle as well as for a circle between a rectangle with a hole and a disc in that hole. Otherwise a face would remain inside the body.
 
-Omezení PoC: oblasti vzniklé křížením křivek se nedetekují, křížení je chyba (viz výše).
+A limit of the PoC: regions made by crossing curves are not detected; a crossing is an error (see above).
 
 **The broad phase (D68).** The profile does not test every pair of curves: each curve has a box (a line its two ends; a circle its centre and radius; an arc its two ends as given, the point where it ends on the circle of its first end, and the ends of that circle's diameters along x and y that it passes, since an arc is read as the circle of its first end between two angles and in a sketch that is not solved its second end may lie off that circle), and a pair is tested only when the two boxes, each widened by the length tolerance, overlap (`nearPairs` of `sketch.ts`: the boxes sorted along x and swept, the pairs in the order of the double loop they replace). It is exact: a pair the test rejects has a point within the tolerance of both, which lies in both widened boxes, or is two rounds on one circle, whose boxes coincide; a line of no length is paired with everything, as the test rejects it with every curve. A part of the graph is a hole of a face only when its sample point lies in the box of the face's boundary (an arc taken as its whole circle and its two ends, which is what the ray test reads; outside that box the ray crosses the boundary an even number of times or not at all). The check of a moved outline (`touchingCurves`) uses the same pairs and answers the same first pair. 200 slots in a rectangle (804 curves) take 9 ms where the double loop took 350.
 

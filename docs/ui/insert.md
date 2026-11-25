@@ -4,7 +4,7 @@ Part of [ui.md](../ui.md); how to read the tables is said there. Another documen
 
 ## Insert (D62)
 
-| Funkce | Příkaz / volání | Čte |
+| Function | Command / call | Reads |
 |---|---|---|
 | Start (the button *Insert*) | a draft of an insertion on XY (or the plane of the selection) with the latest stored document; without a stored document the form opens with the choice of a file | `document.documents` |
 | Insert a file (*Insert a document…* in the form) | the JSON of the file read in the browser, then `addDocument` (one undo step) under an ID from the name of the file (`idFromFile`, `document` as the fallback), named by the file; the draft then uses it. A file that is no JSON is said in the status line; a document that does not load is refused with the path of its fault | |

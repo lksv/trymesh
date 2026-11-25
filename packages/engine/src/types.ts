@@ -326,21 +326,98 @@ export type CurvePointName = 'a' | 'b' | 'center' | 'start' | 'end';
 
 export type ProjectionKind = 'line' | 'circle';
 
-// An entry of `external` of a sketch: reference geometry, fixed for the solver (today the
-// projection of an edge of a body, `type: 'edge'`). Later kinds of entry, reference or derived
-// geometry (a mirror or a pattern of own curves), are further members of this union and share the
-// commands addExternal, updateExternal and removeExternal (D64).
+// An entry of `external` of a sketch, one of two sources of geometry that is not own (D64, D68):
+// - reference geometry, computed before the solver and fixed for it; constraints of the sketch may
+//   name its entities: the projection of an edge of a body (EdgeProjection);
+// - derived geometry, computed after the solver from the solved own geometry; no constraint of its
+//   own sketch may name its entities: a mirror or a pattern of own curves and points
+//   (SketchPattern).
+// All kinds share the commands addExternal, updateExternal and removeExternal; an update may not
+// turn one source into the other.
 // Besides its entries every sketch has the lines `origin/x` and `origin/y` through its origin along
 // its X and Y (from `origin` towards +X and +Y), fixed like projected geometry and in no entry: a
 // constraint of the sketch and an axis `{ kind: 'sketchLine', sketch, line }` may name them; they
 // are whole lines, so `midpoint` and `equalLength` do not take them (D71).
-// kind: jako co se hrana promítá
-export interface ExternalRef {
+export type ExternalRef = EdgeProjection | SketchPattern;
+
+// The projection of an edge of a body into the sketch. kind: jako co se hrana promítá
+export interface EdgeProjection {
   type: 'edge';
   body: Id;
   edge: EdgeName;
   kind: ProjectionKind;
 }
+
+// A mirror or a pattern of own geometry of the sketch (D68), an entry of `external` computed after
+// the sketch is solved. The copies are derived geometry: drawn, forming regions and naming side
+// faces as their sources, read by later features and sketches, but no constraint of this sketch can
+// name them (they do not exist while it is solved). Constrain the sources; the copies follow.
+// - `sources`: what is copied: own curves (a construction curve too: its copies are construction
+//   curves and form no regions) and own points of the sketch, or `origin`; at least one, none
+//   twice. A curve takes its points along: the copies of two curves that share a point share its
+//   copy. Projected geometry, an axis of the origin and copies are no source. A command refuses an
+//   ID that is not an own curve or point; a document may name one that was removed since: it is not
+//   copied, and the sketch has the warning `brokenCopies`.
+// - `transform`: how the copies stand (SketchTransform).
+// - IDs: copy `n` of a source `s` is `<entry>/<n>/<s>` (a point `p` of a copied curve is
+//   `<entry>/<n>/<p>`; `origin` is copied as `<entry>/<n>/origin`). A mirror has the copy 1; a row
+//   and a circle number from 1; a grid numbers the copy i steps along the first direction and j
+//   along the second `i + 1000 · j`, as a pattern of features does (D53). A copy number is an
+//   entity whatever the count of the document (a count may be an expression): a reference to a copy
+//   above the count is broken until the count reaches it.
+// - A higher count adds copies and moves none of the others with a `spacing`, so the regions and
+//   faces named by a copy stay; a lower count removes the highest, and what names them is a broken
+//   reference. A feature that should follow the count names a region the copies lie in: a region is
+//   named by its outer loop, so copies inside it are its holes and follow the count. A feature that
+//   names the region of a copy names that copy.
+// - A side face of a copy is `{ role: 'side', curve: '<entry>/<n>/<curve>' }` (its key quotes the
+//   slashed ID: `lid/side/"m/1/c2"`).
+// - A copy that occupies what a curve before it that forms regions occupies (its source, an own
+//   curve, an earlier copy that kept its regions; a line on the axis of a mirror, a circle at the
+//   centre of a circular pattern) forms no regions; it is still there under its ID. A half circle
+//   whose ends lie on the axis is not such a copy: its image is the other half.
+// - The ends of the copied curves join the ends of curves at their place (within 1e-6 mm): the ends
+//   of other copies, of this entry or another, and the end of an own curve that forms regions,
+//   unless two such own ends there are not one point already (then none). So a half drawn up to the
+//   axis of a mirror closes with its image into one region, a chain whose end the pattern carries
+//   onto its own start closes into a ring, and two mirrors about one axis close with each other.
+//   Put the ends of a mirrored half on the axis by a constraint (`pointOnCurve` with the axis); an
+//   end that stays open is named in the result of the sketch (`SketchResult.openEnds`).
+// - The sketch tools never cut, extend, fillet or snap to a copy; a tool that changes a source
+//   patches the entries that list it (the pieces in its place, the arc of a fillet or a notch that
+//   closes the gap it opened), so the copies keep the shape of the source.
+export interface SketchPattern {
+  type: 'pattern';
+  sources: Id[];
+  transform: SketchTransform;
+}
+
+// How the copies of a sketch pattern stand: the transforms of D53 in the plane of the sketch.
+// - `mirror`: one copy, the mirror image about the whole line `axis` (both ways): a line of the
+//   sketch, own (a construction line too), projected, or an axis of the origin (`origin/x`,
+//   `origin/y`). (A pattern of features has `plane` here; a sketch names a line.)
+// - `linear`: `count − 1` copies shifted along the line `direction` (from its `a` to its `b`, a
+//   line as for a mirror; `origin/x` points along +X) by `spacing` between neighbours or over
+//   `length` between the source and the last copy; a negative span runs the other way. `second`
+//   (a direction, a count and a span of its own) makes a grid: at most 200 places, the source
+//   included, no two in one place.
+// - `circular`: `count − 1` copies turned about the point `center` (own, `origin`, or a point of
+//   projected geometry), counter-clockwise in the sketch: over the full circle (`span: { type:
+//   'full' }`), or within `angle` between the source and the last copy (a negative angle turns
+//   clockwise). (A pattern of features has `axis` here; a sketch names a point.)
+// - The numeric fields, with the ranges of a pattern of features: `transform/count` (an integer
+//   from 1 to 200, the source included; 1 makes no copies), `transform/span/spacing` and
+//   `transform/span/length` (mm, not zero), `transform/span/angle` (radians, −2π to 2π, not zero),
+//   and the same under `transform/second/`. Their addresses in the sketch are
+//   `external/<entry>/transform/count` and so on: `setField` with the sketch as the feature changes
+//   one, and a field takes an expression (`vents`, `deg(30)`).
+// - `axis`, `direction` and `center` cannot be a copy. A command refuses one that is not a line
+//   (a point) of the sketch; a document may name one that is gone: the entry then has no copies and
+//   the sketch has the warning `brokenCopies`.
+export type SketchTransform =
+  | { type: 'mirror'; axis: Id }
+  | { type: 'linear'; direction: Id; count: number; span: LinearSpan; second?: { direction: Id; count: number; span: LinearSpan } }
+  | { type: 'circular'; center: Id; count: number; span: { type: 'full' } | { type: 'angle'; angle: number } };
 
 // Každá varianta má pojmenované operandy s pevným významem.
 // A line operand may be an axis of the origin, `origin/x` or `origin/y` (a driving constraint needs
@@ -1500,7 +1577,15 @@ export type WarningCode =
   // insertion inside it, with their IDs prefixed and a check as `{ check, in: <prefixed ID of that
   // insertion> }`. The bodies that are there come in; other warnings of its features are not
   // repeated.
-  | 'insertedIssues';
+  | 'insertedIssues'
+  // A mirror or pattern of the sketch (SketchPattern) cannot make all its copies. `refs`: the entry,
+  // then what is wrong: the axis, direction or centre that is not a line (a point) of the sketch
+  // with a position, or a line of no length (no copies at all); the sources that are not own curves
+  // or points (the others are copied); the addresses of the fields in the sketch
+  // (`external/<entry>/transform/count`, `…/second/count`, …) of a grid of more than 200 places or
+  // whose copies would stand in one place (no copies at all). The rest of the sketch is solved and
+  // its profile found with the copies that could be made.
+  | 'brokenCopies';
 
 export type IssueCode = ErrorCode | WarningCode;
 
@@ -1530,6 +1615,30 @@ export interface SketchResult {
   measurements: Record<Id, number>; // hodnoty referenčních kót
   valid: boolean; // false: the profile is invalid (curves cross or touch away from common points, or another reason); the query `sketchContacts` says where and why, and the sketch tool `split` without a curve repairs what can be cut
   regions: { ref: RegionRef; loops: Float64Array[] }[]; // pro vykreslení a výběr
+  // Present when ends of copies of a mirror or pattern stayed open: why an outline of copies did
+  // not close (OpenEnds). An open chain is a legitimate sketch, so this is no warning.
+  openEnds?: OpenEnds;
+}
+
+// The ends of copies (curves of derived geometry that form regions) that, after every join, are the
+// end of no other curve that forms regions. The ends of copies join the curve ends at their place
+// within the length tolerance (1e-6 mm), so an outline of copies closes only where the ends meet:
+// a mirrored half has to end on the axis by a constraint (`pointOnCurve` with the axis line).
+// - `count`: how many ends are open; `ends`: at most 20 of them, those of `twoVertices` first, then
+//   by `distance`, the nearest first.
+// - `reason: 'twoVertices'`: the own ends at its place are two points that are not joined, so it
+//   joined neither (`near` names them; a `coincident` between them cures it). `reason: 'apart'`:
+//   nothing is at its place; `near` is the nearest end of another curve that forms regions and
+//   `distance` how far it is, in mm.
+export interface OpenEnds {
+  count: number;
+  ends: OpenEnd[];
+}
+export interface OpenEnd {
+  end: Id;
+  reason: 'twoVertices' | 'apart';
+  near: Id[];
+  distance: number;
 }
 
 // Diagnostika skici na vyžádání (Engine.diagnoseSketch). Počítá se z vyřešeného stavu.
@@ -1681,8 +1790,13 @@ export type Command =
   // to a reference dimension is an invalid command.
   | { type: 'setConstraintValue'; sketch: Id; id: Id; value?: number | Expr; driving?: boolean }
   | { type: 'dragPoint'; sketch: Id; point: Id; x: number; y: number }
-  | { type: 'addExternal'; sketch: Id; id: Id; ref: ExternalRef }
-  | { type: 'updateExternal'; sketch: Id; id: Id; ref: ExternalRef }
+  // `ref` in its input form: a numeric field of an entry may be an expression (kept in the sketch's
+  // `expressions` at `external/<id>/…`; setField with the sketch as the feature reaches one). An
+  // update replaces the whole entry: send the entry with its expressions as strings, or a number
+  // removes the expression; a string equal to the expression the field has counts as unchanged. An
+  // update may not turn reference geometry into derived geometry or back.
+  | { type: 'addExternal'; sketch: Id; id: Id; ref: Input<ExternalRef> }
+  | { type: 'updateExternal'; sketch: Id; id: Id; ref: Input<ExternalRef> }
   | { type: 'removeExternal'; sketch: Id; id: Id }
   // Body properties (D48). The body of setBodyProperties and setBodyMaterial has to be one a feature
   // of the document can create: the feature exists and its type creates a body of that ID (an

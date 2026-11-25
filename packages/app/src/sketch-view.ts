@@ -1,6 +1,6 @@
 // Geometrie skici pro vykreslení a test zásahu: polohy z výsledku přepočtu, tvar křivek, měření.
 // Čisté funkce bez závislosti na prohlížeči.
-import { type Constraint, type DimensionShape, type Id, type SketchCurve, type SketchFeature, type SketchResult, type SketchToolContext, type Vec2, constraintOperands, curvePoints, isOriginAxis, lineExtent, referenceEntities, solvedCurves } from '@trymesh/engine';
+import { type Constraint, type DimensionShape, type Id, type SketchCurve, type SketchFeature, type SketchResult, type SketchToolContext, type Vec2, constraintOperands, curvePoints, derivedOrigin, isOriginAxis, kindOf as kindOfEntry, lineExtent, referenceEntities, solvedCurves } from '@trymesh/engine';
 
 export const ORIGIN = 'origin';
 const TAU = 2 * Math.PI;
@@ -14,11 +14,13 @@ export interface PointView {
   id: Id;
   at: Vec2;
   own: boolean; // false = počátek nebo bod promítnuté geometrie
+  derived?: true; // a point of a copy of a mirror or pattern (D68)
 }
 export interface CurveView {
   id: Id;
   own: boolean; // false = promítnutá hrana
-  construction: boolean;
+  derived?: true; // a copy of a mirror or pattern (D68): drawn as derived geometry, not snapped to
+  construction: boolean; // of a copy, the flag of its source
   shape: Shape;
   points: Id[]; // určující body: konce úsečky; střed kružnice; střed, začátek a konec oblouku
 }
@@ -77,9 +79,10 @@ export function sketchView(feature: SketchFeature, result: SketchResult): Sketch
   // The entries of `external` (projected geometry): their points with a position, in the order of
   // the document and of the kind of each entry.
   for (const entry of Object.keys(feature.external)) {
+    const derived = kindOfEntry(feature.external[entry]).source === 'derived';
     for (const [id, kind] of Object.entries(referenceEntities(feature, entry))) {
       const p = kind === 'point' ? at(id) : undefined;
-      if (p) points.set(id, { id, at: p, own: false });
+      if (p) points.set(id, { id, at: p, own: false, ...(derived ? { derived: true as const } : {}) });
     }
   }
   // The curves: the own ones, then those of the entries the result has (in the order of the
@@ -90,7 +93,9 @@ export function sketchView(feature: SketchFeature, result: SketchResult): Sketch
     curves.set(curve.id, {
       id: curve.id,
       own,
-      construction: own && feature.curves[curve.id].construction === true,
+      ...(curve.source === 'derived' ? { derived: true as const } : {}),
+      // a copy has the flag of its source (D68)
+      construction: own ? feature.curves[curve.id].construction === true : curve.source === 'derived' && feature.curves[derivedOrigin(feature, curve.id)?.source ?? '']?.construction === true,
       points: isOriginAxis(curve.id) ? [ORIGIN] : curvePoints(curve.shape),
       shape: shapeOf(curve, solved.geometry.radii[curve.id]),
     });

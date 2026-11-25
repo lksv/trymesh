@@ -425,6 +425,14 @@ export function evaluateNumber(expr: Expr, environment: Environment): { ok: true
   return run(expr, 'number', fromEnvironment(environment)) as { ok: true; value: number } | { ok: false; error: ExpressionError };
 }
 
+// The value of a number expression over the parameters of a document, or undefined when it has
+// none (a syntax error, an unknown name, a parameter in error): what the app reads where it decides
+// by the value before it sends the expression (an angle of a full turn, D68).
+export function expressionValue(expr: Expr, parameters: readonly Parameter[]): number | undefined {
+  const result = evaluateNumber(expr, evaluateParameters(parameters));
+  return result.ok ? result.value : undefined;
+}
+
 export function evaluateCheck(expr: Expr, environment: Environment): CheckResult {
   const result = run(expr, 'check', fromEnvironment(environment));
   if (!result.ok) return { status: 'error', error: result.error };

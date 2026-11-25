@@ -151,7 +151,8 @@ export function modelScene(host: SceneHost, queries: QueryPanel, sketch: { id: I
     if (f.type !== 'sketch' || host.hidden.has(f.id) || !result?.sketch || !result.plane || sketch?.id === f.id) continue;
     const frame = result.plane;
     const [solid, dashed]: number[][] = [[], []];
-    for (const curve of sketchView(f, result.sketch).curves.values()) if (curve.own) pushPolyline(curve.construction ? dashed : solid, frame, polyline(curve.shape));
+    // the copies of a mirror or pattern (D68) are drawn as the curves they copy
+    for (const curve of sketchView(f, result.sketch).curves.values()) if (curve.own || curve.derived) pushPolyline(curve.construction ? dashed : solid, frame, polyline(curve.shape));
     const color = f.id === host.selectedFeature ? COLOR.select : COLOR.idle;
     model.lines.push({ segments: solid, color, width: f.id === host.selectedFeature ? 2.5 : 1.5 }, { segments: dashed, color, width: 1, dashed: true });
   }

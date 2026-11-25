@@ -6,10 +6,11 @@
 // - Such a field is a text (an ID) or a whole number, and is always there: a key cannot be built
 //   from an object, and a field that may be missing would give two faces one key.
 // - A text field may hold any ID a sketch can have, the derived ID of a point of projected
-//   geometry (`rim/center`) included, although the key separates its fields by slashes. The key
-//   stays unambiguous because at most one field of a role holds a free ID; the others are from
-//   a closed set of words (`side` of a wall side) or whole numbers (`flat` of a nut pocket). A new
-//   role keeps that rule.
+//   geometry (`rim/center`) or of a copy of a mirror or pattern (`m/1/c2`, D68) included, although
+//   the key separates its fields by slashes. The key stays unambiguous because a text field that
+//   holds a slash or starts with a quotation mark is written as a JSON string (`lid/side/"m/1/c2"`):
+//   a field that is not quoted has no slash and does not start with a quotation mark, and a quoted
+//   one ends at its closing quote, so a key reads back in one way whatever the fields hold.
 // - The compiler ties the union and the catalog: a role without an entry does not compile, nor an
 //   entry that leaves out a field of the name or gives it the other kind. A role whose name has
 //   a field of another type, or an optional one, has no entry that compiles.
@@ -59,10 +60,11 @@ export function faceParts(name: FaceName, roles: RoleCatalog = FACE_ROLES): (str
   return facePartNames(name.role, roles).map((part) => (name as unknown as Record<string, string | number>)[part]);
 }
 
-// The key of a face: `<feature>/<role>`, then the values of the fields of the role, then
-// `/@<pattern>:<index>` for every copy tag. For the three roles of an extrusion that is
-// `<feature>/side/<curve>`, `<feature>/startCap` and `<feature>/endCap`; the face table depends
-// on it.
+// The key of a face: `<feature>/<role>`, then the values of the fields of the role (a text that
+// holds a slash or starts with a quotation mark as a JSON string), then `/@<pattern>:<index>` for
+// every copy tag. For the three roles of an extrusion that is `<feature>/side/<curve>`,
+// `<feature>/startCap` and `<feature>/endCap`, and for the side of a copy of a mirror or pattern
+// in a sketch `<feature>/side/"<entry>/<copy>/<curve>"`; the face table depends on it.
 // A face of an insertion (D62: `feature` has a slash) is keyed `<insertion>/`, then the key of its
 // name in the inserted document written as a JSON string, then the tags of this document:
 // `b1/"ring/side/outer"`, `b1/"ring/side/outer"/@q:2`, `kit/"b/\"ring/endCap/@p:1\""`. An ID may
@@ -77,11 +79,14 @@ export function faceParts(name: FaceName, roles: RoleCatalog = FACE_ROLES): (str
 // few times dearer than a plain one.
 const PREFIXED_KEYS = new WeakMap<FaceName, string>();
 
+// A field of a role in a key: a text with a slash or a leading quotation mark as a JSON string.
+const partKey = (part: string | number): string => (typeof part === 'string' && (part.includes('/') || part.startsWith('"')) ? JSON.stringify(part) : String(part));
+
 export function faceKey(name: FaceName, roles: RoleCatalog = FACE_ROLES): string {
   const tags = name.copy ?? [];
   const tagKey = (tag: { pattern: string; index: number }): string => `/@${tag.pattern}:${tag.index}`;
   const slash = name.feature.indexOf('/');
-  if (slash < 0) return [name.feature, name.role, ...faceParts(name, roles)].join('/') + tags.map(tagKey).join('');
+  if (slash < 0) return [name.feature, name.role, ...faceParts(name, roles).map(partKey)].join('/') + tags.map(tagKey).join('');
   if (roles === FACE_ROLES) {
     const kept = PREFIXED_KEYS.get(name);
     if (kept !== undefined) return kept;

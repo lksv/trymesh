@@ -34,9 +34,9 @@ import {
   isOriginAxis,
   ORIGIN_AXES,
   placeAnchor,
-  referenceEntities,
   sketchTool,
 } from '@trymesh/engine';
+import { entryEntities } from './references';
 import { type EntityKind, ORIGIN, type PointView, type SketchView, dist, kindOf, measure, unreachable } from './sketch-view';
 
 // The place of a click in the sketch with what it snapped to, and the supplier of new IDs: both
@@ -192,9 +192,12 @@ function sort(view: SketchView, ids: Id[]): Sorted {
 // A constraint is offered only with an operand the solver can move: the engine refuses one between
 // fixed entities alone (the origin, its axes, projected geometry). `horizontal` and `vertical` go to
 // the own lines of the selection only.
+// A selection that holds a copy of a mirror or pattern (D68) gets no offer: a copy cannot be an
+// operand of a constraint of its own sketch.
+const holdsCopy = (view: SketchView, selection: Id[]): boolean => selection.some((id) => view.points.get(id)?.derived === true || view.curves.get(id)?.derived === true);
 export function geometricFor(kind: GeometricKind, view: SketchView, selection: Id[]): Constraint[] | undefined {
   const own = (id: Id): boolean => view.points.get(id)?.own === true || view.curves.get(id)?.own === true;
-  if (!selection.some(own)) return undefined;
+  if (!selection.some(own) || holdsCopy(view, selection)) return undefined;
   const { points, lines, round } = sort(view, selection);
   const only = (p: number, l: number, r: number) => points.length === p && lines.length === l && round.length === r;
   switch (kind) {
@@ -269,6 +272,7 @@ function roundDimension(kind: EntityKind | undefined): 'diameter' | 'radius' {
 
 // Kóta podle výběru (tabulka v docs/ui.md); hodnota je současná míra zaokrouhlená na setiny.
 export function dimensionFor(variant: DimensionVariant, view: SketchView, selection: Id[]): Dimension | undefined {
+  if (holdsCopy(view, selection)) return undefined;
   const { points, lines, round } = sort(view, selection);
   const count = points.length + lines.length + round.length;
   let shape: DimensionShape | undefined;
@@ -481,9 +485,10 @@ export type AxisKind = 'X' | 'Y' | 'Z' | 'sketchPoint' | 'sketchLine' | 'face';
 export const axisKind = (axis: AxisRef): AxisKind => (axis.kind === 'base' ? axis.axis : axis.kind);
 // The lines of a sketch an axis may run along (D58): its own lines, construction or not, then its
 // projected ones, then the axes of the origin `origin/x` and `origin/y` (D71).
+// Of a derived entry (a mirror or pattern, D68) the lines among its first `PICKER_LIMIT` entities.
 export const lineIds = (sketch: SketchFeature): Id[] => [
   ...Object.entries(sketch.curves).filter(([, curve]) => curve.type === 'line').map(([id]) => id),
-  ...Object.keys(sketch.external).flatMap((entry) => Object.entries(referenceEntities(sketch, entry)).filter(([, kind]) => kind === 'line').map(([id]) => id)),
+  ...entryEntities(sketch).filter((entity) => entity.kind === 'line').map((entity) => entity.id),
   ...ORIGIN_AXES,
 ];
 // The label of a line in a select of the lines of a sketch: an axis of the origin says which.

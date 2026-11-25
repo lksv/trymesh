@@ -39,15 +39,51 @@ describe('roles of faces', () => {
     // the centre of a projected circle as the point of a hole (D46 asks for own points, but the name itself is valid)
     const bore: FaceName = { feature: 'H', role: 'holeBore', point: 'rim/center' };
     expect(faceName(bore, 'face')).toEqual(bore);
-    expect(faceKey(bore)).toBe('H/holeBore/rim/center');
-    // a flat: the whole number first (alphabetical), then the free ID, which is the only free part of the role
+    // a text with a slash is written as a JSON string (D68)
+    expect(faceKey(bore)).toBe('H/holeBore/"rim/center"');
+    // a flat: the whole number first (alphabetical), then the point
     const flat: FaceName = { feature: 'H', role: 'holeFlat', point: 'rim/center', flat: 2 };
-    expect(faceKey(flat)).toBe('H/holeFlat/2/rim/center');
+    expect(faceKey(flat)).toBe('H/holeFlat/2/"rim/center"');
     expect(faceKey({ ...flat, flat: 1 })).not.toBe(faceKey(flat));
     expect(faceKey({ feature: 'H', role: 'holeSeat', copy: [{ pattern: 'P', index: 1 }] })).toBe('H/holeSeat/@P:1');
-    // every role has at most one part that holds a free ID: the others are whole numbers or from a closed set
-    const free = (role: string): string[] => Object.entries(FACE_ROLES[role as keyof typeof FACE_ROLES].parts).flatMap(([part, spec]) => (spec.kind === 'text' && !(role === 'wallSide' && part === 'side') ? [part] : []));
-    for (const role of Object.keys(FACE_ROLES)) expect(free(role).length, role).toBeLessThanOrEqual(1);
+  });
+
+  it('the side of a copy of a mirror or pattern in a sketch is keyed with its ID quoted, also under a copy tag (D68)', () => {
+    expect(faceKey({ feature: 'lid', role: 'side', curve: 'm/1/c2' })).toBe('lid/side/"m/1/c2"');
+    expect(faceKey({ feature: 'lid', role: 'side', curve: 'm/1/c2', copy: [{ pattern: 'p', index: 2 }] })).toBe('lid/side/"m/1/c2"/@p:2');
+    expect(faceKey({ feature: 'W', role: 'wallSide', curve: 'm/1/c2', side: 'left' })).toBe('W/wallSide/"m/1/c2"/left');
+    // a text that starts with a quotation mark is quoted too; a plain ID keeps its key
+    expect(faceKey({ feature: 'E', role: 'side', curve: '"x' })).toBe('E/side/"\\"x"');
+    expect(faceKey({ feature: 'E', role: 'side', curve: 'x"' })).toBe('E/side/x"');
+  });
+
+  // Every name over a small alphabet, under the roles of the catalog and a catalog with two texts in
+  // one role: two names share a key only when they are one name.
+  it('no two names share a key (D68)', () => {
+    const alphabet = ['a', '/', '"', '@', ':', '\\', '1', 'p'];
+    const texts: string[] = [''];
+    for (let length = 1; length <= 3; length++) {
+      const before = texts.filter((t) => t.length === length - 1);
+      for (const t of before) for (const c of alphabet) texts.push(t + c);
+    }
+    const tags = [undefined, [{ pattern: 'p', index: 1 }]];
+    const TWO: RoleCatalog = { ...FACE_ROLES, pair: { title: 'pair', parts: { a: { title: 'a', kind: 'text' }, b: { title: 'b', kind: 'text' } } } };
+    const seen = new Map<string, string>();
+    const check = (name: object, roles: RoleCatalog): void => {
+      const key = faceKey(name as FaceName, roles);
+      const text = JSON.stringify(name);
+      const other = seen.get(key);
+      if (other !== undefined) expect(other, key).toBe(text);
+      seen.set(key, text);
+    };
+    const short = texts.filter((t) => t.length <= 2);
+    for (const copy of tags) {
+      for (const curve of texts) check({ feature: 'E', role: 'side', curve, ...(copy ? { copy } : {}) }, FACE_ROLES);
+      for (const point of texts) for (const flat of [1, 2]) check({ feature: 'E', role: 'holeFlat', point, flat, ...(copy ? { copy } : {}) }, FACE_ROLES);
+      for (const curve of short) for (const side of short) check({ feature: 'E', role: 'wallSide', curve, side, ...(copy ? { copy } : {}) }, FACE_ROLES);
+      for (const a of short) for (const b of short) check({ feature: 'E', role: 'pair', a, b, ...(copy ? { copy } : {}) }, TWO);
+    }
+    expect(seen.size).toBeGreaterThan(20000);
   });
 
   it('the key of a face keeps its form for the roles of an extrusion', () => {

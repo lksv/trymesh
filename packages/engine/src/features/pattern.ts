@@ -1,6 +1,6 @@
 // The pattern feature: repeats the tools of earlier features, or a finished body, in the transforms
 // of its copies: turned around an axis, shifted along a direction, or mirrored in a plane (D53).
-import type { NumberSpec } from '../catalog';
+import { GRID_STRIDE, MAX_PATTERN_PLACES, PATTERN_ANGLE, PATTERN_COUNT, PATTERN_LENGTH, PATTERN_SPACING } from '../pattern-numbers';
 import { applyTool, axis, frame, issue, lookup } from '../recompute/services';
 import type { Model, Placement, State, Step, StepContext } from '../recompute/state';
 import { type RigidTransform, compose, reflection, rotation, shift, transformFace, transformSolid } from '../solid';
@@ -9,23 +9,9 @@ import { LENGTH_TOLERANCE, faceKey, len3, sub3 } from '../util';
 import { type Dict, type FeatureRef, type ValidationContext, axisRef, axisRefs, base, fail, object, oneOf, onlyFields, planeRef, planeRefs, string } from '../validation';
 import type { FeatureModule } from './module';
 
-// The count of a pattern includes the original. The upper bound keeps a typo in an expression from
-// starting thousands of booleans.
-export const MAX_PATTERN_COUNT = 200;
-// A pattern has at most this many places, the original included, in a row or in a grid (D53): the
-// bound of a count, for the product of the two counts of a grid. Judged by the recompute, because
-// either count may be an expression.
-export const MAX_PATTERN_PLACES = 200;
-// The copy of a grid i steps along the first direction and j along the second has the number
-// i + GRID_STRIDE · j (D53). Above the largest step of the first direction (`MAX_PATTERN_COUNT − 1`)
-// and part of the meaning of every document with a grid: never changed.
-export const GRID_STRIDE = 1000;
-const PATTERN_COUNT: NumberSpec = { title: 'Count', unit: 'count', integer: true, min: { value: 1 }, max: { value: MAX_PATTERN_COUNT } };
-const PATTERN_ANGLE: NumberSpec = { title: 'Angle', unit: 'rad', min: { value: -2 * Math.PI }, max: { value: 2 * Math.PI }, nonZero: true };
-// The spans of a linear pattern: no bound of their own (the general bound of a document number
-// holds); negative runs against the direction.
-const PATTERN_SPACING: NumberSpec = { title: 'Spacing', unit: 'mm', nonZero: true };
-const PATTERN_LENGTH: NumberSpec = { title: 'Length', unit: 'mm', nonZero: true };
+// The bounds and the specs of the numbers of a pattern live in a leaf, which the mirror and pattern
+// in a sketch read too (D68); the engine exports them from here as before.
+export { GRID_STRIDE, MAX_PATTERN_COUNT, MAX_PATTERN_PLACES } from '../pattern-numbers';
 
 function patternFeature(o: Dict, what: string, context: ValidationContext): PatternFeature {
   const { fields } = context;

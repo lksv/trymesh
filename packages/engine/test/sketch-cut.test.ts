@@ -67,7 +67,7 @@ describe('the catalog entries and the input kinds', () => {
     expect(refusal(doc, 'trim', { curve: 'ra' } as never)).toBe('the input "at" is missing');
     expect(refusal(doc, 'split', { with: 'ra' })).toBe('`with` and `at` need `curve`');
     expect(refusal(doc, 'trim', { curve: 'ra', at: [1, 0], with: 'ra' })).toBe('`with` names the curve itself');
-    expect(Object.keys(SKETCH_TOOLS.split.ids)).toHaveLength(15);
+    expect(Object.keys(SKETCH_TOOLS.split.ids)).toHaveLength(16); // 6e's fifteen and 6c's `entries` (D68)
   });
 });
 

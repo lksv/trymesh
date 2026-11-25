@@ -2,7 +2,7 @@
 // points of step 6 of D36 each have a `describe` of their own; the board of step 1 is a stand-in
 // until 6f imports one, and 6c and 6b build on it.
 import { describe, expect, it } from 'vitest';
-import { type Command, type CutIds, type Engine, type EngineState, type Expr, type Id, type SketchFeature, type SketchResult, type SketchToolInputs, AXIS_CURVES, AXIS_REACH, emptySketch, freshIds, lineExtent, profileOf, repairsByDefault, sketchTool, sketchWorld, solvedCurves, toolBase } from '@trymesh/engine';
+import { type Command, type CutIds, type Engine, type EngineState, type Expr, type Id, type SketchFeature, type SketchResult, type SketchToolInputs, AXIS_CURVES, AXIS_REACH, emptySketch, faceKey, freshIds, lineExtent, profileOf, repairsByDefault, sketchTool, sketchWorld, solvedCurves, toolBase } from '@trymesh/engine';
 import { pcbByHand, point, standInBoard } from './board-kit';
 import { XY, addSketch, batch, constrain, newEngine, run } from './kit';
 
@@ -478,5 +478,363 @@ describe('scenario 15, step 6: the cable notches on stand-ins (6e, D65)', () => 
       expect(reason, repair).toContain('"tk"');
       expect(reason, repair).toMatch(/only touches/);
     }
+  });
+});
+
+// ================================================================ 6c (D68): the lid and the vents
+
+// docs/d36/6c-sketch-mirror-pattern/calls.ts, on the stand-ins: the lid half mirrored about the Y
+// axis of the origin, the vents as linear patterns with the count `vents`, the second notch
+// trimmed into the source half on four paths, the fillet of a source corner, a split by a rib, an
+// own curve across a copy, an end that stays open, and the refusals.
+const [LW, LH, LR, LT] = [84, 54, 5, 2];
+const SLOT = 3 * 9 + Math.PI * 1.5 * 1.5;
+const LID = LW * LH - (4 - Math.PI) * LR * LR;
+// the arcs are polygons within the chord tolerance (0.01 mm): the outline's polygon is 0.19 mm²
+// below the area by hand, a slot's 0.06 mm²
+const lidAllowance = (holes: number): number => (0.2 + 0.06 * holes) * LT;
+const LID_REGION = ['c1', 'c2', 'c3', 'm/1/c1', 'm/1/c2', 'm/1/c3', 'm/1/r1', 'm/1/r2', 'r1', 'r2'];
+const pt = (sketch: Id, id: Id, x: number, y: number): Command => ({ type: 'addPoint', sketch, id, x, y });
+const ln = (sketch: Id, id: Id, a: Id, b: Id): Command => ({ type: 'addCurve', sketch, id, curve: { type: 'line', a, b } });
+const ac = (sketch: Id, id: Id, center: Id, start: Id, end: Id): Command => ({ type: 'addCurve', sketch, id, curve: { type: 'arc', center, start, end } });
+const addPattern = (sketch: Id, id: Id, ref: object): Command => ({ type: 'addExternal', sketch, id, ref } as Command);
+const loopsOf = (state: EngineState, sketch: Id): Id[][] => resultOf(state, sketch).regions.map((region) => region.ref.outerLoop);
+const extrudeLoops = (id: Id, sketch: Id, regions: Id[][], distance: Expr, operation: 'new' | 'cut' = 'new', targets?: Id[]): Command => ({
+  type: 'addFeature',
+  feature: { id, name: id, suppressed: false, type: 'extrude', profile: { type: 'regions', sketch, regions: regions.map((outerLoop) => ({ outerLoop: [...outerLoop].sort() })) }, extent: { type: 'distance', start: 0, distance }, operation, ...(targets ? { targets } : {}) },
+});
+const patternOf = (state: EngineState, sketch: Id, entry: Id) => sketchOf(state, sketch).external[entry] as { sources: Id[] };
+
+function mirroredLid(engine: Engine): EngineState {
+  run(engine, ...(['W', 'H', 'R', 'T'] as const).map((name, i): Command => ({ type: 'setParameter', name, expr: `${[LW, LH, LR, LT][i]}` })), { type: 'setParameter', name: 'vents', expr: '5' }, { type: 'setParameter', name: 'ventPitch', expr: '6' });
+  const s = 'lidSketch';
+  run(engine, { type: 'addFeature', feature: emptySketch(s, 'Lid', XY) });
+  run(engine, pt(s, 'a1', 37.3, 0.2), pt(s, 'q1', 36.8, 5.1), pt(s, 'a2', 42.2, 4.7), pt(s, 'a3', 41.9, 49.4), pt(s, 'q2', 37.3, 48.8), pt(s, 'a4', 36.8, 54.3), pt(s, 'a5', 0.7, 53.8));
+  run(engine, ln(s, 'c1', 'origin', 'a1'), ac(s, 'r1', 'q1', 'a1', 'a2'), ln(s, 'c2', 'a2', 'a3'), ac(s, 'r2', 'q2', 'a3', 'a4'), ln(s, 'c3', 'a4', 'a5'));
+  run(
+    engine,
+    constrain(s, 'k1', { type: 'horizontal', line: 'c1' }),
+    constrain(s, 'k2', { type: 'vertical', line: 'c2' }),
+    constrain(s, 'k3', { type: 'horizontal', line: 'c3' }),
+    constrain(s, 'k4', { type: 'tangent', a: 'c1', b: 'r1' }),
+    constrain(s, 'k5', { type: 'tangent', a: 'r1', b: 'c2' }),
+    constrain(s, 'k6', { type: 'tangent', a: 'c2', b: 'r2' }),
+    constrain(s, 'k7', { type: 'tangent', a: 'r2', b: 'c3' }),
+    constrain(s, 'k8', { type: 'radius', curve: 'r1', value: 'R', driving: true } as never),
+    constrain(s, 'k9', { type: 'equalRadius', a: 'r1', b: 'r2' }),
+    dim(s, 'k10', 'horizontalDistance', 'origin', 'a2', 'W / 2'),
+    dim(s, 'k11', 'verticalDistance', 'origin', 'a4', 'H'),
+    constrain(s, 'k12', { type: 'pointOnCurve', point: 'a5', curve: 'origin/y' }),
+  );
+  return run(engine, addPattern(s, 'm', { type: 'pattern', sources: ['c1', 'r1', 'c2', 'r2', 'c3'], transform: { type: 'mirror', axis: 'origin/y' } }));
+}
+// a slot (12 × 3, the centres 9 apart) at (x, y) in a sketch: arcs `${p}g1`, `${p}g2`, lines `${p}e1`, `${p}e2`
+function slot(sketch: Id, p: string, x: number, y: number): Command[] {
+  return [
+    pt(sketch, `${p}o1`, x, y - 4.5),
+    pt(sketch, `${p}o2`, x, y + 4.5),
+    pt(sketch, `${p}s1`, x - 1.5, y - 4.5),
+    pt(sketch, `${p}s2`, x + 1.5, y - 4.5),
+    pt(sketch, `${p}s3`, x + 1.5, y + 4.5),
+    pt(sketch, `${p}s4`, x - 1.5, y + 4.5),
+    ac(sketch, `${p}g1`, `${p}o1`, `${p}s1`, `${p}s2`),
+    ln(sketch, `${p}e1`, `${p}s2`, `${p}s3`),
+    ac(sketch, `${p}g2`, `${p}o2`, `${p}s3`, `${p}s4`),
+    ln(sketch, `${p}e2`, `${p}s4`, `${p}s1`),
+  ];
+}
+const copyRegion = (copy: number): Id[] => ['wg1', 'we1', 'wg2', 'we2'].map((curve) => `vb/${copy}/${curve}`);
+
+describe('scenario 15, steps 4, 5 and 7: the lid mirrored, the vents as patterns (6c, D68)', () => {
+  it('the half closes with its image into one region; the lid, the side of a copy, the width moving the copy', () => {
+    const engine = newEngine();
+    const state = mirroredLid(engine);
+    const result = resultOf(state, 'lidSketch');
+    expect(result.valid).toBe(true);
+    expect(loopsOf(state, 'lidSketch')).toEqual([LID_REGION]);
+    expect(result.curves['m/1/r1']).toEqual({ shape: { type: 'arc', center: 'm/1/q1', start: 'm/1/a2', end: 'm/1/a1' }, source: 'derived', regions: true });
+    expect(result.points['m/1/a2'].x).toBeCloseTo(-LW / 2, 9);
+    expect(result.degreesOfFreedom).toBe(0);
+    expect(result.openEnds).toBeUndefined();
+    const lid = run(engine, extrudeLoops('lid', 'lidSketch', [LID_REGION], 'T'));
+    expect(Math.abs(lid.evaluation.bodies.lid.volume - LID * LT)).toBeLessThan(lidAllowance(0));
+    expect(lid.evaluation.faceNames.some((name) => name.role === 'side' && name.feature === 'lid' && name.curve === 'm/1/c2')).toBe(true);
+    const wider = previewOf(engine, { type: 'setParameter', name: 'W', expr: '90' });
+    expect(resultOf(wider, 'lidSketch').points['m/1/a2'].x).toBeCloseTo(-45, 6);
+    expect(Math.abs(wider.evaluation.bodies.lid.volume - (90 * LH - (4 - Math.PI) * LR * LR) * LT)).toBeLessThan(lidAllowance(0));
+  });
+
+  it('the vents: a row in the lid sketch as holes of its region, a row in a sketch of its own cut by copies 1 and 3; 7, 3 and 5 vents', () => {
+    const engine = newEngine();
+    mirroredLid(engine);
+    run(engine, extrudeLoops('lid', 'lidSketch', [LID_REGION], 'T'));
+    run(engine, ...slot('lidSketch', 'v', -12, 14));
+    const rowA = run(engine, addPattern('lidSketch', 'va', { type: 'pattern', sources: ['vg1', 've1', 'vg2', 've2'], transform: { type: 'linear', direction: 'origin/x', count: 'vents', span: { type: 'spacing', spacing: 'ventPitch' } } }));
+    expect(loopsOf(rowA, 'lidSketch')).toHaveLength(6);
+    expect(loopsOf(rowA, 'lidSketch')).toContainEqual(['va/4/ve1', 'va/4/ve2', 'va/4/vg1', 'va/4/vg2']);
+    expect(Math.abs(rowA.evaluation.bodies.lid.volume - (LID - 5 * SLOT) * LT)).toBeLessThan(lidAllowance(5));
+    expect(sketchOf(rowA, 'lidSketch').expressions?.['external/va/transform/count']).toBe('vents');
+    run(engine, { type: 'addFeature', feature: emptySketch('ventSketch', 'Vents', XY) }, ...slot('ventSketch', 'w', -12, 40));
+    run(engine, addPattern('ventSketch', 'vb', { type: 'pattern', sources: ['wg1', 'we1', 'wg2', 'we2'], transform: { type: 'linear', direction: 'origin/x', count: 'vents', span: { type: 'spacing', spacing: 'ventPitch' } } }));
+    const rowB = run(engine, extrudeLoops('ventCut', 'ventSketch', [copyRegion(1), copyRegion(3)], 'T', 'cut', ['lid']));
+    expect(rowB.evaluation.features.ventCut.status).toBe('ok');
+    expect(Math.abs(rowB.evaluation.bodies.lid.volume - (LID - 7 * SLOT) * LT)).toBeLessThan(lidAllowance(7));
+    // 7: two more holes, no feature patched, the stamp kept
+    const stamp = sketchOf(rowB, 'lidSketch').solved.inputs;
+    const cut = rowB.document.features.find((f) => f.id === 'ventCut');
+    const seven = set(engine, 'vents', '7');
+    expect(sketchOf(seven, 'lidSketch').solved.inputs).toBe(stamp);
+    expect(loopsOf(seven, 'lidSketch')).toHaveLength(8);
+    expect(Math.abs(seven.evaluation.bodies.lid.volume - (LID - 9 * SLOT) * LT)).toBeLessThan(lidAllowance(9));
+    expect(seven.document.features.find((f) => f.id === 'ventCut')).toEqual(cut);
+    expect(seven.evaluation.features.ventCut.status).toBe('ok');
+    // 3: the cut is noProfile naming the region of copy 3; 5 brings it back
+    const three = previewOf(engine, { type: 'setParameter', name: 'vents', expr: '3' });
+    expect(three.evaluation.features.ventCut.error).toMatchObject({ code: 'noProfile', refs: [{ outerLoop: [...copyRegion(3)].sort() }] });
+    expect(set(engine, 'vents', '5').evaluation.features.ventCut.status).toBe('ok');
+    // the count as a field of the sketch: setField, renameParameter
+    const field = run(engine, { type: 'setField', feature: 'lidSketch', path: 'external/va/transform/count', value: 'vents + 1' });
+    expect(loopsOf(field, 'lidSketch')).toHaveLength(7);
+    const renamed = run(engine, { type: 'renameParameter', name: 'vents', to: 'ventCount' });
+    expect(sketchOf(renamed, 'lidSketch').expressions?.['external/va/transform/count']).toBe('ventCount + 1');
+    // the count as a number in the field: 9 slots across the lid
+    const many = previewOf(engine, { type: 'setField', feature: 'lidSketch', path: 'external/va/transform/count', value: 9 });
+    expect(many.evaluation.features.lidSketch.status).toBe('ok');
+    expect(loopsOf(many, 'lidSketch')).toHaveLength(10);
+  });
+
+  it('200 slots recomputed: a grid of 14 × 14 slots in a plate, 784 curves of copies, end to end within a bound', () => {
+    const engine = newEngine();
+    const s = 'plate';
+    run(engine, { type: 'addFeature', feature: emptySketch(s, 'Plate', XY) }, pt(s, 'b1', -10, -10), pt(s, 'b2', 150, -10), pt(s, 'b3', 150, 250), pt(s, 'b4', -10, 250), ln(s, 'ba', 'b1', 'b2'), ln(s, 'bb', 'b2', 'b3'), ln(s, 'bc', 'b3', 'b4'), ln(s, 'bd', 'b4', 'b1'));
+    run(engine, ...slot(s, 'v', 0, 0), extrudeLoops('P', s, [['ba', 'bb', 'bc', 'bd']], '2'), { type: 'setParameter', name: 'n', expr: '2' });
+    run(engine, addPattern(s, 'g', { type: 'pattern', sources: ['vg1', 've1', 'vg2', 've2'], transform: { type: 'linear', direction: 'origin/x', count: 'n', span: { type: 'spacing', spacing: 10 }, second: { direction: 'origin/y', count: 'n', span: { type: 'spacing', spacing: 17 } } } }));
+    const start = performance.now();
+    const grid = set(engine, 'n', '14');
+    const elapsed = performance.now() - start;
+    expect(Object.keys(resultOf(grid, s).curves).filter((id) => id.startsWith('g/'))).toHaveLength(14 * 14 * 4 - 4);
+    expect(loopsOf(grid, s)).toHaveLength(1 + 14 * 14);
+    expect(allOk(grid)).toBe(true);
+    expect(Math.abs(volumeOf(grid, 'P') - (160 * 260 - 14 * 14 * SLOT) * 2)).toBeLessThan(0.06 * 14 * 14 * 2);
+    // measured about 0.2 s (the solver's time is the same with one slot); the bound leaves room for
+    // a loaded machine
+    expect(elapsed).toBeLessThan(10_000);
+  });
+});
+
+const volumeOf = (state: EngineState, body: Id): number => state.evaluation.bodies[body]?.volume ?? Number.NaN;
+// a tool on the sketch: its answer, the batch run
+function tool<K extends 'fillet' | CutTool>(engine: Engine, name: K, sketch: Id, input: SketchToolInputs[K], prefix: string): Record<string, Id[]> {
+  const state = engine.getState();
+  const made = sketchTool(name, toolContext(state, sketch), input, freshIds(state.document, prefix));
+  if (!made.ok) throw new Error(made.message);
+  run(engine, ...made.commands);
+  return made.ids;
+}
+const toolRefusal = <K extends 'fillet' | 'rectangle' | CutTool>(engine: Engine, name: K, sketch: Id, input: SketchToolInputs[K]): string | undefined => {
+  const state = engine.getState();
+  const made = sketchTool(name, toolContext(state, sketch), input, freshIds(state.document, 'x_'));
+  return made.ok ? undefined : made.message;
+};
+
+describe('scenario 15, step 6 on the mirrored lid: the sketch tools and the copies (6c, D68)', () => {
+  // the second notch: a circle of radius 4 at x = 20 on the top line c3, two trims by a place each;
+  // on the four paths the entry ends with the two pieces of c3 and the arc inside (design.md, Q1)
+  const NOTCH_R = 4;
+  for (const [lineFirst, underTheLid] of [
+    [true, true],
+    [false, true],
+    [true, false],
+    [false, false],
+  ] as const) {
+    it(`the second notch, ${lineFirst ? 'the line' : 'the circle'} trimmed first, ${underTheLid ? 'under the lid (repair on)' : 'before the lid (repair off)'}`, () => {
+      const engine = newEngine();
+      mirroredLid(engine);
+      if (underTheLid) run(engine, extrudeLoops('lid', 'lidSketch', [LID_REGION], 'T'));
+      run(engine, pt('lidSketch', 'nc', 20, LH), { type: 'addCurve', sketch: 'lidSketch', id: 'nk', curve: { type: 'circle', center: 'nc' }, radius: NOTCH_R });
+      const [inLine, outside]: [number, number][] = [
+        [20, LH],
+        [20, LH + NOTCH_R],
+      ];
+      const first = tool(engine, 'trim', 'lidSketch', { at: lineFirst ? inLine : outside }, 'n1_');
+      const second = tool(engine, 'trim', 'lidSketch', { at: lineFirst ? outside : inLine }, 'n2_');
+      let state = engine.getState();
+      const sketch = sketchOf(state, 'lidSketch');
+      const entry = patternOf(state, 'lidSketch', 'm');
+      expect(first.entries).toEqual(!lineFirst && !underTheLid ? [] : ['m']);
+      expect(second.entries).toEqual(['m']);
+      const arcs = entry.sources.filter((id) => sketch.curves[id]?.type === 'arc' && id !== 'r1' && id !== 'r2');
+      expect(arcs).toHaveLength(1);
+      if (!(lineFirst && underTheLid)) expect(arcs[0]).toBe('nk');
+      expect(entry.sources).toContain('c3');
+      expect(entry.sources).toHaveLength(7);
+      const loops = loopsOf(state, 'lidSketch');
+      expect(loops).toHaveLength(1);
+      const lidLoop = loops[0];
+      expect(lidLoop).toContain(arcs[0]);
+      expect(lidLoop).toContain(`m/1/${arcs[0]}`);
+      expect(resultOf(state, 'lidSketch').openEnds).toBeUndefined();
+      if (!underTheLid) state = run(engine, extrudeLoops('lid', 'lidSketch', [lidLoop], 'T'));
+      expect(state.evaluation.features.lid.status).toBe('ok');
+      expect(Math.abs(volumeOf(state, 'lid') - (LID - Math.PI * NOTCH_R * NOTCH_R) * LT)).toBeLessThan(lidAllowance(2));
+    });
+  }
+
+  it('the fillet of a source corner: the arc joins the entry, its copy every stored region of copies, also one the count does not make', () => {
+    const engine = newEngine();
+    const s = 'tri';
+    const TRIANGLE = ['ul1', 'ul2', 'ul3'];
+    const copyOf = (copy: number | string): Id[] => TRIANGLE.map((curve) => `tr/${copy}/${curve}`);
+    run(engine, { type: 'setParameter', name: 'copies', expr: '2' }, { type: 'addFeature', feature: emptySketch(s, 'Triangles', XY) });
+    run(engine, pt(s, 'u1', 0, 100), pt(s, 'u2', 30, 100), pt(s, 'u3', 0, 120), ln(s, 'ul1', 'u1', 'u2'), ln(s, 'ul2', 'u2', 'u3'), ln(s, 'ul3', 'u3', 'u1'));
+    run(engine, addPattern(s, 'tr', { type: 'pattern', sources: TRIANGLE, transform: { type: 'linear', direction: 'ul1', count: 'copies', span: { type: 'spacing', spacing: 40 } } }));
+    const before = run(engine, extrudeLoops('triangles', s, [TRIANGLE, copyOf(1)], '3'), extrudeLoops('third', s, [copyOf(2)], '3'));
+    expect(before.evaluation.features.third.error?.code).toBe('noProfile');
+    const ids = tool(engine, 'fillet', s, { corner: 'u2', radius: 3 }, 'f_');
+    const after = engine.getState();
+    const arc = ids.arc[0];
+    expect(ids.entries).toEqual(['tr']);
+    expect(patternOf(after, s, 'tr').sources).toEqual([...TRIANGLE, arc]);
+    expect(sketchOf(after, s).expressions?.['external/tr/transform/count']).toBe('copies');
+    expect(ids.patched).toEqual(['triangles', 'third']);
+    const loops = (feature: Id): Id[][] => {
+      const f = after.document.features.find((g) => g.id === feature);
+      return f?.type === 'extrude' && f.profile.type === 'regions' ? f.profile.regions.map((r) => r.outerLoop) : [];
+    };
+    expect(loops('triangles')).toEqual([[...TRIANGLE, arc].sort(), [...copyOf(1), `tr/1/${arc}`].sort()]);
+    expect(loops('third')).toEqual([[...copyOf(2), `tr/2/${arc}`].sort()]);
+    expect(after.evaluation.features.triangles.status).toBe('ok');
+    const three = set(engine, 'copies', '3');
+    expect(three.evaluation.features.third.status).toBe('ok');
+  });
+
+  it('a split by a rib the mirror does not list: the pieces of c1 and c3 in their place, nothing of the rib; the lid follows', () => {
+    const engine = newEngine();
+    mirroredLid(engine);
+    const lid = run(engine, extrudeLoops('lid', 'lidSketch', [LID_REGION], 'T'));
+    const volume = volumeOf(lid, 'lid');
+    run(engine, pt('lidSketch', 'rb0', 30, -3), pt('lidSketch', 'rb1', 30, LH + 3), ln('lidSketch', 'rib', 'rb0', 'rb1'));
+    const ids = tool(engine, 'split', 'lidSketch', {}, 'r_');
+    const after = engine.getState();
+    const entry = patternOf(after, 'lidSketch', 'm');
+    expect(ids.entries).toEqual(['m']);
+    expect(Object.keys(ids).indexOf('entries')).toBe(15);
+    const ofRib = ['rib', ...ids.added.filter((id) => {
+      const curve = sketchOf(after, 'lidSketch').curves[id];
+      const points = resultOf(after, 'lidSketch').points;
+      return curve?.type === 'line' && Math.abs(points[curve.a].x - 30) < 1e-9 && Math.abs(points[curve.b].x - 30) < 1e-9;
+    })];
+    expect(ofRib).toHaveLength(3);
+    expect(ofRib.filter((id) => entry.sources.includes(id))).toEqual([]);
+    expect(entry.sources).toHaveLength(7);
+    expect(loopsOf(after, 'lidSketch')).toHaveLength(2);
+    expect(after.evaluation.features.lid.status).toBe('ok');
+    expect(volumeOf(after, 'lid')).toBeCloseTo(volume, 6);
+  });
+
+  it('the same split under a chamfer of the rim: the edges of the copies of the cut curves are rewritten to the copies of the pieces', () => {
+    const engine = newEngine();
+    mirroredLid(engine);
+    run(engine, extrudeLoops('lid', 'lidSketch', [LID_REGION], 'T'));
+    const top = { feature: 'lid', role: 'endCap' } as const;
+    run(engine, { type: 'addFeature', feature: { id: 'rim', name: 'Rim', suppressed: false, type: 'chamfer', body: 'lid', edges: LID_REGION.map((curve) => ({ a: top, b: { feature: 'lid', role: 'side', curve } })), distance: 0.5 } } as Command);
+    expect(engine.getState().evaluation.features.rim.status).toBe('ok');
+    run(engine, pt('lidSketch', 'rb0', 30, -3), pt('lidSketch', 'rb1', 30, LH + 3), ln('lidSketch', 'rib', 'rb0', 'rb1'));
+    tool(engine, 'split', 'lidSketch', {}, 'r_');
+    const state = engine.getState();
+    const rim = state.document.features.find((f) => f.id === 'rim');
+    const sides = rim?.type === 'chamfer' ? rim.edges.map((edge) => (edge.b.role === 'side' ? edge.b.curve : '')) : [];
+    const pieces = patternOf(state, 'lidSketch', 'm').sources.filter((id) => !['c1', 'r1', 'c2', 'r2', 'c3'].includes(id));
+    expect(pieces).toHaveLength(2);
+    expect(sides.slice(0, 10)).toEqual(LID_REGION);
+    expect([...sides.slice(10)].sort()).toEqual([...pieces, ...pieces.map((id) => `m/1/${id}`)].sort());
+    expect(state.evaluation.features.rim.status).toBe('ok');
+  });
+
+  it('an own curve across a copy: listed with fix none and the reason of the copy; split refuses; an extension onto the copy is refused', () => {
+    const engine = newEngine();
+    mirroredLid(engine);
+    run(engine, extrudeLoops('lid', 'lidSketch', [LID_REGION], 'T'));
+    run(engine, pt('lidSketch', 'xa', -30, 27), pt('lidSketch', 'xb', -35, 27), ln('lidSketch', 'across', 'xa', 'xb'));
+    expect(toolRefusal(engine, 'extend', 'lidSketch', { curve: 'across', end: 'b' })).toBeDefined();
+    const state = run(engine, { type: 'dragPoint', sketch: 'lidSketch', point: 'xb', x: -50, y: 27 });
+    const found = contactsOf(engine, 'lidSketch');
+    expect(found.valid).toBe(false);
+    expect(found.total).toBe(1);
+    expect(found.contacts.map((c) => [c.kind, c.curves, c.fix, c.why])).toEqual([['crossing', ['across', 'm/1/c2'], 'none', 'it is a copy of the mirror or pattern "m" ("m/1/c2"), which is never cut: move the curve or change the source of the copy']]);
+    expect(toolRefusal(engine, 'split', 'lidSketch', {})).toContain('never cut');
+    expect(state.evaluation.features.lid.error?.code).toBe('invalidProfile');
+  });
+
+  it('a copy named to a tool, a place on a copy, a snap to a copied point: refused with the source to change', () => {
+    const engine = newEngine();
+    mirroredLid(engine);
+    const inTool = '"m/1/c2" is a copy of the mirror or pattern "m"; change its source "c2", and the copies follow';
+    expect(toolRefusal(engine, 'trim', 'lidSketch', { curve: 'm/1/c2', at: [-42, 27] })).toBe(`curve: ${inTool}`);
+    expect(toolRefusal(engine, 'trim', 'lidSketch', { at: [-42, 27] })).toContain(inTool);
+    expect(toolRefusal(engine, 'extend', 'lidSketch', { curve: 'c1', end: 'a', with: 'm/1/c2' })).toContain(inTool);
+    expect(toolRefusal(engine, 'rectangle', 'lidSketch', { first: { at: [-42, 5], snap: { kind: 'point', id: 'm/1/a2' } }, opposite: { at: [-30, 12] } })).toBe(
+      'first: "m/1/a2" is a copy of the mirror or pattern "m": a new point cannot be tied to a copy; snap to its source "a2", or place the point by its coordinates',
+    );
+    expect(toolRefusal(engine, 'fillet', 'lidSketch', { corner: 'm/1/a5', radius: 1 })).toBe('corner: "m/1/a5" is a copy of the mirror or pattern "m"; change its source "a5", and the copies follow');
+  });
+});
+
+describe('scenario 15 with the mirrored lid: what is refused, a source removed by hand, a grid of vents (6c, D68)', () => {
+  // a stand under the lid, before its sketch: a body an edge projection may name
+  function withStand(engine: Engine): void {
+    run(engine, { type: 'addFeature', feature: emptySketch('standSketch', 'Stand', XY) }, pt('standSketch', 'b1', -10, -10), pt('standSketch', 'b2', 10, -10), pt('standSketch', 'b3', 0, -20), ln('standSketch', 'bl1', 'b1', 'b2'), ln('standSketch', 'bl2', 'b2', 'b3'), ln('standSketch', 'bl3', 'b3', 'b1'));
+    run(engine, extrudeLoops('stand', 'standSketch', [['bl1', 'bl2', 'bl3']], '1'));
+  }
+
+  it('a copy is no operand, no point of a curve, nothing to remove or drag, no source and no axis; the forms and the counts are checked; derived does not become reference', () => {
+    const engine = newEngine();
+    withStand(engine);
+    mirroredLid(engine);
+    const refused = (command: Command): string => {
+      const outcome = engine.preview(command);
+      return outcome.ok ? 'accepted' : outcome.error.message;
+    };
+    const lid = (id: Id, ref: object): Command => addPattern('lidSketch', id, ref);
+    expect(refused(constrain('lidSketch', 'kx', { type: 'horizontal', line: 'm/1/c3' }))).toContain('"m/1/c3" is a copy of the mirror or pattern "m": a copy cannot be constrained in its own sketch');
+    expect(refused(ln('lidSketch', 'lx', 'm/1/a1', 'a1'))).not.toBe('accepted');
+    expect(refused({ type: 'removeEntity', sketch: 'lidSketch', id: 'm/1/c1' })).not.toBe('accepted');
+    expect(refused({ type: 'dragPoint', sketch: 'lidSketch', point: 'm/1/a2', x: 0, y: 0 })).not.toBe('accepted');
+    expect(refused(lid('p2', { type: 'pattern', sources: ['m/1/c2'], transform: { type: 'mirror', axis: 'c1' } }))).toContain('a mirror or pattern copies own curves and points of the sketch');
+    expect(refused(lid('p3', { type: 'pattern', sources: ['c2'], transform: { type: 'mirror', axis: 'r1' } }))).toContain('the axis "r1" is an own arc');
+    expect(refused(lid('p4', { type: 'pattern', sources: ['nothing'], transform: { type: 'mirror', axis: 'origin/y' } }))).not.toBe('accepted');
+    expect(refused(lid('p5', { type: 'pattern', sources: ['c2'], transform: { type: 'linear', direction: 'm/1/c1', count: 3, span: { type: 'spacing', spacing: 5 } } }))).not.toBe('accepted');
+    expect(refused(lid('p6', { type: 'pattern', sources: ['c2'], transform: { type: 'circular', center: 'origin', count: 201, span: { type: 'full' } } }))).not.toBe('accepted');
+    expect(refused(lid('p7', { type: 'pattern', sources: ['c2', 'c2'], transform: { type: 'mirror', axis: 'origin/y' } }))).not.toBe('accepted');
+    expect(refused(lid('p8', { type: 'pattern', sources: ['origin/y'], transform: { type: 'mirror', axis: 'c1' } }))).not.toBe('accepted');
+    expect(refused(lid('p9', { type: 'pattern', sources: ['c2'], transform: { type: 'mirror', plane: 'origin/y' } }))).toContain('a mirror in a sketch is about a line: `axis`, not `plane`');
+    expect(refused({ type: 'updateExternal', sketch: 'lidSketch', id: 'm', ref: { type: 'edge', body: 'stand', edge: { a: { feature: 'stand', role: 'endCap' }, b: { feature: 'stand', role: 'side', curve: 'bl1' } }, kind: 'line' } } as Command)).toBe(
+      'updateExternal: an entry of reference geometry cannot become derived geometry, or the other way; remove it and add the other',
+    );
+    // the place of the copy keyed with its slashed ID quoted
+    const state = run(engine, extrudeLoops('lid', 'lidSketch', [LID_REGION], 'T'));
+    expect(faceKey({ feature: 'lid', role: 'side', curve: 'm/1/c2' })).toBe('lid/side/"m/1/c2"');
+    expect(state.evaluation.faceNames.some((name) => name.role === 'side' && name.feature === 'lid' && name.curve === 'm/1/c2')).toBe(true);
+  });
+
+  it('a source removed by hand: the entry stays, the rest is copied, the sketch warns which source is gone', () => {
+    const engine = newEngine();
+    mirroredLid(engine);
+    const state = previewOf(engine, { type: 'removeEntity', sketch: 'lidSketch', id: 'c2' });
+    const warning = state.evaluation.features.lidSketch.warnings.find((w) => w.code === 'brokenCopies');
+    expect(warning?.refs).toEqual(['m', 'c2']);
+    expect(resultOf(state, 'lidSketch').curves['m/1/c3']).toBeDefined();
+    expect(resultOf(state, 'lidSketch').curves['m/1/c2']).toBeUndefined();
+  });
+
+  it('square vents in a grid of 14 × 14: copy i, j is i + 1000 · j; 14 × 15 places are too many', () => {
+    const engine = newEngine();
+    const s = 'ventSketch';
+    run(engine, { type: 'addFeature', feature: emptySketch(s, 'Vents', XY) }, pt(s, 'q1', -20, -10), pt(s, 'q2', -18, -10), pt(s, 'q3', -18, -8), pt(s, 'q4', -20, -8), ln(s, 'sq1', 'q1', 'q2'), ln(s, 'sq2', 'q2', 'q3'), ln(s, 'sq3', 'q3', 'q4'), ln(s, 'sq4', 'q4', 'q1'));
+    const grid = run(engine, addPattern(s, 'g', { type: 'pattern', sources: ['sq1', 'sq2', 'sq3', 'sq4'], transform: { type: 'linear', direction: 'origin/x', count: 14, span: { type: 'spacing', spacing: 3 }, second: { direction: 'origin/y', count: 14, span: { type: 'spacing', spacing: -3 } } } }));
+    expect(loopsOf(grid, s)).toHaveLength(196);
+    expect(resultOf(grid, s).points['g/13013/q1']).toEqual({ x: expect.closeTo(-20 + 39, 9), y: expect.closeTo(-10 - 39, 9) });
+    const large = previewOf(engine, { type: 'setField', feature: s, path: 'external/g/transform/second/count', value: 15 });
+    expect(large.evaluation.features[s].warnings.find((w) => w.code === 'brokenCopies')?.message).toContain('14 × 15 is 210 places; a pattern has at most 200, the source included');
   });
 });

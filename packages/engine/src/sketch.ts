@@ -440,6 +440,90 @@ function roundContacts(P: Round, Q: Round, tol: number): Vec2[] {
   ];
 }
 
+// ---------------------------------------------------------------- the broad phase (D68)
+
+// A box `[minX, minY, maxX, maxY]` that holds every point of a shape a pair test reads.
+export type Box = [number, number, number, number];
+
+// The box of a shape as `compatible` reads it: a line its two ends; a circle its centre and radius;
+// an arc its two ends as given, the point where it ends on the circle of its first end, and the
+// ends of that circle's diameters along x and y that it passes. The two ends alone are not enough,
+// nor is the whole circle: the profile reads an arc as the circle of its first end between two
+// angles, and in a sketch that is drawn and not solved the second end lies off that circle (a point
+// within the tolerance of the arc is near the circle between the angles, or near one of its ends).
+function shapeBox(s: Shape): Box {
+  switch (s.kind) {
+    case 'line': {
+      // A line of no length has no distance to anything (`distanceTo` divides by its length), so
+      // `compatible` refuses it with every shape: its box is no box, and it is paired with all.
+      const d = sub2(s.pb, s.pa);
+      if (dot2(d, d) === 0) return [NaN, NaN, NaN, NaN];
+      return [Math.min(s.pa[0], s.pb[0]), Math.min(s.pa[1], s.pb[1]), Math.max(s.pa[0], s.pb[0]), Math.max(s.pa[1], s.pb[1])];
+    }
+    case 'circle':
+      return [s.c[0] - s.r, s.c[1] - s.r, s.c[0] + s.r, s.c[1] + s.r];
+    case 'arc': {
+      const end: Vec2 = [s.c[0] + s.r * Math.cos(s.start + s.sweep), s.c[1] + s.r * Math.sin(s.start + s.sweep)];
+      const points: Vec2[] = [s.pa, s.pb, end];
+      for (let k = 0; k < 4; k++) {
+        const angle = (k * Math.PI) / 2;
+        // inclusive, so that rounding at the end of the sweep never loses a quarter point
+        if (positive(angle - s.start) <= s.sweep + 1e-9) points.push([s.c[0] + s.r * Math.cos(angle), s.c[1] + s.r * Math.sin(angle)]);
+      }
+      return boxOf(points);
+    }
+    default:
+      return unreachable(s, 'shape');
+  }
+}
+const boxOf = (points: readonly Vec2[]): Box => {
+  const box: Box = [Infinity, Infinity, -Infinity, -Infinity];
+  for (const [x, y] of points) {
+    box[0] = Math.min(box[0], x);
+    box[1] = Math.min(box[1], y);
+    box[2] = Math.max(box[2], x);
+    box[3] = Math.max(box[3], y);
+  }
+  return box;
+};
+
+// The pairs (i, j), i < j, of boxes that overlap once each is widened by `tolerance`, found by
+// sorting the boxes along x and sweeping, in the order of the double loop over i and then j that
+// they replace (`touchingCurves` answers with the first pair that fails, so the order matters). A
+// box with a coordinate that is not finite is paired with every other, as the double loop would.
+// Exact as a filter of `compatible`: it rejects a pair only for two rounds on one circle (their boxes
+// coincide) or for a point within the tolerance of both shapes (which lies in both widened boxes).
+export function nearPairs(boxes: readonly Box[], tolerance: number): [number, number][] {
+  const reach = 2 * tolerance;
+  const finite = (b: Box): boolean => b.every(Number.isFinite);
+  const order = boxes.map((_, i) => i).filter((i) => finite(boxes[i]));
+  order.sort((p, q) => boxes[p][0] - boxes[q][0] || p - q);
+  const pairs: [number, number][] = [];
+  for (let k = 0; k < order.length; k++) {
+    const a = boxes[order[k]];
+    for (let m = k + 1; m < order.length; m++) {
+      const b = boxes[order[m]];
+      if (b[0] > a[2] + reach) break;
+      if (b[1] > a[3] + reach || b[3] < a[1] - reach) continue;
+      pairs.push(order[k] < order[m] ? [order[k], order[m]] : [order[m], order[k]]);
+    }
+  }
+  boxes.forEach((box, i) => {
+    if (finite(box)) return;
+    boxes.forEach((_, j) => i !== j && (finite(boxes[j]) || i < j) && pairs.push(i < j ? [i, j] : [j, i]));
+  });
+  return pairs.sort((p, q) => p[0] - q[0] || p[1] - q[1]);
+}
+
+// How the profile finds the pairs to test and whether it asks a face for a hole only when the hole's
+// sample lies in the face's box. The engine reads `BROAD_PHASE`; the test of the broad phase compares
+// it with the double loop over every pair and every face (packages/engine/test/profile-broad.test.ts).
+export interface BroadPhase {
+  pairs(boxes: readonly Box[], tolerance: number): [number, number][];
+  faceBoxes: boolean;
+}
+export const BROAD_PHASE: BroadPhase = { pairs: nearPairs, faceBoxes: true };
+
 // Smějí se dvě křivky v profilu potkat? Dotýkat se smějí jen ve spojených bodech.
 function compatible(A: Shape, B: Shape, tol: number): boolean {
   const curved = [A, B].flatMap((s) => roundOf(s) ?? []);
@@ -665,8 +749,10 @@ export function detectProfile(sketch: SketchFeature, geometry: SketchGeometry, c
 
 // Najde oblasti z křivek, které je tvoří (`regions`), seřazených podle ID; konstrukční a promítnuté
 // křivky je netvoří. `joins` gives the vertex of a point (`joinsOf`).
-export function profileOf(curves: readonly SketchCurve[], joins: (id: Id) => Id, geometry: SketchGeometry, chordTolerance: number): Profile {
-  return buildProfile(curves, joins, geometry, chordTolerance).profile;
+// `broad`: how pairs and faces are filtered (`BROAD_PHASE`; only the test of the broad phase gives
+// another).
+export function profileOf(curves: readonly SketchCurve[], joins: (id: Id) => Id, geometry: SketchGeometry, chordTolerance: number, broad: BroadPhase = BROAD_PHASE): Profile {
+  return buildProfile(curves, joins, geometry, chordTolerance, broad).profile;
 }
 
 // Why a profile is invalid when no pair of its curves touches (D65): the last check of the profile
@@ -674,10 +760,10 @@ export function profileOf(curves: readonly SketchCurve[], joins: (id: Id) => Id,
 // and where. Undefined when the profile is valid, or invalid for a pair that touches, two ends that
 // are not joined or a curve of no length (the contacts say those).
 export function profileProblem(curves: readonly SketchCurve[], joins: (id: Id) => Id, geometry: SketchGeometry, chordTolerance: number): TightPlace | undefined {
-  return buildProfile(curves, joins, geometry, chordTolerance).tight;
+  return buildProfile(curves, joins, geometry, chordTolerance, BROAD_PHASE).tight;
 }
 
-function buildProfile(curves: readonly SketchCurve[], joins: (id: Id) => Id, geometry: SketchGeometry, chordTolerance: number): { profile: Profile; tight?: TightPlace } {
+function buildProfile(curves: readonly SketchCurve[], joins: (id: Id) => Id, geometry: SketchGeometry, chordTolerance: number, broad: BroadPhase): { profile: Profile; tight?: TightPlace } {
   const tol = LENGTH_TOLERANCE;
   const vertex = (id: Id): CurveEnd => ({ key: joins(id), p: xy(geometry.points[joins(id)]) });
   const centre = (id: Id): Vec2 => xy(geometry.points[id]);
@@ -718,7 +804,14 @@ function buildProfile(curves: readonly SketchCurve[], joins: (id: Id) => Id, geo
         unreachable(c, 'curve');
     }
   }
-  for (let i = 0; i < shapes.length && valid; i++) for (let j = i + 1; j < shapes.length && valid; j++) if (!compatible(shapes[i], shapes[j], tol)) valid = false;
+  // the pairs whose boxes meet (the broad phase), each tested by `compatible`
+  if (valid) {
+    for (const [i, j] of broad.pairs(shapes.map(shapeBox), tol)) {
+      if (compatible(shapes[i], shapes[j], tol)) continue;
+      valid = false;
+      break;
+    }
+  }
   if (!valid) return { profile: { valid: false, regions: [] } };
 
   // ---- rovinný graf: půlhrany úseček a oblouků
@@ -858,6 +951,28 @@ function buildProfile(curves: readonly SketchCurve[], joins: (id: Id) => Id, geo
   // Leží bod uvnitř hranice? Paprsek ve směru +x; křivky se berou po úsecích monotónních v y
   // s polootevřeným pravidlem, takže průchod vrcholem se nepočítá dvakrát.
   type Boundary = { halves: number[] } | { circle: Extract<Shape, { kind: 'circle' }> };
+  // The box of a boundary as the ray test reads it: a line its ends, an arc its whole circle and its
+  // two ends, a circle itself. A point outside it is crossed by no piece, or (left of it) by an even
+  // number, since the pieces of a closed boundary change side an even number of times.
+  const boundaryBox = (boundary: Boundary): Box => {
+    if ('circle' in boundary) return shapeBox(boundary.circle);
+    const points: Vec2[] = [];
+    for (const i of boundary.halves) {
+      const s = halves[i].shape;
+      switch (s.kind) {
+        case 'line':
+          points.push(s.pa, s.pb);
+          break;
+        case 'arc':
+          points.push(s.pa, s.pb, [s.c[0] - s.r, s.c[1] - s.r], [s.c[0] + s.r, s.c[1] + s.r]);
+          break;
+        default:
+          unreachable(s, 'shape');
+      }
+    }
+    return boxOf(points);
+  };
+  const outside = (p: Vec2, box: Box): boolean => p[0] < box[0] || p[0] > box[2] || p[1] < box[1] || p[1] > box[3];
   const crossings = (p: Vec2, boundary: Boundary): number => {
     let count = 0;
     const piece = (from: Vec2, to: Vec2, xAt: () => number) => {
@@ -902,6 +1017,7 @@ function buildProfile(curves: readonly SketchCurve[], joins: (id: Id) => Id, geo
     boundary: Boundary;
     region: Region;
     component: number;
+    box?: Box;
   }
   interface Component {
     sample: Vec2; // bod části, podle kterého se hledá oblast, ve které leží
@@ -939,7 +1055,9 @@ function buildProfile(curves: readonly SketchCurve[], joins: (id: Id) => Id, geo
   components.forEach((component, index) => {
     let parentFace: Face | undefined;
     for (const face of faces) {
-      if (face.component === index || crossings(component.sample, face.boundary) % 2 === 0) continue;
+      if (face.component === index) continue;
+      if (broad.faceBoxes && outside(component.sample, (face.box ??= boundaryBox(face.boundary)))) continue;
+      if (crossings(component.sample, face.boundary) % 2 === 0) continue;
       if (!parentFace || face.area < parentFace.area) parentFace = face;
     }
     if (parentFace) parentFace.region.holes.push(component.hole());
@@ -961,7 +1079,7 @@ function buildProfile(curves: readonly SketchCurve[], joins: (id: Id) => Id, geo
 
 // Two curves of the loops that touch where they are not joined, if there are any. A corner is
 // a vertex of its own in every loop: curves are joined only where they follow each other.
-export function touchingCurves(loops: OutlineCurve[][]): [OutlineCurve, OutlineCurve] | undefined {
+export function touchingCurves(loops: OutlineCurve[][], broad: BroadPhase = BROAD_PHASE): [OutlineCurve, OutlineCurve] | undefined {
   const shapes: { shape: Shape; curve: OutlineCurve }[] = [];
   loops.forEach((loop, l) => {
     loop.forEach((curve, i) => {
@@ -974,7 +1092,7 @@ export function touchingCurves(loops: OutlineCurve[][]): [OutlineCurve, OutlineC
       else shapes.push({ curve, shape: { id, kind: 'arc', a: b, b: a, pa: curve.to, pb: curve.from, c: curve.center, r: curve.radius, start: curve.start + curve.sweep, sweep: -curve.sweep } });
     });
   });
-  for (let i = 0; i < shapes.length; i++) for (let j = i + 1; j < shapes.length; j++) if (!compatible(shapes[i].shape, shapes[j].shape, LENGTH_TOLERANCE)) return [shapes[i].curve, shapes[j].curve];
+  for (const [i, j] of broad.pairs(shapes.map((s) => shapeBox(s.shape)), LENGTH_TOLERANCE)) if (!compatible(shapes[i].shape, shapes[j].shape, LENGTH_TOLERANCE)) return [shapes[i].curve, shapes[j].curve];
   return undefined;
 }
 

@@ -8,7 +8,8 @@ import { booleanOfBodies, sheetTriangles } from '../../engine/src/recompute/body
 import { isMoveProblem, movedOutwards } from '../../engine/src/recompute/moved-body';
 import { volumeOf as volumeOf56 } from '../../engine/src/solid';
 import { box as box56, cylinder as cylinder56, faceNumber as faceNumber56, infosOf as infosOf56, solidOf as solidOf56 } from './combine-kit';
-import { faceKey } from '@trymesh/engine';
+import { faceKey, freshIds, readersOf, sketchTool } from '@trymesh/engine';
+import { canonicalEdge } from '../../engine/src/util';
 import { STEPPED, box, chamfer, edge, fillet, profileXZ } from './blend-kit';
 
 const kernel56 = await createManifoldKernel();
@@ -875,5 +876,160 @@ describe('the review of the implementation of 4c (D67): the void check beyond th
       expect(posted.message).toMatch(/would take .* mm³ beyond the end face in refs within its run-out/);
       expect(names(posted.refs, side('E', 'd'))).toBe(true);
     }
+  });
+});
+
+describe('the review of the implementation of 6c (D68): copies under the sketch tools', () => {
+  const S = 'S';
+  const pt = (id: string, x: number, y: number): Command => ({ type: 'addPoint', sketch: S, id, x, y });
+  const ln = (id: string, a: string, b: string): Command => ({ type: 'addCurve', sketch: S, id, curve: { type: 'line', a, b } });
+  // fixed where the point is (FixedInput without x and y)
+  const fix = (p: string): Command => ({ type: 'addConstraint', sketch: S, id: `fx_${p}`, constraint: { type: 'fixed', point: p } }) as Command;
+  const pattern = (id: string, ref: object): Command => ({ type: 'addExternal', sketch: S, id, ref } as Command);
+  const sketchOf6c = (state: EngineState): SketchFeature => state.document.features.find((f) => f.id === S) as SketchFeature;
+  type Made = { ids: Record<string, string[]>; state: EngineState };
+  const tool = (engine: ReturnType<typeof newEngine>, name: 'trim' | 'extend' | 'split' | 'fillet', input: object, prefix: string): Made | string => {
+    const state = engine.getState();
+    const made = sketchTool(name, { sketch: sketchOf6c(state), result: state.evaluation.features[S].sketch, parameters: state.evaluation.parameters, document: state.document }, input as never, freshIds(state.document, prefix));
+    return made.ok ? { ids: made.ids as Record<string, string[]>, state: run(engine, batch(...made.commands)) } : made.message;
+  };
+  const pulley = (center: string): Command => ({ type: 'addFeature', feature: { id: 'G', name: 'G', suppressed: false, type: 'extrude', profile: { type: 'generated', generator: 'gt2Pulley', sketch: S, operands: { center }, params: { teeth: 12 } }, extent: { type: 'distance', start: 0, distance: 5 }, operation: 'new' } } as Command);
+
+  // finding 1: the rule of old ends did not count a copy named by a feature, so the trim removed
+  // its source and the feature broke unreported
+  it('a trim keeps the end a feature names a copy of, and the copy stays an entity', () => {
+    const engine = newEngine();
+    run(engine, addSketch(S, XY), pt('b', 2, 5), pt('e', 8, 5), ln('X', 'b', 'e'), pt('v1', 5, 0), pt('v2', 5, 10), ln('V', 'v1', 'v2'), fix('e'), fix('v1'), fix('v2'));
+    run(engine, pattern('m', { type: 'pattern', sources: ['X'], transform: { type: 'mirror', axis: 'origin/y' } }), pulley('m/1/b'));
+    const made = tool(engine, 'trim', { at: [3, 5], curve: 'X' }, 't_');
+    if (typeof made === 'string') throw new Error(made);
+    expect(sketchOf6c(made.state).points.b).toBeDefined();
+    expect((sketchOf6c(made.state).external.m as { sources: string[] }).sources).toEqual(['X', 'b']);
+    expect(made.ids.entries).toEqual(['m']);
+    expect(made.ids.broken).toEqual([]);
+    expect(made.state.evaluation.features.G.status).toBe('ok');
+  });
+
+  it('a fillet keeps a copy of its corner that a feature names', () => {
+    const engine = newEngine();
+    run(engine, addSketch(S, XY), pt('a', 2, 0), pt('c', 10, 0), pt('d', 10, 8), ln('A', 'a', 'c'), ln('B', 'c', 'd'), fix('a'), fix('c'), fix('d'));
+    run(engine, pattern('m', { type: 'pattern', sources: ['A', 'B'], transform: { type: 'mirror', axis: 'origin/y' } }), pulley('m/1/c'));
+    const made = tool(engine, 'fillet', { corner: 'c', radius: 2 }, 'f_');
+    if (typeof made === 'string') throw new Error(made);
+    expect((sketchOf6c(made.state).external.m as { sources: string[] }).sources).toEqual(['A', 'B', 'f_c1', 'c']);
+    expect(made.state.evaluation.features.G.status).toBe('ok');
+  });
+
+  // finding 6: a stale copy name (the entry no longer lists its source) is not read as the source
+  it('readersOf reads a copy as its source only when the entry lists it', () => {
+    const engine = newEngine();
+    run(engine, addSketch(S, XY), pt('q1', 2, 0), pt('q2', 12, 0), pt('q3', 12, 10), pt('q4', 2, 10), ln('qa', 'q1', 'q2'), ln('qb', 'q2', 'q3'), ln('qc', 'q3', 'q4'), ln('qd', 'q4', 'q1'));
+    run(engine, pattern('m', { type: 'pattern', sources: ['qa', 'qb', 'qc', 'qd'], transform: { type: 'mirror', axis: 'origin/y' } }));
+    run(engine, { type: 'addFeature', feature: { id: 'rev', name: 'rev', suppressed: false, type: 'revolve', profile: { type: 'regions', sketch: S, regions: [{ outerLoop: ['qa', 'qb', 'qc', 'qd'] }] }, axis: { kind: 'sketchLine', sketch: S, line: 'm/1/qd' }, extent: { type: 'full' }, operation: 'new' } } as Command);
+    const changes = { changed: [], restarted: [], rekinded: [], removed: ['qd'], removedPoints: [], added: [], span: [], pieces: { qd: [] }, stretches: [] };
+    expect(readersOf(engine.getState().document, S, changes).broken).toEqual(['rev']);
+    const stale = run(engine, { type: 'updateExternal', sketch: S, id: 'm', ref: { type: 'pattern', sources: ['qa', 'qb', 'qc'], transform: { type: 'mirror', axis: 'origin/y' } } } as Command);
+    expect(readersOf(stale.document, S, changes).broken).toEqual([]);
+  });
+
+  // finding 2: the edges of a chamfer on a copy the count does not make were left as they were
+  it('the edges of a chamfer on a copy above the count are rewritten by names through the source', () => {
+    const engine = newEngine();
+    const square = [pt('q1', 0, 0), pt('q2', 10, 0), pt('q3', 10, 10), pt('q4', 0, 10), ln('qa', 'q1', 'q2'), ln('qb', 'q2', 'q3'), ln('qc', 'q3', 'q4'), ln('qd', 'q4', 'q1')];
+    const plate = [pt('b1', -5, -5), pt('b2', 100, -5), pt('b3', 100, 20), pt('b4', -5, 20), ln('ba', 'b1', 'b2'), ln('bb', 'b2', 'b3'), ln('bc', 'b3', 'b4'), ln('bd', 'b4', 'b1')];
+    run(engine, { type: 'setParameter', name: 'n', expr: '3' }, addSketch(S, XY), ...plate, ...square, ...['b1', 'b2', 'b3', 'b4', 'q1', 'q2', 'q3', 'q4'].map(fix));
+    run(engine, pattern('r', { type: 'pattern', sources: ['qa', 'qb', 'qc', 'qd'], transform: { type: 'linear', direction: 'origin/x', count: 'n', span: { type: 'spacing', spacing: 20 } } }));
+    run(engine, addExtrude('E', S, [['r/2/qa', 'r/2/qb', 'r/2/qc', 'r/2/qd']], 5));
+    const sideOf = (curve: string): FaceName => side('E', curve);
+    const edges = [canonicalEdge({ a: sideOf('r/2/qa'), b: sideOf('r/2/qb') }), canonicalEdge({ a: cap('E'), b: sideOf('r/2/qc') })];
+    run(engine, { type: 'addFeature', feature: { id: 'K', name: 'K', suppressed: false, type: 'chamfer', body: 'E', edges, distance: 0.5 } } as Command);
+    run(engine, { type: 'setParameter', name: 'n', expr: '2' }, pt('rb0', 5, -2), pt('rb1', 5, 12), ln('rib', 'rb0', 'rb1'), fix('rb0'), fix('rb1'));
+    const made = tool(engine, 'split', {}, 'r_');
+    if (typeof made === 'string') throw new Error(made);
+    expect(made.ids.broken).toEqual([]);
+    const pieces = made.ids.added;
+    const chamfer = made.state.document.features.find((f) => f.id === 'K') as { edges: { a: FaceName; b: FaceName }[] };
+    const names = chamfer.edges.map((e) => [e.a, e.b].map((face) => ('curve' in face ? face.curve : face.role)).sort());
+    // qa is cut at x = 5: its piece at q2 meets qb; qc is cut too: both of its pieces bound the cap
+    const endingAt = (p: string) => pieces.find((id) => (sketchOf6c(made.state).curves[id] as { b?: string } | undefined)?.b === p);
+    const [atQ2, qcPiece] = [endingAt('q2'), endingAt('q4')];
+    expect(names).toEqual([[`r/2/${atQ2}`, 'r/2/qb'].sort(), ['endCap', 'r/2/qc'], ['endCap', `r/2/${qcPiece}`].sort()]);
+    const three = run(engine, { type: 'setParameter', name: 'n', expr: '3' });
+    expect(three.evaluation.features.E.status).toBe('ok');
+    expect(three.evaluation.features.K.status).toBe('ok');
+  });
+
+  // round 2, finding 1: a copy of `origin` named by a feature was not kept by the fourth rule (the
+  // trim cut `origin` off the listed line, and the pulley broke unreported)
+  it('a trim keeps a named copy of `origin` by listing `origin`', () => {
+    const engine = newEngine();
+    run(engine, addSketch(S, XY), pt('p1', 10, 0), ln('c1', 'origin', 'p1'), fix('p1'), pt('v1', 3, -5), pt('v2', 3, 5), ln('V', 'v1', 'v2'), fix('v1'), fix('v2'));
+    run(engine, pattern('r', { type: 'pattern', sources: ['c1'], transform: { type: 'linear', direction: 'origin/y', count: 2, span: { type: 'spacing', spacing: 20 } } }), pulley('r/1/origin'));
+    const made = tool(engine, 'trim', { at: [1, 0], curve: 'c1' }, 't_');
+    if (typeof made === 'string') throw new Error(made);
+    expect((sketchOf6c(made.state).external.r as { sources: string[] }).sources).toEqual(['c1', 'origin']);
+    expect(made.ids.entries).toEqual(['r']);
+    expect(made.ids.broken).toEqual([]);
+    expect(made.state.evaluation.features.G.status).toBe('ok');
+  });
+
+  // round 2, finding 2: the fallback "an entry left with none keeps its last" ran before the fourth
+  // rule, so the removed curve stayed listed beside the kept point, and the sketch warned
+  it('a listed curve trimmed away whole leaves the list when the fourth rule keeps its named end', () => {
+    const engine = newEngine();
+    run(engine, addSketch(S, XY), pt('b', 2, 5), pt('e', 8, 5), ln('X', 'b', 'e'), fix('e'));
+    run(engine, pattern('m', { type: 'pattern', sources: ['X'], transform: { type: 'mirror', axis: 'origin/y' } }), pulley('m/1/b'));
+    const made = tool(engine, 'trim', { at: [5, 5], curve: 'X' }, 't_');
+    if (typeof made === 'string') throw new Error(made);
+    expect(made.ids.removed).toContain('X');
+    expect((sketchOf6c(made.state).external.m as { sources: string[] }).sources).toEqual(['b']);
+    expect(made.ids.entries).toEqual(['m']);
+    expect(made.state.evaluation.features[S].warnings ?? []).toEqual([]);
+    expect(made.state.evaluation.features.G.status).toBe('ok');
+  });
+
+  // round 2, finding 3: the point check of readersOf read a copy as its source and asked whether the
+  // source was removed, which the rule of old ends never lets happen; a named copy that is no longer
+  // an entity after the batch (a gap of the rules of the entries) was not reported
+  it('readersOf reports a feature whose named copy of a point is no longer an entity', () => {
+    const engine = newEngine();
+    run(engine, addSketch(S, XY), pt('b', 2, 5), pt('e', 8, 5), ln('X', 'b', 'e'), pt('v1', 5, 0), pt('v2', 5, 10), ln('V', 'v1', 'v2'), fix('e'), fix('v1'), fix('v2'));
+    run(engine, pattern('m', { type: 'pattern', sources: ['X'], transform: { type: 'mirror', axis: 'origin/y' } }), pulley('m/1/b'));
+    const before = sketchOf6c(engine.getState());
+    const none = { changed: [], restarted: [], rekinded: [], removed: [], removedPoints: [], added: [], span: [], pieces: {}, stretches: [] };
+    expect(readersOf(engine.getState().document, S, none, before).broken).toEqual([]);
+    // a batch whose entry lost the source of the named copy: `m/1/b` is gone, `b` is not removed
+    const after = run(engine, { type: 'updateExternal', sketch: S, id: 'm', ref: { type: 'pattern', sources: ['V'], transform: { type: 'mirror', axis: 'origin/y' } } } as Command);
+    expect(after.evaluation.features.G.status).toBe('error');
+    expect(readersOf(after.document, S, none, before).broken).toEqual(['G']);
+  });
+
+  // finding 3: an extension onto a copy said "meets nothing", or 6e's text for a projection
+  it('an extension onto a copy is refused with the reason of the copy', () => {
+    for (const beyond of [false, true]) {
+      const engine = newEngine();
+      run(engine, addSketch(S, XY), pt('p1', 10, 0), pt('p2', 10, 10), pt('p3', 0, 10), ln('c1', 'origin', 'p1'), ln('c2', 'p1', 'p2'), ln('c3', 'p2', 'p3'), fix('p1'), fix('p2'), fix('p3'));
+      run(engine, pattern('m', { type: 'pattern', sources: ['c1', 'c2', 'c3'], transform: { type: 'mirror', axis: 'origin/y' } }));
+      const region = (engine.getState().evaluation.features[S].sketch as { regions: { ref: { outerLoop: string[] } }[] }).regions[0].ref.outerLoop;
+      run(engine, addExtrude('E', S, [region], 2), pt('l1', -3, 5), pt('l2', -6, 5), ln('L', 'l1', 'l2'), fix('l1'), fix('l2'));
+      if (beyond) run(engine, pt('w1', -12, 0), pt('w2', -12, 10), ln('W', 'w1', 'w2'), fix('w1'), fix('w2'));
+      const refused = tool(engine, 'extend', { curve: 'L', end: 'b' }, 'x_');
+      expect(refused).toContain('"m/1/c2" is a copy of the mirror or pattern "m"; change its source "c2", and the copies follow');
+      expect(refused).not.toContain('meets nothing');
+      expect(refused).not.toContain('draw an own curve over it');
+    }
+  });
+
+  // round 2, nit 2: of two copies on the way the refusal named the first in the order of the curves
+  it('an extension refused at copies names the nearest of them', () => {
+    const engine = newEngine();
+    run(engine, addSketch(S, XY), pt('p1', 10, 0), pt('p2', 10, 10), pt('p3', 0, 10), ln('c1', 'origin', 'p1'), ln('c2', 'p1', 'p2'), ln('c3', 'p2', 'p3'), fix('p1'), fix('p2'), fix('p3'));
+    run(engine, pattern('m', { type: 'pattern', sources: ['c1', 'c2', 'c3'], transform: { type: 'mirror', axis: 'origin/y' } }));
+    const region = (engine.getState().evaluation.features[S].sketch as { regions: { ref: { outerLoop: string[] } }[] }).regions[0].ref.outerLoop;
+    run(engine, addExtrude('E', S, [region], 2), pt('l1', -3, 5), pt('l2', -6, 5), ln('L', 'l1', 'l2'), fix('l1'), fix('l2'));
+    run(engine, pt('z1', 8, 2), pt('z2', 8, 8), ln('Z', 'z1', 'z2'), fix('z1'), fix('z2'), pattern('a', { type: 'pattern', sources: ['Z'], transform: { type: 'mirror', axis: 'origin/y' } }));
+    run(engine, pt('w1', -12, 0), pt('w2', -12, 10), ln('W', 'w1', 'w2'), fix('w1'), fix('w2'));
+    const refused = tool(engine, 'extend', { curve: 'L', end: 'b' }, 'x_');
+    expect(refused).toContain('would meet "a/1/Z" at [-8, 5]');
   });
 });

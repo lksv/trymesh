@@ -7,6 +7,7 @@ import type {
   Curve,
   Document,
   Expr,
+  ExternalRef,
   Feature,
   FieldPath,
   Id,
@@ -17,7 +18,7 @@ import type {
 import { CONSTRAINTS } from './catalog';
 import { type Environment, analyzeExpression, evaluateParameters, parameterNameProblem, renameInExpression } from './expression';
 import { CURVE_POINTS, bodyOwner, constraintOperands, constraintPath, curvePoints, documentIds, duplicateOf, isDimension, isDriving } from './sketch-content';
-import { entityOf, externalRef, updateProblem } from './references/index';
+import { entityOf, externalRef, kindOf, updateProblem } from './references/index';
 import { schemaHeader, upgradeDocument } from './schema';
 import { has } from './util';
 import {
@@ -362,15 +363,56 @@ function existing<T extends { name: string }>(list: T[], name: unknown, what: st
 // A sketch with new constraints. Expressions of constraints that are no longer in the sketch or
 // stopped being a driving dimension cease to exist; `changes` sets (a string) or removes (null) the
 // expression of one address.
+// The expressions of an entry of `external` are kept while the entry is there and its kind reads
+// their address (`external/<id>/…`, D68).
 function withConstraints(s: SketchFeature, constraints: Record<Id, Constraint>, changes: Record<FieldPath, Expr | null> = {}): SketchFeature {
   const { expressions: old, ...rest } = s;
+  const read = new Map<Id, Set<FieldPath>>();
+  const entryReads = (id: Id, path: FieldPath): boolean => {
+    if (!has(s.external, id)) return false;
+    if (!read.has(id)) read.set(id, entryFieldPaths(s, id));
+    return (read.get(id) as Set<FieldPath>).has(path);
+  };
   const kept = Object.entries({ ...old, ...changes }).filter(([path, expr]) => {
     const [group, id] = path.split('/');
+    if (expr !== null && group === 'external') return entryReads(id, path);
     const c = has(constraints, id) ? constraints[id] : undefined;
     // the address must be a value of a constraint that is still there and still driving
     return expr !== null && group === 'constraints' && c !== undefined && isDriving(c) && has(CONSTRAINTS[c.type].values ?? {}, path.split('/')[2] ?? '');
   }) as [FieldPath, Expr][];
   return { ...rest, constraints, ...(kept.length ? { expressions: Object.fromEntries(kept.sort(([a], [b]) => (a < b ? -1 : 1))) } : {}) };
+}
+
+// The addresses of the numeric fields an entry of `external` reads (`external/<id>/…`), learnt by
+// validating the entry once, as `fieldsOf` learns those of a feature.
+function entryFieldPaths(s: SketchFeature, id: Id): Set<FieldPath> {
+  const fields = new Fields('load', {}, NO_ENVIRONMENT);
+  try {
+    externalRef({ ...refContext(EMPTY, undefined), fields }, s, id, s.external[id], 'entry');
+  } catch {
+    return new Set();
+  }
+  return new Set(fields.found.map((field) => field.path));
+}
+
+// A sketch whose expressions under `external/<id>/` are those given: every address of the entry is
+// set anew, so a number removes an expression.
+function withEntryExpressions(s: SketchFeature, id: Id, given: Record<FieldPath, Expr>): SketchFeature {
+  const { expressions: old, ...rest } = s;
+  const kept = Object.entries(old ?? {}).filter(([path]) => !path.startsWith(`external/${id}/`));
+  const all = [...kept, ...Object.entries(given)].sort(([a], [b]) => (a < b ? -1 : 1));
+  return { ...rest, ...(all.length ? { expressions: Object.fromEntries(all) } : {}) };
+}
+
+// The input form of one entry of `external` (as `featureInput` of a feature): its numeric fields
+// with the sketch's expressions under `external/<id>/` put back as strings. What sends
+// `updateExternal` for an entry with fields (a sketch tool that patches it, the app's form) starts
+// from it, so an expression stays an expression.
+export function entryInput(s: SketchFeature, id: Id): Input<ExternalRef> {
+  const prefix = `external/${id}/`;
+  return Object.entries(s.expressions ?? {})
+    .filter(([path]) => path.startsWith(prefix))
+    .reduce((input, [path, expr]) => withPath(input, path.slice(prefix.length), expr), s.external[id] as unknown) as Input<ExternalRef>;
 }
 
 // ---------------------------------------------------------------- příkazy
@@ -697,24 +739,49 @@ export function applyCommand(doc: Document, command: Command): Document {
       });
 
     case 'addExternal':
-      return editSketch(doc, cmd.sketch, (s, index) => ({
-        ...s,
-        external: (() => {
-          const id = unique(doc, cmd.id, 'addExternal.id');
-          return { ...s.external, [id]: externalRef(entryContext(doc, index), s, id, cmd.ref, 'addExternal.ref') };
-        })(),
-      }));
+      return editSketch(doc, cmd.sketch, (s, index) => {
+        const id = unique(doc, cmd.id, 'addExternal.id');
+        // the numeric fields of the entry may be expressions (its input form), read at external/<id>/…
+        const context = entryContext(doc, index);
+        const ref = externalRef(context, s, id, cmd.ref, 'addExternal.ref');
+        const kind = kindOf(ref);
+        const problem = kind.source === 'derived' ? kind.commandProblem(s, ref, undefined, (entity) => entityOf(s, entity)) : undefined;
+        if (problem) fail(`addExternal.ref: ${problem}`);
+        return withEntryExpressions({ ...s, external: { ...s.external, [id]: ref } }, id, context.fields.expressions('addExternal.ref') ?? {});
+      });
 
     case 'updateExternal':
       return editSketch(doc, cmd.sketch, (s, index) => {
         const id = string(cmd.id, 'updateExternal.id');
         if (!has(s.external, id)) fail(`updateExternal: promítnutí "${id}" ve skice není`);
-        const ref = externalRef(entryContext(doc, index), s, id, cmd.ref, 'updateExternal.ref');
+        // A string equal to the expression a field has is no change and is not evaluated again (as
+        // updateFeature keeps a repeated expression): the field gets its number and the expression is
+        // handed to the reader as given. Every other address of the entry is set anew.
+        const prefix = `external/${id}/`;
+        const given: Record<FieldPath, Expr> = {};
+        let input = cmd.ref;
+        for (const [path, expr] of Object.entries(s.expressions ?? {})) {
+          if (!path.startsWith(prefix)) continue;
+          const local = path.slice(prefix.length);
+          const sent = atPath(input, local);
+          const stored = atPath(s.external[id], local);
+          if (typeof sent === 'string' && sent.trim() === expr && typeof stored === 'number') {
+            input = withPath(input, local, stored);
+            given[path] = expr;
+          }
+        }
+        const context = { ...refContext(doc, index), fields: new Fields('update', given, () => evaluateParameters(doc.parameters)) };
+        const ref = externalRef(context, s, id, input, 'updateExternal.ref');
         // Změna druhu by změnila odvozená ID; kdo chce jiný druh, promítnutí smaže a založí nové.
         const problem = updateProblem(s, id, s.external[id], ref);
         if (problem) fail(`updateExternal: ${problem}`);
+        // of a derived entry only what the update brings in is checked against the sketch
+        const kind = kindOf(ref);
+        const brought = kind.source === 'derived' ? kind.commandProblem(s, ref, s.external[id], (entity) => entityOf(s, entity)) : undefined;
+        if (brought) fail(`updateExternal.ref: ${brought}`);
         // Zmrazené hodnoty patřily původní hraně.
-        return { ...s, external: { ...s.external, [id]: ref }, solved: { ...s.solved, external: without(s.solved.external, (e) => e === id) } };
+        const next = { ...s, external: { ...s.external, [id]: ref }, solved: { ...s.solved, external: without(s.solved.external, (e) => e === id) } };
+        return withEntryExpressions(next, id, context.fields.expressions('updateExternal.ref') ?? {});
       });
 
     case 'removeExternal':
@@ -722,6 +789,7 @@ export function applyCommand(doc: Document, command: Command): Document {
         const id = string(cmd.id, 'removeExternal.id');
         if (!has(s.external, id)) fail(`removeExternal: promítnutí "${id}" ve skice není`);
         const derived = (operand: Id) => operand === id || operand.startsWith(`${id}/`);
+        // the expressions of the entry go with it (withConstraints keeps none of an entry that is gone)
         const left = { ...s, external: without(s.external, (e) => e === id), solved: { ...s.solved, external: without(s.solved.external, (e) => e === id) } };
         return withConstraints(
           left,

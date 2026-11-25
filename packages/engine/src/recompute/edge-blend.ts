@@ -211,8 +211,8 @@ function blend(kind: BlendKind, feature: Id, solid: Solid, given: EdgeName[], si
 
   // ------------------------------------------------ 2, 3. the edges and their kind
   const edges: Edge[] = given.map((name, index) => {
-    // found by its key, taken only when its name is the name asked for (D62: a text field of a role
-    // takes any text, so a name no feature makes may key like a real one)
+    // found by its key, taken only when its name is the name asked for (D62; since D68 no two names
+    // share a key, and the comparison is what holds if a later role breaks the rule of the key)
     const found = data.edges.get(edgeKey(name));
     const edgeData = found && sameEdgeName(found.name, name) ? found : undefined;
     if (!edgeData) return refuse('brokenReference', [name], 'the body has no such edge');

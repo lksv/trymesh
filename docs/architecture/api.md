@@ -307,8 +307,8 @@ type Command =
   | { type: 'removeConstraint'; sketch: Id; id: Id }
   | { type: 'setConstraintValue'; sketch: Id; id: Id; value?: number | Expr; driving?: boolean }
   | { type: 'dragPoint'; sketch: Id; point: Id; x: number; y: number }
-  | { type: 'addExternal'; sketch: Id; id: Id; ref: ExternalRef }
-  | { type: 'updateExternal'; sketch: Id; id: Id; ref: ExternalRef }
+  | { type: 'addExternal'; sketch: Id; id: Id; ref: Input<ExternalRef> }
+  | { type: 'updateExternal'; sketch: Id; id: Id; ref: Input<ExternalRef> }
   | { type: 'removeExternal'; sketch: Id; id: Id }
   // body properties (D48), a section of the document; see the document
   | { type: 'setBodyProperties'; body: Id; patch: BodyPropertiesPatch }   // null removes a field
@@ -372,6 +372,7 @@ Příkaz, který je strukturálně v pořádku, ale vede k chybě přepočtu (ko
 - `removeExternal` odstraní vazby na promítnutou křivku a její odvozené body. Vlastní křivky na promítnuté body neodkazují, takže se jich mazání netýká.
 - `setCurvePoint` (D52) is no deletion: the curve keeps its ID and its constraints, and the point it had stays. It is invalid when `point` is not a name the kind of the curve has (`a`, `b` of a line; `center` of a circle; `center`, `start`, `end` of an arc; the table `CURVE_POINTS`), when the changed curve fails the validator of a curve (`to` an own point or `origin`, the points of the curve differ), or when the own rule of a constraint on the curve (`check` of the catalog: `symmetric`, `midpoint`) would refuse it afterwards; the message names that constraint. `to` equal to the point the curve has returns the same document, so it makes no undo step. Nothing is solved by the command; the stamp of the sketch holds the curves, so the next recompute solves it. In the recompute a region may be gone (`noProfile`), a side face starts at the new start of its line, and the straight end of a wall (`wallEnd`) is renamed by the new point of its chain.
 - `updateExternal` zachová ID, takže vazby zůstanou. Smí změnit hranu, ne `kind`: změna druhu by změnila odvozená ID. Kdo chce místo úsečky kružnici, promítnutí smaže a vytvoří nové.
+- `addExternal` and `updateExternal` take the entry in its input form (D68): a numeric field of an entry may be an expression, kept in the sketch's `expressions` at `external/<id>/…` and reached by `setField` with the sketch as the feature. `updateExternal` replaces the whole entry and sets every field anew (a number removes the expression; a string equal to the expression the field has counts as unchanged and is not evaluated again; `entryInput(sketch, id)` gives the form to send back). An update may not turn an entry of reference geometry into derived geometry or back. Of a derived entry the commands also ask the kind against the sketch as it is (`commandProblem`), `updateExternal` only of what the update brings in.
 - `removeFeature` nekaskáduje: závislé features zůstanou a skončí v chybě. Opravit je jde bez ztráty ID: `updateFeature` umí u vysunutí změnit i zdrojovou skicu (spolu s novým výběrem oblastí) a cíl, u roviny základ; `setSketchPlane` rovinu skici.
 
 **`load`** brings the document to the schema of this build and then checks the same rules over the whole document. The current schema version is 10. A stored document (D62) is validated by the same function, one level deeper, with its path in the messages ([insert.md](insert.md)).

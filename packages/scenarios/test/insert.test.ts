@@ -215,10 +215,10 @@ describe('what an inserted body inherits, and features on it', () => {
   });
 });
 
-describe('names that key like a real name are no reference to it', () => {
+describe('a name that reads like a copy of a real one is no reference to it', () => {
   let engine: Engine;
   // a ring and a copy of it by a pattern: the copy's side is `ring/side/ringCircle/@p:1`, which the
-  // name with the curve `ringCircle/@p:1` keys like
+  // name with the curve `ringCircle/@p:1` keyed like until D68 quoted a text with a slash
   const real: FaceName = { feature: 'ring', role: 'side', curve: 'ringCircle', copy: [{ pattern: 'p', index: 1 }] };
   const alias: FaceName = { feature: 'ring', role: 'side', curve: 'ringCircle/@p:1' };
   const cap: FaceName = { feature: 'ring', role: 'endCap', copy: [{ pattern: 'p', index: 1 }] };
@@ -228,7 +228,7 @@ describe('names that key like a real name are no reference to it', () => {
   });
 
   it('an edge with one aliased face projects nothing; the real one projects', () => {
-    expect(faceKey(alias)).toBe(faceKey(real));
+    expect(faceKey(alias)).not.toBe(faceKey(real));
     const project = (a: FaceName) => preview(engine, { type: 'addFeature', feature: emptySketch('s', 's', XY) }, { type: 'addExternal', sketch: 's', id: 'rim', ref: { type: 'edge', body: 'p/1', edge: { a, b: cap }, kind: 'circle' } });
     expect(project(real).evaluation.features.s.status).toBe('ok');
     expect(project(alias).evaluation.features.s.warnings.map((w) => w.code)).toEqual(['brokenProjection']);
@@ -264,16 +264,17 @@ describe('chamfers and fillets of edges and inserted documents', () => {
     expect(preview(engine, insertion('a', 'ring'), fillet('f', 'a/ring', [top('a/')], 1)).evaluation.features.f.status).toBe('ok');
   });
 
-  it('an edge whose name keys like a real one is no edge of the body', () => {
-    // a copy `p/1` of the ring by a pattern: its side is `{ ring, side, ringCircle, copy p:1 }`,
-    // whose key is also the key of `{ ring, side, curve: 'ringCircle/@p:1' }`, a name no feature makes
+  it('an edge whose name reads like a real one is no edge of the body', () => {
+    // a copy `p/1` of the ring by a pattern: its side is `{ ring, side, ringCircle, copy p:1 }`; the
+    // name `{ ring, side, curve: 'ringCircle/@p:1' }`, which no feature makes, keyed like it until
+    // D68 quoted a text with a slash
     const shop = newEngine();
     const doc = { ...ringPart(), features: [...ringPart().features, { id: 'p', name: 'p', suppressed: false, type: 'pattern', source: { type: 'body', body: 'ring' }, transform: { type: 'linear', direction: { kind: 'base', axis: 'X' }, count: 2, span: { type: 'spacing', spacing: 30 } } }] };
     expect(shop.load(JSON.stringify(doc)).ok).toBe(true);
     const copy = (name: object): FaceName => ({ ...name, copy: [{ pattern: 'p', index: 1 }] }) as FaceName;
     const real = { a: copy({ feature: 'ring', role: 'endCap' }), b: copy({ feature: 'ring', role: 'side', curve: 'ringCircle' }) };
     const alias = { a: real.a, b: { feature: 'ring', role: 'side', curve: 'ringCircle/@p:1' } as FaceName };
-    expect(faceKey(alias.b)).toBe(faceKey(real.b));
+    expect(faceKey(alias.b)).not.toBe(faceKey(real.b));
     expect(preview(shop, chamfer('k', 'p/1', [real], 1)).evaluation.features.k.status).toBe('ok');
     expect(preview(shop, chamfer('k', 'p/1', [alias], 1)).evaluation.features.k.error).toMatchObject({ code: 'brokenReference' });
   });

@@ -11,6 +11,7 @@ import { h, markProblem } from '../dom';
 import { fieldText, parseField, unitLabel } from '../fields';
 import type { PanelHost } from '../host';
 import { angleProblem, faceLabel } from '../issue-text';
+import { entryHas, omittedNotes, unlistedLabel } from '../references';
 import { lineIds, lineLabel } from '../sketch-commands';
 import { sketchView } from '../sketch-view';
 
@@ -33,14 +34,16 @@ type Control<K> = (spec: K, value: unknown, path: ArgPath, form: Form, siblings:
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
 const samePath = (a: ArgPath | undefined, b: ArgPath): boolean => a !== undefined && a.length === b.length && a.every((part, i) => part === b[i]);
 
-// A choice from a list, with an empty first row while nothing is chosen.
-function choice(options: readonly (readonly [value: string, label: string])[], current: string | undefined, change: (value: string | undefined) => void, empty = '—'): HTMLSelectElement {
+// A choice from a list, with an empty first row while nothing is chosen, and `notes` as disabled rows
+// after the list (how many copies of a mirror or pattern it left out, D68).
+function choice(options: readonly (readonly [value: string, label: string])[], current: string | undefined, change: (value: string | undefined) => void, empty = '—', notes: readonly string[] = []): HTMLSelectElement {
   const known = current !== undefined && options.some(([value]) => value === current);
   const select = h(
     'select',
     { onchange: () => change(select.value === '' ? undefined : select.value) },
     h('option', { value: '', textContent: empty, selected: !known }),
     ...options.map(([value, label]) => h('option', { value, textContent: label, selected: value === current })),
+    ...notes.map((text) => h('option', { value: '', textContent: text, disabled: true })),
   );
   return select;
 }
@@ -56,6 +59,12 @@ function pointsOf(form: Form, sketch: unknown): [Id, string][] {
   const feature = sketchOf(form, sketch);
   const result = feature && form.state.evaluation.features[feature.id]?.sketch;
   return feature && result ? [...sketchView(feature, result).points.keys()].map((id) => [id, id]) : [];
+}
+// The lines of a sketch an axis may run along, and the line chosen when it is a copy of a mirror or
+// pattern beyond those the list holds (D68); the select says how many it left out (`omittedNotes`).
+function linesOf(feature: SketchFeature | undefined, current: unknown): (readonly [Id, string])[] {
+  const lines = feature ? lineIds(feature).map((id) => [id, lineLabel(id)] as const) : [];
+  return feature && typeof current === 'string' && !lines.some(([id]) => id === current) && entryHas(feature, current) ? [...lines, [current, unlistedLabel(feature, current)] as const] : lines;
 }
 const faceText = (form: Form, name: FaceName): string => `${faceLabel(name, form.host.featureNames)} · ${faceKey(name)}`;
 const facesOf = (form: Form, body: unknown): [string, string][] => {
@@ -191,7 +200,7 @@ export const CONTROLS: { readonly [K in ArgKind['kind']]: Control<Extract<ArgKin
       const feature = sketchOf(form, current.sketch);
       out.push(
         choice(sketches(form), typeof current.sketch === 'string' ? current.sketch : undefined, (sketch) => form.set(path, { kind: 'sketchLine', sketch }, true), 'sketch'),
-        choice(feature ? lineIds(feature).map((id) => [id, lineLabel(id)] as const) : [], typeof current.line === 'string' ? current.line : undefined, (line) => form.set(path, { kind: 'sketchLine', sketch: current.sketch, line }), 'line'),
+        choice(linesOf(feature, current.line), typeof current.line === 'string' ? current.line : undefined, (line) => form.set(path, { kind: 'sketchLine', sketch: current.sketch, line }), 'line', feature ? omittedNotes(feature, (kind) => kind === 'line') : []),
       );
     }
     if (current.kind === 'sketchPoint') {

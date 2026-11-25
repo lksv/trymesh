@@ -42,6 +42,7 @@ export const MESSAGE: Record<IssueCode, string> = {
   blendDoesNotFit: 'The chamfer or fillet does not fit on the faces next to the edge: a face would vanish, or the tool reaches material it must not touch.',
   jointLimits: 'The lower limit of the joint is above its upper limit.',
   jointOutOfLimits: 'The value of the joint is outside its limits.',
+  brokenCopies: 'A mirror or pattern of the sketch cannot make all its copies.',
   insertedIssues: 'The inserted document did not recompute cleanly with the values of this insertion: a feature of it is in error or a check of it fails.',
 };
 export const issue = (code: IssueCode, refs?: unknown[], detail?: string): Issue => ({ code, message: detail ? `${MESSAGE[code]} (${detail})` : MESSAGE[code], ...(refs ? { refs } : {}) });

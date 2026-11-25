@@ -120,8 +120,8 @@ export interface EdgeProjection {
   edge: EdgeName;
   kind: ProjectionKind;
 }
-// today's `ExternalRef` is the edge
-export const edgeIsTodaysEntry: EdgeProjection = {} as ExternalRef;
+// the edge of `ExternalRef` (before 6c the whole of it; implemented, `ExternalRef` is the union)
+export const edgeIsTodaysEntry: EdgeProjection = {} as Extract<ExternalRef, { type: 'edge' }>;
 export type ExternalRefAfter = EdgeProjection | SketchPattern;
 // The commands take the input form, so a numeric field of an entry may be an expression
 // (`Input` leaves the edge as it is: it has a `kind`).
@@ -163,10 +163,13 @@ declare module '../6a-sketch-prep/contract' {
 // - a reference kind is the base with `compute`, `value`, `geometry`; a derived kind the base with
 //   `entity`, `commandProblem`, `derive`.
 // - a kind is a reference kind exactly when `ReferenceValues` has a value for its name.
-export type KindBase<R> = Pick<ReferenceKindSpec<R, never>, 'title' | 'validate' | 'refs' | 'faces' | 'entities'> & KindInfo<R>;
+export type KindBase<R> = Pick<ReferenceKindSpec<R, never>, 'title' | 'validate' | 'refs' | 'faces' | 'entities'> & KindInfo<R>; // the code: KindBase of references/spec.ts
+// As implemented the code's `KindBase` has both members, and `example` is the `id` and `ref` of the
+// addExternal (an entry, with numbers in its fields), so the description can name the fields of the
+// example by their address.
 export interface KindInfo<R> {
   summary: string;
-  example: Input<R>;
+  example: { id: Id; ref: R };
 }
 export type ReferenceKindSpecAfter<R, V> = ReferenceKindSpec<R, V> & KindInfo<R>;
 
@@ -233,7 +236,7 @@ export declare const PATTERN_KIND: DerivedKindSpec<SketchPattern>;
 // members of the description added); a member of the union without an entry of its half does not
 // compile.
 export const KINDS_AFTER: { readonly [T in EntryKindName]: KindOf<T> } = {
-  edge: { ...edge, summary: 'The projection of a straight or a circular edge of a body.', example: { type: 'edge', body: 'box', edge: { a: { feature: 'box', role: 'endCap' }, b: { feature: 'box', role: 'side', curve: 'r1' } }, kind: 'line' } },
+  edge, // as implemented the edge of the code has `summary` and `example`
   pattern: PATTERN_KIND,
 };
 // `kindOf` answers the union of the two shapes, so a caller that wants `compute` or `value` asks
@@ -590,7 +593,7 @@ export type EntryControl =
   | { kind: 'number'; path: string; title: string; unit: 'mm' | 'angle' | 'count' } // text that may be an expression
   | { kind: 'switch'; path: string; title: string };
 type Repair = NonNullable<ReferenceUi<unknown>['repair']>;
-export interface ReferenceUiAfter<R> extends Omit<ReferenceUi<R>, 'repair'> {
+export interface ReferenceUiAfter<R> extends Omit<ReferenceUi<R>, 'repair' | 'form'> {
   repair?: Repair | ((ref: R) => Repair | undefined);
   form?(ref: Input<R>): EntryControl[];
 }

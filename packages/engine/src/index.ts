@@ -15,6 +15,7 @@ export {
   duplicateOf,
   emptyDocument,
   emptySketch,
+  entryInput,
   featureInput,
   fieldsOf,
   isDimension,
@@ -23,9 +24,11 @@ export {
 } from './document';
 export { bodyRefs, bodySource, featuresWithInserted, generatorOf, insertedFeature, producesTool, sourceChain, sourceRoot } from './features/index';
 export { INSERT_FIELDS } from './features/insert';
+export { entryOrder } from './references/derive';
 export { insertedFaceName } from './recompute/insertion';
 export { MAX_INSERT_DEPTH } from './sections/documents';
 export { GRID_STRIDE, MAX_PATTERN_PLACES } from './features/pattern';
+export { PATTERN_ANGLE, PATTERN_COUNT, PATTERN_LENGTH, PATTERN_SPACING } from './pattern-numbers';
 export { type MeshOrigin, shapeOrigin } from './solid';
 export { FACE_ROLES, type FaceRoleSpec, faceKey, faceParts, faceText, sameFaceName } from './face-roles';
 export { type CatalogTable, type Catalogs, DATA_CATALOGS, type DataCatalog, catalogTable } from './data-catalogs';
@@ -68,7 +71,7 @@ export { pairInFrame } from './query/pose';
 export type { MaterialRow } from './catalogs/materials';
 export { CONSTRAINTS, type Bound, type ConstraintSpec, type EntityKind, type FieldSpec, type NumberSpec, type OperandSpec, type Unit, checkNumber, rangeText } from './catalog';
 export { GENERATORS, type FlagSpec, type GeneratorSpec, type ParamSpec, isFlag } from './generators';
-export { EXPRESSION_CONSTANTS, EXPRESSION_FUNCTIONS, EXPRESSION_SYNTAX, type ExprKind, analyzeExpression } from './expression';
+export { EXPRESSION_CONSTANTS, EXPRESSION_FUNCTIONS, EXPRESSION_SYNTAX, type ExprKind, analyzeExpression, expressionValue } from './expression';
 export { INTERFERENCE_THRESHOLD, bodyFileName } from './interference';
 export {
   type Anchor,
@@ -90,7 +93,8 @@ export {
   sketchTool,
 } from './sketch-tools';
 export { CUT_IDS, type CutIds, type CurveChanges, type CurvePredicates, type ExtendInput, type PieceShape, type RemovedStretch, type Repair, type SketchContact, type SplitInput, type TrimInput, curvePredicates, curveUnder, extendEnd, extendReach, readersOf, repairsByDefault, trimPiece } from './sketch-cut';
-export { entityOf } from './references/index';
+export { type EntityIndex, REFERENCE_KINDS, derivedOrigin, entityIndex, entityOf, kindOf } from './references/index';
+export type { AnyKind, EntryKindName } from './references/spec';
 export { type ContactKind, type ContactPoint, type CurveContacts, type TightPlace, curveContacts, profileOf, profileProblem } from './sketch';
 export { type SketchBase, type SketchWorld, cutInMemory, sketchWorld, stepBase, toolBase } from './references/world';
 export type { Deps } from './evaluate';

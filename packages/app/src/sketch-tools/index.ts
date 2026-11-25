@@ -7,6 +7,7 @@ import { circle } from './circle';
 import { extend } from './extend';
 import { fillet } from './fillet';
 import { line } from './line';
+import { circularPattern, linearPattern, mirror } from './pattern';
 import { point } from './point';
 import { polygon } from './polygon';
 import { project } from './project';
@@ -17,7 +18,7 @@ import type { SketchToolUi } from './spec';
 import { trim } from './trim';
 
 // Each entry is written with its own type of options; the table forgets it, as `FEATURE_UI` does.
-const TABLE = { select, point, line, rect, polygon, circle, arc, fillet, trim, extend, split, project };
+const TABLE = { select, point, line, rect, polygon, circle, arc, fillet, trim, extend, split, mirror, linearPattern, circularPattern, project };
 
 export type SketchToolName = keyof typeof TABLE;
 export const SKETCH_TOOL_UI: { readonly [T in SketchToolName]: SketchToolUi<any> } = TABLE;

@@ -1,7 +1,7 @@
 // The sketch mode: its tools, what a press, a move and a click in the view mean, the drag of
 // a point, and what the mode draws. The app keeps the pointer and key handlers and hands the events
 // over; the panel of the mode is panels/sketch.ts.
-import { type Command, type CommandResult, type Constraint, type ConstraintExplanation, type EngineState, type Frame, type Id, type SketchDiagnosis, type SketchFeature, type SketchResult, type QueryResult, type SketchToolCall, constraintKey, duplicateOf, isDimension, isOriginAxis } from '@trymesh/engine';
+import { type Command, type CommandResult, type Constraint, type ConstraintExplanation, type EngineState, type Frame, type Id, type SketchDiagnosis, type SketchFeature, type SketchResult, type QueryResult, type SketchToolCall, constraintKey, derivedOrigin, duplicateOf, isDimension, isOriginAxis } from '@trymesh/engine';
 import { fmt } from './dom';
 import { COLOR, pushPolyline, toWorld } from './draw';
 import { PICK_REACH, type PanelHost, type ViewPick, pickKey } from './host';
@@ -28,6 +28,7 @@ export interface SketchMode {
   drag?: { point: Id; moved: boolean };
   preview?: EngineState; // stav při tažení bodu
   repair?: Id; // promítnutí, které další kliknutí nástrojem Promítnout opraví
+  entry?: Id; // the entry of `external` whose form is open in the panel (a mirror or pattern, D68)
 }
 export const sketchMode = (id: Id): SketchMode => ({ kind: 'sketch', id, tool: 'select', clicks: [], selection: [] });
 
@@ -87,6 +88,7 @@ export function settleSketch(m: SketchMode, context: SketchContext | undefined):
   m.selection = m.selection.filter((id) => view && kindOf(view, id));
   m.clicks = m.clicks.filter((a) => !a.snap || a.snap.kind === 'foreign' || (view && kindOf(view, a.snap.id)));
   if (m.repair && !context?.feature.external[m.repair]) m.repair = undefined;
+  if (m.entry && !context?.feature.external[m.entry]) m.entry = undefined;
   // místo pod kurzorem se po změně skici počítá znovu: přichycení mohlo vzniknout nebo zaniknout
   m.cursor = undefined;
   m.infer = undefined;
@@ -122,14 +124,17 @@ export function dropPoint(host: SketchHost, m: SketchMode, point: Id, event: Poi
   if (!p || !host.run({ type: 'dragPoint', sketch: m.id, point, x: p[0], y: p[1] })) host.refresh();
 }
 
-// Místo pod kurzorem ve skice a přichycení: bod má přednost před křivkou.
-function anchorAt(host: SketchHost, event: { clientX: number; clientY: number }, context: SketchContext): Place | undefined {
+// Místo pod kurzorem ve skice a přichycení: bod má přednost před křivkou. A copy of a mirror or
+// pattern (D68) is snapped to only with `copies` (the select tool, to find its entry): a new point
+// cannot be tied to a copy.
+function anchorAt(host: SketchHost, event: { clientX: number; clientY: number }, context: SketchContext, copies = false): Place | undefined {
   const p = host.planePoint(event, context.frame)?.at;
   if (!p) return undefined;
   const reach = PICK_REACH * host.pixelSize();
-  const point = hitPoint(context.view, p, reach);
+  const skip = copies ? undefined : (id: Id): boolean => context.view.points.get(id)?.derived === true || context.view.curves.get(id)?.derived === true;
+  const point = hitPoint(context.view, p, reach, skip);
   if (point) return { at: point.at, snap: { kind: 'point', id: point.id } };
-  const curve = hitCurve(context.view, p, reach);
+  const curve = hitCurve(context.view, p, reach, skip);
   if (curve) return { at: closestOn(curve.shape, p), snap: { kind: 'curve', id: curve.id } };
   return { at: p };
 }
@@ -139,7 +144,7 @@ function anchorAt(host: SketchHost, event: { clientX: number; clientY: number },
 // by the tool's own picker. Exported for the tests.
 export function placeAt(host: SketchHost, tool: SketchPlaceTool<unknown>, event: { clientX: number; clientY: number }, context: SketchContext): Place | undefined {
   const picks = tool.picks ?? 'sketch';
-  if (picks === 'sketch') return anchorAt(host, event, context);
+  if (picks === 'sketch') return anchorAt(host, event, context, tool.hovers === true);
   if (picks !== 'curve') return picks.pick(host, event, context);
   const p = host.planePoint(event, context.frame)?.at;
   if (!p) return undefined;
@@ -258,9 +263,13 @@ export function deleteSelection(host: SketchHost, m: SketchMode): void {
   const context = host.sketchContext();
   if (!context || m.selection.length === 0) return;
   const commands = deleteCommands(m.id, context.feature, context.view, m.selection);
-  if (commands.length === 0) return host.say('Počátek a body promítnuté geometrie smazat nejdou; promítnutí se maže výběrem jeho křivky.', true);
+  // a copy of a mirror or pattern (D68) is not deleted: it goes with its entry or its source
+  const copy = m.selection.find((id) => context.view.points.get(id)?.derived === true || context.view.curves.get(id)?.derived === true);
+  const entry = copy === undefined ? undefined : derivedOrigin(context.feature, copy)?.entry;
+  const copyHint = entry === undefined ? '' : `"${copy}" is a copy of the mirror or pattern "${entry}" and is not deleted by itself: remove "${entry}" by ✕ in its row, or change its sources in its form.`;
+  if (commands.length === 0) return host.say(copyHint || 'Počátek a body promítnuté geometrie smazat nejdou; promítnutí se maže výběrem jeho křivky.', true);
   m.selection = [];
-  host.run({ type: 'batch', commands }, 'Smazáno.');
+  host.run({ type: 'batch', commands }, copyHint ? `Deleted the own entities of the selection; ${copyHint}` : 'Smazáno.');
 }
 
 // Vysvětlení označené vazby. Pamatuje se podle diagnostiky, aby se při každém překreslení
@@ -297,7 +306,7 @@ export function sketchScene(host: SketchHost, m: SketchMode, model: SceneModel):
   else model.points.push({ positions: (contactsOf(host, m.id)?.contacts ?? []).flatMap((contact) => toWorld(frame, contact.at[0], contact.at[1])), color: COLOR.clash, size: 9 });
 
   // `unknown`: skica není vyřešená a o volnosti se nedá nic říct
-  const lines: Record<'own' | 'determined' | 'unknown' | 'construction' | 'external' | 'selected' | 'hover' | 'focus' | 'implying', number[]> = { own: [], determined: [], unknown: [], construction: [], external: [], selected: [], hover: [], focus: [], implying: [] };
+  const lines: Record<'own' | 'determined' | 'unknown' | 'construction' | 'external' | 'derived' | 'derivedConstruction' | 'selected' | 'hover' | 'focus' | 'implying', number[]> = { own: [], determined: [], unknown: [], construction: [], external: [], derived: [], derivedConstruction: [], selected: [], hover: [], focus: [], implying: [] };
   // The axes of the origin (D71) in a bucket of their own: thin lines in the colour of a plane,
   // drawn by the view as their stretch inside what it shows.
   const axes: NonNullable<SceneModel['axes']> = [];
@@ -315,7 +324,11 @@ export function sketchScene(host: SketchHost, m: SketchMode, model: SceneModel):
           ? 'focus'
           : implying.has(curve.id)
             ? 'implying'
-            : !curve.own
+            : curve.derived
+              ? curve.construction
+                ? 'derivedConstruction'
+                : 'derived'
+              : !curve.own
               ? 'external'
               : curve.construction
                 ? 'construction'
@@ -333,6 +346,10 @@ export function sketchScene(host: SketchHost, m: SketchMode, model: SceneModel):
     { segments: lines.unknown, color: COLOR.idle, width: 2, onTop: true },
     { segments: lines.construction, color: COLOR.construction, width: 1.5, dashed: true, onTop: true },
     { segments: lines.external, color: COLOR.external, width: 2, onTop: true },
+    // copies of mirrors and patterns (D68): derived geometry, dashed in the colour of projections
+    ...(lines.derived.length > 0 ? [{ segments: lines.derived, color: COLOR.external, width: 1.5, dashed: true, onTop: true }] : []),
+    // copies of construction curves: thinner, as construction curves are thinner than outlines
+    ...(lines.derivedConstruction.length > 0 ? [{ segments: lines.derivedConstruction, color: COLOR.external, width: 1, dashed: true, onTop: true }] : []),
     { segments: lines.implying, color: COLOR.implied, width: 3, onTop: true },
     { segments: lines.focus, color: COLOR.hover, width: 4, onTop: true },
     { segments: lines.hover, color: COLOR.hover, width: 3, onTop: true },
@@ -341,6 +358,8 @@ export function sketchScene(host: SketchHost, m: SketchMode, model: SceneModel):
 
   const points: Record<'own' | 'determined' | 'unknown' | 'fixed' | 'selected' | 'hover' | 'focus' | 'implying', number[]> = { own: [], determined: [], unknown: [], fixed: [], selected: [], hover: [], focus: [], implying: [] };
   for (const point of view.points.values()) {
+    // the points of copies have no handles: drawn only when selected or hovered
+    if (point.derived && !selected.has(point.id) && !hovered.has(point.id)) continue;
     const bucket = selected.has(point.id)
       ? 'selected'
       : hovered.has(point.id)

@@ -56,6 +56,9 @@
         button title="Click the piece of a curve to remove.": "Trim"
         button title="Click a line or an arc near the end to extend.": "Extend"
         button title="Click a curve to cut it where other curves cross it.": "Split"
+        button title="Select the curves and points to copy, then click the line to mirror them about.": "Mirror"
+        button title="Select the curves and points to copy, then click the line to repeat them along.": "Linear pattern"
+        button title="Select the curves and points to copy, then click the point to turn them about.": "Circular pattern"
         button title="Klikněte na hranu tělesa (úsečku nebo kružnici).": "Promítnout"
       div.group
         button title="Kreslicí nástroje zakládají konstrukční (pomocné) křivky": "Konstrukčně"

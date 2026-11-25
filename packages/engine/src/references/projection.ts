@@ -137,10 +137,12 @@ function exactArc(center: Vec2, start: Vec2, end: Vec2): Projected | undefined {
   return { kind: 'arc', center, start, end: [center[0] + (rs * (end[0] - center[0])) / re, center[1] + (rs * (end[1] - center[1])) / re] };
 }
 
-// How far the end of a stored arc may lie off the circle of its start, relative to its radius, and
-// still be read as it is: `exactArc` is not idempotent in floating point (applied to its own output
-// it moves the end by an ulp in about a third of cases), so a value `compute` wrote is kept bit for
-// bit and a frozen projection stays the same at every recompute, save and load.
+// How far the end of a stored arc may lie off the circle of its start, relative to the larger of
+// its radius and its centre's coordinates, and still be read as it is: `exactArc` is not idempotent
+// in floating point (applied to its own output it moves the end by an ulp in about a third of
+// cases, an ulp of the coordinates, not of the radius), so a value `compute` wrote is kept bit for
+// bit and a frozen projection stays the same at every recompute, save and load, a small arc far
+// from the origin too.
 const ARC_STORED_TOLERANCE = 1e-12;
 
 // A stored value read back: the stored object itself when it is of the entry's kind and has the
@@ -162,7 +164,8 @@ function storedValue(stored: unknown, ref: SketchProjection, what: string): Proj
       const exact = exactArc(value.center, value.start, value.end);
       if (exact?.kind !== 'arc') return undefined;
       const [rs, re] = [distance(value.start, value.center), distance(value.end, value.center)];
-      return Math.abs(re - rs) <= ARC_STORED_TOLERANCE * rs ? (stored as Projected) : exact;
+      const scale = Math.max(rs, Math.abs(value.center[0]), Math.abs(value.center[1]));
+      return Math.abs(re - rs) <= ARC_STORED_TOLERANCE * scale ? (stored as Projected) : exact;
     }
     default:
       return unreachable(value, 'projected value');

@@ -38,11 +38,12 @@ export const TILTED = (sketch: Id, degrees: number): string => `the plane of ${s
 export const LYING = (a: Id, b: Id, sketch: Id): string => `${a} and ${b} of ${sketch} lie on each other: projected with regions both would bound the same regions; name the entities, or use as: "source"`;
 
 // An entry to take over whose place an own curve holds already (drawn by hand over it).
-export const COVERED = (entry: Id, ref: SketchProjection, own: Id, sketch: Id): string =>
-  `${entry} has the own curve ${own} over it already: switch the flag of ${entry} off instead, updateExternal { sketch: "${sketch}", id: "${entry}", ref: { type: "sketch", sketch: "${ref.sketch}", entity: "${ref.entity}", kind: "${ref.kind}", regions: false } }; the regions along it and its side face are then named by ${own}, so rename them in the features that read them`;
+// `readers`: what names a region along the entry or its side face (features, then section entries).
+export const COVERED = (entry: Id, ref: SketchProjection, own: Id, sketch: Id, readers: readonly Id[]): string =>
+  `${entry} has the own curve ${own} over it already: switch the flag of ${entry} off instead, updateExternal { sketch: "${sketch}", id: "${entry}", ref: { type: "sketch", sketch: "${ref.sketch}", entity: "${ref.entity}", kind: "${ref.kind}", regions: false } }; the regions along it and its side face are then named by ${own}, so ${readers.length > 0 ? `rename them in ${readers.join(', ')}` : 'nothing has to be renamed'}`;
 // Taken entries whose side face something names that the takeover does not rename.
 export const UNPATCHED = (taken: readonly Id[], readers: readonly Id[]): string =>
-  `${taken.join(', ')} ${taken.length === 1 ? 'is' : 'are'} not taken over: the own curve would rename ${taken.length === 1 ? 'its side face' : 'their side faces'}, which ${readers.join(', ')} ${readers.length === 1 ? 'names' : 'name'} where the takeover cannot rename it (an extent up to the face, an axis or a frame on it, a section entry, or an edge whose faces would swap); make ${readers.length === 1 ? 'it' : 'them'} name another face first`;
+  `${taken.join(', ')} ${taken.length === 1 ? 'is' : 'are'} not taken over: the own curve would rename ${taken.length === 1 ? 'its side face' : 'their side faces'}, which ${readers.join(', ')} ${readers.length === 1 ? 'names' : 'name'} where the takeover cannot rename it (for example an extent up to the face, an axis or a frame on it, a section entry, or a projected edge whose faces would swap); make ${readers.length === 1 ? 'it' : 'them'} name another face first`;
 
 const failed = (message: string): SketchToolResult => ({ ok: false, message });
 
@@ -187,7 +188,10 @@ export function projectSketch(context: SketchToolCall, input: ProjectSketchInput
       values.delete(id);
       const item = items.find((i) => i.id === id) as Item;
       const entry = projected.get(id);
-      if (entry && takes(item)) covered.push(COVERED(entry.id, entry.ref, other.id, target.id));
+      if (entry && takes(item)) {
+        const readers = renamePatches(context.document, target, { [entry.id]: other.id });
+        covered.push(COVERED(entry.id, entry.ref, other.id, target.id, [...readers.patched, ...readers.unpatched]));
+      }
     }
   }
   const made = items.filter((item) => values.has(item.id));

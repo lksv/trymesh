@@ -10,6 +10,7 @@ import { volumeOf as volumeOf56 } from '../../engine/src/solid';
 import { box as box56, cylinder as cylinder56, faceNumber as faceNumber56, infosOf as infosOf56, solidOf as solidOf56 } from './combine-kit';
 import { faceKey, freshIds, readersOf, sketchTool } from '@trymesh/engine';
 import { canonicalEdge } from '../../engine/src/util';
+import { projection } from '../../engine/src/references/projection';
 import { STEPPED, box, chamfer, edge, fillet, profileXZ } from './blend-kit';
 
 const kernel56 = await createManifoldKernel();
@@ -1424,20 +1425,21 @@ describe('the second review of the implementation of 6b (D69)', () => {
   });
 
   // S1: what the takeover cannot rename is refused, naming the readers, rather than broken
-  it('a takeover is refused when an edge would swap its faces under the new name or a feature names the face elsewhere', () => {
+  it('a takeover is refused when a projected edge would swap its faces under the new name or a feature names the face elsewhere', () => {
     const engine = newEngine();
     flagged(engine);
-    // the vertical edge of x0 and x1; an own curve `zc1` sorts after x1, so the edge would swap
-    run(engine, { type: 'addFeature', feature: { id: 'ch', name: 'ch', suppressed: false, type: 'chamfer', body: 'ex', edges: [{ a: side('ex', 'x0'), b: side('ex', 'x1') }], distance: 1 } } as Command);
-    expect(tool7(engine, 'dst', { sketch: 'src', entities: ['l0'], as: 'own' }, 'z')).toBe('x0 is not taken over: the own curve would rename its side face, which ch names where the takeover cannot rename it (an extent up to the face, an axis or a frame on it, a section entry, or an edge whose faces would swap); make it name another face first');
+    // a projected vertical edge of x0 and x1; an own curve `zc1` sorts after x1, so its ends would swap
+    run(engine, addSketch('proj', { kind: 'base', plane: 'XZ' }), { type: 'addExternal', sketch: 'proj', id: 'e', ref: { type: 'edge', body: 'ex', edge: { a: side('ex', 'x0'), b: side('ex', 'x1') }, kind: 'line' } } as Command);
+    expectAllOk(engine.getState());
+    expect(tool7(engine, 'dst', { sketch: 'src', entities: ['l0'], as: 'own' }, 'z')).toBe('x0 is not taken over: the own curve would rename its side face, which proj names where the takeover cannot rename it (for example an extent up to the face, an axis or a frame on it, a section entry, or a projected edge whose faces would swap); make it name another face first');
     // with `oc1`, which sorts before x1, the edge keeps its order and is patched
     const taken = tool7(engine, 'dst', { sketch: 'src', entities: ['l0'], as: 'own' }, 'o');
     if (typeof taken === 'string') throw new Error(taken);
-    expect(taken.ids.patched).toEqual(['ex', 'ch']);
+    expect(taken.ids.patched).toEqual(['ex', 'proj']);
     expectAllOk(engine.getState());
     engine.undo();
     // an extrusion up to the side face: its extent is not patched
-    run(engine, { type: 'removeFeature', id: 'ch' } as Command, addSketch('up', XY), rectangle('up', 'u', 5, -20, 4, 4), { type: 'addFeature', feature: { ...extrude('far', 'up', [rectLoop('u')], 1), extent: { type: 'upTo', plane: onFace('ex', side('ex', 'x0')), start: 0 } } } as Command);
+    run(engine, { type: 'removeFeature', id: 'proj' } as Command, addSketch('up', XY), rectangle('up', 'u', 5, -20, 4, 4), { type: 'addFeature', feature: { ...extrude('far', 'up', [rectLoop('u')], 1), extent: { type: 'upTo', plane: onFace('ex', side('ex', 'x0')), start: 0 } } } as Command);
     expect(tool7(engine, 'dst', { sketch: 'src', entities: ['l0'], as: 'own' }, 'o')).toMatch(/^x0 is not taken over: .* which far names /);
   });
 
@@ -1448,7 +1450,7 @@ describe('the second review of the implementation of 6b (D69)', () => {
     flagged(engine);
     run(engine, pt7('dst', 'h1', 0, 0), pt7('dst', 'h2', 20, 0), ln7('dst', 'own0', 'h1', 'h2'), constrain('dst', 'k1', { type: 'coincident', a: 'h1', b: 'x0/a' }), constrain('dst', 'k2', { type: 'coincident', a: 'h2', b: 'x0/b' }));
     expect(tool7(engine, 'dst', { sketch: 'src', entities: ['l0'], as: 'own' }, 'o')).toBe(
-      'nothing to project: of src 0 entities are projected already, 1 at a place another curve has; x0 has the own curve own0 over it already: switch the flag of x0 off instead, updateExternal { sketch: "dst", id: "x0", ref: { type: "sketch", sketch: "src", entity: "l0", kind: "line", regions: false } }; the regions along it and its side face are then named by own0, so rename them in the features that read them',
+      'nothing to project: of src 0 entities are projected already, 1 at a place another curve has; x0 has the own curve own0 over it already: switch the flag of x0 off instead, updateExternal { sketch: "dst", id: "x0", ref: { type: "sketch", sketch: "src", entity: "l0", kind: "line", regions: false } }; the regions along it and its side face are then named by own0, so rename them in ex',
     );
     run(engine, { type: 'updateExternal', sketch: 'dst', id: 'x0', ref: { type: 'sketch', sketch: 'src', entity: 'l0', kind: 'line', regions: false } } as Command);
     expect(regions7(engine, 'dst')).toEqual([['own0', 'x1', 'x2', 'x3']]);
@@ -1496,6 +1498,76 @@ describe('the second review of the implementation of 6b (D69)', () => {
     expect(newEngine().load(JSON.stringify(saved)).ok).toBe(true);
     dst.solved.external.x.radius = 1e-7;
     expect(newEngine().load(JSON.stringify(saved)).ok).toBe(false);
+  });
+});
+describe('the third review of the implementation of 6b (D69)', () => {
+  type E = ReturnType<typeof newEngine>;
+  const pt8 = (s: string, id: string, x: number, y: number): Command => ({ type: 'addPoint', sketch: s, id, x, y });
+  const fix8 = (s: string, p: string, x: number, y: number): Command => constrain(s, `f${p}`, { type: 'fixed', point: p, x, y });
+  const sketch8 = (engine: E, s: string): SketchFeature => engine.getState().document.features.find((f) => f.id === s) as SketchFeature;
+  const tool8 = (engine: E, target: string, input: object, prefix: string): { ids: Record<string, string[]> } | string => {
+    const state = engine.getState();
+    const made = sketchTool('projectSketch', { sketch: sketch8(engine, target), result: state.evaluation.features[target].sketch, parameters: state.evaluation.parameters, document: state.document, features: state.evaluation.features }, input as never, freshIds(state.document, prefix));
+    if (!made.ok) return made.message;
+    run(engine, batch(...made.commands));
+    return { ids: made.ids };
+  };
+
+  // S1: a chamfer of an edge whose two faces swapped their order under the new name refused the
+  // takeover, though a blend is symmetric in them; with the default prefix (entries x1…x4, own
+  // curves c…) every entry but the first of a chamfered rectangle was refused
+  it('with the default prefix each of the four entries of a rectangle with four chamfered vertical edges is taken over, the chamfer renamed and the volume kept', () => {
+    for (const which of ['l0', 'l1', 'l2', 'l3']) {
+      const engine = newEngine();
+      run(engine, addSketch('src', XY), ...([['p0', 0, 0], ['p1', 20, 0], ['p2', 20, 10], ['p3', 0, 10]] as const).flatMap(([p, x, y]) => [pt8('src', p, x, y), fix8('src', p, x, y)]));
+      run(engine, ...[0, 1, 2, 3].map((i): Command => ({ type: 'addCurve', sketch: 'src', id: `l${i}`, curve: { type: 'line', a: `p${i}`, b: `p${(i + 1) % 4}` } })));
+      run(engine, { type: 'addFeature', feature: { id: 'dstPl', name: 'dstPl', suppressed: false, type: 'plane', base: XY, offset: 3 } } as Command, addSketch('dst', { kind: 'plane', feature: 'dstPl' }));
+      const all = tool8(engine, 'dst', { sketch: 'src', as: 'regions' }, '');
+      if (typeof all === 'string') throw new Error(all);
+      const xs = all.ids.entries;
+      const loop = (engine.getState().evaluation.features.dst.sketch as unknown as SketchResult6).regions[0].ref.outerLoop;
+      run(engine, addExtrude('ex', 'dst', [loop], 5));
+      run(engine, { type: 'addFeature', feature: { id: 'ch', name: 'ch', suppressed: false, type: 'chamfer', body: 'ex', edges: [0, 1, 2, 3].map((i) => ({ a: side('ex', xs[i]), b: side('ex', xs[(i + 1) % 4]) })), distance: 1 } } as Command);
+      expectAllOk(engine.getState());
+      const before = volume(engine.getState().evaluation.bodies.ex.solid);
+      const taken = tool8(engine, 'dst', { sketch: 'src', entities: [which], as: 'own' }, '');
+      if (typeof taken === 'string') throw new Error(`${which}: ${taken}`);
+      expect(taken.ids.patched).toEqual(['ex', 'ch']);
+      expectAllOk(engine.getState());
+      const own = taken.ids.curves[0];
+      const edges = (engine.getState().document.features.find((f) => f.id === 'ch') as { edges: { a: FaceName; b: FaceName }[] }).edges;
+      expect(edges.filter((edge) => [edge.a, edge.b].some((f) => 'curve' in f && f.curve === own))).toHaveLength(2);
+      expect(edges.every((edge) => canonicalEdge(edge) === edge)).toBe(true);
+      expect(volume(engine.getState().evaluation.bodies.ex.solid)).toBeCloseTo(before, 9);
+    }
+  });
+
+  // M1: the tolerance relative to the radius flipped a small arc far from the origin by an ulp,
+  // since the error of making an arc exact scales with its coordinates
+  it('a stored arc as compute writes it is read back bit for bit, a small one far from the origin too', () => {
+    let seed = 4242;
+    const rnd = (): number => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+    const ref = { type: 'sketch', sketch: 's', entity: 'q', kind: 'arc', regions: false } as const;
+    let replaced = 0;
+    for (const [far, radius] of [[20, 10], [2000, 0.1], [10000, 0.5], [1e6, 1]] as const) {
+      for (let i = 0; i < 2000; i++) {
+        const c: [number, number] = [(rnd() * 2 - 1) * far, (rnd() * 2 - 1) * far];
+        const r = radius * (0.5 + rnd());
+        const [t0, t1] = [rnd() * 6, rnd() * 6];
+        const s: [number, number] = [c[0] + r * Math.cos(t0), c[1] + r * Math.sin(t0)];
+        const e: [number, number] = [c[0] + r * Math.cos(t1) * (1 + 1e-9 * (rnd() - 0.5)), c[1] + r * Math.sin(t1)];
+        // the end put on the circle of the start, as `compute` writes it
+        const [rs, re] = [Math.hypot(s[0] - c[0], s[1] - c[1]), Math.hypot(e[0] - c[0], e[1] - c[1])];
+        const stored = { kind: 'arc', center: c, start: s, end: [c[0] + (rs * (e[0] - c[0])) / re, c[1] + (rs * (e[1] - c[1])) / re] };
+        const read = projection.value(JSON.parse(JSON.stringify(stored)), ref, 'x') as { end: [number, number] };
+        if (read.end[0] !== stored.end[0] || read.end[1] !== stored.end[1]) replaced++;
+      }
+    }
+    expect(replaced).toBe(0);
+    // a hand-written end off the circle is still made exact, far from the origin too
+    const off = projection.value({ kind: 'arc', center: [5000, -5000], start: [5000.5, -5000], end: [5000, -5000 + 0.5 + 1e-6] }, ref, 'x') as { end: [number, number] };
+    expect(off.end[1]).toBeCloseTo(-5000 + 0.5, 9);
+    expect(off.end[1]).not.toBe(-5000 + 0.5 + 1e-6);
   });
 });
 type SketchResult6 = { valid: boolean; points: Record<string, { x: number; y: number }>; regions: { ref: { outerLoop: string[] } }[]; openEnds?: { ends: { end: string; reason: string; distance: number }[] } };

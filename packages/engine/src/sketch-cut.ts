@@ -2722,14 +2722,15 @@ function withFaces<T>(value: T, face: (name: FaceName) => FaceName | undefined):
 // curve) and the side faces by the face rule (`sideOf`, of the features over the sketch).
 // - the regions of the features over the sketch (`updateFeature` of `profile.regions`);
 // - the edges of chamfers and fillets (`updateFeature` of `edges`; a face of a blend is named by the
-//   place of its edge, which stays);
+//   place of its edge, which stays; an edge whose faces swap their order under the new name is
+//   patched too, since a blend is symmetric in them);
 // - the plane of a sketch (`setSketchPlane`) and the edges it projects (`updateExternal`);
 // - the base and the midplane of a plane feature (`updateFeature`).
-// A side face named anywhere else (an extent up to it, an axis, a frame, a section entry), or an
-// edge whose two faces would change their order under the new name (its end `a` would become `b`),
-// is not patched: `unpatched` lists those readers (features in the order of the timeline, then the
-// keys of section entries), and the caller refuses the rename. A wall names own curves only, so it
-// never reads a projection.
+// A side face named anywhere else (an extent up to it, an axis, a frame, a split, a section entry),
+// or a projected edge whose two faces would change their order under the new name (its line is
+// oriented by them, so `<id>/a` would become `<id>/b`), is not patched: `unpatched` lists those
+// readers (features in the order of the timeline, then the keys of section entries), and the
+// caller refuses the rename. A wall names own curves only, so it never reads a projection.
 export interface RenamePatches {
   commands: Command[];
   patched: Id[];
@@ -2745,7 +2746,7 @@ export function renamePatches(document: Document, sketch: SketchFeature, renames
     return { ...side, curve: (piecesOf(changes, sketch, side.curve) as Id[])[0] };
   };
   const names = (value: unknown): boolean => facesIn(value).some((name) => face(name) !== undefined);
-  // an edge keeps the order of its faces under the new names
+  // a projected edge keeps the order of its faces under the new names
   const keepsOrder = (edge: EdgeName): boolean => {
     const c = canonicalEdge(edge);
     const next = { a: face(c.a) ?? c.a, b: face(c.b) ?? c.b };
@@ -2780,11 +2781,12 @@ export function renamePatches(document: Document, sketch: SketchFeature, renames
       }
       case 'chamfer':
       case 'fillet': {
+        // a blend is symmetric in the two faces of its edge (one distance or radius) and pairs them
+        // with the body's edge by the same canonical order, so an edge whose faces swap under the
+        // new name is patched too, written canonically as a command would store it
         handled = ['edges'];
         const edges = withFaces(feature.edges, face);
-        if (edges === feature.edges) break;
-        if (feature.edges.some((edge, i) => edges[i] !== edge && !keepsOrder(edge))) unpatched = true;
-        else patch.edges = edges;
+        if (edges !== feature.edges) patch.edges = edges.map((edge, i) => (edge === feature.edges[i] ? edge : canonicalEdge(edge)));
         break;
       }
       case 'plane': {

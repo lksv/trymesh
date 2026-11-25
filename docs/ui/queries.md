@@ -42,6 +42,7 @@ Part of [ui.md](../ui.md); how to read the tables is said there. The generic for
   - **Smallest gap**: the pairs of bodies that are close, below.
   - **Print check** and **Parts list**: below.
   - **Contacts** (`sketchContacts`, D65, `queries/sketch-contacts.ts`): a row per contact of the sketch asked about (its kind, the two curves, the place, and what *Split crossings* does there, its reason in the tooltip when nothing), a click on a row highlights its mark; the contacts marked in the view; then the pairs lying on each other, the curves of no length and why the profile is invalid when no cut repairs it. The sketch mode draws the same marks while the profile of the open sketch is invalid ([sketch.md](sketch.md)).
+  - **What a sketch can project** (`sketchSources`, D69, `queries/sketch-sources.ts`): a row per earlier sketch (its name, parallel, tilted with the angle or not evaluated, the other side, the counts of curves and points), and with *From* a row per entity (its ID and kind, whether the whole-sketch form takes it, whether it forms regions, the entry that projects it already); a click on an entity marks its place in the view. The tool *From sketch* reads the same answers as its candidates.
 
 ## The section view (D38)
 

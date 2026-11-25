@@ -9,6 +9,7 @@ import { partsListView } from './parts-list';
 import { printView } from './print';
 import { sectionView } from './section';
 import { sketchContactsView } from './sketch-contacts';
+import { sketchSourcesView } from './sketch-sources';
 
 // What a view adds to the scene while its answer is shown: the fields of `SceneModel`, with
 // a face given by its name (the scene resolves the mesh), and bodies drawn in a colour of the
@@ -60,4 +61,4 @@ export interface QueryView<N extends QueryName> {
   note?(result: QueryResult<N>, panel: ViewPanel<N>): { text: string; error: boolean };
 }
 
-export const QUERY_VIEWS: { [N in QueryName]?: QueryView<N> } = { measure: measureView, interference: interferenceView, section: sectionView, gap: gapView, print: printView, partsList: partsListView, sketchContacts: sketchContactsView };
+export const QUERY_VIEWS: { [N in QueryName]?: QueryView<N> } = { measure: measureView, interference: interferenceView, section: sectionView, gap: gapView, print: printView, partsList: partsListView, sketchContacts: sketchContactsView, sketchSources: sketchSourcesView };

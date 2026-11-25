@@ -141,6 +141,7 @@
     +   button title="Select the curves and points to copy, then click the line to repeat them along.": "Linear pattern"
     +   button title="Select the curves and points to copy, then click the point to turn them about.": "Circular pattern"
     +   button title="Klikněte na hranu tělesa (úsečku nebo kružnici).": "Promítnout"
+    +   button title="Click a point or a curve of an earlier sketch (dashed) to project it; the options are in the panel.": "From sketch"
     + div.group
     +   button title="Kreslicí nástroje zakládají konstrukční (pomocné) křivky": "Konstrukčně"
     -   button.active title="Nová skica na rovině nebo rovinné stěně": "Skica"
@@ -1528,6 +1529,7 @@
     -   button title="Select the curves and points to copy, then click the line to repeat them along.": "Linear pattern"
     -   button title="Select the curves and points to copy, then click the point to turn them about.": "Circular pattern"
     -   button title="Klikněte na hranu tělesa (úsečku nebo kružnici).": "Promítnout"
+    -   button title="Click a point or a curve of an earlier sketch (dashed) to project it; the options are in the panel.": "From sketch"
     +   select value="" title="Ask a query about the model"
     +     option selected value="": "Queries…"
     +     option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"

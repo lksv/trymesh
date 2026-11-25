@@ -2,7 +2,7 @@
 // points of step 6 of D36 each have a `describe` of their own; the board of step 1 is a stand-in
 // until 6f imports one, and 6c and 6b build on it.
 import { describe, expect, it } from 'vitest';
-import { type Command, type CutIds, type Engine, type EngineState, type Expr, type Id, type SketchFeature, type SketchResult, type SketchToolInputs, AXIS_CURVES, AXIS_REACH, emptySketch, freshIds, lineExtent, profileOf, repairsByDefault, sketchTool, sketchWorld, solvedCurves, toolBase } from '@trymesh/engine';
+import { type Command, type CutIds, type Engine, type EngineState, type Expr, type Id, type SketchFeature, type SketchResult, type SketchToolInputs, AXIS_CURVES, AXIS_REACH, emptySketch, faceKey, freshIds, lineExtent, profileOf, repairsByDefault, sketchTool, sketchWorld, solvedCurves, toolBase } from '@trymesh/engine';
 import { pcbByHand, point, standInBoard } from './board-kit';
 import { XY, addSketch, batch, constrain, newEngine, run } from './kit';
 
@@ -758,5 +758,64 @@ describe('scenario 15, step 6 on the mirrored lid: the sketch tools and the copi
       'first: "m/1/a2" is a copy of the mirror or pattern "m": a new point cannot be tied to a copy; snap to its source "a2", or place the point by its coordinates',
     );
     expect(toolRefusal(engine, 'fillet', 'lidSketch', { corner: 'm/1/a5', radius: 1 })).toBe('corner: "m/1/a5" is a copy of the mirror or pattern "m"; change its source "a5", and the copies follow');
+  });
+});
+
+describe('scenario 15 with the mirrored lid: what is refused, a source removed by hand, a grid of vents (6c, D68)', () => {
+  // a stand under the lid, before its sketch: a body an edge projection may name
+  function withStand(engine: Engine): void {
+    run(engine, { type: 'addFeature', feature: emptySketch('standSketch', 'Stand', XY) }, pt('standSketch', 'b1', -10, -10), pt('standSketch', 'b2', 10, -10), pt('standSketch', 'b3', 0, -20), ln('standSketch', 'bl1', 'b1', 'b2'), ln('standSketch', 'bl2', 'b2', 'b3'), ln('standSketch', 'bl3', 'b3', 'b1'));
+    run(engine, extrudeLoops('stand', 'standSketch', [['bl1', 'bl2', 'bl3']], '1'));
+  }
+
+  it('a copy is no operand, no point of a curve, nothing to remove or drag, no source and no axis; the forms and the counts are checked; derived does not become reference', () => {
+    const engine = newEngine();
+    withStand(engine);
+    mirroredLid(engine);
+    const refused = (command: Command): string => {
+      const outcome = engine.preview(command);
+      return outcome.ok ? 'accepted' : outcome.error.message;
+    };
+    const lid = (id: Id, ref: object): Command => addPattern('lidSketch', id, ref);
+    expect(refused(constrain('lidSketch', 'kx', { type: 'horizontal', line: 'm/1/c3' }))).toContain('"m/1/c3" is a copy of the mirror or pattern "m": a copy cannot be constrained in its own sketch');
+    expect(refused(ln('lidSketch', 'lx', 'm/1/a1', 'a1'))).not.toBe('accepted');
+    expect(refused({ type: 'removeEntity', sketch: 'lidSketch', id: 'm/1/c1' })).not.toBe('accepted');
+    expect(refused({ type: 'dragPoint', sketch: 'lidSketch', point: 'm/1/a2', x: 0, y: 0 })).not.toBe('accepted');
+    expect(refused(lid('p2', { type: 'pattern', sources: ['m/1/c2'], transform: { type: 'mirror', axis: 'c1' } }))).toContain('a mirror or pattern copies own curves and points of the sketch');
+    expect(refused(lid('p3', { type: 'pattern', sources: ['c2'], transform: { type: 'mirror', axis: 'r1' } }))).toContain('the axis "r1" is an own arc');
+    expect(refused(lid('p4', { type: 'pattern', sources: ['nothing'], transform: { type: 'mirror', axis: 'origin/y' } }))).not.toBe('accepted');
+    expect(refused(lid('p5', { type: 'pattern', sources: ['c2'], transform: { type: 'linear', direction: 'm/1/c1', count: 3, span: { type: 'spacing', spacing: 5 } } }))).not.toBe('accepted');
+    expect(refused(lid('p6', { type: 'pattern', sources: ['c2'], transform: { type: 'circular', center: 'origin', count: 201, span: { type: 'full' } } }))).not.toBe('accepted');
+    expect(refused(lid('p7', { type: 'pattern', sources: ['c2', 'c2'], transform: { type: 'mirror', axis: 'origin/y' } }))).not.toBe('accepted');
+    expect(refused(lid('p8', { type: 'pattern', sources: ['origin/y'], transform: { type: 'mirror', axis: 'c1' } }))).not.toBe('accepted');
+    expect(refused(lid('p9', { type: 'pattern', sources: ['c2'], transform: { type: 'mirror', plane: 'origin/y' } }))).toContain('a mirror in a sketch is about a line: `axis`, not `plane`');
+    expect(refused({ type: 'updateExternal', sketch: 'lidSketch', id: 'm', ref: { type: 'edge', body: 'stand', edge: { a: { feature: 'stand', role: 'endCap' }, b: { feature: 'stand', role: 'side', curve: 'bl1' } }, kind: 'line' } } as Command)).toBe(
+      'updateExternal: an entry of reference geometry cannot become derived geometry, or the other way; remove it and add the other',
+    );
+    // the place of the copy keyed with its slashed ID quoted
+    const state = run(engine, extrudeLoops('lid', 'lidSketch', [LID_REGION], 'T'));
+    expect(faceKey({ feature: 'lid', role: 'side', curve: 'm/1/c2' })).toBe('lid/side/"m/1/c2"');
+    expect(state.evaluation.faceNames.some((name) => name.role === 'side' && name.feature === 'lid' && name.curve === 'm/1/c2')).toBe(true);
+  });
+
+  it('a source removed by hand: the entry stays, the rest is copied, the sketch warns which source is gone', () => {
+    const engine = newEngine();
+    mirroredLid(engine);
+    const state = previewOf(engine, { type: 'removeEntity', sketch: 'lidSketch', id: 'c2' });
+    const warning = state.evaluation.features.lidSketch.warnings.find((w) => w.code === 'brokenCopies');
+    expect(warning?.refs).toEqual(['m', 'c2']);
+    expect(resultOf(state, 'lidSketch').curves['m/1/c3']).toBeDefined();
+    expect(resultOf(state, 'lidSketch').curves['m/1/c2']).toBeUndefined();
+  });
+
+  it('square vents in a grid of 14 × 14: copy i, j is i + 1000 · j; 14 × 15 places are too many', () => {
+    const engine = newEngine();
+    const s = 'ventSketch';
+    run(engine, { type: 'addFeature', feature: emptySketch(s, 'Vents', XY) }, pt(s, 'q1', -20, -10), pt(s, 'q2', -18, -10), pt(s, 'q3', -18, -8), pt(s, 'q4', -20, -8), ln(s, 'sq1', 'q1', 'q2'), ln(s, 'sq2', 'q2', 'q3'), ln(s, 'sq3', 'q3', 'q4'), ln(s, 'sq4', 'q4', 'q1'));
+    const grid = run(engine, addPattern(s, 'g', { type: 'pattern', sources: ['sq1', 'sq2', 'sq3', 'sq4'], transform: { type: 'linear', direction: 'origin/x', count: 14, span: { type: 'spacing', spacing: 3 }, second: { direction: 'origin/y', count: 14, span: { type: 'spacing', spacing: -3 } } } }));
+    expect(loopsOf(grid, s)).toHaveLength(196);
+    expect(resultOf(grid, s).points['g/13013/q1']).toEqual({ x: expect.closeTo(-20 + 39, 9), y: expect.closeTo(-10 - 39, 9) });
+    const large = previewOf(engine, { type: 'setField', feature: s, path: 'external/g/transform/second/count', value: 15 });
+    expect(large.evaluation.features[s].warnings.find((w) => w.code === 'brokenCopies')?.message).toContain('14 × 15 is 210 places; a pattern has at most 200, the source included');
   });
 });

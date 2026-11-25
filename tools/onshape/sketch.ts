@@ -3,9 +3,9 @@
 import type { Command, Engine, Id, PlaneRef, RegionRef } from '../../packages/engine/src/index';
 import { type SketchToolResult, constraintKey, emptySketch, freshIds, sketchTool, solvedCurves } from '../../packages/engine/src/index';
 import { type Report, type V2, type V3, dot, exec, expression, sane } from './common';
-import { type Expected, TOLERANCE, impliedConstraints, impliedLines, ladder } from './check';
-import { type MapContext, mapConstraints, numberConstraints, onshapeKind, params, twiceByMeaning } from './constraints';
-import { type ConstraintRecord, FATES, type Fate, type SketchSummary, finalFate, sketchLines } from './fates';
+import { type Expected, type Pair, TOLERANCE, impliedConstraints, impliedLines, ladder, probeSketch, sketchChanges, strip } from './check';
+import { type ExternalResolver, type MapContext, knownOperand, mapConstraints, numberConstraints, onshapeKind, params, twiceByMeaning } from './constraints';
+import { type Cause, type ConstraintRecord, FATES, type Fate, type SketchSummary, finalFate, sketchLines } from './fates';
 import { ORIGIN_ID, type StudioOperations, decode } from './operands';
 
 // The frame of an Onshape sketch (world, mm) and the base plane of trymesh it is drawn on.
@@ -48,7 +48,7 @@ export const worldToBase = (f: SketchFrame, w: V3): V2 => [dot(w, f.base.x as V3
 export interface Converted {
   id: Id;
   frame: SketchFrame;
-  kind: Map<string, 'point' | 'line' | 'circle'>; // Onshape entity -> what it is (curves that were split are not here)
+  kind: Map<string, 'point' | 'line' | 'circle' | 'arc'>; // Onshape entity -> what it is
   rep: Map<string, Id>; // Onshape point -> point of trymesh
 }
 
@@ -73,7 +73,7 @@ export function convertSketch(engine: Engine, report: Report, id: Id, name: stri
   const welded = weldPoints((geom.entities as any[]).filter((e) => e.sketchEntityType === 'skPoint').map((e) => ({ src: e.sketchEntityId as string, id: P(e.sketchEntityId), at: toBase(frame, [e.position2d.x * 1000, e.position2d.y * 1000]) })));
   const { pos, rep } = welded;
   for (const w of welded.wide) report.later('Welds', `${place.studio}, ${name}: a cluster of welded points wider than ${WELD} mm: ${w}`);
-  const kind = new Map<string, 'point' | 'line' | 'circle'>();
+  const kind = new Map<string, 'point' | 'line' | 'circle' | 'arc'>();
   for (const e of geom.entities) if (e.sketchEntityType === 'skPoint') kind.set(e.sketchEntityId, 'point');
   const curves: C[] = [];
   const skipped: Record<string, number> = {};
@@ -97,6 +97,7 @@ export function convertSketch(engine: Engine, report: Report, id: Id, name: stri
       // an arc: centre, start and end; trymesh turns counter-clockwise from the start
       const [s, t] = [rep.get(e.startPointId)!, rep.get(e.endPointId)!];
       const turned = e.geometry?.clockWise !== (frame.sign < 0);
+      kind.set(e.sketchEntityId, 'arc');
       c = { id: cid, src: e.sketchEntityId, arc: [rep.get(e.centerId)!, turned ? t : s, turned ? s : t], construction: e.isConstruction };
     } else if (e.sketchEntityType !== 'skPoint') skipped[e.sketchEntityType] = (skipped[e.sketchEntityType] ?? 0) + 1;
     if (!c) continue;
@@ -122,7 +123,9 @@ export function convertSketch(engine: Engine, report: Report, id: Id, name: stri
   ];
   const conv: Converted = { id, frame, kind, rep };
   const entityType = new Map<string, string>((geom.entities as any[]).map((e) => [e.sketchEntityId, onshapeKind(e)]));
-  const ctx: MapContext = { studio: place.studio, sketch: id, name, helper: place.helper, kind, rep, pos, curves, curveOf, entityType, split: new Set(), ops: place.ops };
+  // an external operand: the origin and the default planes here; what the decode finds, in point 5
+  const resolve: ExternalResolver = (eid, op) => knownOperand(eid, frame) ?? { lost: op.category === 'unknown' || !op.category ? 'unknown' : (op.category as Cause), detail: op.decoded ?? 'not resolved' };
+  const ctx: MapContext = { studio: place.studio, sketch: id, name, helper: place.helper, kind, rep, pos, curves, curveOf, entityType, split: new Set(), ops: place.ops, frame, parameters: engine.getState().document.parameters, resolve };
   const { records } = mapConstraints(ctx, feature.constraints ?? []);
   report.records.push(...records);
   twiceByMeaning(records, engine.getState().document.parameters);
@@ -130,12 +133,35 @@ export function convertSketch(engine: Engine, report: Report, id: Id, name: stri
   // The check: every unit with its expressions; else one by one (check.ts).
   const expected: Expected = { points: new Map(pos), radii: new Map(curves.filter((c) => c.circle).map((c) => [c.id, c.circle!.r])) };
   const units = records.filter((r) => !r.fate);
+  // what the probes leave alone, and what they assert
+  const promises = report.promisesOf(place.studio);
+  const pairs: Pair[] = [];
+  for (const u of units) for (const c of u.commands as any[]) {
+    if (c.zero) promises.notChanged.push(`${id} ${c.id}`);
+    if (c.pair) pairs.push({ a: c.pair[0], b: c.pair[1], label: `${u.what} (${c.id})`, record: u, command: c });
+  }
   const lad = ladder(engine, id, base, units, expected);
   if (!exec(engine, report, { type: 'batch', commands: [...base, ...lad.commands] }, name)) return undefined;
   // Crossing curves: the sketch tool `split` once, its batch checked before it stays.
   const cut = cutSketch(engine, report, id, name, base, units.filter((u) => u.fate === 'written'), expected, skipped, place.onshapeRegions);
+  // A distance of two lines keeps them parallel in Onshape, one point–line distance does not: the
+  // sketch's probe asks whether they stay parallel, and a pair that parts gets `parallel` in its unit.
+  const livePairs = pairs.filter((x) => x.record.fate === 'written' && x.record.ids.includes(x.command.id));
+  if (livePairs.length) {
+    const notChanged = new Set(promises.notChanged);
+    const p = probeSketch(engine, id, sketchChanges(engine, id, notChanged), [], livePairs);
+    // the next number after the last one written
+    let next = 1 + Math.max(-1, ...Object.keys((engine.getState().document.features.find((f) => f.id === id) as any).constraints).map((k) => Number(/\.c(\d+)$/.exec(k)?.[1] ?? -1)));
+    for (const x of livePairs) {
+      if (![...p.breaks].some((b) => b.includes(x.label))) continue;
+      const pid = `${id}.c${String(next++).padStart(3, '0')}`;
+      const cmd: any = { type: 'addConstraint', sketch: id, id: pid, constraint: { type: 'parallel', a: x.a, b: x.b }, record: x.record };
+      if (exec(engine, report, strip(cmd), `${name}: parallel for ${x.label}`)) { x.record.commands.push(cmd); x.record.ids.push(pid); x.record.detail = 'with `parallel`: the pair parted in the probe'; }
+    }
+    for (const x of livePairs) promises.pairs.push({ sketch: id, a: x.a, b: x.b, constraint: x.record.key });
+  }
   // Implied constraints, where the sketch's probe shows it cannot follow.
-  const implied = impliedConstraints(engine, id, records.filter((r) => r.fate === 'written'), expected, { notChanged: new Set(report.promisesOf(place.studio).notChanged) });
+  const implied = impliedConstraints(engine, id, records.filter((r) => r.fate === 'written'), expected, { notChanged: new Set(promises.notChanged), pairs: livePairs });
   for (const r of implied.removed) report.promisesOf(place.studio).removed.push({ sketch: id, id: r.id, constraint: (records.flatMap((x) => x.commands as any[]).find((c) => c.id === r.id) as any).constraint });
   for (const line of impliedLines(`${place.studio}, ${name}`, implied)) report.later('Redundant constraints', line);
   finishSketch(engine, report, conv, name, place, geom, feature, records, cut.step ?? lad.step, pos.size, curves.length, { drift: { before: lad.drift, after: cut.drift }, cut: cut.info, probe: implied });
@@ -211,7 +237,6 @@ function cutSketch(engine: Engine, report: Report, sketch: Id, name: string, bas
     report.note(`${name}: cut by split: ${JSON.stringify(counts(first.tool.ids))}, ${first.tool.commands.length} commands, ${first.ms.toFixed(0)} ms`);
     return { info: { ...counts(first.tool.ids), commands: first.tool.commands.length, ms: first.ms }, drift: j.drift };
   }
-  const strip = ({ measured, record, dupOf, conflictsWith, ...c }: any): Command => c;
   engine.undo(); // the sketch as written goes
   // the bare geometry first: when it does not pass after the cut, no unit is to blame
   engine.execute({ type: 'batch', commands: base });

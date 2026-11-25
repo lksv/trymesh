@@ -1,6 +1,6 @@
 // The mapping of Onshape's sketch constraints to those of trymesh: one record per Onshape constraint
 // (fates.ts), whose commands are its unit.
-import type { Id } from '../../packages/engine/src/index';
+import { CONSTRAINTS, type Id, constraintKey, expressionValue } from '../../packages/engine/src/index';
 import { expression, numberOr, sane, type V2 } from './common';
 import { CAUSES, type Category, type Cause, type ConstraintRecord, type OperandRecord } from './fates';
 import { type StudioOperations, categoryOf, classText } from './operands';
@@ -81,7 +81,7 @@ export function mapConstraints(ctx: MapContext, list: any[]): { records: Constra
   let n = 0;
   let rec!: ConstraintRecord;
   const add = (constraint: any, measured?: number) => {
-    const cmd = { type: 'addConstraint', sketch: ctx.sketch, id: `${ctx.sketch}.c${n++}`, constraint, measured, record: rec };
+    const cmd = { type: 'addConstraint', sketch: ctx.sketch, id: `${ctx.sketch}.t${n++}`, constraint, measured, record: rec };
     out.push(cmd);
     rec.commands.push(cmd as any);
   };
@@ -100,13 +100,17 @@ export function mapConstraints(ctx: MapContext, list: any[]): { records: Constra
     const direction = p.direction?.value ?? 'MINIMUM';
     if (p.externalFirst || p.externalSecond || p.externalMirror) return lose();
     if (t === 'COINCIDENT' && A?.k && B?.k) {
+      // `shared` is established, not assumed: two points that are not one point get a coincident
       if (A.k === 'point' && B.k === 'point') {
-        if (pt(f) === pt(s)) Object.assign(rec, { fate: 'shared', detail: 'by a point' });
-        else lose('two points that stand apart');
-        return;
+        if (pt(f) === pt(s)) return void Object.assign(rec, { fate: 'shared', detail: 'by a point' });
+        add({ type: 'coincident', a: pt(f), b: pt(s) });
+      } else {
+        // a point "on" a curve it is an end of is realised by the curve
+        const [pp, cc] = A.k === 'point' ? [pt(f), curve(s)] : B.k === 'point' ? [pt(s), curve(f)] : [undefined, undefined];
+        if (pp && cc && ([...(cc.line ?? []), ...(cc.arc ?? []).slice(1)] as string[]).includes(pp)) return void Object.assign(rec, { fate: 'shared', detail: 'an end of the curve' });
+        if (A.k === 'point' && B.k !== 'point') add({ type: 'pointOnCurve', point: pt(f), curve: B.id });
+        else if (B.k === 'point' && A.k !== 'point') add({ type: 'pointOnCurve', point: pt(s), curve: A.id });
       }
-      if (A.k === 'point' && B.k !== 'point') add({ type: 'pointOnCurve', point: pt(f), curve: B.id });
-      else if (B.k === 'point' && A.k !== 'point') add({ type: 'pointOnCurve', point: pt(s), curve: A.id });
     } else if ((t === 'HORIZONTAL' || t === 'VERTICAL') && A?.k === 'line' && !B) add({ type: t.toLowerCase(), line: A.id });
     else if ((t === 'PARALLEL' || t === 'PERPENDICULAR') && A?.k === 'line' && B?.k === 'line') add({ type: t.toLowerCase(), a: A.id, b: B.id });
     else if (t === 'EQUAL' && A?.k === 'line' && B?.k === 'line') add({ type: 'equalLength', a: A.id, b: B.id });
@@ -136,24 +140,74 @@ export function mapConstraints(ctx: MapContext, list: any[]): { records: Constra
     if (out.length === before) lose(undefined, t === 'MIRROR' && !!p.localMirror && ent(f)?.k !== 'point');
   });
   // A number that does not match the geometry (a sign, a direction measured otherwise) takes the
-  // measured value; the same constraint twice is kept once.
-  const seen = new Map<string, any>();
-  const commands = out.filter((c) => {
+  // measured value; a value whose expression does not convert, too.
+  for (const c of out) {
     const k = c.constraint;
-    if ('driving' in k) {
-      if (k.value === undefined) { k.value = c.measured; (c.record.numbers ??= []).push(`${c.id}: no expression that converts`); }
-      if (typeof k.value === 'number' && Math.abs(k.value - c.measured) > 1e-6) { (c.record.numbers ??= []).push(`${c.id}: ${k.value} does not match the geometry (${c.measured})`); k.value = c.measured; }
-    }
-    const sig = JSON.stringify({ ...k, value: undefined, a: [k.a, k.b].sort()[0], b: [k.a, k.b].sort()[1] });
-    if (seen.has(sig)) { c.dupOf = seen.get(sig); return false; }
-    seen.set(sig, c);
-    return true;
-  });
+    if (!('driving' in k)) continue;
+    if (k.value === undefined) { k.value = c.measured; (c.record.numbers ??= []).push(`${c.id}: the expression does not convert, the measured ${+c.measured.toFixed(9)}`); }
+    if (typeof k.value === 'number' && Math.abs(k.value - c.measured) > 1e-6) { (c.record.numbers ??= []).push(`${c.id}: ${k.value} does not match the geometry, the measured ${+c.measured.toFixed(9)}`); k.value = c.measured; }
+  }
+  return { records, commands: out };
+}
+
+// `twice` by meaning (design of 6h, "Fates"): the engine's key says which constraint the sketch
+// cannot hold twice; the converter compares in a canonical form: the operands in the key's order,
+// for the kinds whose two operands the catalog calls unordered (an angle, a horizontal and
+// a vertical distance) the value negated when the key swapped them, an angle back into (−π, π],
+// no negative zero, and the values at today's parameters. Equal is `twice` (an expression is kept
+// over a number); another value for the same key is `refused`. A unit is twice when every
+// constraint it would write is.
+const SIGNED = new Set(['angle', 'horizontalDistance', 'verticalDistance']);
+export function canonicalValue(c: any, parameters: readonly any[]): number | undefined {
+  if (!('value' in c)) return undefined;
+  let v = typeof c.value === 'number' ? c.value : expressionValue(c.value, parameters as any);
+  if (v === undefined) return undefined;
+  const spec = (CONSTRAINTS as any)[c.type];
+  if (SIGNED.has(c.type) && spec.unordered?.length === 2) {
+    const [f1, f2] = spec.unordered;
+    if (c[f1] > c[f2]) v = -v;
+    if (c.type === 'angle') { while (v <= -Math.PI) v += 2 * Math.PI; while (v > Math.PI) v -= 2 * Math.PI; }
+  }
+  return v === 0 ? 0 : v;
+}
+export function twiceByMeaning(records: ConstraintRecord[], parameters: readonly any[]) {
+  const keep = new Map<string, any>(); // key -> the command written for it
   for (const r of records) {
     if (r.fate) continue;
-    const live = r.commands.filter((c: any) => !c.dupOf);
-    if (r.commands.length && !live.length) Object.assign(r, { fate: 'twice', twiceOf: (r.commands[0] as any).dupOf.record.key });
-    r.commands = live;
+    for (const c of r.commands as any[]) {
+      if (c.type !== 'addConstraint') continue;
+      const key = constraintKey(c.constraint);
+      const there = keep.get(key);
+      if (!there) { keep.set(key, c); continue; }
+      const [a, b] = [canonicalValue(there.constraint, parameters), canonicalValue(c.constraint, parameters)];
+      const same = a === undefined && b === undefined ? true : a !== undefined && b !== undefined && Math.abs(a - b) <= 1e-9 * Math.max(1, Math.abs(a));
+      if (!same) { c.conflictsWith = there; continue; }
+      if (typeof there.constraint.value === 'number' && typeof c.constraint.value === 'string') {
+        // the expression is the one written
+        there.dupOf = c;
+        keep.set(key, c);
+      } else c.dupOf = there;
+    }
   }
-  return { records, commands };
+  for (const r of records) {
+    if (r.fate) continue;
+    const cons = (r.commands as any[]).filter((c) => c.type === 'addConstraint');
+    const conflict = cons.find((c) => c.conflictsWith);
+    if (conflict) { Object.assign(r, { fate: 'lost', cause: 'refused', detail: `another value for the same operands as ${conflict.conflictsWith.record.key}` }); continue; }
+    if (cons.length && cons.every((c) => c.dupOf)) {
+      let of = cons[0].dupOf;
+      while (of.dupOf) of = of.dupOf;
+      Object.assign(r, { fate: 'twice', twiceOf: of.record.key });
+      continue;
+    }
+    r.commands = (r.commands as any[]).filter((c) => !c.dupOf);
+  }
+}
+
+// The constraints numbered zero padded in the order written (the solver takes them in the string
+// order of their IDs, which is then the order of writing).
+export function numberConstraints(records: ConstraintRecord[], sketch: Id) {
+  const live = records.filter((r) => !r.fate).flatMap((r) => (r.commands as any[]).filter((c) => c.type === 'addConstraint'));
+  const width = Math.max(3, String(live.length).length);
+  live.forEach((c, i) => { c.id = `${sketch}.c${String(i).padStart(width, '0')}`; });
 }

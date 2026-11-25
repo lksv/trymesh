@@ -31,7 +31,7 @@ export function curve(sketch: SketchFeature, v: unknown, what: string): Curve {
   const type = oneOf(o.type, CURVE_KINDS, `${what}.type`);
   const pointAt = (v: unknown, path: string): Id => {
     const id = string(v, path);
-    if (id !== ORIGIN && !has(sketch.points, id)) fail(`${path}: "${id}" není vlastní bod skici ani počátek`);
+    if (id !== ORIGIN && !has(sketch.points, id)) fail(`${path}: "${id}" is neither an own point of the sketch nor the origin`);
     return id;
   };
   const point = (field: string): Id => pointAt(o[field], `${what}.${field}`);
@@ -39,18 +39,18 @@ export function curve(sketch: SketchFeature, v: unknown, what: string): Curve {
   switch (type) {
     case 'line': {
       const [a, b] = [point('a'), point('b')];
-      if (a === b) fail(`${what}: úsečka potřebuje dva různé body`);
+      if (a === b) fail(`${what}: a line needs two different points`);
       return { ...construction, type, a, b };
     }
     case 'circle':
       return { ...construction, type, center: point('center') };
     case 'arc': {
       const [center, start, end] = [point('center'), point('start'), point('end')];
-      if (center === start || center === end || start === end) fail(`${what}: oblouk potřebuje tři různé body`);
+      if (center === start || center === end || start === end) fail(`${what}: an arc needs three different points`);
       return { ...construction, type, center, start, end };
     }
     case 'spline': {
-      if (!Array.isArray(o.points)) return fail(`${what}.points: čeká se pole ID bodů`);
+      if (!Array.isArray(o.points)) return fail(`${what}.points: an array of point IDs is expected`);
       const n = o.points.length;
       if (n < MIN_SPLINE_POINTS || n > MAX_SPLINE_POINTS) fail(SPLINE_REFUSALS.count(what, n));
       const points = o.points.map((v, i) => pointAt(v, `${what}.points[${i}]`));
@@ -90,23 +90,23 @@ export function constraintRuleProblem(sketch: SketchFeature, c: Constraint): str
 export function constraint(sketch: SketchFeature, v: unknown, what: string, fields: Fields, id: Id): Constraint {
   const o = object(v, what);
   const type = string(o.type, `${what}.type`);
-  if (!has(CONSTRAINTS, type)) return fail(`${what}.type: neznámá vazba "${type}"`);
+  if (!has(CONSTRAINTS, type)) return fail(`${what}.type: unknown constraint "${type}"`);
   const spec = CONSTRAINTS[type as Constraint['type']];
   const operands: Record<string, Id> = {};
   const kinds: EntityKind[] = [];
   for (const { field, kinds: accepted } of spec.operands) {
     const id = string(o[field], `${what}.${field}`);
     const entity = entityOf(sketch, id);
-    if (!entity) return fail(`${what}.${field}: entita "${id}" ve skice není`);
+    if (!entity) return fail(`${what}.${field}: the entity "${id}" is not in the sketch`);
     if (entity.derived) {
       const origin = derivedOrigin(sketch, id) as { entry: Id; source: Id };
       return fail(`${what}.${field}: ${copyInConstraint(id, origin.entry, origin.source)}`);
     }
-    if (!accepted.includes(entity.kind)) fail(`${what}.${field}: "${id}" je ${entity.kind}, čeká se ${accepted.join(' nebo ')}`);
+    if (!accepted.includes(entity.kind)) fail(`${what}.${field}: "${id}" is ${entity.kind}, ${accepted.join(' or ')} is expected`);
     operands[field] = id;
     kinds.push(entity.kind);
   }
-  if (new Set(Object.values(operands)).size < spec.operands.length) fail(`${what}: vazba potřebuje ${spec.operands.length === 2 ? 'dvě' : spec.operands.length} různé entity`);
+  if (new Set(Object.values(operands)).size < spec.operands.length) fail(`${what}: the constraint needs ${spec.operands.length === 2 ? 'two' : spec.operands.length} different entities`);
   const problem = ruleProblem(sketch, type as Constraint['type'], Object.values(operands), kinds);
   if (problem) fail(`${what}: ${problem}`);
   const movable = Object.values(operands).some((operand) => entityOf(sketch, operand)?.own);
@@ -137,7 +137,7 @@ function sketchFeature(o: Dict, what: string, context: ValidationContext): Sketc
   const entries = (v: unknown, name: string): [Id, unknown][] =>
     Object.entries(object(v, `${what}.${name}`)).map(([key, value]) => {
       const id = newId(key, `${what}.${name}`);
-      if (seen.has(id)) fail(`${what}.${name}: ID "${id}" je ve skice dvakrát`);
+      if (seen.has(id)) fail(`${what}.${name}: the ID "${id}" is in the sketch twice`);
       seen.add(id);
       return [id, value];
     });
@@ -148,11 +148,11 @@ function sketchFeature(o: Dict, what: string, context: ValidationContext): Sketc
   for (const [id, value] of entries(o.external, 'external')) sketch.external[id] = externalRef(context, sketch, id, value, `${what}.external.${id}`);
   for (const [id, value] of entries(o.curves, 'curves')) sketch.curves[id] = curve(sketch, value, `${what}.curves.${id}`);
   for (const [id, value] of Object.entries(object(o.radii, `${what}.radii`))) {
-    if (!has(sketch.curves, id) || sketch.curves[id].type !== 'circle') fail(`${what}.radii: "${id}" není kružnice`);
+    if (!has(sketch.curves, id) || sketch.curves[id].type !== 'circle') fail(`${what}.radii: "${id}" is not a circle`);
     sketch.radii[id] = finite(value, `${what}.radii.${id}`);
-    if (sketch.radii[id] <= 0) fail(`${what}.radii.${id}: poloměr musí být kladný`);
+    if (sketch.radii[id] <= 0) fail(`${what}.radii.${id}: the radius must be positive`);
   }
-  for (const [id, c] of Object.entries(sketch.curves)) if (c.type === 'circle' && !has(sketch.radii, id)) fail(`${what}.radii: kružnice "${id}" nemá poloměr`);
+  for (const [id, c] of Object.entries(sketch.curves)) if (c.type === 'circle' && !has(sketch.radii, id)) fail(`${what}.radii: the circle "${id}" has no radius`);
   for (const [id, value] of entries(o.constraints, 'constraints')) sketch.constraints[id] = constraint(sketch, value, `${what}.constraints.${id}`, fields, id);
   const solved = object(o.solved, `${what}.solved`);
   sketch.solved.inputs = string(solved.inputs, `${what}.solved.inputs`);
@@ -161,7 +161,7 @@ function sketchFeature(o: Dict, what: string, context: ValidationContext): Sketc
     const stored = storedValue(value, `${what}.solved.external.${id}`);
     // a value is stored for an entry of reference geometry only: derived geometry is never stored
     const kind = has(sketch.external, id) ? kindOf(sketch.external[id]) : undefined;
-    if (kind?.source !== 'reference' || kind.value(stored, sketch.external[id], `${what}.solved.external.${id}`) === undefined) fail(`${what}.solved.external: "${id}" neodpovídá promítnuté geometrii skici`);
+    if (kind?.source !== 'reference' || kind.value(stored, sketch.external[id], `${what}.solved.external.${id}`) === undefined) fail(`${what}.solved.external: "${id}" does not match the projected geometry of the sketch`);
     sketch.solved.external[id] = stored;
   }
   return sketch;
@@ -282,7 +282,7 @@ function step(feature: SketchFeature, { state, settings, deps, done, failed, dra
 }
 
 export const sketch: FeatureModule<SketchFeature> = {
-  info: { title: 'Skica', summary: 'Rovinná skica: body, křivky, vazby a kóty; její uzavřené oblasti se vysouvají.', fields: [], bodies: 'none' },
+  info: { title: 'Sketch', summary: 'A planar sketch: points, curves, constraints and dimensions; its closed regions are extruded.', fields: [], bodies: 'none' },
   validate: sketchFeature,
   refs: (f) => [
     ...planeRefs(f.plane, 'plane'),

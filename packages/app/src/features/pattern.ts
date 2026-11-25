@@ -67,7 +67,7 @@ function patternPanel(m: PatternMode, host: PanelHost): HTMLElement[] {
   });
   const { source, transform } = m.draft;
   const out: (HTMLElement | null)[] = [
-    h('h2', {}, m.editing ? `Úprava: ${m.draft.name}` : transform.type === 'mirror' ? 'New mirror' : 'New pattern'),
+    h('h2', {}, m.editing ? `Edit: ${m.draft.name}` : transform.type === 'mirror' ? 'New mirror' : 'New pattern'),
     select('Repeat', (value) => set({ source: value as 'features' | 'body' }), option('features', 'Features (extrusions that add or cut)', source.type === 'features'), option('body', 'A body', source.type === 'body')),
     select('Kind', (value) => set({ kind: value as PatternKind }), ...(Object.keys(KINDS) as PatternKind[]).map((kind) => option(kind, KINDS[kind], kind === transform.type))),
   ];

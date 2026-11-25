@@ -213,7 +213,7 @@ describe('findings of the review of point 6', () => {
     run(engine, { type: 'addExternal', sketch: 'S2', id: 'x', ref: { type: 'edge', body: 'plate', edge: { a: cap('plate'), b: side('plate', 'ra') }, kind: 'line' } });
     expect(refused(engine, add('S2', 'o', { type: 'fixed', point: 'x/a' }))).toMatch(/would never take effect/);
     expect(refused(engine, add('S2', 'o', { type: 'fixed', point: 'x/a', x: 1, y: 1 }))).toMatch(/would never take effect/);
-    expect(refused(engine, add('S2', 'o', { type: 'equalRadius', a: 'q1', b: 'q1' }))).toMatch(/různé entity/);
+    expect(refused(engine, add('S2', 'o', { type: 'equalRadius', a: 'q1', b: 'q1' }))).toMatch(/different entities/);
   });
 
   it('equal radius with a projected circle: the own circle follows the body', () => {

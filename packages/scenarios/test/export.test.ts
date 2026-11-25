@@ -94,7 +94,7 @@ describe('Engine.export', () => {
     expect(failure(engine.export('step' as never, {} as never))).toEqual(['invalidArguments', ['format'], 'there is no export format "step"; the formats are stl, 3mf, dxf, svg, partsCsv, urdf, mjcf']);
     expect(() => engine.exportMesh('stl', ['nope'])).toThrow('exportMesh: the body "nope" does not exist');
     expect(() => engine.exportMesh('stl', 'PLATE' as never)).toThrow('exportMesh: bodies is a list of body IDs');
-    expect(() => engine.exportMesh('step' as never)).toThrow('export: formát step není podporovaný');
+    expect(() => engine.exportMesh('step' as never)).toThrow('export: the format step is not supported');
     expect(engine.exportMesh('stl', [])).toHaveLength(84); // an empty mesh, as before the catalog
   });
 });

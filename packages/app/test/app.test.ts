@@ -106,19 +106,19 @@ describe('the app, driven as a user drives it', () => {
   it('a sketch: every drawing tool, constraints and dimensions, selection, a drag, the keys', async () => {
     const h = await start();
     h.record('the app starts empty');
-    h.press('toolbar', 'Skica');
+    h.press('toolbar', 'Sketch');
     h.record('Skica: the app waits for a plane');
     h.press('panel', 'XY');
     h.record('the plane XY: a sketch is created and entered');
 
-    h.press('toolbar', 'Obdélník');
+    h.press('toolbar', 'Rectangle');
     h.click(at(0, 0));
     h.move(at(25, 20));
     h.record('rectangle: first corner on the origin, the rubber band follows');
     h.click(at(40, 30));
     h.record('rectangle: second corner');
 
-    h.press('toolbar', 'Úsečka');
+    h.press('toolbar', 'Line');
     // the chain lies off the axes of the origin, which a click near them would snap to (D71)
     h.click(at(60, 10));
     h.move(at(80, 12));
@@ -130,11 +130,11 @@ describe('the app, driven as a user drives it', () => {
     h.click(at(60, 10));
     h.record('line: joining an existing point ends the chain');
 
-    h.press('toolbar', 'Kružnice');
+    h.press('toolbar', 'Circle');
     h.click(at(20, 15));
     h.click(at(26, 15));
     h.record('circle');
-    h.press('toolbar', 'Oblouk');
+    h.press('toolbar', 'Arc');
     h.click(at(60, 50));
     h.click(at(72, 50));
     h.move(at(60, 62));
@@ -152,34 +152,34 @@ describe('the app, driven as a user drives it', () => {
     h.click(at(122, 20));
     h.record('polygon');
 
-    h.press('toolbar', 'Konstrukčně');
-    h.press('toolbar', 'Úsečka');
+    h.press('toolbar', 'Construction');
+    h.press('toolbar', 'Line');
     h.click(at(10, 50));
     h.click(at(40, 50));
     h.key('Escape');
-    h.press('toolbar', 'Konstrukčně');
+    h.press('toolbar', 'Construction');
     h.record('a construction line; Escape ends the chain');
-    h.press('toolbar', 'Bod');
+    h.press('toolbar', 'Point');
     h.click(at(100, 55));
     h.record('a point');
 
     // selection: the bottom side of the rectangle, then with Shift its right side
-    h.press('toolbar', 'Výběr');
+    h.press('toolbar', 'Select');
     h.move(at(20, 0));
     h.record('select: a curve under the pointer is highlighted');
     h.click(at(20, 0));
     h.record('select: the bottom side');
-    h.press('panel', 'Kóta');
+    h.press('panel', 'Dimension');
     h.record('a dimension of the selected line');
     h.click(at(40, 15), { shiftKey: true });
     h.record('select with Shift: two sides');
-    h.press('panel', 'Kolmo');
+    h.press('panel', 'Perpendicular');
     h.record('a constraint the sketch already implies is refused or added as the engine says');
     h.click(at(100, 55));
     h.click(at(110, 20), { shiftKey: true });
-    h.press('panel', 'Kóta ↔');
+    h.press('panel', 'Dimension ↔');
     h.record('a horizontal dimension between two points');
-    h.press('panel', 'Kóta ↔');
+    h.press('panel', 'Dimension ↔');
     h.record('the same dimension again is refused in words');
 
     // a dimension typed, made a reference one and back: the width of the rectangle
@@ -208,7 +208,7 @@ describe('the app, driven as a user drives it', () => {
     h.record('Escape: the selection goes first');
     h.key('Escape');
     h.record('Escape: then the focus');
-    h.press('panel', 'Vybrat volné');
+    h.press('panel', 'Select free');
     h.record('the free entities are selected');
     h.key('Escape');
 
@@ -249,14 +249,14 @@ describe('the app, driven as a user drives it', () => {
     h.key('Delete');
     h.record('Delete removes the selected point');
     h.click(at(20, 50));
-    h.press('panel', 'Běžná křivka');
+    h.press('panel', 'Normal curve');
     h.record('the construction line is made an ordinary curve');
-    h.press('panel', 'Smazat');
+    h.press('panel', 'Delete');
     h.record('and deleted by the button, with the points nothing else uses');
     h.click(at(0, 0));
     h.key('Delete');
     h.record('the origin cannot be deleted');
-    h.press('toolbar', 'Kružnice');
+    h.press('toolbar', 'Circle');
     h.click(at(150, 50));
     h.key('Escape');
     h.record('Escape drops a shape in progress');
@@ -266,7 +266,7 @@ describe('the app, driven as a user drives it', () => {
     h.record('undo in a sketch');
     h.key('z', { ctrlKey: true, shiftKey: true });
     h.record('redo');
-    h.press('toolbar', 'Dokončit skicu');
+    h.press('toolbar', 'Finish sketch');
     h.record('the sketch is finished');
     await matches(h, 'sketch');
   });
@@ -274,15 +274,15 @@ describe('the app, driven as a user drives it', () => {
   it('the fillet of a corner and the re-point of a curve (D52)', async () => {
     const h = await start();
     // a rectangle from the origin, extruded
-    h.press('toolbar', 'Skica');
+    h.press('toolbar', 'Sketch');
     h.press('panel', 'XY');
-    h.press('toolbar', 'Obdélník');
+    h.press('toolbar', 'Rectangle');
     h.click(at(0, 0));
     h.click(at(40, 30));
-    h.press('toolbar', 'Dokončit skicu');
-    h.press('toolbar', 'Vysunutí');
+    h.press('toolbar', 'Finish sketch');
+    h.press('toolbar', 'Extrude');
     h.press('panel', 'OK');
-    doubleClick(h, 'Skica 1');
+    doubleClick(h, 'Sketch 1');
     h.record('a rectangle from the origin and its extrusion; the sketch opened again');
 
     h.press('toolbar', 'Fillet');
@@ -303,10 +303,10 @@ describe('the app, driven as a user drives it', () => {
     h.record('a radius the lines are too short for is refused with the bound');
 
     // the re-point row: a line and a point selected
-    h.press('toolbar', 'Výběr');
-    h.press('toolbar', 'Bod');
+    h.press('toolbar', 'Select');
+    h.press('toolbar', 'Point');
     h.click(at(30, 45));
-    h.press('toolbar', 'Výběr');
+    h.press('toolbar', 'Select');
     h.click(at(20, 0));
     h.click(at(30, 45), { shiftKey: true });
     h.record('a line and a point selected: the row Re-point offers the start and the end, the nearer chosen');
@@ -314,20 +314,20 @@ describe('the app, driven as a user drives it', () => {
     h.press('panel', 'Re-point');
     h.record('the start of the line re-pointed: the line keeps its ID, the region it closed is gone');
     h.key('z', { ctrlKey: true });
-    h.press('toolbar', 'Kružnice');
+    h.press('toolbar', 'Circle');
     h.click(at(70, 10));
     h.click(at(80, 10));
-    h.press('toolbar', 'Výběr');
+    h.press('toolbar', 'Select');
     h.click(at(70, 20));
     h.click(at(30, 45), { shiftKey: true });
     h.record('a circle and a point: the row offers the centre only');
     h.press('panel', 'Re-point');
     h.record('the circle moved onto the point');
-    h.press('toolbar', 'Oblouk');
+    h.press('toolbar', 'Arc');
     h.click(at(100, 10));
     h.click(at(110, 10));
     h.click(at(100, 20));
-    h.press('toolbar', 'Výběr');
+    h.press('toolbar', 'Select');
     h.click(at(100 + 10 * Math.SQRT1_2, 10 + 10 * Math.SQRT1_2));
     h.click(at(30, 45), { shiftKey: true });
     h.record('an arc and a point: the centre, the start and the end');
@@ -337,23 +337,23 @@ describe('the app, driven as a user drives it', () => {
   it('features: extrusions, a sketch on a face, a cut through all, a pattern, a plane, a gear; each form there and back', async () => {
     const h = await start();
     // the base sketch: a rectangle, a circle next to it and a point in the middle of the rectangle
-    h.press('toolbar', 'Vysunutí');
+    h.press('toolbar', 'Extrude');
     h.record('an extrusion needs a sketch');
-    h.press('toolbar', 'Skica');
+    h.press('toolbar', 'Sketch');
     h.press('panel', 'XY');
-    h.press('toolbar', 'Obdélník');
+    h.press('toolbar', 'Rectangle');
     h.click(at(0, 0));
     h.click(at(40, 30));
-    h.press('toolbar', 'Kružnice');
+    h.press('toolbar', 'Circle');
     h.click(at(70, 15));
     h.click(at(78, 15));
-    h.press('toolbar', 'Bod');
+    h.press('toolbar', 'Point');
     h.click(at(20, 15));
-    h.press('toolbar', 'Dokončit skicu');
+    h.press('toolbar', 'Finish sketch');
     h.record('the base sketch: two regions');
 
     // ----- an extrusion of a region picked in the view
-    h.press('toolbar', 'Vysunutí');
+    h.press('toolbar', 'Extrude');
     h.record('a new extrusion: two regions, none picked, nothing to compute or confirm');
     h.move(at(20, 10));
     h.record('the region under the pointer');
@@ -375,9 +375,9 @@ describe('the app, driven as a user drives it', () => {
     h.press('panel', 'OK');
     h.record('OK: the extrusion is in the document');
 
-    h.press('toolbar', 'Vysunutí');
+    h.press('toolbar', 'Extrude');
     h.click(at(70, 15));
-    h.press('panel', 'Zrušit výběr oblastí');
+    h.press('panel', 'Clear picked regions');
     h.record('the picked regions dropped by the button');
     h.click(at(70, 15));
     h.press('panel', 'OK');
@@ -388,31 +388,31 @@ describe('the app, driven as a user drives it', () => {
     h.record('model: the face under the pointer');
     h.click(at(20, 10, 12));
     h.record('model: the top face of the plate is selected');
-    h.press('toolbar', 'Skica');
+    h.press('toolbar', 'Sketch');
     h.record('a sketch on the selected face: its outline is projected');
-    h.press('toolbar', 'Kružnice');
+    h.press('toolbar', 'Circle');
     h.click(at(10, 10, 12));
     h.click(at(14, 10, 12));
     // an edge of another body projected, repaired and removed
-    h.press('toolbar', 'Promítnout');
+    h.press('toolbar', 'Project');
     h.move(at(62, 15, 10));
     h.record('project: the edge under the pointer');
     h.click(at(62, 15, 10));
     h.record('the rim of the cylinder projected into the sketch');
-    titled(h, 'Promítnout znovu: klikněte potom na novou hranu tělesa', 4).click();
+    titled(h, 'Project again: then click the new edge of a body', 4).click();
     h.record('a projection to repair: the next click on an edge replaces it');
     h.click(at(70, 7, 0));
     h.record('the projection repaired with the lower rim');
     h.click(at(20, 22, 12));
     h.record('a click that hits no edge projects nothing');
-    titled(h, 'Zrušit promítnutí', 4).click();
+    titled(h, 'Remove the projection', 4).click();
     h.record('the projection removed');
-    h.press('toolbar', 'Dokončit skicu');
+    h.press('toolbar', 'Finish sketch');
 
     // ----- a cut: the extent there and back, the targets
-    h.press('toolbar', 'Vysunutí');
+    h.press('toolbar', 'Extrude');
     h.record('an extrusion of a sketch on a face proposes to add to its body');
-    h.choose('Operace', 'cut');
+    h.choose('Operation', 'cut');
     h.record('a cut: the targets are a list of bodies');
     h.choose('Extent', 'throughAll');
     h.record('through all: a side instead of a distance');
@@ -421,19 +421,19 @@ describe('the app, driven as a user drives it', () => {
     h.record('back to a distance: the one the draft had');
     h.choose('Extent', 'throughAll');
     h.record('and through all again: the side it had');
-    tick(h, 'Vysunutí 2');
+    tick(h, 'Extrude 2');
     h.record('a second target');
-    tick(h, 'Vysunutí 2');
-    h.choose('Operace', 'new');
+    tick(h, 'Extrude 2');
+    h.choose('Operation', 'new');
     h.record('a new body cannot go through all: the extent returns to the distance');
-    h.choose('Operace', 'cut');
+    h.choose('Operation', 'cut');
     h.choose('Extent', 'throughAll');
     h.choose('Side', 'backward');
     h.press('panel', 'OK');
     h.record('the hole');
 
     // ----- a pattern of the cut, with a slow preview
-    h.row('Vysunutí 3').click();
+    h.row('Extrude 3').click();
     h.record('the cut is selected on the timeline: its faces are highlighted');
     h.press('toolbar', 'Pattern');
     h.record('a new pattern of the selected feature');
@@ -473,7 +473,7 @@ describe('the app, driven as a user drives it', () => {
     h.tick = 0;
 
     // ----- a plane: the pick that is refused first, the base changed by a click
-    h.press('toolbar', 'Rovina');
+    h.press('toolbar', 'Plane');
     h.record('Rovina: the app waits for a plane');
     h.click(at(65.2, 8.6, 5));
     h.record('a round face is refused and the app keeps waiting');
@@ -492,16 +492,16 @@ describe('the app, driven as a user drives it', () => {
     h.record('the plane');
 
     // ----- a sketch started with a plane selected on the timeline, and a gear on it
-    h.row('Rovina 1').click();
-    h.press('toolbar', 'Skica');
+    h.row('Plane 1').click();
+    h.press('toolbar', 'Sketch');
     h.record('a sketch on the plane selected on the timeline');
     const plane = h.engine.getState().evaluation.features.s3.plane;
     if (!plane) throw new Error('the sketch on the plane has no frame');
-    h.press('toolbar', 'Kružnice');
+    h.press('toolbar', 'Circle');
     h.click(onPlane(plane, 60, 60));
     h.click(onPlane(plane, 70, 60));
-    h.press('toolbar', 'Dokončit skicu');
-    h.press('toolbar', 'Vysunutí');
+    h.press('toolbar', 'Finish sketch');
+    h.press('toolbar', 'Extrude');
     h.record('an extrusion of the only region of the sketch: it is picked by itself');
     h.choose('Profile', 'involuteGear');
     h.record('a gear from the generator: its fields come from the catalog');
@@ -520,25 +520,25 @@ describe('the app, driven as a user drives it', () => {
     h.record('the gear');
 
     // ----- opened again: changed, cancelled, refused
-    doubleClick(h, 'Vysunutí 1');
+    doubleClick(h, 'Extrude 1');
     h.record('a double click on the timeline opens the form of the feature');
     h.type(h.field(DISTANCE), '15');
     h.press('panel', 'OK');
     h.record('the change is saved');
-    h.row('Vysunutí 4').click();
+    h.row('Extrude 4').click();
     h.record('the gear selected: its summary and its body');
-    h.press('panel', 'Upravit');
+    h.press('panel', 'Edit feature');
     h.type(h.field('Number of teeth'), '14');
     h.record('the form of the gear, a change typed');
-    h.press('panel', 'Zrušit');
+    h.press('panel', 'Cancel');
     h.record('Zrušit: nothing is changed');
     doubleClick(h, 'Pattern 1');
     h.record('the form of the pattern');
-    tick(h, 'Vysunutí 3');
+    tick(h, 'Extrude 3');
     h.record('a pattern without a source cannot be confirmed');
     h.key('Escape');
     h.record('Escape leaves the form');
-    doubleClick(h, 'Rovina 1');
+    doubleClick(h, 'Plane 1');
     h.record('the form of the plane');
     h.type(h.field(OFFSET), '');
     h.record('an empty field: the engine refuses the preview');
@@ -547,44 +547,44 @@ describe('the app, driven as a user drives it', () => {
     h.type(h.field(OFFSET), '25');
     h.press('panel', 'OK');
     h.record('a valid offset is saved');
-    doubleClick(h, 'Skica 2');
+    doubleClick(h, 'Sketch 2');
     h.record('a double click on a sketch enters it');
-    h.press('toolbar', 'Dokončit skicu');
+    h.press('toolbar', 'Finish sketch');
     h.key('z', { ctrlKey: true });
     h.record('undo after the forms: the offset of the plane goes back');
     h.key('y', { ctrlKey: true });
     h.record('redo with Ctrl+Y');
 
     // ----- a sketch started by a pick: a round face is refused first
-    h.row('Skica 2').click();
-    h.press('toolbar', 'Skica');
+    h.row('Sketch 2').click();
+    h.press('toolbar', 'Sketch');
     h.record('Skica with nothing usable selected: the app waits for a plane');
     h.click(at(65.2, 8.6, 5));
     h.record('a round face is refused and the app keeps waiting');
     h.click(at(70, 15, 10));
     h.record('the top of the cylinder: the sketch is created with its rim projected');
-    h.press('toolbar', 'Dokončit skicu');
+    h.press('toolbar', 'Finish sketch');
     await matches(h, 'features');
   });
 
   it('an offset of a profile and a wall along curves of a sketch (D44)', async () => {
     const h = await start();
     // a rectangle and, inside it, a chain of two construction lines
-    h.press('toolbar', 'Skica');
+    h.press('toolbar', 'Sketch');
     h.press('panel', 'XY');
-    h.press('toolbar', 'Obdélník');
+    h.press('toolbar', 'Rectangle');
     h.click(at(0, 0));
     h.click(at(40, 30));
-    h.press('toolbar', 'Konstrukčně');
-    h.press('toolbar', 'Úsečka');
+    h.press('toolbar', 'Construction');
+    h.press('toolbar', 'Line');
     h.click(at(10, 10));
     h.click(at(30, 10));
     h.click(at(30, 20));
     h.key('Escape');
-    h.press('toolbar', 'Dokončit skicu');
+    h.press('toolbar', 'Finish sketch');
 
     // ----- the offset of a profile of regions
-    h.press('toolbar', 'Vysunutí');
+    h.press('toolbar', 'Extrude');
     h.record('a new extrusion: the offset is empty, the draft has none');
     h.type(h.field(PROFILE_OFFSET), '-2');
     h.record('an offset typed: the profile shrinks in the preview, the draft has the field');
@@ -593,7 +593,7 @@ describe('the app, driven as a user drives it', () => {
     h.type(h.field(PROFILE_OFFSET), '-2');
     h.press('panel', 'OK');
     h.record('OK: the extrusion with its offset is in the document');
-    doubleClick(h, 'Vysunutí 1');
+    doubleClick(h, 'Extrude 1');
     h.record('editing: the field shows the offset');
     h.type(h.field(PROFILE_OFFSET), '');
     h.record('the field emptied: the draft has no offset and the preview is the plain outline');
@@ -601,7 +601,7 @@ describe('the app, driven as a user drives it', () => {
     h.record('OK: the offset is removed from the feature');
 
     // ----- a wall along curves picked in the view
-    h.press('toolbar', 'Vysunutí');
+    h.press('toolbar', 'Extrude');
     h.choose('Profile', 'wall');
     h.record('the source of the profile is a wall: no curve yet, nothing to compute or confirm');
     h.move(at(20, 10));
@@ -626,7 +626,7 @@ describe('the app, driven as a user drives it', () => {
     h.click(at(30, 15));
     h.press('panel', 'OK');
     h.record('OK: the wall is a body of its own');
-    h.row('Vysunutí 2').click();
+    h.row('Extrude 2').click();
     h.record('the wall selected: its summary names the thickness and the curves');
     await matches(h, 'offset');
   });
@@ -644,7 +644,7 @@ describe('the app, driven as a user drives it', () => {
       ],
     });
     h.row('Drive').click();
-    h.press('toolbar', 'Vysunutí');
+    h.press('toolbar', 'Extrude');
     h.choose('Profile', 'gt2Pulley');
     h.record('a GT2 pulley: its operand is a point, the select lists the origin and the points of the sketch; the example of the catalog, 20 grooves');
     h.choose('center (point of the sketch)', 'axis');
@@ -653,7 +653,7 @@ describe('the app, driven as a user drives it', () => {
     h.press('panel', 'OK');
     h.record('the pulley');
     h.row('Drive').click();
-    h.press('toolbar', 'Vysunutí');
+    h.press('toolbar', 'Extrude');
     h.choose('Profile', 'cycloidalDisc');
     h.record('a cycloidal disc over the circle: the example of the catalog, its facts');
     h.type(h.field('Input angle (° or an expression in radians)'), '90');
@@ -661,14 +661,14 @@ describe('the app, driven as a user drives it', () => {
     h.press('panel', 'OK');
     h.record('the disc at the input angle 90°');
     h.row('Drive').click();
-    h.press('toolbar', 'Vysunutí');
+    h.press('toolbar', 'Extrude');
     h.choose('Profile', 'involuteGear');
     h.record('a gear: the shift is empty, the draft has none');
     h.type(h.field(SHIFT), '0.3');
     h.record('a shift typed: the tip and the root move, the facts say the shift');
     h.press('panel', 'OK');
     h.record('the gear with its shift');
-    doubleClick(h, 'Vysunutí 3');
+    doubleClick(h, 'Extrude 3');
     h.record('editing: the field shows the shift');
     h.type(h.field(SHIFT), '');
     h.record('the field emptied: the draft has no shift, the patch removes it');
@@ -679,13 +679,13 @@ describe('the app, driven as a user drives it', () => {
 
   it('a taper on the extent of an extrusion (D45)', async () => {
     const h = await start();
-    h.press('toolbar', 'Skica');
+    h.press('toolbar', 'Sketch');
     h.press('panel', 'XY');
-    h.press('toolbar', 'Obdélník');
+    h.press('toolbar', 'Rectangle');
     h.click(at(0, 0));
     h.click(at(40, 30));
-    h.press('toolbar', 'Dokončit skicu');
-    h.press('toolbar', 'Vysunutí');
+    h.press('toolbar', 'Finish sketch');
+    h.press('toolbar', 'Extrude');
     h.record('a new extrusion: the only region is selected, the taper is empty, the draft has none');
     h.type(h.field(TAPER), '-10');
     h.record('a taper typed in degrees: the draft has it in radians and the preview narrows');
@@ -694,9 +694,9 @@ describe('the app, driven as a user drives it', () => {
     h.type(h.field(TAPER), 'deg(-5)');
     h.press('panel', 'OK');
     h.record('OK: the extrusion with its taper is in the document');
-    h.row('Vysunutí 1').click();
+    h.row('Extrude 1').click();
     h.record('selected: the summary names the taper in degrees');
-    doubleClick(h, 'Vysunutí 1');
+    doubleClick(h, 'Extrude 1');
     h.record('editing: the field shows the expression');
     h.type(h.field(TAPER), '');
     h.record('the field emptied: the draft has no taper and the preview is the prism');
@@ -707,21 +707,21 @@ describe('the app, driven as a user drives it', () => {
 
   it('an extent up to a plane or a face, picked in the view (D47)', async () => {
     const h = await start();
-    h.press('toolbar', 'Skica');
+    h.press('toolbar', 'Sketch');
     h.press('panel', 'XY');
-    h.press('toolbar', 'Obdélník');
+    h.press('toolbar', 'Rectangle');
     h.click(at(0, 0));
     h.click(at(40, 30));
-    h.press('toolbar', 'Kružnice');
+    h.press('toolbar', 'Circle');
     h.click(at(70, 15));
     h.click(at(75, 15));
-    h.press('toolbar', 'Dokončit skicu');
-    h.press('toolbar', 'Vysunutí');
+    h.press('toolbar', 'Finish sketch');
+    h.press('toolbar', 'Extrude');
     h.click(at(20, 10));
     h.type(h.field(DISTANCE), '12');
     h.press('panel', 'OK');
     // the cylinder ends in the plane of the top of the plate, beside the plate itself
-    h.press('toolbar', 'Vysunutí');
+    h.press('toolbar', 'Extrude');
     h.click(at(70, 15));
     h.choose('Extent', 'upTo');
     h.record('up to a plane: no plane yet, nothing to compute or confirm; the button arms a pick');
@@ -740,9 +740,9 @@ describe('the app, driven as a user drives it', () => {
     h.record('the pick disarmed: clicks pick regions again');
     h.press('panel', 'OK');
     h.record('OK: the extrusion with its plane and gap is in the document');
-    h.row('Vysunutí 2').click();
+    h.row('Extrude 2').click();
     h.record('selected: the summary names the plane, the gap and the length');
-    doubleClick(h, 'Vysunutí 2');
+    doubleClick(h, 'Extrude 2');
     h.type(h.field(GAP), '');
     h.press('panel', 'OK');
     h.record('the gap emptied and confirmed: removed from the feature');
@@ -751,41 +751,41 @@ describe('the app, driven as a user drives it', () => {
 
   it('the start of an extent at a face or a plane, picked in the view; the mouth of a hole at the top (D66)', async () => {
     const h = await start();
-    h.press('toolbar', 'Skica');
+    h.press('toolbar', 'Sketch');
     h.press('panel', 'XY');
-    h.press('toolbar', 'Obdélník');
+    h.press('toolbar', 'Rectangle');
     h.click(at(0, 0));
     h.click(at(40, 30));
-    h.press('toolbar', 'Kružnice');
+    h.press('toolbar', 'Circle');
     h.click(at(15, 15));
     h.click(at(19, 15));
-    h.press('toolbar', 'Bod');
+    h.press('toolbar', 'Point');
     h.click(at(32, 22));
-    h.press('toolbar', 'Dokončit skicu');
-    h.press('toolbar', 'Vysunutí');
+    h.press('toolbar', 'Finish sketch');
+    h.press('toolbar', 'Extrude');
     h.click(at(5, 5));
     h.click(at(15, 15));
     h.type(h.field(DISTANCE), '10');
     h.press('panel', 'OK');
     // the boss: the circle of the same sketch, standing on the top of the plate
-    h.press('toolbar', 'Vysunutí');
+    h.press('toolbar', 'Extrude');
     h.click(at(15, 15));
-    h.choose('Operace', 'add');
+    h.choose('Operation', 'add');
     h.record('a new extrusion: the row "Start at" says the sketch plane');
-    h.choose('Operace', 'cut');
+    h.choose('Operation', 'cut');
     h.record('a cut from the sketch plane: the preview has a hole through the plate');
     h.press('panel', 'Pick the start');
     h.record('the pick of the start armed: the view shows the state before the feature, the plate without the hole');
     h.key('Escape');
     h.record('Escape disarms the pick and keeps the draft: the preview with the hole again');
-    h.choose('Operace', 'add');
+    h.choose('Operation', 'add');
     h.press('panel', 'Pick the start');
     h.click(at(35, 25, 10));
     h.record('the top of the plate picked: the boss starts on it, the preview says where');
     h.choose('Extent', 'upTo');
     h.record('up to a plane: the start plane goes along');
     h.choose('Extent', 'distance');
-    h.choose('Operace', 'cut');
+    h.choose('Operation', 'cut');
     h.choose('Extent', 'throughAll');
     h.record('through all from the plane: backward, both sides disabled');
     h.press('panel', 'Sketch plane');
@@ -794,16 +794,16 @@ describe('the app, driven as a user drives it', () => {
     h.record('the distance the draft had comes back without the start plane');
     h.press('panel', 'Pick the start');
     h.click(at(35, 25, 10));
-    h.choose('Operace', 'add');
+    h.choose('Operation', 'add');
     h.press('panel', 'OK');
     h.record('OK: the boss with its start plane is in the document');
-    h.row('Vysunutí 2').click();
+    h.row('Extrude 2').click();
     h.record('selected: the summary names the start plane and the facts say where the boss starts');
-    doubleClick(h, 'Vysunutí 2');
+    doubleClick(h, 'Extrude 2');
     h.press('panel', 'Sketch plane');
     h.press('panel', 'OK');
     h.record('edited: the start plane removed from the feature');
-    h.press('toolbar', 'Vysunutí');
+    h.press('toolbar', 'Extrude');
     h.press('panel', 'Pick the start');
     h.key('Escape');
     h.key('Escape');
@@ -840,16 +840,16 @@ describe('the app, driven as a user drives it', () => {
 
   it('the kinds of a pattern: along a direction, a mirror in a plane picked in the view (D53)', async () => {
     const h = await start();
-    h.press('toolbar', 'Skica');
+    h.press('toolbar', 'Sketch');
     h.press('panel', 'XY');
-    h.press('toolbar', 'Obdélník');
+    h.press('toolbar', 'Rectangle');
     h.click(at(0, 0));
     h.click(at(40, 30));
-    h.press('toolbar', 'Kružnice');
+    h.press('toolbar', 'Circle');
     h.click(at(10, 15));
     h.click(at(13, 15));
-    h.press('toolbar', 'Dokončit skicu');
-    h.press('toolbar', 'Vysunutí');
+    h.press('toolbar', 'Finish sketch');
+    h.press('toolbar', 'Extrude');
     h.click(at(30, 10));
     h.type(h.field(DISTANCE), '10');
     h.press('panel', 'OK');
@@ -939,21 +939,21 @@ describe('the app, driven as a user drives it', () => {
     const h = await start();
     h.press('toolbar', 'Hole');
     h.record('a hole needs a sketch');
-    h.press('toolbar', 'Skica');
+    h.press('toolbar', 'Sketch');
     h.press('panel', 'XY');
-    h.press('toolbar', 'Obdélník');
+    h.press('toolbar', 'Rectangle');
     h.click(at(0, 0));
     h.click(at(40, 30));
-    h.press('toolbar', 'Dokončit skicu');
-    h.press('toolbar', 'Vysunutí');
+    h.press('toolbar', 'Finish sketch');
+    h.press('toolbar', 'Extrude');
     h.type(h.field(DISTANCE), '10');
     h.press('panel', 'OK');
     h.click(at(20, 10, 10));
-    h.press('toolbar', 'Skica');
-    h.press('toolbar', 'Bod');
+    h.press('toolbar', 'Sketch');
+    h.press('toolbar', 'Point');
     h.click(at(10, 10, 10));
     h.click(at(30, 10, 10));
-    h.press('toolbar', 'Dokončit skicu');
+    h.press('toolbar', 'Finish sketch');
     const sketch = h.engine.getState().document.features.filter((f) => f.type === 'sketch').at(-1)?.id as string;
     const [left, right] = [pointIdAt(h, sketch, 10, 10), pointIdAt(h, sketch, 30, 10)];
     h.press('toolbar', 'Hole');
@@ -1002,28 +1002,28 @@ describe('the app, driven as a user drives it', () => {
   // A plate, a pin apart from it and a block that reaches into the plate, drawn through the app.
   const threeBodies = async (): Promise<Harness> => {
     const h = await start();
-    h.press('toolbar', 'Skica');
+    h.press('toolbar', 'Sketch');
     h.press('panel', 'XY');
-    h.press('toolbar', 'Obdélník');
+    h.press('toolbar', 'Rectangle');
     h.click(at(0, 0));
     h.click(at(40, 30));
-    h.press('toolbar', 'Kružnice');
+    h.press('toolbar', 'Circle');
     h.click(at(90, 15));
     h.click(at(95, 15));
-    h.press('toolbar', 'Dokončit skicu');
-    h.press('toolbar', 'Vysunutí');
+    h.press('toolbar', 'Finish sketch');
+    h.press('toolbar', 'Extrude');
     h.click(at(20, 15));
     h.press('panel', 'OK');
-    h.press('toolbar', 'Vysunutí');
+    h.press('toolbar', 'Extrude');
     h.click(at(90, 15));
     h.press('panel', 'OK');
-    h.press('toolbar', 'Skica');
+    h.press('toolbar', 'Sketch');
     h.press('panel', 'XY');
-    h.press('toolbar', 'Obdélník');
+    h.press('toolbar', 'Rectangle');
     h.click(at(30, 10));
     h.click(at(60, 25));
-    h.press('toolbar', 'Dokončit skicu');
-    h.press('toolbar', 'Vysunutí');
+    h.press('toolbar', 'Finish sketch');
+    h.press('toolbar', 'Extrude');
     h.type(h.field(DISTANCE), '8');
     h.press('panel', 'OK');
     return h;
@@ -1093,22 +1093,22 @@ describe('the app, driven as a user drives it', () => {
   it('more planes: the midplane with a plane picked in the view, a tilt about an axis or about the axis of a round face (D60)', async () => {
     const h = await start();
     // a plate 40 × 30, 10 thick, with a bore of radius 3 about (10, 15)
-    h.press('toolbar', 'Skica');
+    h.press('toolbar', 'Sketch');
     h.press('panel', 'XY');
-    h.press('toolbar', 'Obdélník');
+    h.press('toolbar', 'Rectangle');
     h.click(at(0, 0));
     h.click(at(40, 30));
-    h.press('toolbar', 'Kružnice');
+    h.press('toolbar', 'Circle');
     h.click(at(10, 15));
     h.click(at(13, 15));
-    h.press('toolbar', 'Dokončit skicu');
-    h.press('toolbar', 'Vysunutí');
+    h.press('toolbar', 'Finish sketch');
+    h.press('toolbar', 'Extrude');
     h.click(at(30, 10));
     h.type(h.field(DISTANCE), '10');
     h.press('panel', 'OK');
     h.record('a plate with a bore');
 
-    h.press('toolbar', 'Rovina');
+    h.press('toolbar', 'Plane');
     h.press('panel', 'XY');
     h.record('a new plane on XY: the buttons of the midplane and of the tilt');
     h.press('panel', 'Midplane with… (pick)');
@@ -1135,7 +1135,7 @@ describe('the app, driven as a user drives it', () => {
     expect([edited.midplaneWith, edited.tilt, edited.expressions?.['tilt/angle']]).toEqual([undefined, undefined, undefined]);
 
     // a plane through the axis of the bore, turned from YZ
-    h.press('toolbar', 'Rovina');
+    h.press('toolbar', 'Plane');
     h.press('panel', 'YZ');
     h.type(h.field(OFFSET), '0');
     h.press('panel', 'Add a tilt');
@@ -1186,64 +1186,64 @@ describe('the app, driven as a user drives it', () => {
     h.record('an edge selected');
     h.press('panel', 'Export STL');
     h.press('toolbar', 'Export STL');
-    h.press('toolbar', 'Uložit');
+    h.press('toolbar', 'Save');
     h.record('the body of the selection exported alone, the model exported, the document saved');
     h.key('Escape');
     h.record('Escape drops the selection');
 
     // ----- the selected feature
-    h.row('Vysunutí 1').click();
+    h.row('Extrude 1').click();
     h.record('a feature selected on the timeline: its summary, its body, its faces highlighted');
-    h.type(h.field('Název'), 'Deska', true);
+    h.type(h.field('Feature name'), 'Deska', true);
     h.record('renamed');
-    h.press('panel', 'Potlačit');
+    h.press('panel', 'Suppress');
     h.record('suppressed: its body is gone');
-    h.press('panel', 'Obnovit');
+    h.press('panel', 'Unsuppress');
     h.record('restored');
     h.row('Deska').click();
     h.record('a second click on the row drops the selection of the feature');
     h.click({ x: -20, y: 4 });
     h.record('a base plane selected in the view');
-    h.row('Skica 2').click();
-    h.press('panel', 'Přenést skicu na vybranou rovinu');
+    h.row('Sketch 2').click();
+    h.press('panel', 'Move the sketch to the selected plane');
     h.record('the sketch moved to the selected plane: the block follows');
-    h.press('toolbar', '↶ Zpět');
+    h.press('toolbar', '↶ Undo');
     h.record('undo by the button');
-    h.press('panel', 'Smazat');
+    h.press('panel', 'Delete');
     h.record('the sketch deleted: the extrusion that used it reports an error');
-    h.press('toolbar', '↶ Zpět');
-    h.press('toolbar', '↷ Znovu');
-    h.press('toolbar', '↶ Zpět');
+    h.press('toolbar', '↶ Undo');
+    h.press('toolbar', '↷ Redo');
+    h.press('toolbar', '↶ Undo');
     h.record('undo, redo and undo again');
 
     // ----- the timeline: the marker, a feature added in the middle, moving, hiding
     h.rowIcon('Deska', '⇤');
     h.record('the marker after the plate: the model is shown as it was there');
-    h.press('toolbar', 'Rovina');
+    h.press('toolbar', 'Plane');
     h.record('Rovina with a plane selected in the view: its form opens on that plane at once');
-    h.press('panel', 'Zrušit');
+    h.press('panel', 'Cancel');
     h.key('Escape');
-    h.press('toolbar', 'Rovina');
+    h.press('toolbar', 'Plane');
     h.press('panel', 'YZ');
     h.type(h.field(OFFSET), '15');
     h.press('panel', 'OK');
     h.record('a plane added at the marker (the cancelled draft took the number 1): it goes into the middle and the marker follows it');
-    h.press('timeline', 'Zobrazit celý model');
+    h.press('timeline', 'Show the whole model');
     h.record('the whole model again');
-    h.rowIcon('Rovina 2', '↓');
+    h.rowIcon('Plane 2', '↓');
     h.record('the plane moved later');
-    h.rowIcon('Rovina 2', '↑');
+    h.rowIcon('Plane 2', '↑');
     h.rowIcon('Deska', '👁');
     h.record('moved back; the plate hidden');
     h.click(at(20, 15, 10));
     h.record('a hidden body is not picked: the base plane behind it is');
     h.rowIcon('Deska', '◌');
-    h.rowIcon('Rovina 2', '👁');
+    h.rowIcon('Plane 2', '👁');
     h.record('the plate shown, the plane hidden');
-    h.press('toolbar', 'Základní roviny');
+    h.press('toolbar', 'Base planes');
     h.record('the base planes switched off');
-    h.press('toolbar', 'Základní roviny');
-    h.press('toolbar', 'Zobrazit vše');
+    h.press('toolbar', 'Base planes');
+    h.press('toolbar', 'Fit all');
     h.record('and on; the view fitted to the model');
 
     // ----- parameters and checks
@@ -1269,14 +1269,14 @@ describe('the app, driven as a user drives it', () => {
     adder(h, 1).add.click();
     h.record('a check that holds');
     // a field of a form takes an expression with a parameter
-    h.row('Vysunutí 3').click();
-    h.press('panel', 'Upravit');
+    h.row('Extrude 3').click();
+    h.press('panel', 'Edit feature');
     h.type(h.field(DISTANCE), 'h + 3');
     h.record('a field of a form with an expression: its value is next to it');
     h.press('panel', 'OK');
-    h.row('Vysunutí 3').click();
+    h.row('Extrude 3').click();
     h.record('the summary shows the expression and its value');
-    h.row('Vysunutí 3').click();
+    h.row('Extrude 3').click();
     h.type(shown(h, 'expr', '40'), '100', true);
     h.record('a parameter changed: the block grows, the check fails and the status says so');
     h.type(shown(h, 'pname', 'w'), 'width', true);
@@ -1290,7 +1290,7 @@ describe('the app, driven as a user drives it', () => {
     h.record('the check renamed and deleted');
     h.press('panel', '✕', 0);
     h.record('a parameter deleted: the one that used it is in error, and so is the extrusion');
-    h.press('toolbar', '↶ Zpět');
+    h.press('toolbar', '↶ Undo');
     h.record('undo brings the parameter back');
     h.type(shown(h, 'expr', 'nope + 1'), '40', true);
     h.record('the parameter repaired: the block is back');
@@ -1301,7 +1301,7 @@ describe('the app, driven as a user drives it', () => {
     h.record('a pair picked: its two bodies are highlighted');
     h.rowIcon('Deska', '⇤');
     h.record('the marker moved: the answer belongs to another state and is hidden, with its note');
-    h.press('timeline', 'Zobrazit celý model');
+    h.press('timeline', 'Show the whole model');
     h.record('back at the end: the answer is shown again');
     h.press('panel', 'Ask again');
     h.record('checked again');
@@ -1364,12 +1364,12 @@ describe('the app, driven as a user drives it', () => {
     h.record('the rim of the pin that is cut away is not under the pointer; the one below the cut is');
     h.press('panel', '+1 mm');
     h.record('the plane stepped along its normal: asked again with the arguments of the form');
-    h.rowIcon('Vysunutí 2', '👁');
+    h.rowIcon('Extrude 2', '👁');
     h.record('the pin hidden: its fill and its outline go with it');
     h.press('toolbar', 'Save picture');
     await until(() => h.downloads.includes('model.png'), 'the picture');
     h.record('a picture saved while the section is shown: the bodies that are not hidden keep their colours, cut as the view is, each cut filled in the shade of its body');
-    h.rowIcon('Vysunutí 2', '◌');
+    h.rowIcon('Extrude 2', '◌');
     const flip =h.field('From the other side (optional)') as HTMLInputElement;
     flip.checked = true;
     h.type(flip, 'on', true);
@@ -1457,10 +1457,10 @@ describe('the app, driven as a user drives it', () => {
     h.press('toolbar', 'Collisions');
     outside(h, { type: 'renameFeature', id: 'e2', name: 'Kolík' });
     h.record('a change of the document throws the answer away');
-    h.press('toolbar', 'Skica');
-    h.press('panel', 'Zrušit');
+    h.press('toolbar', 'Sketch');
+    h.press('panel', 'Cancel');
     h.record('waiting for a plane cancelled');
-    h.press('toolbar', 'Nový');
+    h.press('toolbar', 'New');
     h.record('a new document');
     await matches(h, 'model');
   });
@@ -1517,16 +1517,16 @@ describe('the app, driven as a user drives it', () => {
 
   it('trim, extend and split in the sketch bar (D65): the piece under the pointer, the marks of the crossings, Split crossings, refusals', async () => {
     const h = await start();
-    h.press('toolbar', 'Skica');
+    h.press('toolbar', 'Sketch');
     h.press('panel', 'XY');
-    h.press('toolbar', 'Obdélník');
+    h.press('toolbar', 'Rectangle');
     h.click(at(0, 0));
     h.click(at(40, 30));
-    h.press('toolbar', 'Dokončit skicu');
-    h.press('toolbar', 'Vysunutí');
+    h.press('toolbar', 'Finish sketch');
+    h.press('toolbar', 'Extrude');
     h.press('panel', 'OK');
-    doubleClick(h, 'Skica 1');
-    h.press('toolbar', 'Kružnice');
+    doubleClick(h, 'Sketch 1');
+    h.press('toolbar', 'Circle');
     h.click(at(20, -8));
     h.click(at(32, -8));
     h.record('a circle across the bottom edge: the profile is invalid, its two crossings marked, the panel says how to repair it');
@@ -1543,7 +1543,7 @@ describe('the app, driven as a user drives it', () => {
     h.click(at(70, 70));
     h.record('a click away from every curve says what the tool wants');
 
-    h.press('toolbar', 'Úsečka');
+    h.press('toolbar', 'Line');
     h.click(at(10, 10));
     h.click(at(10, 20));
     h.key('Escape');
@@ -1555,7 +1555,7 @@ describe('the app, driven as a user drives it', () => {
     h.click(at(0.05, 15));
     h.record('an end two curves share is refused with the reason');
 
-    h.press('toolbar', 'Úsečka');
+    h.press('toolbar', 'Line');
     h.click(at(35, -10));
     h.click(at(35, 40));
     h.key('Escape');
@@ -1622,16 +1622,16 @@ describe('the app, driven as a user drives it', () => {
 
   it('the properties of a body: the form, the line of the body, the view, the export, an entry whose body is gone (D48)', async () => {
     const h = await start();
-    h.press('toolbar', 'Skica');
+    h.press('toolbar', 'Sketch');
     h.press('panel', 'XY');
-    h.press('toolbar', 'Obdélník');
+    h.press('toolbar', 'Rectangle');
     h.click(at(0, 0));
     h.click(at(40, 30));
-    h.press('toolbar', 'Dokončit skicu');
-    h.press('toolbar', 'Vysunutí');
+    h.press('toolbar', 'Finish sketch');
+    h.press('toolbar', 'Extrude');
     h.press('panel', 'OK');
     const body = h.engine.getState().evaluation.features[h.engine.getState().document.features[1].id].bodies[0];
-    h.row('Vysunutí 1').click();
+    h.row('Extrude 1').click();
     h.record('the extrusion selected: the form of the properties of its body, empty, with the defaults as placeholders');
     h.choose('Material from the catalog', 'PETG');
     h.record('PETG from the catalog: the label and the density of the data sheet in the document; the line of the body has the material and the mass');
@@ -1646,7 +1646,7 @@ describe('the app, driven as a user drives it', () => {
     h.record('a colour: stored in lower case, the view draws the body in it');
     h.choose('Use', 'auxiliary');
     h.record('auxiliary: the view draws it see-through, it has no mass');
-    h.press('panel', 'Smazat');
+    h.press('panel', 'Delete');
     h.record('the extrusion deleted: its properties stay, listed as without a body');
     h.press('panel', 'Remove');
     h.record('removed: the document has no properties');
@@ -1654,14 +1654,14 @@ describe('the app, driven as a user drives it', () => {
     h.engine.undo();
     h.record('undo twice: the extrusion and its properties are back');
     expect(Object.keys(h.engine.getState().document.bodyProperties)).toEqual([body]);
-    h.row('Vysunutí 1').click();
+    h.row('Extrude 1').click();
     h.press('panel', 'Clear the properties');
     h.record('the properties cleared by the button of the form');
     // A copy made by a pattern of the body: its form offers the use of its source, read from the
     // result of the source, not its own use.
     outside(h, { type: 'addFeature', feature: { id: 'pat', name: 'Pattern', suppressed: false, type: 'pattern', source: { type: 'body', body }, transform: { type: 'circular', axis: { kind: 'base', axis: 'Z' }, count: 2, span: { type: 'full' } } } });
     outside(h, { type: 'setBodyProperties', body: 'pat/1', patch: { use: 'reference' } });
-    h.row('Vysunutí 1').click(); // the extrusion no longer selected on the timeline: the form is that of the face picked
+    h.row('Extrude 1').click(); // the extrusion no longer selected on the timeline: the form is that of the face picked
     h.click(at(-20, -15, 10));
     h.record('a face of the copy selected: its form says it is a copy, its own use is reference, the empty choice is the use of its source');
     const useOf = () => Array.from((h.field('Use') as HTMLSelectElement).options).map((option) => option.textContent);
@@ -1681,12 +1681,12 @@ describe('the app, driven as a user drives it', () => {
     h.press('panel', 'New link');
     h.record('the form of a new link: a generated ID, a name, the bodies of the model');
     h.type(h.field('Name (empty: the ID)'), 'Base');
-    tick(h, 'Vysunutí 1');
+    tick(h, 'Extrude 1');
     h.press('panel', 'OK');
     h.record('the link Base with the plate: one setLink; the other bodies are in no link');
     h.press('panel', 'New link');
     h.type(h.field('Name (empty: the ID)'), 'Arm');
-    tick(h, 'Vysunutí 3');
+    tick(h, 'Extrude 3');
     h.press('panel', 'OK');
     h.record('the link Arm with the third body');
     h.press('panel', 'New joint');
@@ -1710,10 +1710,10 @@ describe('the app, driven as a user drives it', () => {
     h.type(slider(), '90', true);
     h.record('the slider released at 90°: one setPose, the status line says the view shows the pose');
     expect(h.engine.getState().document.mechanism.joints.joint1).toMatchObject({ value: Math.PI / 2 });
-    h.press('toolbar', '↶ Zpět');
+    h.press('toolbar', '↶ Undo');
     h.record('undo: the drag was one step, the arm is back as modelled');
     expect(h.engine.getState().document.mechanism.joints.joint1).toMatchObject({ value: 0 });
-    h.press('toolbar', '↷ Znovu');
+    h.press('toolbar', '↷ Redo');
     h.record('redo: turned again');
     h.click(at(-17.5, 45, 8));
     h.record('a click where the turned arm is drawn picks its top face');
@@ -1738,9 +1738,9 @@ describe('the app, driven as a user drives it', () => {
     h.type(slider(), '90', true);
 
     // ----- a sketch is edited as modelled
-    doubleClick(h, 'Skica 2');
+    doubleClick(h, 'Sketch 2');
     h.record('in the sketch the view shows the model as modelled, and the status line says so');
-    h.press('toolbar', 'Dokončit skicu');
+    h.press('toolbar', 'Finish sketch');
     h.record('back in the model: the pose');
 
     // ----- the value by an expression, a value out of the limits that blocks the link
@@ -1761,9 +1761,9 @@ describe('the app, driven as a user drives it', () => {
     h.record('reset pose: one setPose, every value without an expression to zero');
 
     // ----- the marker, the state before the first feature, removing
-    h.rowIcon('Vysunutí 1', '⇤');
+    h.rowIcon('Extrude 1', '⇤');
     h.record('the marker after the plate: the mechanism of that state, the arm has no body there');
-    h.press('timeline', 'Zobrazit celý model');
+    h.press('timeline', 'Show the whole model');
     const before = (h.app as { stateBefore(index: number): import('@trymesh/engine').EngineState }).stateBefore(0).evaluation.mechanism;
     expect(before.links.link1).toMatchObject({ bodies: [], missing: ['e1'] });
     expect(before.unassigned).toEqual([]);
@@ -1822,10 +1822,10 @@ describe('the app, driven as a user drives it', () => {
       const rename = (name: string): Command => ({ type: 'renameFeature', id: 'e1', name });
       h.record('a model of three bodies');
       h.press('toolbar', 'AI');
-      await until(() => bridge.connected() && status().startsWith('Propojeno'), 'the app to connect');
+      await until(() => bridge.connected() && status().startsWith('Linked'), 'the app to connect');
       h.record('the app is connected to the bridge');
 
-      h.press('toolbar', 'Rovina');
+      h.press('toolbar', 'Plane');
       h.press('panel', 'XY');
       h.record('a form is open');
       expect(await ai('view_image', { view: 'top', bodies: ['e1'], width: 320, height: 240 })).toBe('ok');
@@ -1834,19 +1834,19 @@ describe('the app, driven as a user drives it', () => {
       h.record('a picture of a body that is not there is refused: the AI has the reason, and the app says nothing, as for any question');
       expect(await ai('get_model', {})).toBe('ok');
       h.record('a question of the AI leaves the form alone');
-      expect(await ai('execute', { command: rename('Vysunutí 1') })).toBe('ok');
+      expect(await ai('execute', { command: rename('Extrude 1') })).toBe('ok');
       h.record('a command that changes nothing leaves the form alone');
       expect(await ai('execute', { command: { type: 'removeFeature', id: 'nope' } })).toMatch(/^invalidCommand/);
       h.record('a command the engine refuses leaves the form alone and is reported');
       expect(await ai('execute', { command: rename('Deska') })).toBe('ok');
       h.record('a command that changes the document closes the form first');
 
-      h.press('toolbar', 'Vysunutí');
+      h.press('toolbar', 'Extrude');
       expect(await ai('_load', { json: '{"schemaVersion": 99}' })).toMatch(/schema version/);
       h.record('a load that fails: the form and the rest of the app are as they were');
       expect(await ai('_load', { json: JSON.stringify(emptyDocument()) })).toBe('ok');
       h.record('a load: the app starts over with the new document');
-      expect(await ai('undo', {})).toBe('není co vracet');
+      expect(await ai('undo', {})).toBe('there is nothing to undo');
       h.record('undo by the AI after a load has nothing to undo, and says so');
       expect(await ai('execute', { command: { type: 'setParameter', name: 'a', expr: '1' } })).toBe('ok');
       expect(await ai('undo', {})).toBe('ok');
@@ -1868,7 +1868,7 @@ describe('the app, driven as a user drives it', () => {
       expect(await ai('_outline', { file: broken, sketch: 'so', id: 'sq2' })).not.toBe('ok');
       h.record('a placement of a file that cannot be read fails: the status line says it in words, as an error');
 
-      h.press('toolbar', 'AI: připojeno');
+      h.press('toolbar', 'AI: linked');
       await until(() => !bridge.connected(), 'the app to disconnect');
       h.record('the connection is switched off');
       await matches(h, 'bridge');
@@ -1883,13 +1883,13 @@ describe('the app, driven as a user drives it', () => {
     const savedBytes = async (index: number): Promise<Uint8Array> => new Uint8Array(await (saved.mock.calls[index][0] as Blob).arrayBuffer());
     const exportMenu = (): HTMLSelectElement => h.document.querySelectorAll<HTMLSelectElement>('#toolbar select')[1];
     try {
-      h.press('toolbar', 'Skica');
+      h.press('toolbar', 'Sketch');
       h.press('panel', 'XY');
-      h.press('toolbar', 'Obdélník');
+      h.press('toolbar', 'Rectangle');
       h.click(at(0, 0));
       h.click(at(40, 30));
-      h.press('toolbar', 'Dokončit skicu');
-      h.press('toolbar', 'Vysunutí');
+      h.press('toolbar', 'Finish sketch');
+      h.press('toolbar', 'Extrude');
       h.press('panel', 'OK');
       outside(h, { type: 'addFeature', feature: { id: 'top', name: 'Top', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 's1', regions: [{ outerLoop: ['c1', 'c2', 'c3', 'c4'] }] }, extent: { type: 'distance', start: -20, distance: 5 }, operation: 'new' } });
       h.record('a plate and a second body under it; the menu Export… beside the queries');
@@ -1919,10 +1919,10 @@ describe('the app, driven as a user drives it', () => {
       h.record('STL with a file per body: the set saved as one ZIP');
       expect(readZip(await savedBytes(1)).map((entry) => entry.name)).toEqual(['e1.stl', 'top.stl']);
       h.type(exportMenu(), '3mf', true);
-      h.rowIcon('Vysunutí 1', '⇤');
+      h.rowIcon('Extrude 1', '⇤');
       h.press('panel', 'Export');
       h.record('3MF with the marker after the plate: the state there, the plate alone');
-      h.press('timeline', 'Zobrazit celý model');
+      h.press('timeline', 'Show the whole model');
       h.press('panel', 'Export');
       h.record('3MF at the end of the timeline: no `at`, both bodies');
       expect(readZip(await savedBytes(3)).map((entry) => entry.name)).toEqual(['[Content_Types].xml', '_rels/.rels', '3D/3dmodel.model']);
@@ -2020,12 +2020,12 @@ describe('the app, driven as a user drives it', () => {
       h.type(input, '', true);
       await until(() => Object.keys(h.engine.getState().document.meshes).length > before || status.textContent !== said, 'the import');
     };
-    h.press('toolbar', 'Skica');
+    h.press('toolbar', 'Sketch');
     h.press('panel', 'XY');
-    h.press('toolbar', 'Obdélník');
+    h.press('toolbar', 'Rectangle');
     h.click(at(0, 0));
     h.click(at(40, 30));
-    h.press('toolbar', 'Dokončit skicu');
+    h.press('toolbar', 'Finish sketch');
     h.record('a sketch with a rectangle: its corners are points a frame can be');
     h.press('toolbar', 'Mesh');
     h.record('the button Mesh without a stored mesh: the form says to import a file, OK is disabled');
@@ -2053,7 +2053,7 @@ describe('the app, driven as a user drives it', () => {
     expect(h.engine.getState().document.features[1]).toMatchObject({ placement: { z: 5 } });
     expect('rz' in (h.engine.getState().document.features[1] as { placement: object }).placement).toBe(false);
     h.row('Mesh 1').click();
-    h.press('panel', 'Smazat');
+    h.press('panel', 'Delete');
     h.record('the feature deleted: the stored mesh is not placed, the panel offers to remove it');
     titled(h, 'Remove the stored mesh from the document').click();
     h.record('the stored mesh removed; the properties of the body stay, listed as without a body');
@@ -2107,7 +2107,7 @@ describe('the app, driven as a user drives it', () => {
     h.record('the value emptied: the patch removes it, the part is its own again');
     expect(h.engine.getState().document.features[0]).not.toHaveProperty('parameters');
     h.row('Part 1').click();
-    h.press('panel', 'Smazat');
+    h.press('panel', 'Delete');
     h.record('the insertion deleted: the stored document is not inserted, the panel offers to remove it');
     titled(h, 'Remove the stored document from the document').click();
     h.record('the stored document removed');

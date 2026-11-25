@@ -32,23 +32,23 @@ function repointRow(host: SketchHost, m: SketchMode): HTMLElement[] {
 function sketchStatus(host: SketchHost, m: SketchMode): HTMLElement[] {
   const context = host.sketchContext();
   const result = host.view().evaluation.features[m.id];
-  if (!context) return [h('p', { className: 'issue error' }, result?.status === 'suppressed' ? 'Skica je potlačená.' : 'Skicu nelze zobrazit: její rovina není k dispozici.'), ...host.issues(result)];
+  if (!context) return [h('p', { className: 'issue error' }, result?.status === 'suppressed' ? 'The sketch is suppressed.' : 'The sketch cannot be shown: its plane is not available.'), ...host.issues(result)];
   const r = context.result;
   const unsolved = result?.warnings.some((w) => w.code === 'sketchConflict') === true; // stupně volnosti pak nic neříkají
   const empty = Object.keys(context.feature.points).length + Object.keys(context.feature.curves).length === 0;
   const state =
     r.conflicting.length > 0
-      ? ['Vazby jsou v konfliktu', 'error']
+      ? ['Constraints in conflict', 'error']
       : unsolved
-        ? ['Skicu se nepodařilo vyřešit', 'error']
+        ? ['The sketch could not be solved', 'error']
         : empty
-          ? ['Prázdná skica', 'open']
+          ? ['Empty sketch', 'open']
           : r.degreesOfFreedom === 0
-            ? ['Plně určená', 'ok']
-            : [`Stupně volnosti: ${r.degreesOfFreedom}`, 'open'];
+            ? ['Fully constrained', 'ok']
+            : [`Degrees of freedom: ${r.degreesOfFreedom}`, 'open'];
   return [
     h('p', { className: `badge ${state[1]}` }, state[0]),
-    r.valid ? h('p', { className: 'hint' }, `Uzavřených oblastí: ${r.regions.length}`) : h('p', { className: 'issue error' }, 'Profil je neplatný: křivky se kříží nebo dotýkají mimo spojené body, nebo jsou si blíž, než rozliší dělení oblouků.'),
+    r.valid ? h('p', { className: 'hint' }, `Closed regions: ${r.regions.length}`) : h('p', { className: 'issue error' }, 'The profile is invalid: curves cross or touch away from joined points, or are closer than the division of arcs can tell apart.'),
     ...(r.valid ? [] : [contactsHint(host, m.id)]),
     ...host.issues(result).filter((element) => !element.classList.contains('error') || r.valid),
   ];
@@ -75,16 +75,16 @@ function diagnosisSummary(host: SketchHost, m: SketchMode, d: SketchDiagnosis): 
   const twins = duplicateTwins(d);
   const removeTwins = (): HTMLElement => {
     const commands = twins.map((id): Command => ({ type: 'removeConstraint', sketch: m.id, id }));
-    return h('div', { className: 'buttons' }, h('button', { textContent: `Smazat duplicity (${twins.length})`, onclick: () => host.run({ type: 'batch', commands }, twins.length === 1 ? 'Duplicitní vazba smazána.' : 'Duplicitní vazby smazány.') }));
+    return h('div', { className: 'buttons' }, h('button', { textContent: `Delete duplicates (${twins.length})`, onclick: () => host.run({ type: 'batch', commands }, twins.length === 1 ? 'Duplicate constraint deleted.' : 'Duplicate constraints deleted.') }));
   };
   if (d.status !== 'solved') {
     // duplicity engine hlásí i u nevyřešené skici; jejich smazání může konflikt odstranit
-    if (twins.length > 0) out.push(h('p', { className: 'issue warning' }, `Duplicitní vazby: ${twins.length}. V seznamu jsou označené.`), removeTwins());
+    if (twins.length > 0) out.push(h('p', { className: 'issue warning' }, `Duplicate constraints: ${twins.length}. They are marked in the list.`), removeTwins());
     return out;
   }
   if (d.removable.length > 0) {
     out.push(
-      h('p', { className: 'issue warning' }, `Vazby navíc: ${d.removable.length}${twins.length > 0 ? `, z toho duplicity: ${twins.length}` : ''}. V seznamu jsou označené; kliknutím na vazbu se ukáže, z čeho plyne.`),
+      h('p', { className: 'issue warning' }, `Surplus constraints: ${d.removable.length}${twins.length > 0 ? `, of them duplicates: ${twins.length}` : ''}. They are marked in the list; a click on a constraint shows what it follows from.`),
     );
     if (twins.length > 0) out.push(removeTwins());
   }
@@ -93,7 +93,7 @@ function diagnosisSummary(host: SketchHost, m: SketchMode, d: SketchDiagnosis): 
     const select = d.free.map((entity) => entity.id);
     out.push(
       h('p', { className: 'hint' }, free),
-      h('div', { className: 'buttons' }, h('button', { textContent: 'Vybrat volné', title: 'Vybere volné body a kružnice s volným poloměrem', onclick: () => ((m.selection = select), host.refresh()) })),
+      h('div', { className: 'buttons' }, h('button', { textContent: 'Select free', title: 'Selects the free points and the circles with a free radius', onclick: () => ((m.selection = select), host.refresh()) })),
     );
   }
   return out;
@@ -101,7 +101,7 @@ function diagnosisSummary(host: SketchHost, m: SketchMode, d: SketchDiagnosis): 
 
 export function sketchPanel(host: SketchHost, m: SketchMode): HTMLElement[] {
   const context = host.sketchContext();
-  const out: HTMLElement[] = [h('h2', {}, `Skica: ${host.nameOf(m.id)}`), h('div', { id: 'sketch-status' }, ...sketchStatus(host, m))];
+  const out: HTMLElement[] = [h('h2', {}, `Sketch: ${host.nameOf(m.id)}`), h('div', { id: 'sketch-status' }, ...sketchStatus(host, m))];
   if (!context) return out;
   const { feature, view, result } = context;
   const action = (label: string, enabled: boolean, run: () => void, title = '') => h('button', { textContent: label, disabled: !enabled, title, onclick: run });
@@ -126,7 +126,7 @@ export function sketchPanel(host: SketchHost, m: SketchMode): HTMLElement[] {
   const ownCurves = m.selection.filter((id) => feature.curves[id]);
   const construction = ownCurves.length > 0 && ownCurves.every((id) => feature.curves[id].construction);
   out.push(
-    h('h2', {}, `Výběr (${m.selection.length})`),
+    h('h2', {}, `Selection (${m.selection.length})`),
     h(
       'div',
       { className: 'buttons' },
@@ -139,17 +139,17 @@ export function sketchPanel(host: SketchHost, m: SketchMode): HTMLElement[] {
     h(
       'div',
       { className: 'buttons' },
-      dimension('Kóta', 'auto', 'Dva body nebo úsečka: vzdálenost; bod a úsečka: vzdálenost; dvě úsečky: úhel; kružnice: průměr; oblouk: poloměr'),
-      dimension('Kóta ↔', 'horizontal', 'Vodorovná vzdálenost dvou bodů nebo konců úsečky'),
-      dimension('Kóta ↕', 'vertical', 'Svislá vzdálenost dvou bodů nebo konců úsečky'),
+      dimension('Dimension', 'auto', 'Two points or a line: distance; a point and a line: distance; two lines: angle; a circle: diameter; an arc: radius'),
+      dimension('Dimension ↔', 'horizontal', 'Horizontal distance of two points or of the ends of a line'),
+      dimension('Dimension ↕', 'vertical', 'Vertical distance of two points or of the ends of a line'),
     ),
     h(
       'div',
       { className: 'buttons' },
-      action(construction ? 'Běžná křivka' : 'Konstrukční', ownCurves.length > 0, () =>
+      action(construction ? 'Normal curve' : 'Construction', ownCurves.length > 0, () =>
         host.run({ type: 'batch', commands: ownCurves.map((id): Command => ({ type: 'setConstruction', sketch: m.id, id, construction: !construction })) }),
       ),
-      action('Smazat', m.selection.length > 0, () => deleteSelection(host, m), 'Delete'),
+      action('Delete', m.selection.length > 0, () => deleteSelection(host, m), 'Delete'),
     ),
     ...repointRow(host, m),
   );
@@ -163,12 +163,12 @@ export function sketchPanel(host: SketchHost, m: SketchMode): HTMLElement[] {
       className: `constraint clickable ${tone} ${m.focus === id ? 'focus' : ''} ${explanation?.impliedBy.includes(id) ? 'implies' : ''}`,
       title:
         tone === 'conflict'
-          ? 'V konfliktu s jinou vazbou'
+          ? 'In conflict with another constraint'
           : mark === 'duplicate'
-            ? 'Duplicita: stejnou vazbu už skica má'
+            ? 'Duplicate: the sketch already has the same constraint'
             : mark === 'surplus'
-              ? 'Navíc: plyne z ostatních vazeb. Kliknutím se ukáže, ze kterých.'
-              : 'Kliknutím se ukáže, jestli vazba plyne z jiných',
+              ? 'Surplus: follows from the other constraints. A click shows which ones.'
+              : 'A click shows whether the constraint follows from others',
       onmouseenter: () => ((m.hoverConstraint = id), host.renderScene()),
       onmouseleave: () => ((m.hoverConstraint = undefined), host.renderScene()),
       // klik na řádek (ne na jeho pole a tlačítka) vazbu označí nebo označení zruší
@@ -179,7 +179,7 @@ export function sketchPanel(host: SketchHost, m: SketchMode): HTMLElement[] {
         host.renderScene();
       },
     });
-    const tag = mark === 'duplicate' ? ' · duplicita' : mark === 'surplus' ? ' · navíc' : '';
+    const tag = mark === 'duplicate' ? ' · duplicate' : mark === 'surplus' ? ' · surplus' : '';
     row.append(h('span', { className: 'name' }, `${constraintName(c.type)} `, h('small', {}, `${operandsOf(c).join(', ')}${tag}`)));
     if (isDimension(c)) {
       const unit: Unit = CONSTRAINTS[c.type].values?.value.unit ?? 'mm';
@@ -198,21 +198,21 @@ export function sketchPanel(host: SketchHost, m: SketchMode): HTMLElement[] {
           // an empty field does not change the value; an angle number is wrapped into the range the engine accepts
           const parsed = parseField(input.value, unit);
           const value = typeof parsed === 'number' && c.type === 'angle' ? normalizeAngle(parsed) : parsed;
-          if (value === undefined || !host.run({ type: 'setConstraintValue', sketch: m.id, id, value }, 'Hodnota kóty změněna.')) host.refresh();
+          if (value === undefined || !host.run({ type: 'setConstraintValue', sketch: m.id, id, value }, 'Dimension value changed.')) host.refresh();
         },
       });
       row.append(
         input,
         h(
           'label',
-          { className: 'check', title: 'Řídicí kóta geometrii určuje, referenční ji jen měří' },
+          { className: 'check', title: 'A driving dimension drives the geometry, a reference one only measures it' },
           h('input', {
             type: 'checkbox',
             checked: c.driving,
             // referenční kóta se při přepnutí stane řídicí s právě naměřenou hodnotou
             onchange: () => !host.run({ type: 'setConstraintValue', sketch: m.id, id, driving: !c.driving, ...(c.driving ? {} : { value: shown }) }) && host.refresh(),
           }),
-          'řídicí',
+          'driving',
         ),
       );
     } else {
@@ -239,13 +239,13 @@ export function sketchPanel(host: SketchHost, m: SketchMode): HTMLElement[] {
         row.append(h('label', { className: 'named' }, spec.title, input));
       }
     }
-    row.append(h('button', { className: 'icon', textContent: '✕', title: 'Smazat vazbu', onclick: () => host.run({ type: 'removeConstraint', sketch: m.id, id }) }));
+    row.append(h('button', { className: 'icon', textContent: '✕', title: 'Delete the constraint', onclick: () => host.run({ type: 'removeConstraint', sketch: m.id, id }) }));
     // Vysvětlení je hned pod označeným řádkem: řádky nad ním se nehnou a druhé kliknutí
     // na stejném místě označení zruší.
     return m.focus === id && explanation ? [row, h('p', { className: 'explain' }, explanationText(c, id, explanation, diagnosis, label, skipped.has(id)))] : [row];
   });
-  out.push(h('h2', {}, `Vazby a kóty (${Object.keys(feature.constraints).length})`));
-  out.push(...(rows.length > 0 ? rows : [h('p', { className: 'hint' }, 'Vyberte entity a přidejte vazbu tlačítky výše.')]));
+  out.push(h('h2', {}, `Constraints and dimensions (${Object.keys(feature.constraints).length})`));
+  out.push(...(rows.length > 0 ? rows : [h('p', { className: 'hint' }, 'Select entities and add a constraint with the buttons above.')]));
 
   // The entries of `external`: projections, also those the recompute could not project and the view
   // therefore does not show, and mirrors and patterns. A row by the kind of the entry (REFERENCE_UI);
@@ -295,7 +295,7 @@ export function sketchPanel(host: SketchHost, m: SketchMode): HTMLElement[] {
             },
           })
         : null,
-      h('button', { className: 'icon', textContent: '✕', title: derived ? 'Remove the mirror or pattern' : 'Zrušit promítnutí', onclick: () => host.run({ type: 'removeExternal', sketch: m.id, id }, derived ? 'Mirror or pattern removed.' : 'Promítnutí zrušeno.') }),
+      h('button', { className: 'icon', textContent: '✕', title: derived ? 'Remove the mirror or pattern' : 'Remove the projection', onclick: () => host.run({ type: 'removeExternal', sketch: m.id, id }, derived ? 'Mirror or pattern removed.' : 'Projection removed.') }),
     );
     return form && m.entry === id ? [row, entryForm(host, m, feature, id, form)] : [row];
   });

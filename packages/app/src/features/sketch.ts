@@ -8,7 +8,7 @@ import type { FeatureUi } from './draft';
 // Založí skicu; na stěně rovnou promítne její obrys (hrany druhu úsečka a kružnice).
 function createSketch(host: PanelHost, ref: PlaneRef, index: number): boolean {
   const id = host.newId('s');
-  const commands: Command[] = [{ type: 'addFeature', feature: emptySketch(id, `Skica ${id.slice(1)}`, ref), index }];
+  const commands: Command[] = [{ type: 'addFeature', feature: emptySketch(id, `Sketch ${id.slice(1)}`, ref), index }];
   if (ref.kind === 'face') {
     const key = faceKey(ref.face);
     for (const edge of host.view().evaluation.bodies[ref.body]?.edges ?? []) {
@@ -24,12 +24,12 @@ function createSketch(host: PanelHost, ref: PlaneRef, index: number): boolean {
 }
 
 export const sketch: FeatureUi<SketchFeature> = {
-  button: { label: 'Skica', title: 'Nová skica na rovině nebo rovinné stěně' },
-  create: { plane: { header: 'Nová skica' }, run: (host, at) => at.plane !== undefined && createSketch(host, at.plane, at.index) },
+  button: { label: 'Sketch', title: 'A new sketch on a plane or a planar face' },
+  create: { plane: { header: 'New sketch' }, run: (host, at) => at.plane !== undefined && createSketch(host, at.plane, at.index) },
   edit: (host, feature) => host.enterSketch(feature.id),
   summary(host, f) {
     const ref = host.planeRefOf(host.selected);
-    return [h('button', { textContent: 'Přenést skicu na vybranou rovinu', disabled: !ref, title: 'Nejdřív vyberte v pohledu rovinu nebo rovinnou stěnu', onclick: () => ref && host.run({ type: 'setSketchPlane', sketch: f.id, plane: ref }, 'Rovina skici změněna.') })];
+    return [h('button', { textContent: 'Move the sketch to the selected plane', disabled: !ref, title: 'First select a plane or a planar face in the view', onclick: () => ref && host.run({ type: 'setSketchPlane', sketch: f.id, plane: ref }, 'Sketch plane changed.') })];
   },
   hideable: () => true,
 };

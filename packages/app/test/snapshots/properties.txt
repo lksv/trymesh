@@ -1,6 +1,6 @@
 
 === 1. the extrusion selected: the form of the properties of its body, empty, with the defaults as placeholders
-  engine: execute({"type":"batch","commands":[{"type":"addFeature","feature":{"id":"s1","name":"Skica 1","suppressed":false,"type":"sketch","plane":{"kind":"base","plane":"XY"},"points":{},"radii":{},"curves":{},"constraints":{},"external":{},"solved":{"inputs":"","external":{}}},"index":0}]}) -> ok
+  engine: execute({"type":"batch","commands":[{"type":"addFeature","feature":{"id":"s1","name":"Sketch 1","suppressed":false,"type":"sketch","plane":{"kind":"base","plane":"XY"},"points":{},"radii":{},"curves":{},"constraints":{},"external":{},"solved":{"inputs":"","external":{}}},"index":0}]}) -> ok
   engine: getState("s1")
   engine: diagnoseSketch("s1")  (x2)
   engine: getState("s1")
@@ -10,12 +10,12 @@
   engine: execute({"type":"batch","commands":[{"type":"addPoint","sketch":"s1","id":"p1","x":40,"y":30},{"type":"addPoint","sketch":"s1","id":"p2","x":40,"y":0},{"type":"addPoint","sketch":"s1","id":"p3","x":0,"y":30},{"type":"addCurve","sketch":"s1","id":"c1","curve":{"type":"line","a":"origin","b":"p2"}},{"type":"addConstraint","sketch":"s1","id":"k1","constraint":{"type":"horizontal","line":"c1"}},{"type":"addCurve","sketch":"s1","id":"c2","curve":{"type":"line","a":"p2","b":"p1"}},{"type":"addConstraint","sketch":"s1","id":"k2","constraint":{"type":"vertical","line":"c2"}},{"type":"addCurve","sketch":"s1","id":"c3","curve":{"type":"line","a":"p1","b":"p3"}},{"type":"addConstraint","sketch":"s1","id":"k3","constraint":{"type":"horizontal","line":"c3"}},{"type":"addCurve","sketch":"s1","id":"c4","curve":{"type":"line","a":"p3","b":"origin"}},{"type":"addConstraint","sketch":"s1","id":"k4","constraint":{"type":"vertical","line":"c4"}}]}) -> ok
   engine: diagnoseSketch("s1")
   engine: getState("s1")  (x2)
-  engine: preview({"type":"addFeature","feature":{"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"operation":"new"},"index":1}, "e1") -> ok
+  engine: preview({"type":"addFeature","feature":{"id":"e1","name":"Extrude 1","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"operation":"new"},"index":1}, "e1") -> ok
   engine: getState("s1")  (x6)
-  engine: execute({"type":"addFeature","feature":{"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"operation":"new"},"index":1}) -> ok
+  engine: execute({"type":"addFeature","feature":{"id":"e1","name":"Extrude 1","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"operation":"new"},"index":1}) -> ok
   features: s1, e1
   feature s1:
-      {"id":"s1","name":"Skica 1","suppressed":false,"type":"sketch","plane":{"kind":"base","plane":"XY"}}
+      {"id":"s1","name":"Sketch 1","suppressed":false,"type":"sketch","plane":{"kind":"base","plane":"XY"}}
       point p1: {"x":40,"y":30}
       point p2: {"x":40,"y":0}
       point p3: {"x":0,"y":30}
@@ -28,28 +28,28 @@
       constraint k3: {"type":"horizontal","line":"c3"}
       constraint k4: {"type":"vertical","line":"c4"}
   feature e1:
-      {"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"extent":{"type":"distance","start":0,"distance":10},"operation":"new"}
+      {"id":"e1","name":"Extrude 1","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"extent":{"type":"distance","start":0,"distance":10},"operation":"new"}
   document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":10}
   toolbar:
       div.group
-        button title="Prázdný dokument": "Nový"
-        button: "Otevřít"
-        button: "Uložit"
+        button title="Empty document": "New"
+        button: "Open"
+        button: "Save"
         button: "Export STL"
         input type=file hidden
       div.group
-        button title="Propojit s MCP serverem (packages/mcp): AI pak čte a mění dokument otevřený v aplikaci": "AI"
+        button title="Link to the MCP server (packages/mcp): the AI then reads and changes the document open in the app": "AI"
       div.group
-        button title="Ctrl+Z": "↶ Zpět"
-        button disabled title="Ctrl+Shift+Z": "↷ Znovu"
+        button title="Ctrl+Z": "↶ Undo"
+        button disabled title="Ctrl+Shift+Z": "↷ Redo"
       div.group
-        button title="Nová skica na rovině nebo rovinné stěně": "Skica"
-        button title="Vysunout oblasti skici": "Vysunutí"
+        button title="A new sketch on a plane or a planar face": "Sketch"
+        button title="Extrude regions of a sketch": "Extrude"
         button title="Turn regions of a sketch about an axis in its plane": "Revolve"
         button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
         button title="Chamfer edges of a body by a distance": "Chamfer"
         button title="Round edges of a body by a radius": "Fillet"
-        button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
+        button title="A plane offset from a plane or a planar face": "Plane"
         button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
         button title="Place a stored mesh (a bought part read from an STL file) as a body": "Mesh"
         button title="Insert another document (a part saved as a document file) as a part of this one": "Insert"
@@ -86,42 +86,42 @@
           option value="mjcf" title="The mechanism as a MuJoCo model: a folder with robot.xml and one binary STL per body in metres in the frame of its link. One tree from one root link, welded to the world; the frame of a link at the axis of its joint with the axes of the model; the mass, centre of mass and inertia of each link from its bodies (query mass); a mesh geom per body, the two links of a joint excluded from contact; a motor per joint with an `effort` (with `gearRatio`), `rotorInertia · gearRatio²` as the armature of the joint, and the pose of the document as the keyframe `pose`.": "MJCF (MuJoCo)"
         button disabled title="Check which bodies share a volume": "Collisions"
       div.group
-        button: "Zobrazit vše"
+        button: "Fit all"
         button title="Save a picture of the model as PNG: the bodies that are shown, from the camera of the view and cut as the view is; without the selection, sketches, planes and dimensions": "Save picture"
-        button.active title="Zobrazit nebo skrýt roviny XY, XZ, YZ": "Základní roviny"
+        button.active title="Show or hide the planes XY, XZ, YZ": "Base planes"
   timeline:
-      h2: "Časová osa"
+      h2: "Timeline"
       div.row.ok
         span.dot: "●"
-        span.name: "Skica 1"
+        span.name: "Sketch 1"
         button.icon title="Hide or show": "👁"
-        button.icon disabled title="Posunout dřív": "↑"
-        button.icon title="Posunout později": "↓"
-        button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+        button.icon disabled title="Move earlier": "↑"
+        button.icon title="Move later": "↓"
+        button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
       div.row.ok.selected
         span.dot: "●"
-        span.name: "Vysunutí 1"
+        span.name: "Extrude 1"
         button.icon title="Hide or show": "👁"
-        button.icon title="Posunout dřív": "↑"
-        button.icon disabled title="Posunout později": "↓"
-        button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+        button.icon title="Move earlier": "↑"
+        button.icon disabled title="Move later": "↓"
+        button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
   panel:
-      h2: "Vysunutí"
+      h2: "Extrude"
       label
-        "Název"
-        input value="Vysunutí 1"
+        "Feature name"
+        input value="Extrude 1"
       div.buttons
-        button.primary: "Upravit"
-        button: "Potlačit"
-        button: "Smazat"
-      p.hint: "Nové těleso, distance 10 mm, regions: 1."
+        button.primary: "Edit feature"
+        button: "Suppress"
+        button: "Delete"
+      p.hint: "New body, distance 10 mm, regions: 1."
       p.hint.body
-        "Vysunutí 1: 12000 mm³, 40 × 30 × 10 mm"
+        "Extrude 1: 12000 mm³, 40 × 30 × 10 mm"
         button.link title="This body alone, whatever its use, as it is at the end of the timeline": "Export STL"
-      h2: "Properties of Vysunutí 1"
+      h2: "Properties of Extrude 1"
       label
         "Name"
-        input value="" placeholder="Vysunutí 1"
+        input value="" placeholder="Extrude 1"
       label
         "Use"
         select value=""
@@ -171,7 +171,7 @@
         button title="Bodies that move as one piece": "New link"
         button disabled title="A joint moves its child link against its parent link": "New joint"
         button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
-  status: Vysunutí přidáno.
+  status: Extrude added.
   view: 15 scene(s) set
   scene:
       bodies: e1
@@ -197,8 +197,8 @@
   engine: execute({"type":"setBodyMaterial","body":"e1","material":"PETG"}) -> ok
   bodyProperties: {"e1":{"material":"PETG","density":1.27}}
   panel:
-    +   "Vysunutí 1: PETG, 15.24 g, 12000 mm³, 40 × 30 × 10 mm"
-    -   "Vysunutí 1: 12000 mm³, 40 × 30 × 10 mm"
+    +   "Extrude 1: PETG, 15.24 g, 12000 mm³, 40 × 30 × 10 mm"
+    -   "Extrude 1: 12000 mm³, 40 × 30 × 10 mm"
     +   select value="PETG"
     +     option value="": "—"
     -   select value=""
@@ -221,11 +221,11 @@
   bodyProperties: {"e1":{"name":"Base plate","material":"PETG","density":1.27}}
   panel:
     +   "Base plate: PETG, 15.24 g, 12000 mm³, 40 × 30 × 10 mm"
-    -   "Vysunutí 1: PETG, 15.24 g, 12000 mm³, 40 × 30 × 10 mm"
+    -   "Extrude 1: PETG, 15.24 g, 12000 mm³, 40 × 30 × 10 mm"
     + h2: "Properties of Base plate"
-    - h2: "Properties of Vysunutí 1"
+    - h2: "Properties of Extrude 1"
     +   input value="Base plate"
-    -   input value="" placeholder="Vysunutí 1"
+    -   input value="" placeholder="Extrude 1"
   view: 1 scene(s) set
 
 === 4. a density that does not evaluate: refused, the status line says why
@@ -290,27 +290,27 @@
     +   button disabled title="Save a picture of the model as PNG: the bodies that are shown, from the camera of the view and cut as the view is; without the selection, sketches, planes and dimensions": "Save picture"
     -   button title="Save a picture of the model as PNG: the bodies that are shown, from the camera of the view and cut as the view is; without the selection, sketches, planes and dimensions": "Save picture"
   timeline:
-    -   button.icon title="Posunout později": "↓"
-    -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon title="Move later": "↓"
+    -   button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
     - div.row.ok.selected
     -   span.dot: "●"
-    -   span.name: "Vysunutí 1"
+    -   span.name: "Extrude 1"
     -   button.icon title="Hide or show": "👁"
-    -   button.icon title="Posunout dřív": "↑"
+    -   button.icon title="Move earlier": "↑"
   panel:
     + h2: "Model"
-    + p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
+    + p.hint: "The right mouse button orbits, the wheel zooms, the middle button (or Shift + right) pans. On a touchpad: Alt/Option + drag orbits, Alt + Shift + drag pans, two fingers zoom. A feature on the timeline is edited by a double click."
     + h2: "Properties without a body"
     + p.hint: "These bodies are not in the model now. A body made again under the same ID takes its properties over."
-    - h2: "Vysunutí"
+    - h2: "Extrude"
     - label
-    -   "Název"
-    -   input value="Vysunutí 1"
+    -   "Feature name"
+    -   input value="Extrude 1"
     - div.buttons
-    -   button.primary: "Upravit"
-    -   button: "Potlačit"
-    -   button: "Smazat"
-    - p.hint: "Nové těleso, distance 10 mm, regions: 1."
+    -   button.primary: "Edit feature"
+    -   button: "Suppress"
+    -   button: "Delete"
+    - p.hint: "New body, distance 10 mm, regions: 1."
     +   "e1: Base plate, auxiliary, PETG"
     +   button.link: "Remove"
     -   "Base plate [auxiliary]: PETG, 12000 mm³, 40 × 30 × 10 mm"
@@ -360,7 +360,7 @@
     -   button title="Bodies that move as one piece": "New link"
     -   button disabled title="A joint moves its child link against its parent link": "New joint"
     -   button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
-  status: Smazáno: Vysunutí 1. Závislé prvky zůstávají a hlásí chybu.
+  status: Deleted: Extrude 1. Dependent features stay and report an error.
   view: 1 scene(s) set
   scene:
     + bodies: (none)
@@ -401,21 +401,21 @@
   engine: undo()  (x2)
   features: s1, e1
   feature e1:
-      {"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"extent":{"type":"distance","start":0,"distance":10},"operation":"new"}
+      {"id":"e1","name":"Extrude 1","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"extent":{"type":"distance","start":0,"distance":10},"operation":"new"}
   bodyProperties: {"e1":{"name":"Base plate","color":"#30343a","material":"PETG","use":"auxiliary","density":1.27,"mass":280}}
   toolbar:
-    +   button title="Ctrl+Shift+Z": "↷ Znovu"
-    -   button disabled title="Ctrl+Shift+Z": "↷ Znovu"
+    +   button title="Ctrl+Shift+Z": "↷ Redo"
+    -   button disabled title="Ctrl+Shift+Z": "↷ Redo"
     +   button title="Save a picture of the model as PNG: the bodies that are shown, from the camera of the view and cut as the view is; without the selection, sketches, planes and dimensions": "Save picture"
     -   button disabled title="Save a picture of the model as PNG: the bodies that are shown, from the camera of the view and cut as the view is; without the selection, sketches, planes and dimensions": "Save picture"
   timeline:
-    +   button.icon title="Posunout později": "↓"
-    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon title="Move later": "↓"
+    +   button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
     + div.row.ok
     +   span.dot: "●"
-    +   span.name: "Vysunutí 1"
+    +   span.name: "Extrude 1"
     +   button.icon title="Hide or show": "👁"
-    +   button.icon title="Posunout dřív": "↑"
+    +   button.icon title="Move earlier": "↑"
   panel:
     + h2: "Mechanism"
     + p.hint: "Links are bodies that move as one piece; a joint moves its child link against its parent. The model as modelled is the zero of every joint."
@@ -447,28 +447,28 @@
   toolbar:
     +   button: "Export STL"
     -   button disabled: "Export STL"
-    +   button disabled title="Ctrl+Shift+Z": "↷ Znovu"
-    -   button title="Ctrl+Shift+Z": "↷ Znovu"
+    +   button disabled title="Ctrl+Shift+Z": "↷ Redo"
+    -   button title="Ctrl+Shift+Z": "↷ Redo"
   timeline:
     + div.row.ok.selected
     - div.row.ok
   panel:
-    + h2: "Vysunutí"
+    + h2: "Extrude"
     + label
-    +   "Název"
-    +   input value="Vysunutí 1"
+    +   "Feature name"
+    +   input value="Extrude 1"
     + div.buttons
-    +   button.primary: "Upravit"
-    +   button: "Potlačit"
-    +   button: "Smazat"
-    + p.hint: "Nové těleso, distance 10 mm, regions: 1."
+    +   button.primary: "Edit feature"
+    +   button: "Suppress"
+    +   button: "Delete"
+    + p.hint: "New body, distance 10 mm, regions: 1."
     + p.hint.body
-    +   "Vysunutí 1: 12000 mm³, 40 × 30 × 10 mm"
+    +   "Extrude 1: 12000 mm³, 40 × 30 × 10 mm"
     +   button.link title="This body alone, whatever its use, as it is at the end of the timeline": "Export STL"
-    + h2: "Properties of Vysunutí 1"
+    + h2: "Properties of Extrude 1"
     + label
     +   "Name"
-    +   input value="" placeholder="Vysunutí 1"
+    +   input value="" placeholder="Extrude 1"
     + label
     +   "Use"
     +   select value=""
@@ -502,7 +502,7 @@
     +   span.field
     +     input type=color value="#aab7c6"
     - h2: "Model"
-    - p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
+    - p.hint: "The right mouse button orbits, the wheel zooms, the middle button (or Shift + right) pans. On a touchpad: Alt/Option + drag orbits, Alt + Shift + drag pans, two fingers zoom. A feature on the timeline is edited by a double click."
   view: 2 scene(s) set
   scene:
     + bodies: e1
@@ -527,34 +527,34 @@
   timeline:
     + div.row.ok
     - div.row.ok.selected
-    +   button.icon title="Posunout později": "↓"
-    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon title="Move later": "↓"
+    +   button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
     + div.row.ok
     +   span.dot: "●"
     +   span.name: "Pattern"
     +   button.icon title="Hide or show": "👁"
-    +   button.icon title="Posunout dřív": "↑"
+    +   button.icon title="Move earlier": "↑"
   panel:
     + h2: "Model"
-    + p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
-    + h2: "Výběr"
-    + p: "Stěna: Vysunutí 1 – protější víko, copy 1 of Pattern"
-    - h2: "Vysunutí"
+    + p.hint: "The right mouse button orbits, the wheel zooms, the middle button (or Shift + right) pans. On a touchpad: Alt/Option + drag orbits, Alt + Shift + drag pans, two fingers zoom. A feature on the timeline is edited by a double click."
+    + h2: "Selection"
+    + p: "Face: Extrude 1 – opposite cap, copy 1 of Pattern"
+    - h2: "Extrude"
     - label
-    -   "Název"
-    -   input value="Vysunutí 1"
+    -   "Feature name"
+    -   input value="Extrude 1"
     - div.buttons
-    -   button.primary: "Upravit"
-    -   button: "Potlačit"
-    -   button: "Smazat"
-    - p.hint: "Nové těleso, distance 10 mm, regions: 1."
+    -   button.primary: "Edit feature"
+    -   button: "Suppress"
+    -   button: "Delete"
+    - p.hint: "New body, distance 10 mm, regions: 1."
     +   "Pattern / 1 [reference]: 12000 mm³, 40 × 30 × 10 mm"
-    -   "Vysunutí 1: 12000 mm³, 40 × 30 × 10 mm"
+    -   "Extrude 1: 12000 mm³, 40 × 30 × 10 mm"
     + h2: "Properties of Pattern / 1"
-    + p.hint: "Made from Vysunutí 1 (a copy, or a part split off): what is left empty is taken from it."
-    - h2: "Properties of Vysunutí 1"
+    + p.hint: "Made from Extrude 1 (a copy, or a part split off): what is left empty is taken from it."
+    - h2: "Properties of Extrude 1"
     +   input value="" placeholder="Pattern / 1"
-    -   input value="" placeholder="Vysunutí 1"
+    -   input value="" placeholder="Extrude 1"
     +   select value="reference"
     +     option value="": "As its source: Printed part"
     -   select value=""

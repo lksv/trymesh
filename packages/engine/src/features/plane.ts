@@ -111,7 +111,7 @@ const axisRefsOf = (axis: AxisRef) => axisRefs(axis, 'tilt/axis');
 
 export const plane: FeatureModule<PlaneFeature> = {
   info: {
-    title: 'Rovina',
+    title: 'Plane',
     summary:
       'A plane of its own: offset from a base plane, another plane feature or a planar face of a body; optionally the midplane of the base and a second plane (`midplaneWith`) and tilted about an axis (`tilt`: the plane through the axis turned by an angle), in the order base, midplane, tilt, offset.',
     fields: [

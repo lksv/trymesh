@@ -39,6 +39,10 @@ const FILE_WORDING: Wording = {
 
 const COMPACT_FROM = 20_000; // znaků
 
+// The refusal of a tool the connected app does not know; an app built before the English texts
+// answers in Czech.
+const unknownTool = (error: string, tool: string): boolean => error === `unknown tool "${tool}"` || error === `neznámý nástroj "${tool}"`;
+
 const rounded = (value: unknown): unknown =>
   typeof value === 'number' ? Math.round(value * 1e6) / 1e6 + 0 : Array.isArray(value) ? value.map(rounded) : typeof value === 'object' && value !== null ? Object.fromEntries(Object.entries(value).map(([key, item]) => [key, rounded(item)])) : value;
 
@@ -65,7 +69,7 @@ export function createTrymeshServer(options: TrymeshServerOptions): Server {
   // jedním enginem, i kdyby se aplikace mezitím připojila nebo odpojila.
   const call = (session: number | undefined, name: string, args: Record<string, unknown> = {}): Promise<ToolOutcome> => {
     if (session === undefined) return Promise.resolve(callTool(engine, name, args));
-    if (!bridge || bridge.session() !== session) return Promise.resolve({ ok: false, error: 'aplikace se během nástroje odpojila' });
+    if (!bridge || bridge.session() !== session) return Promise.resolve({ ok: false, error: 'the app disconnected during the tool' });
     return bridge.call(name, args);
   };
   const must = async (session: number | undefined, name: string, args?: Record<string, unknown>): Promise<Json> => {
@@ -76,7 +80,7 @@ export function createTrymeshServer(options: TrymeshServerOptions): Server {
   const path = (args: Record<string, unknown>, required: boolean): string | undefined => {
     const value = args.path;
     if ((value === undefined || value === null) && !required) return undefined; // null counts as not given, as for every other argument
-    if (typeof value !== 'string' || value === '') throw new Failure('argument "path": čeká se cesta k souboru');
+    if (typeof value !== 'string' || value === '') throw new Failure('argument "path": a file path is expected');
     return resolve(value === '~' || value.startsWith('~/') ? homedir() + value.slice(1) : value);
   };
   const PATH = (description: string, required = true): JsonSchema => ({ type: 'object', properties: { path: { type: 'string', description } }, required: required ? ['path'] : [], additionalProperties: false });
@@ -94,7 +98,7 @@ export function createTrymeshServer(options: TrymeshServerOptions): Server {
   const fileTools: FileTool[] = [
     {
       name: 'session_status',
-      description: 'Nad čím nástroje pracují: nad běžící aplikací (uživatel změny hned vidí), nebo nad vlastním enginem serveru s dokumentem ze souboru.',
+      description: 'What the tools work on: the running app (the user sees the changes at once), or the server\'s own engine with a document from a file.',
       inputSchema: { type: 'object', properties: {}, additionalProperties: false },
       run: async () => {
         const session = bridge?.session();
@@ -105,15 +109,15 @@ export function createTrymeshServer(options: TrymeshServerOptions): Server {
           bridge: bridge ? { port: bridge.port, appConnected: session !== undefined } : null,
           note:
             session !== undefined
-              ? 'Nástroje pracují s dokumentem otevřeným v aplikaci. `file` je soubor, který byl do aplikace otevřen nebo z ní uložen tímto serverem.'
-              : `Aplikace připojená není, nástroje pracují s vlastním dokumentem serveru${bridge ? ' (v aplikaci se propojení zapíná tlačítkem AI)' : ''}. Dokument ze souboru otevře open_document.`,
+              ? 'The tools work with the document open in the app. `file` is the file that was opened into the app or saved from it by this server.'
+              : `No app is connected; the tools work with the server's own document${bridge ? ' (in the app the connection is switched on by the button AI)' : ''}. open_document opens a document from a file.`,
         };
       },
     },
     {
       name: 'open_document',
-      description: 'Načte dokument ze souboru (JSON uložený aplikací nebo save_document). Nahradí právě otevřený dokument a jeho historii undo.',
-      inputSchema: PATH('cesta k souboru .json'),
+      description: 'Loads a document from a file (JSON saved by the app or by save_document). It replaces the document open now and its undo history.',
+      inputSchema: PATH('path of the .json file'),
       run: async (args) => {
         const session = bridge?.session();
         const target = path(args, true) as string;
@@ -121,9 +125,9 @@ export function createTrymeshServer(options: TrymeshServerOptions): Server {
         try {
           json = (await readFile(target, 'utf8')).replace(/^\uFEFF/, '');
         } catch (error) {
-          throw new Failure(`soubor nejde přečíst: ${error instanceof Error ? error.message : String(error)}`);
+          throw new Failure(`the file cannot be read: ${error instanceof Error ? error.message : String(error)}`);
         }
-        if (json.trim() === '') throw new Failure('soubor je prázdný');
+        if (json.trim() === '') throw new Failure('the file is empty');
         const model = await must(session, '_load', { json });
         remember(session, target);
         return { file: target, model };
@@ -132,11 +136,11 @@ export function createTrymeshServer(options: TrymeshServerOptions): Server {
     {
       name: 'save_document',
       description:
-        'Uloží dokument do souboru; existující soubor přepíše. Bez cesty do souboru, ze kterého byl tento dokument otevřen nebo do kterého byl naposledy uložen. ' +
+        'Saves the document to a file; an existing file is overwritten. Without a path, to the file this document was opened from or last saved to. ' +
         'With `stored` (the ID of a stored document, `kit/bearing` inside another one) it writes that stored document to `path` as a document of its own, to be opened, changed and brought back by insert_document with `replace`.',
       inputSchema: {
         type: 'object',
-        properties: { path: { type: 'string', description: 'cesta k souboru .json; výchozí je soubor tohoto dokumentu (viz session_status); required with `stored`' }, stored: { type: 'string', description: 'the ID of a stored document to write instead of the document' } },
+        properties: { path: { type: 'string', description: 'path of the .json file; by default the file of this document (see session_status); required with `stored`' }, stored: { type: 'string', description: 'the ID of a stored document to write instead of the document' } },
         required: [],
         additionalProperties: false,
       },
@@ -161,7 +165,7 @@ export function createTrymeshServer(options: TrymeshServerOptions): Server {
         // zapamatovaný soubor patří.
         const json = (await must(session, '_save')) as string;
         const target = given ?? fileOf(session);
-        if (target === undefined) throw new Failure('dokument nemá soubor; zadejte "path"');
+        if (target === undefined) throw new Failure('the document has no file; give "path"');
         await mkdir(dirname(target), { recursive: true });
         await writeFile(target, json);
         remember(session, target);
@@ -212,7 +216,7 @@ export function createTrymeshServer(options: TrymeshServerOptions): Server {
         // the bytes go where the engine is, over the bridge as base64 (D72)
         const outcome = await call(session, OUTLINE_BRIDGE_TOOL, { ...rest, file: { name: basename(target), base64: Buffer.from(bytes).toString('base64') } });
         // an app older than this server has no `_outline`: said as for `_export`
-        if (!outcome.ok) throw new Failure(session !== undefined && outcome.error === `neznámý nástroj "${OUTLINE_BRIDGE_TOOL}"` ? 'the connected app is older than this server and cannot import an outline; reload the app' : outcome.error);
+        if (!outcome.ok) throw new Failure(session !== undefined && unknownTool(outcome.error, OUTLINE_BRIDGE_TOOL) ? 'the connected app is older than this server and cannot import an outline; reload the app' : outcome.error);
         return { ...(outcome.result as { [key: string]: Json }), file: target };
       },
     },
@@ -403,7 +407,7 @@ export function createTrymeshServer(options: TrymeshServerOptions): Server {
         const given = Object.fromEntries(['format', 'options', 'at', 'after'].filter((name) => args[name] !== undefined && args[name] !== null).map((name) => [name, args[name]]));
         const outcome = await call(session, '_export', given);
         // an app from before the catalog of formats does not know the internal tool
-        if (!outcome.ok) throw new Failure(session !== undefined && outcome.error === 'neznámý nástroj "_export"' ? 'the connected app is older than this server and cannot export a format of the catalog; reload the app' : outcome.error);
+        if (!outcome.ok) throw new Failure(session !== undefined && unknownTool(outcome.error, '_export') ? 'the connected app is older than this server and cannot export a format of the catalog; reload the app' : outcome.error);
         const answer = outcome.result as unknown as Extract<ToolAnswer, { kind: 'files' }>;
         // a format that returns no file and does not say why is a defect; nothing is written, not even the folder
         if (answer.files.length === 0) throw new Failure('nothing was written, the export has no file');
@@ -468,14 +472,14 @@ export function createTrymeshServer(options: TrymeshServerOptions): Server {
         const outcome = await call(session, name, args);
         return outcome.ok ? answer(name, outcome.result as ToolAnswer) : reply(outcome.error, true);
       }
-      if (name.startsWith('_')) return reply(`neznámý nástroj "${name}"`, true);
+      if (name.startsWith('_')) return reply(`unknown tool "${name}"`, true);
       const outcome = await call(bridge?.session(), name, args);
       if (!outcome.ok) return reply(outcome.error, true);
       // a note beside the result (the pose a query answered for, D49) is a second text
       return outcome.about === undefined ? reply(outcome.result) : { content: [...reply(outcome.result).content, { type: 'text' as const, text: print(outcome.about) }] };
     } catch (error) {
       if (error instanceof Failure) return reply(error.message, true);
-      return reply(`nástroj ${name} selhal: ${error instanceof Error ? error.message : String(error)}`, true);
+      return reply(`the tool ${name} failed: ${error instanceof Error ? error.message : String(error)}`, true);
     }
   });
   return server;

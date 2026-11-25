@@ -8,12 +8,12 @@ import { has } from '../util';
 import { type Dict, type FeatureRef, type ValidationContext, boolean, fail, object, oneOf, string } from '../validation';
 
 function regions(v: unknown, what: string): RegionRef[] {
-  if (!Array.isArray(v) || v.length === 0) fail(`${what}: čeká se neprázdný seznam oblastí`);
+  if (!Array.isArray(v) || v.length === 0) fail(`${what}: a non-empty list of regions is expected`);
   const seen = new Set<string>();
   const out: RegionRef[] = [];
   (v as unknown[]).forEach((r, i) => {
     const loop = object(r, `${what}[${i}]`).outerLoop;
-    if (!Array.isArray(loop) || loop.length === 0) fail(`${what}[${i}].outerLoop: čeká se neprázdný seznam ID křivek`);
+    if (!Array.isArray(loop) || loop.length === 0) fail(`${what}[${i}].outerLoop: a non-empty list of curve IDs is expected`);
     const ids = [...new Set((loop as unknown[]).map((id, k) => string(id, `${what}[${i}].outerLoop[${k}]`)))].sort();
     const key = JSON.stringify(ids);
     if (!seen.has(key)) out.push({ outerLoop: ids }); // tatáž oblast dvakrát je jedna oblast

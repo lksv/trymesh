@@ -60,7 +60,7 @@ describe('parameters and checks', () => {
     doc = run(doc, { type: 'removeParameter', name: 'x' }, { type: 'removeParameter', name: 'y' });
     expect(doc.parameters.map((p) => p.name)).toEqual(['c', 'b', 'a', 'Zr']);
     expect(() => applyCommand(doc, { type: 'removeParameter', name: 'x' })).toThrow(/is not in the document/);
-    expect(() => applyCommand(doc, param('a', '1', 9))).toThrow(/mimo rozsah/);
+    expect(() => applyCommand(doc, param('a', '1', 9))).toThrow(/outside the range/);
   });
 
   it('only a syntax error and a disallowed name make the command invalid', () => {
@@ -122,8 +122,8 @@ describe('expression in a numeric field', () => {
     expect(rejected(doc, add({ type: 'distance', start: 'h *', distance: 5 })).expression).toMatchObject({ path: 'extent/start', error: { code: 'syntax' } });
     expect(rejected(doc, add({ type: 'distance', start: '1 / (h - 12)', distance: 5 })).expression).toMatchObject({ path: 'extent/start', error: { code: 'notFinite' } });
     // a string outside numeric fields is not an expression
-    expect(() => applyCommand(doc, { type: 'addPoint', sketch: 'S1', id: 'p9', x: 'h' as never, y: 0 })).toThrow(/konečné číslo/);
-    expect(() => applyCommand(doc, { type: 'addCurve', sketch: 'S1', id: 'c9', curve: { type: 'circle', center: 'p1' }, radius: 'h' as never })).toThrow(/konečné číslo/);
+    expect(() => applyCommand(doc, { type: 'addPoint', sketch: 'S1', id: 'p9', x: 'h' as never, y: 0 })).toThrow(/finite number/);
+    expect(() => applyCommand(doc, { type: 'addCurve', sketch: 'S1', id: 'c9', curve: { type: 'circle', center: 'p1' }, radius: 'h' as never })).toThrow(/finite number/);
   });
 
   it('a feature in the document form (a number and the expression map) is evaluated when created; both at once is an error', () => {
@@ -148,7 +148,7 @@ describe('expression in a numeric field', () => {
     doc = run(doc, { type: 'updateFeature', id: 'E1', patch: { extent: { type: 'distance', start: 1, distance: 2 } } });
     expect(feature<ExtrudeFeature>(doc, 'E1').expressions).toBeUndefined();
     expect(rejected(doc, { type: 'updateFeature', id: 'E1', patch: { extent: { distance: 'h - 12' } } }).expression).toMatchObject({ path: 'extent/distance', error: { code: 'outOfRange' } });
-    expect(() => applyCommand(doc, { type: 'updateFeature', id: 'E1', patch: { expressions: { 'extent/start': 'h' } } as never })).toThrow(/takové pole nemá/);
+    expect(() => applyCommand(doc, { type: 'updateFeature', id: 'E1', patch: { expressions: { 'extent/start': 'h' } } as never })).toThrow(/has no such field/);
   });
 
   it('changing another field does not trip over an expression that stopped being valid meanwhile', () => {
@@ -267,7 +267,7 @@ describe('expression in a dimension', () => {
     };
     bad((d) => (d.features[0].expressions['constraints/ref/value'] = 'd'), /is not a numeric field/);
     bad((d) => (d.features[0].expressions['constraints/gone/value'] = 'd'), /is not a numeric field/);
-    bad((d) => (d.features[0].expressions['constraints/dc/value'] = 5), /čeká se řetězec/);
+    bad((d) => (d.features[0].expressions['constraints/dc/value'] = 5), /a string is expected/);
     bad((d) => (d.features[0].constraints.dc.value = 'd'), /an expression belongs in expressions/);
     expect(validateDocument(JSON.parse(JSON.stringify(doc)))).toEqual(doc);
   });
@@ -350,7 +350,7 @@ describe('a fixed point and equal radius (D35, point 6)', () => {
     expect(() => applyCommand(doc, { type: 'setField', feature: 'S1', path: 'constraints/f/z', value: 1 })).toThrow(/is not a numeric field/);
     expect(() => applyCommand(doc, { type: 'setField', feature: 'S1', path: 'constraints/f/point', value: 1 })).toThrow(/is not a numeric field/);
     // it is not a dimension: setConstraintValue does not apply
-    expect(() => applyCommand(doc, { type: 'setConstraintValue', sketch: 'S1', id: 'f', value: 3 })).toThrow(/není kóta/);
+    expect(() => applyCommand(doc, { type: 'setConstraintValue', sketch: 'S1', id: 'f', value: 3 })).toThrow(/is not a dimension/);
     // renaming a parameter rewrites the expression, removing the constraint removes it
     doc = run(doc, { type: 'renameParameter', name: 'd', to: 'bore' });
     expect(sketch(doc).expressions).toEqual({ 'constraints/f/y': '-bore' });
@@ -385,12 +385,12 @@ describe('a fixed point and equal radius (D35, point 6)', () => {
   it('what a fixed point refuses', () => {
     const doc = run(wide(), add('f', { type: 'fixed', point: 'p2', x: 1, y: 2 }));
     // one point is fixed once, whatever the coordinates
-    expect(() => applyCommand(doc, add('f2', { type: 'fixed', point: 'p2', x: 5, y: 5 }))).toThrow(/stejná vazba už ve skice je \("f"\)/);
+    expect(() => applyCommand(doc, add('f2', { type: 'fixed', point: 'p2', x: 5, y: 5 }))).toThrow(/the same constraint is already in the sketch \("f"\)/);
     // the origin is fixed already; a curve is not a point
     expect(() => applyCommand(doc, add('o', { type: 'fixed', point: 'origin', x: 0, y: 0 }))).toThrow(/would never take effect/);
     expect(() => applyCommand(doc, add('o', { type: 'fixed', point: 'origin' }))).toThrow(/would never take effect/); // not a complaint about a missing coordinate
-    expect(() => applyCommand(doc, add('k', { type: 'fixed', point: 'c', x: 0, y: 0 }))).toThrow(/čeká se point/);
-    expect(() => applyCommand(doc, add('m', { type: 'fixed', point: 'missing' }))).toThrow(/entita "missing" ve skice není/);
+    expect(() => applyCommand(doc, add('k', { type: 'fixed', point: 'c', x: 0, y: 0 }))).toThrow(/point is expected/);
+    expect(() => applyCommand(doc, add('m', { type: 'fixed', point: 'missing' }))).toThrow(/entity "missing" is not in the sketch/);
     expect(() => applyCommand(doc, add('n', { type: 'fixed', point: 'p3', x: null, y: 2 }))).toThrow(CommandError); // only a missing coordinate is filled in
     expect(() => applyCommand(doc, add('n', { type: 'fixed', point: 'p3', x: true, y: 2 }))).toThrow(CommandError);
     expect(() => applyCommand(doc, add('n', { type: 'fixed', point: 'p3', x: Infinity, y: 2 }))).toThrow(CommandError);
@@ -406,11 +406,11 @@ describe('a fixed point and equal radius (D35, point 6)', () => {
     expect(sketch(doc).constraints.e1).toEqual({ type: 'equalRadius', a: 'c', b: 'c2' });
     expect(fieldsOf(sketch(doc))).toEqual([]);
     doc = run(doc, add('e2', { type: 'equalRadius', a: 'arc', b: 'c' }));
-    expect(() => applyCommand(doc, add('e3', { type: 'equalRadius', a: 'c2', b: 'c' }))).toThrow(/stejná vazba už ve skice je \("e1"\)/);
-    expect(() => applyCommand(doc, add('e3', { type: 'equalRadius', a: 'c', b: 'c' }))).toThrow(/různé entity/);
-    expect(() => applyCommand(doc, add('e3', { type: 'equalRadius', a: 'c', b: 'l' }))).toThrow(/čeká se circle nebo arc/);
-    expect(() => applyCommand(doc, add('e3', { type: 'equalRadius', a: 'c', b: 'p2' }))).toThrow(/čeká se circle nebo arc/);
-    expect(() => applyCommand(doc, add('e3', { type: 'equalRadius', a: 'c', b: 'c2', value: 3 }))).toThrow(/stejná vazba/);
+    expect(() => applyCommand(doc, add('e3', { type: 'equalRadius', a: 'c2', b: 'c' }))).toThrow(/the same constraint is already in the sketch \("e1"\)/);
+    expect(() => applyCommand(doc, add('e3', { type: 'equalRadius', a: 'c', b: 'c' }))).toThrow(/different entities/);
+    expect(() => applyCommand(doc, add('e3', { type: 'equalRadius', a: 'c', b: 'l' }))).toThrow(/circle or arc is expected/);
+    expect(() => applyCommand(doc, add('e3', { type: 'equalRadius', a: 'c', b: 'p2' }))).toThrow(/circle or arc is expected/);
+    expect(() => applyCommand(doc, add('e3', { type: 'equalRadius', a: 'c', b: 'c2', value: 3 }))).toThrow(/the same constraint/);
     expect(validateDocument(JSON.parse(JSON.stringify(doc)))).toEqual(doc);
   });
 });

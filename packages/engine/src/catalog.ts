@@ -9,8 +9,8 @@ import { isOriginAxis } from './util';
 export type EntityKind = 'point' | 'line' | 'circle' | 'arc' | 'spline';
 
 export interface OperandSpec {
-  field: string; // jméno operandu ve vazbě
-  kinds: EntityKind[]; // jaké entity skici operand přijímá
+  field: string; // name of the operand in the constraint
+  kinds: EntityKind[]; // which sketch entities the operand accepts
 }
 
 // ---------------------------------------------------------------- numeric fields
@@ -94,18 +94,18 @@ export function checkNumber(value: number, spec: NumberSpec, limit = MAX_NUMBER)
   return { ok: true, value: checked };
 }
 
-// ---------------------------------------------------------------- vazby
+// ---------------------------------------------------------------- constraints
 
 export interface ConstraintSpec {
-  title: string; // krátké jméno pro uživatele
-  summary: string; // co vazba zajišťuje a jak se čtou operandy
+  title: string; // short name for the user
+  summary: string; // what the constraint ensures and how its operands read
   operands: OperandSpec[];
-  unordered?: string[]; // operandy, na jejichž pořadí nezáleží (u orientovaných kót záměna jen obrací znaménko)
+  unordered?: string[]; // operands whose order does not matter (for oriented dimensions a swap only flips the sign)
   // Named values of the constraint (numeric fields): a dimension has `value`, a fixed point `x` and `y`.
   values?: Record<string, NumberSpec>;
   dimension?: boolean; // true: the constraint is a dimension, has `driving` and can be a reference dimension
-  // Dodatečné pravidlo nad operandy (v pořadí `operands`): jejich druhy, ID a body, kterými je
-  // křivka určená. Vrací text chyby.
+  // An additional rule over the operands (in the order of `operands`): their kinds, IDs and the points
+  // that define a curve. Returns the text of the error.
   check?: (kinds: EntityKind[], ids: Id[], pointsOf: (curve: Id) => Id[]) => string | undefined;
 }
 
@@ -131,45 +131,45 @@ const LENGTH = dimension({ title: 'Distance', unit: 'mm', min: { value: 0 } });
 const ORIENTED = dimension({ title: 'Distance', unit: 'mm' });
 
 export const CONSTRAINTS: Record<Constraint['type'], ConstraintSpec> = {
-  coincident: { title: 'Totožné', summary: 'Dva body leží na stejném místě.', ...pair(POINT) },
+  coincident: { title: 'Coincident', summary: 'Two points lie at the same place.', ...pair(POINT) },
   pointOnCurve: {
-    title: 'Bod na křivce',
-    summary: 'Bod leží na úsečce (i na jejím prodloužení), kružnici nebo oblouku.',
+    title: 'Point on curve',
+    summary: 'A point lies on a line (also on its extension), a circle or an arc.',
     operands: [
       { field: 'point', kinds: POINT },
       { field: 'curve', kinds: CURVE },
     ],
   },
-  horizontal: { title: 'Vodorovně', summary: 'Úsečka je rovnoběžná s osou X skici.', operands: [{ field: 'line', kinds: LINE }] },
-  vertical: { title: 'Svisle', summary: 'Úsečka je rovnoběžná s osou Y skici.', operands: [{ field: 'line', kinds: LINE }] },
-  parallel: { title: 'Rovnoběžně', summary: 'Dvě úsečky jsou rovnoběžné.', ...pair(LINE) },
-  perpendicular: { title: 'Kolmo', summary: 'Dvě úsečky jsou na sebe kolmé.', ...pair(LINE) },
-  equalLength: { title: 'Stejná délka', summary: 'Dvě úsečky mají stejnou délku.', ...pair(LINE), check: (_kinds, ids) => wholeLine(ids) },
+  horizontal: { title: 'Horizontal', summary: 'A line is parallel to the X axis of the sketch.', operands: [{ field: 'line', kinds: LINE }] },
+  vertical: { title: 'Vertical', summary: 'A line is parallel to the Y axis of the sketch.', operands: [{ field: 'line', kinds: LINE }] },
+  parallel: { title: 'Parallel', summary: 'Two lines are parallel.', ...pair(LINE) },
+  perpendicular: { title: 'Perpendicular', summary: 'Two lines are perpendicular to each other.', ...pair(LINE) },
+  equalLength: { title: 'Equal length', summary: 'Two lines have the same length.', ...pair(LINE), check: (_kinds, ids) => wholeLine(ids) },
   tangent: {
-    title: 'Tečně',
-    summary: 'Úsečka se dotýká kružnice nebo oblouku, nebo se dotýkají dvě kružnice či oblouky.',
+    title: 'Tangent',
+    summary: 'A line touches a circle or an arc, or two circles or arcs touch.',
     ...pair(CURVE),
-    check: (kinds) => (kinds.every((kind) => kind === 'line') ? 'tečnost dvou úseček nedává smysl' : undefined),
+    check: (kinds) => (kinds.every((kind) => kind === 'line') ? 'tangency of two lines makes no sense' : undefined),
   },
   symmetric: {
-    title: 'Souměrně',
-    summary: 'Body a, b jsou souměrné podle přímky, na které leží úsečka line (osa souměrnosti).',
+    title: 'Symmetric',
+    summary: 'Points a, b are symmetric about the infinite line on which the line `line` lies (the axis of symmetry).',
     operands: [
       { field: 'a', kinds: POINT },
       { field: 'b', kinds: POINT },
       { field: 'line', kinds: LINE },
     ],
     unordered: ['a', 'b'],
-    check: (_kinds, [a, b, line], pointsOf) => (pointsOf(line).includes(a) || pointsOf(line).includes(b) ? 'souměrný bod nesmí být koncem osy' : undefined),
+    check: (_kinds, [a, b, line], pointsOf) => (pointsOf(line).includes(a) || pointsOf(line).includes(b) ? 'a symmetric point must not be an end of the axis' : undefined),
   },
   midpoint: {
-    title: 'Střed úsečky',
-    summary: 'Bod leží přesně v polovině úsečky.',
+    title: 'Midpoint',
+    summary: 'A point lies exactly halfway along a line.',
     operands: [
       { field: 'point', kinds: POINT },
       { field: 'line', kinds: LINE },
     ],
-    check: (_kinds, [point, line], pointsOf) => wholeLine([line]) ?? (pointsOf(line).includes(point) ? 'středem úsečky nemůže být její konec' : undefined),
+    check: (_kinds, [point, line], pointsOf) => wholeLine([line]) ?? (pointsOf(line).includes(point) ? 'the midpoint of a line cannot be its end' : undefined),
   },
   equalRadius: { title: 'Equal radius', summary: 'Two circles or arcs have the same radius.', ...pair(ROUND) },
   fixed: {
@@ -178,24 +178,24 @@ export const CONSTRAINTS: Record<Constraint['type'], ConstraintSpec> = {
     operands: [{ field: 'point', kinds: POINT }],
     values: { x: { title: 'X', unit: 'mm' }, y: { title: 'Y', unit: 'mm' } },
   },
-  distance: { title: 'Vzdálenost', summary: 'Vzdálenost dvou bodů.', ...pair(POINT), ...LENGTH },
+  distance: { title: 'Distance', summary: 'The distance between two points.', ...pair(POINT), ...LENGTH },
   distancePointLine: {
-    title: 'Vzdálenost bodu od úsečky',
-    summary: 'Kolmá vzdálenost bodu od přímky, na které úsečka leží.',
+    title: 'Point to line distance',
+    summary: 'The perpendicular distance of a point from the infinite line on which the line lies.',
     operands: [
       { field: 'point', kinds: POINT },
       { field: 'line', kinds: LINE },
     ],
     ...LENGTH,
   },
-  horizontalDistance: { title: 'Vodorovná vzdálenost', summary: 'Orientovaný rozdíl souřadnic X: b.x − a.x.', ...pair(POINT), ...ORIENTED },
-  verticalDistance: { title: 'Svislá vzdálenost', summary: 'Orientovaný rozdíl souřadnic Y: b.y − a.y.', ...pair(POINT), ...ORIENTED },
+  horizontalDistance: { title: 'Horizontal distance', summary: 'The oriented difference of the X coordinates: b.x − a.x.', ...pair(POINT), ...ORIENTED },
+  verticalDistance: { title: 'Vertical distance', summary: 'The oriented difference of the Y coordinates: b.y − a.y.', ...pair(POINT), ...ORIENTED },
   angle: {
-    title: 'Úhel',
-    summary: 'Úhel od směru úsečky a ke směru úsečky b, proti směru hodin, v intervalu (−π, π]. Směr úsečky vede od jejího bodu a k bodu b.',
+    title: 'Angle',
+    summary: 'The angle from the direction of line a to the direction of line b, counterclockwise, in the interval (−π, π]. The direction of a line goes from its point a to its point b.',
     ...pair(LINE),
     ...dimension({ title: 'Angle', unit: 'rad', min: { value: -Math.PI, open: true }, max: { value: Math.PI } }),
   },
-  radius: { title: 'Poloměr', summary: 'Poloměr kružnice nebo oblouku.', operands: [{ field: 'curve', kinds: ROUND }], ...dimension({ title: 'Radius', unit: 'mm', min: { value: 0, open: true } }) },
-  diameter: { title: 'Průměr', summary: 'Průměr kružnice nebo oblouku.', operands: [{ field: 'curve', kinds: ROUND }], ...dimension({ title: 'Diameter', unit: 'mm', min: { value: 0, open: true } }) },
+  radius: { title: 'Radius', summary: 'The radius of a circle or an arc.', operands: [{ field: 'curve', kinds: ROUND }], ...dimension({ title: 'Radius', unit: 'mm', min: { value: 0, open: true } }) },
+  diameter: { title: 'Diameter', summary: 'The diameter of a circle or an arc.', operands: [{ field: 'curve', kinds: ROUND }], ...dimension({ title: 'Diameter', unit: 'mm', min: { value: 0, open: true } }) },
 };

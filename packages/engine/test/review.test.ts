@@ -268,7 +268,7 @@ describe('fasáda enginu', () => {
 
   it('neznámá feature v getState a preview je chyba, ne tichý přepočet celé osy', () => {
     const { engine } = mockEngine();
-    expect(() => engine.getState('není')).toThrow('neexistuje');
+    expect(() => engine.getState('není')).toThrow('does not exist');
     expect(engine.preview({ type: 'renameFeature', id: 'P', name: 'x' }, 'není')).toMatchObject({ ok: false, error: { code: 'invalidCommand' } });
     expect(engine.preview({ type: 'removeFeature', id: 'P' }, 'P')).toMatchObject({ ok: false, error: { code: 'invalidCommand' } });
     expect(engine.preview({ type: 'renameFeature', id: 'P', name: 'x' }, 'S')).toMatchObject({ ok: true });
@@ -326,10 +326,10 @@ describe('a module per feature type (D37): what the move could have changed unse
   it('updateExternal checks the reference against the place of its sketch', () => {
     const doc = model();
     const to = (body: string, source = body): Command => ({ type: 'updateExternal', sketch: 'S2', id: 'x', ref: { type: 'edge', body, edge: rim(source), kind: 'circle' } });
-    refused(doc, to('Z'), /feature "Z" musí ležet před odkazující feature/);
-    refused(doc, to('nope'), /feature "nope" neexistuje/);
-    refused(doc, to('S1', 'A'), /feature "S1" není těleso/);
-    refused(doc, to('A', 'PL'), /feature "PL" není a feature that names faces/);
+    refused(doc, to('Z'), /feature "Z" must lie before the referring feature/);
+    refused(doc, to('nope'), /feature "nope" does not exist/);
+    refused(doc, to('S1', 'A'), /feature "S1" is not a body/);
+    refused(doc, to('A', 'PL'), /feature "PL" is not a feature that names faces/);
     expect(((feature(applyCommand(doc, to('A', 'H')), 'S2') as SketchFeature).external.x as EdgeProjection).edge.a.feature).toBe('H');
   });
 
@@ -342,7 +342,7 @@ describe('a module per feature type (D37): what the move could have changed unse
 
   it('the order of the registry and of the fields of a type is what clients were told', () => {
     expect(Object.keys(FEATURE_TYPE_INFO)).toEqual(['plane', 'sketch', 'extrude', 'pattern', 'hole', 'mesh', 'combine', 'split', 'revolve', 'chamfer', 'fillet', 'insert']);
-    refused(emptyDocument(), { type: 'addFeature', feature: { ...planeFeature, type: 'nope' } as unknown as PlaneFeature }, /čeká se jedna z hodnot plane, sketch, extrude, pattern, hole, mesh, combine, split, revolve/);
+    refused(emptyDocument(), { type: 'addFeature', feature: { ...planeFeature, type: 'nope' } as unknown as PlaneFeature }, /one of the values plane, sketch, extrude, pattern, hole, mesh, combine, split, revolve/);
     const paths = FEATURE_TYPE_INFO.extrude.fields.map((field) => field.path);
     expect(paths.slice(-5)).toEqual(['extent/start', 'extent/distance', 'extent/taper', 'extent/start', 'extent/gap']);
     // the offset of regions and the thickness of a wall (D44) come first, then the parameters of the generators
@@ -1262,8 +1262,8 @@ describe('the review of the implementation of 6a (D64)', () => {
   );
 
   it('the points of an entry for the rule of a constraint come from the registry of kinds: the ends of a projected line', () => {
-    expect(() => applyCommand(doc, { type: 'addConstraint', sketch: 'S2', id: 'k', constraint: { type: 'midpoint', point: 'x1/a', line: 'x1' } })).toThrow(/středem úsečky nemůže být její konec/);
-    expect(() => applyCommand(doc, { type: 'addConstraint', sketch: 'S2', id: 'k', constraint: { type: 'symmetric', a: 'q', b: 'x1/b', line: 'x1' } })).toThrow(/souměrný bod nesmí být koncem osy/);
+    expect(() => applyCommand(doc, { type: 'addConstraint', sketch: 'S2', id: 'k', constraint: { type: 'midpoint', point: 'x1/a', line: 'x1' } })).toThrow(/the midpoint of a line cannot be its end/);
+    expect(() => applyCommand(doc, { type: 'addConstraint', sketch: 'S2', id: 'k', constraint: { type: 'symmetric', a: 'q', b: 'x1/b', line: 'x1' } })).toThrow(/a symmetric point must not be an end of the axis/);
     // the centre of the projected circle is no point of the line (an own operand, so the rule really runs)
     expect(() => applyCommand(doc, { type: 'addConstraint', sketch: 'S2', id: 'k', constraint: { type: 'symmetric', a: 'q', b: 'x2/center', line: 'x1' } })).not.toThrow();
     expect(() => applyCommand(doc, { type: 'addConstraint', sketch: 'S2', id: 'k', constraint: { type: 'midpoint', point: 'q', line: 'x1' } })).not.toThrow();
@@ -1284,10 +1284,10 @@ describe('the review of the implementation of 6a (D64)', () => {
     expect(() => validateDocument(tampered((s) => (s.external.x1 = { body: 'E1' })))).toThrow(unknown);
     expect(() => validateDocument(tampered((s) => (s.solved.external = { x1: { kind: 'ellipse', center: [0, 0] } })))).toThrow(/solved\.external\.x1\.kind: point, line, circle or arc is expected/);
     // a stored point or arc never fits the projection of an edge
-    expect(() => validateDocument(tampered((s) => (s.solved.external = { x1: { kind: 'point', at: [0, 0] } })))).toThrow(/neodpovídá promítnuté geometrii skici/);
-    expect(() => validateDocument(tampered((s) => (s.solved.external = { x2: { kind: 'arc', center: [0, 0], start: [1, 0], end: [0, 1] } })))).toThrow(/neodpovídá promítnuté geometrii skici/);
-    expect(() => validateDocument(tampered((s) => (s.solved.external = { x2: { kind: 'circle', center: [0, 0], radius: 0 } })))).toThrow(/solved\.external\.x2\.radius: poloměr musí být kladný/);
-    expect(() => validateDocument(tampered((s) => (s.solved.external = { x2: { kind: 'line', a: [0, 0], b: [1, 0] } })))).toThrow(/neodpovídá promítnuté geometrii skici/);
+    expect(() => validateDocument(tampered((s) => (s.solved.external = { x1: { kind: 'point', at: [0, 0] } })))).toThrow(/does not match the projected geometry of the sketch/);
+    expect(() => validateDocument(tampered((s) => (s.solved.external = { x2: { kind: 'arc', center: [0, 0], start: [1, 0], end: [0, 1] } })))).toThrow(/does not match the projected geometry of the sketch/);
+    expect(() => validateDocument(tampered((s) => (s.solved.external = { x2: { kind: 'circle', center: [0, 0], radius: 0 } })))).toThrow(/solved\.external\.x2\.radius: the radius must be positive/);
+    expect(() => validateDocument(tampered((s) => (s.solved.external = { x2: { kind: 'line', a: [0, 0], b: [1, 0] } })))).toThrow(/does not match the projected geometry of the sketch/);
     expect(validateDocument(tampered((s) => (s.solved.external = { x2: { kind: 'circle', center: [0, 0], radius: 2 } })))).toBeDefined();
   });
 });

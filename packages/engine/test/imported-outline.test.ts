@@ -245,7 +245,7 @@ describe('the placement, the geometry and the stored value of an outline (D72)',
     saved.features[0].solved.external = { o: placeOutline(entry(doc)) };
     expect(sketchOf(validateDocument(saved)).solved.external.o).toEqual(placeOutline(entry(doc)));
     saved.features[0].solved.external = { o: { kind: 'point', at: [0, 0] } };
-    expect(() => validateDocument(saved)).toThrow('neodpovídá');
+    expect(() => validateDocument(saved)).toThrow('does not match');
   });
 });
 

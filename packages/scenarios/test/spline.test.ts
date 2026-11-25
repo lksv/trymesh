@@ -56,17 +56,17 @@ describe('a spline in the document (D70)', () => {
     expect(refusal(engine, spline('S', 'x', Array.from({ length: 65 }, () => 'p1')))).toMatch(/not 65/);
     expect(refusal(engine, spline('S', 'x', ['p1', 'p2', 'p1', 'p3']))).toMatch(/"p1" is listed twice; only the first point may come again, as the last/);
     expect(refusal(engine, spline('S', 'x', ['p1', 'p2', 'p1']))).toMatch(/a closed spline needs at least three different points/);
-    expect(refusal(engine, spline('S', 'x', ['p1', 'p2', 'nope']))).toMatch(/points\[2\]: "nope" není vlastní bod skici ani počátek/);
-    expect(refusal(engine, { type: 'addCurve', sketch: 'S', id: 'x', curve: { type: 'spline', points: ['p1', 'p2', 'p3'] }, radius: 3 })).toMatch(/poloměr se zadává jen u kružnice/);
+    expect(refusal(engine, spline('S', 'x', ['p1', 'p2', 'nope']))).toMatch(/points\[2\]: "nope" is neither an own point of the sketch nor the origin/);
+    expect(refusal(engine, { type: 'addCurve', sketch: 'S', id: 'x', curve: { type: 'spline', points: ['p1', 'p2', 'p3'] }, radius: 3 })).toMatch(/a radius is given only for a circle/);
     expect(refusal(engine, spline('S', 'x', ['origin', 'p2', 'p3', 'origin']))).toBe('accepted');
   });
 
   it('no constraint takes a spline; setCurvePoint refuses it by its own text', () => {
     const engine = newEngine();
     bulge(engine);
-    expect(refusal(engine, constrain('S', 'k', { type: 'pointOnCurve', point: 'p4', curve: 'sp' }))).toMatch(/"sp" je spline, čeká se line nebo circle nebo arc/);
-    expect(refusal(engine, constrain('S', 'k', { type: 'tangent', a: 'sp', b: 'l1' }))).toMatch(/"sp" je spline/);
-    expect(refusal(engine, constrain('S', 'k', { type: 'radius', curve: 'sp', value: 5, driving: true }))).toMatch(/"sp" je spline/);
+    expect(refusal(engine, constrain('S', 'k', { type: 'pointOnCurve', point: 'p4', curve: 'sp' }))).toMatch(/"sp" is spline, line or circle or arc is expected/);
+    expect(refusal(engine, constrain('S', 'k', { type: 'tangent', a: 'sp', b: 'l1' }))).toMatch(/"sp" is spline/);
+    expect(refusal(engine, constrain('S', 'k', { type: 'radius', curve: 'sp', value: 5, driving: true }))).toMatch(/"sp" is spline/);
     expect(refusal(engine, { type: 'setCurvePoint', sketch: 'S', id: 'sp', point: 'a', to: 'p4' })).toBe('setCurvePoint.id: "sp" is a spline, which has no named points; to change its control points, remove it and add it again under its ID in one batch');
   });
 

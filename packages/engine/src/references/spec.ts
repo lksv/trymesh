@@ -174,7 +174,7 @@ export interface ResolvedReference {
 export function projected(v: unknown, what: string): Projected {
   const o = object(v, what);
   const vec2 = (value: unknown, name: string): Vec2 => {
-    if (!Array.isArray(value) || value.length !== 2) fail(`${what}.${name}: čeká se dvojice čísel`);
+    if (!Array.isArray(value) || value.length !== 2) fail(`${what}.${name}: a pair of numbers is expected`);
     const pair = value as unknown[];
     return [finite(pair[0], `${what}.${name}`), finite(pair[1], `${what}.${name}`)];
   };
@@ -185,7 +185,7 @@ export function projected(v: unknown, what: string): Projected {
       return { kind: 'line', a: vec2(o.a, 'a'), b: vec2(o.b, 'b') };
     case 'circle': {
       const radius = finite(o.radius, `${what}.radius`);
-      if (radius <= 0) fail(`${what}.radius: poloměr musí být kladný`);
+      if (radius <= 0) fail(`${what}.radius: the radius must be positive`);
       return { kind: 'circle', center: vec2(o.center, 'center'), radius };
     }
     case 'arc':

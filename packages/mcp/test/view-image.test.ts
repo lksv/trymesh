@@ -293,7 +293,7 @@ describe('view_image of a state that is not written (5b)', () => {
     expect(refused).toEqual({
       ok: false,
       error:
-        'failed: view_image: section: the pose of the body "late" is not known, so the section cannot be cut through it: the joint "lift" has no motion (brokenReference: Odkaz vede na rovinu, stěnu, skicu nebo těleso, které v tomto místě časové osy neexistuje. (the axis of the joint "lift")). ' +
+        'failed: view_image: section: the pose of the body "late" is not known, so the section cannot be cut through it: the joint "lift" has no motion (brokenReference: The reference leads to a plane, face, sketch or body that does not exist at this point of the timeline. (the axis of the joint "lift")). ' +
         'Without a section the picture draws it with the joint at zero; a section of the other bodies: bodies: ["disc","pin"]; or the joints at zero, which writes nothing: after: {"type":"setPose","values":{"lift":0}}',
     });
     // with the caller's own `after`, the joints at zero are offered in one batch with it

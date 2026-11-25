@@ -150,7 +150,7 @@ export function requireRef(doc: Document, before: number | undefined, ref: Omit<
   }
   const { feature, local } = ref.kind === 'body' ? bodyOwner(ref.id) : { feature: ref.id, local: undefined };
   const index = doc.features.findIndex((f) => f.id === feature);
-  if (index < 0) fail(`${what}: feature "${ref.id}" neexistuje`);
+  if (index < 0) fail(`${what}: the feature "${ref.id}" does not exist`);
   const target = doc.features[index];
   const spec = specOf(target);
   if (ref.kind === 'generated') {
@@ -169,12 +169,12 @@ export function requireRef(doc: Document, before: number | undefined, ref: Omit<
             : ref.kind === 'insertion'
               ? target.type === 'insert'
               : target.type === ref.kind;
-    if (!accepted) fail(`${what}: feature "${ref.id}" není ${REF_LABEL[ref.kind]}`);
+    if (!accepted) fail(`${what}: feature "${ref.id}" is not ${REF_LABEL[ref.kind]}`);
     // a body of an insertion: the stored document can make it there (D62)
     const inner = ref.kind === 'body' && target.type === 'insert' ? insertedBodyProblem(doc, target, local as Id) : undefined;
     if (inner) fail(`${what}: ${inner}`);
   }
-  if (index >= before) fail(`${what}: feature "${ref.id}" musí ležet před odkazující feature`);
+  if (index >= before) fail(`${what}: feature "${ref.id}" must lie before the referring feature`);
 }
 
 // The context of a validator or of a command that checks a reference: `requireRef` bound to the

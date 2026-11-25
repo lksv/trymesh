@@ -124,7 +124,7 @@ describe('scenario 15, step 1: the stand-in board on the axes of the origin (6a2
     expect(refusal(engine, constrain('board', 'z1', { type: 'midpoint', point: 'hc0', line: 'origin/x' }))).toContain('origin/x is an axis of the origin, a whole line: it has no length and no middle');
     expect(refusal(engine, constrain('board', 'z2', { type: 'equalLength', a: 'bl0', b: 'origin/y' }))).toContain('origin/y is an axis of the origin, a whole line: it has no length and no middle');
     expect(refusal(engine, constrain('board', 'z3', { type: 'pointOnCurve', point: 'origin', curve: 'origin/x' }))).toContain('only between fixed entities');
-    expect(refusal(engine, constrain('board', 'z4', { type: 'symmetric', a: 'origin', b: 'hc0', line: 'origin/y' }))).toContain('souměrný bod nesmí být koncem osy');
+    expect(refusal(engine, constrain('board', 'z4', { type: 'symmetric', a: 'origin', b: 'hc0', line: 'origin/y' }))).toContain('a symmetric point must not be an end of the axis');
     expect(refusal(engine, { type: 'removeEntity', sketch: 'board', id: 'origin/x' })).toContain('origin/x');
     expect(refusal(engine, constrain('board', 'z5', { type: 'coincident', a: 'hc0', b: 'origin/x/b' }))).toContain('origin/x/b');
   });
@@ -1022,11 +1022,11 @@ describe('scenario 15, steps 2, 3, 5 and 7: the skeleton and the base by project
     const kept = engine.preview({ type: 'updateExternal', sketch: 'rimSk', id: 'rl0', ref: { type: 'sketch', sketch: 'board', entity: 'bl0', kind: 'line', regions: true } });
     expect(kept.ok && loopsOf(kept.state, 'rimSk')).toEqual([RIM]);
     const update = (entity: Id, sketch: Id, kind: 'line' | 'arc'): Command => ({ type: 'updateExternal', sketch: 'rimSk', id: 'rl0', ref: { type: 'sketch', sketch, entity, kind, regions: true } });
-    expect(refusal(engine, update('ba1', 'board', 'arc'))).toContain('druh promítnutí změnit nejde');
+    expect(refusal(engine, update('ba1', 'board', 'arc'))).toContain('the kind of a projection cannot be changed');
     expect(refusal(engine, update('fl1', 'frame', 'line'))).toContain(DUPLICATE('fl1', 'frame', 'rl1'));
     // a sketch later on the timeline, and itself
-    expect(refusal(engine, fromSketch('frame', 'z1', 'rimSk', 'ra0', 'arc'))).toContain('musí ležet před odkazující feature');
-    expect(refusal(engine, fromSketch('frame', 'z2', 'frame', 'fl0', 'line'))).toContain('musí ležet před odkazující feature');
+    expect(refusal(engine, fromSketch('frame', 'z1', 'rimSk', 'ra0', 'arc'))).toContain('must lie before the referring feature');
+    expect(refusal(engine, fromSketch('frame', 'z2', 'frame', 'fl0', 'line'))).toContain('must lie before the referring feature');
     // the kind differs from the source's (the circle of the frame into the rim, which does not
     // project it: a duplicate is refused before the kind is read)
     expect(refusal(engine, fromSketch('rimSk', 'z3', 'frame', 'fh0', 'arc'))).toContain('expected arc');
@@ -1218,8 +1218,8 @@ describe('scenario 15, steps 4, 6 and 7: the lid with spline grips (6d, D70)', (
     expect(refusal(engine, sp(s, 'x2', ['a2', 'g1', 'a2', 'g3']))).toMatch(/"a2" is listed twice/);
     expect(refusal(engine, sp(s, 'x3', ['a2', 'g1', 'a2']))).toMatch(/a closed spline needs at least three different points/);
     expect(refusal(engine, sp(s, 'x4', ['a2', 'g1', 'm/1/g2']))).toMatch(/"m\/1\/g2"/);
-    expect(refusal(engine, constrain(s, 'x6', { type: 'pointOnCurve', point: 'g1', curve: 'c2' }))).toMatch(/"c2" je spline/);
-    expect(refusal(engine, constrain(s, 'x7', { type: 'tangent', a: 'c2', b: 'r1' }))).toMatch(/"c2" je spline/);
+    expect(refusal(engine, constrain(s, 'x6', { type: 'pointOnCurve', point: 'g1', curve: 'c2' }))).toMatch(/"c2" is spline/);
+    expect(refusal(engine, constrain(s, 'x7', { type: 'tangent', a: 'c2', b: 'r1' }))).toMatch(/"c2" is spline/);
     expect(refusal(engine, { type: 'setCurvePoint', sketch: s, id: 'c2', point: 'a', to: 'g1' })).toMatch(/spline/);
     expect(refusal(engine, { type: 'addFeature', feature: { id: 'w', name: 'w', suppressed: false, type: 'extrude', profile: { type: 'wall', sketch: s, curves: ['c2'], thickness: 1 }, extent: { type: 'distance', start: 0, distance: 1 }, operation: 'new' } as never })).toMatch(/c2/);
     // 6e: the grip by name, the place on it without a name, the mirrored place on its copy

@@ -76,7 +76,7 @@ export function buildSliver(c: SliverCase): { a: Solid; b: Solid; volume: number
 export const sliverRoom = (c: SliverCase, a: Solid, b: Solid, volume: number): number => 0.003 + 0.003 * volume + tolerances(a, b).weld * 2 * Math.PI * c.radius * 8;
 
 // The messages of the adapter's own checks ("not a closed surface", "a folded triangle").
-const REFUSAL = /není uzavřená plocha|přeložený trojúhelník/;
+const REFUSAL = /not a closed surface|folded triangle/;
 
 export type SliverOutcome = 'unbuilt' | 'refused' | 'first' | 'second';
 

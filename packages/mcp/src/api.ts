@@ -1,6 +1,7 @@
-// Popis API enginu pro AI. Sestavuje se ze zdrojů enginu, ne z ručně psaného seznamu: typy
-// dokumentu a příkazů se berou přímo ze zdrojového textu types.ts a vazby z katalogu, kterým se
-// řídí validace; typy features z registru enginu. Co engine přijme, to popis obsahuje, a naopak.
+// The description of the engine's API for AI. It is assembled from the engine's sources, not from a
+// hand-written list: the types of the document and of commands are taken straight from the source text
+// of types.ts and the constraints from the catalog that validation follows; feature types from the
+// engine's registry. What the engine accepts, the description contains, and the other way round.
 import {
   CONSTRAINTS,
   EXPRESSION_CONSTANTS,
@@ -41,13 +42,13 @@ import typesSource from '../../engine/src/types.ts?raw';
 import { HOST_OPERATIONS, type HostOperationSet, OPERATION_STATE_ARGS } from './host';
 
 const CONVENTIONS = [
-  'Délky jsou v milimetrech, úhly v radiánech. Souřadnice skici jsou v její rovině (osy X a Y skici), počátek skici je pevný bod s ID `origin`.',
-  'Dokument je časová osa features. Geometrie se vždy odvozuje přehráním; příkazy mění dokument a engine přepočítá, co na změně závisí. Rovinu, vysunutí a pole (pattern) mění příkaz updateFeature: uvedená pole se s feature slučují, takže stačí poslat jen to, co se mění (například `{ extent: { distance: 12 } }`).',
-  'ID volí volající. Musí být jedinečné v celém dokumentu (features i entity všech skic), nesmí obsahovat `/` a nesmí být `origin`.',
-  'Skica se kreslí přibližně a geometrii určují vazby a kóty: body se zadají odhadem, solver je po každém příkazu posune tak, aby vazby platily. Více příkazů ke skice je lepší poslat jedním příkazem `batch`; řeší se pak jednou.',
-  'Křivky odkazují na body: úsečka má `a`, `b`; kružnice `center` a poloměr (parametr `radius` příkazu addCurve); oblouk `center`, `start`, `end` a vede proti směru hodin. Křivky se spojují sdílením bodu nebo vazbou coincident.',
+  'Lengths are in millimetres, angles in radians. Sketch coordinates are in its plane (the X and Y axes of the sketch); the origin of the sketch is a fixed point with the ID `origin`.',
+  'The document is a timeline of features. Geometry is always derived by replaying it; commands change the document and the engine recomputes what depends on the change. A plane, an extrusion and a pattern are changed by the command updateFeature: the fields given merge with the feature, so it is enough to send only what changes (for example `{ extent: { distance: 12 } }`).',
+  'IDs are chosen by the caller. They must be unique in the whole document (features as well as the entities of all sketches), must not contain `/` and must not be `origin`.',
+  'A sketch is drawn roughly and its geometry is determined by constraints and dimensions: points are given as an estimate, and after every command the solver moves them so that the constraints hold. Several commands for a sketch are better sent as one command `batch`; it is then solved once.',
+  'Curves refer to points: a line has `a`, `b`; a circle `center` and a radius (the parameter `radius` of the command addCurve); an arc `center`, `start`, `end` and runs counter-clockwise. Curves are joined by sharing a point or by the constraint coincident.',
   "Every sketch has the lines `origin/x` and `origin/y` through its origin along its X and Y (from `origin` towards +X and +Y). A constraint may name one with at least one own operand (a point on it, two points symmetric about it, a distance to it, parallel, perpendicular, an angle, a tangent circle); `midpoint` and `equalLength` do not take them (an axis is a whole line, with no length and no middle). `{ kind: 'sketchLine', sketch, line: 'origin/x' }` is an axis of a revolve, a pattern, a tilted plane or a joint. A sketch tool snaps to them as to any curve (`snap: { kind: 'curve', id: 'origin/y' }`). get_sketch does not list them.",
-  'Stejnou řídicí vazbu (stejný typ a operandy) nejde přidat dvakrát. Kóta s `driving: false` jen měří.',
+  'The same driving constraint (the same type and operands) cannot be added twice. A dimension with `driving: false` only measures.',
   'A point is put at given coordinates of the sketch by the constraint `fixed` (`{ type: "fixed", point, x, y }`); without `x` and `y` it is fixed where it is (a point added in the same batch has only the estimate of its addPoint so far, because the sketch is solved after the whole batch; give such a point its coordinates). Only an own point of the sketch can be fixed, not the origin or a point of projected geometry. The coordinates are numeric fields `constraints/<id>/x` and `constraints/<id>/y` (command setField) and may be expressions. Holes of the same size share one dimension through `equalRadius`.',
   'Closed regions of a sketch (`regions` in the result of get_sketch) are extruded by the command addFeature with a feature of type extrude: `profile` is `{ type: "regions", sketch, regions }`, where `regions` is a list of `{ outerLoop }` taken from get_sketch. The extent is one of three variants (the third, `upTo`, below). `{ type: "distance", start, distance }`: `start` is the offset of the start along the normal of the sketch plane, from the sketch plane or from `from` (below; usually 0, may be negative), `distance` is measured from the start; a positive one points along the normal of the sketch plane, for a sketch on a face out of the body. `{ type: "throughAll", side }` is for the operation `cut` only: the tool passes through all target bodies and its length follows them at every recompute. `side` is `forward` (along the normal of the sketch plane), `backward` (against it) or `both`; on a face of a body an ordinary hole is `backward`; without `from`, `both` is the safe default unless the body reaches to both sides of the plane and only one part should be cut, and with `from` the side is `forward` or `backward`. ' +
     'Any extent may start from a plane instead of the sketch plane: `from`, a plane reference as for a sketch (a planar face `{ kind: "face", body, face }`, `{ kind: "plane", feature }`, `{ kind: "base", plane }`; for a face the whole plane it lies in), parallel to the sketch plane. So one layout sketch serves every height of a part: `{ type: "distance", from: <the top of the plate>, start: 0, distance: 12 }` is a boss standing on the plate, `{ type: "distance", from: <the top>, start: -0.6, distance: -3 }` a cavity under a skin of 0.6, and `{ type: "throughAll", side: "forward", from: <the top of the plate> }` cuts through a lid above the plate and leaves the plate whole, which a cut through all from the sketch plane would also cut (through all goes through every target on its side of the start, so `backward` from the top of a lid cuts the plate below it too). `start` stays measured along the normal of the sketch plane, whichever way the face points. The plane is resolved at every recompute, so the start follows the face; `facts.startLevel` tells where the tool starts (from the sketch plane along its normal). A plane tilted against the sketch, or parallel to the direction, is the error invalidExtent (put the sketch on that face instead); a face that is gone is brokenReference, a round one nonPlanarFace. `updateFeature` with `{ extent: { from: null } }` returns to the sketch plane.',
@@ -96,7 +97,7 @@ const CONVENTIONS = [
     'Body properties come from what the inserted document states (colour, material, use, density and mass) unless setBodyProperties sets them here; a bought part should be `use: "reference"` with the mass of its data sheet in its own document. The warning insertedIssues lists the features of the inserted document in error and its checks that fail. get_document prints a stored document shortened (`stored` prints one whole), save_document with `stored` writes one to a file of its own, and insert_document with `replace` brings a revision back.',
   'Finished bodies are combined by the feature type combine: `{ type: "combine", operation, target, tools, keepTools }` with `operation` `union`, `difference` or `intersection`; the target keeps its ID, its properties and its link, the tools are made with one after another, and `keepTools` (no default) says whether the tool bodies stay or leave the model (a later feature that names a tool that left is a brokenReference). Model a part without a thought for what it must hold, then subtract the bought part (a motor, a board) from it: with `keepTools: true` the part stays a body, and a `clearance` (mm, a difference only; absent or 0 is none) subtracts every tool moved outwards by that much, each face along its own surface, corners sharp. The faces of such a pocket are the faces of the tool with a copy tag `{ pattern: <the combine>, index: <the tool in tools, from 1> }`, exact planes, cylinders and cones, so a sketch stands on the floor of the pocket. A tool that cannot be moved without a change of its shape (a hole no wider than twice the clearance, a slot, two pins or the tips of a C nearer than twice the clearance) is the error invalidClearance naming the faces, and so is a clearance too small to tell from none (under ten precisions of the coordinates, or not more than twice the chord tolerance on a tool with round faces). Verify a pocket with the queries gap (round faces are polygons, so it is short of the clearance by up to the chord tolerance) and measure (between two planes it is exact). A projected edge of a tool that was used up only warns (brokenProjection) and keeps its place. Without a clearance a face of the result keeps its name from the target or the tool. A result the kernel gets wrong (its volume against the volumes of the two and what they share, faces left back to back) is kernelFailure; two parts cut apart and joined again by a union may be refused so or keep a remnant of the cut face. ' +
     'A body is cut into two by the feature type split: `{ type: "split", body, plane, side }`, `plane` a plane reference as for a sketch. The body keeps its ID and the part on the other side than `side`; the part on the side `side` (`forward`: where the normal of the plane points) is a new body with the ID of the split, taking after the body (colour, material, use, density and mass) and in no link until one lists it. Both parts get the cut face `{ feature: <the split>, role: "splitFace" }`, a plane a sketch stands on, where the plane passes through material (a body of pieces on both sides of it is only taken apart). Later features that name the body work on the part that kept the ID, without a word: a cut meant for both parts lists both bodies, so put a split after what both parts should have.',
-  'Stěny a hrany se jmenují podle svého původu: stěna `{ feature, role: side, curve }` vznikla z křivky skici (for a generated profile `curve` is the side name from the generator catalog, for a gear `teeth`; such a face is not planar), `startCap` je víko na začátku rozsahu (při nulovém `start` v rovině skici), `endCap` protější víko. A face of a copy made by a pattern has the same name with `copy: [{ pattern, index }]` added (the pattern and the number of the copy; a pattern of a pattern appends another entry); faces of the original have no `copy`. Hrana je dvojice jmen stěn. Jména platná pro těleso vrací get_body.',
+  'Faces and edges are named by their origin: a face `{ feature, role: side, curve }` came from a curve of the sketch (for a generated profile `curve` is the side name from the generator catalog, for a gear `teeth`; such a face is not planar), `startCap` is the cap at the start of the extent (in the sketch plane when `start` is zero), `endCap` the opposite cap. A face of a copy made by a pattern has the same name with `copy: [{ pattern, index }]` added (the pattern and the number of the copy; a pattern of a pattern appends another entry); faces of the original have no `copy`. An edge is a pair of face names. The names valid for a body are returned by get_body.',
   'Mirror and pattern in a sketch (D68; section Entries of a sketch, kind `pattern`): constrain the sources, not the copies; a copy is never an operand of a constraint of its sketch, a point of a curve, or what a sketch tool cuts or snaps to. A count follows a parameter (`count: "vents"`); a feature that should follow the count names a region the copies lie in (they are its holes), while a feature that names a region of a copy names that copy, and a copy above the count is a broken reference of that feature (noProfile) until the count comes back. A projection or a copy is no source. The copies of a mirrored outline close with the source only where their ends meet within 1e-6 mm: hold the end of the source on the axis by a constraint (`pointOnCurve` with the axis); get_sketch says which ends stayed open.',
   'Projected geometry (section Entries of a sketch, the reference kinds `edge` and `sketch`): an entry of a reference kind is fixed for the solver and follows its source at every recompute; a curve is the entry itself and its points are `<id>/a`, `<id>/b`, `<id>/center`, `<id>/start`, `<id>/end`; when the source is gone it keeps its last place (brokenProjection; for a projection from a sketch the message says why) and constraints on it keep acting. Constrain own geometry to it with at least one own operand. A projection from a sketch with `regions: true` bounds regions as an own curve does, and the ends of such curves join at their place, with each other and with an own end there (get_sketch says which ends stayed open). Such a curve is never cut by the sketch tools: an outline to be trimmed is drawn as own curves over the projections, which the sketch tool projectSketch with `as: "own"` does in one batch, taking over an entry named in `entities` that projects the curve with the flag already (its flag switched off, and the features that read the regions along it or its side face renamed to the own curve in the same batch, `ids.patched`; a run over the whole sketch skips such an entry) (by hand: an own point coincident with the projected end at each corner, an own line between two of them, an own arc with a centre of its own, a construction line from that centre to the arc\'s start and the projected centre on that line by pointOnCurve; not equalRadius, which has a second solution). What a sketch can project, and where each entity would land, says the query sketchSources: `{ query: "sketchSources", args: { sketch, from } }`; one entity is `addExternal { sketch, id, ref: { type: "sketch", sketch: <earlier sketch>, entity, kind } }`. An imported outline (kind `outline`, the tool import_outline, D72) is placed by its fields `x`, `y`, `turn` and `anchor`; its entities are `<entry>/<local>` (`board/l1`, `board/l1/a`, `board/c1/center`), the query entryCurves lists them, and a revised file keeps the IDs by kind and order.',
   'Parameters: the document has a table of named parameters (command setParameter, a name and an expression). A numeric field of a feature and the value of a driving dimension accept an expression as a string instead of a number, for example `{ extent: { distance: "thickness * 2" } }` or `value: "module * Zs"`. The section Numeric fields lists those fields; elsewhere a string in place of a number is an error. The engine evaluates the expression, fills the number into the field and stores the expression in `expressions` of the feature under the field address. After a parameter changes the model is recomputed.',
@@ -104,15 +105,16 @@ const CONVENTIONS = [
   'Angles are in radians both as a number and in an expression; degrees are written with the function `deg()`: an angle of 30° is `"deg(30)"`. Angle fields have ranges in radians, so a value entered in degrees by mistake is an invalid command.',
   'Checks (command setCheck) are expressions with a comparison that are supposed to hold, for example `Zs % 3 == 0`. A check that fails does not stop the model; execute returns it in `failedChecks`.',
   'A recompute error (a broken reference, conflicting constraints, an expression that can no longer be evaluated) is not a command error: the command is carried out and the problem is in the feature state. After every execute check `problems`, `failedChecks` and `parameterErrors`.',
-  'Diagnostika skici: get_sketch vrací stupně volnosti, volné entity, vazby navíc a radu, co chybí; explain_constraint říká, z čeho vazba plyne.',
+  'Diagnosis of a sketch: get_sketch returns the degrees of freedom, the free entities, the redundant constraints and advice on what is missing; explain_constraint says what a constraint follows from.',
 ];
 
-// Typy dokumentu, výsledku přepočtu a příkazů. Porty (rozhraní solveru a jádra) AI nepotřebuje.
+// The types of the document, of the result of the recompute and of commands. The ports (the interfaces
+// of the solver and of the kernel) are not needed by the AI.
 export function engineTypes(): string {
   const marker = (name: string) => new RegExp(`^// -+ ${name}$`, 'm');
-  const [ports, evaluation] = [typesSource.search(marker('porty')), typesSource.search(marker('přepočet'))];
+  const [ports, evaluation] = [typesSource.search(marker('ports')), typesSource.search(marker('recompute'))];
   if (ports < 0 || evaluation < ports) return typesSource;
-  const note = '// (Rozhraní solveru a geometrického jádra jsou vynechána. `Solid` je trojúhelníková síť tělesa:\n// positions, triangles, faceIds; přes nástroje se nepřenáší, těleso popisuje get_body.)\n\n';
+  const note = '// (The interfaces of the solver and of the geometric kernel are left out. `Solid` is the triangle mesh of a body:\n// positions, triangles, faceIds; it is not passed through the tools, a body is described by get_body.)\n\n';
   // an import of the source file is not part of the description
   return (typesSource.slice(0, ports) + note + typesSource.slice(evaluation)).replace(/^import type .*\n/gm, '');
 }
@@ -470,7 +472,7 @@ export function outlineFormats(): { format: string; title: string; summary: stri
   }));
 }
 
-// Tentýž popis jako souvislý text: tak ho dostane AI.
+// The same description as continuous text: this is how the AI gets it.
 export function apiText(): string {
   const { conventions, features, generators, constraints, expressions, numericFields: fields, sketchTools, queries, operations, catalogs, exports, imports, outlines, sections, entries, types } = apiDescription();
   const queryText = (entry: QueryDescription): string =>
@@ -497,29 +499,29 @@ export function apiText(): string {
       `  example: ${JSON.stringify(entry.example)}`,
     ].join('\n');
   const feature = (entry: FeatureDescription): string => {
-    const body = entry.bodies === 'self' ? ' Může vytvořit těleso se svým ID.' : entry.bodies === 'derived' ? ' May create bodies with the IDs `<id>/<number>`.' : '';
-    const update = entry.updatable.length > 0 ? ` updateFeature mění pole: ${entry.updatable.join(', ')}.` : ' Obsah mění vlastní příkazy, ne updateFeature.';
+    const body = entry.bodies === 'self' ? ' May create a body with its own ID.' : entry.bodies === 'derived' ? ' May create bodies with the IDs `<id>/<number>`.' : '';
+    const update = entry.updatable.length > 0 ? ` updateFeature changes the fields: ${entry.updatable.join(', ')}.` : ' Its content is changed by its own commands, not by updateFeature.';
     return `- ${entry.type} (${entry.title}): ${entry.summary}${body}${update}`;
   };
   const constraint = (entry: ConstraintDescription): string => {
     const operands = entry.operands.map((operand) => `${operand.field}: ${operand.kinds.join(' | ')}`).join(', ');
     const value = entry.value ? `; value: ${entry.value.rule}, ${entry.value.unit}` : (entry.values ?? []).map((named) => `; ${named.name}: ${named.rule}, ${named.unit}`).join('');
-    return `- ${entry.type} (${entry.title}) { ${operands}${value} }: ${entry.summary}\n  příklad: ${JSON.stringify(entry.example)}`;
+    return `- ${entry.type} (${entry.title}) { ${operands}${value} }: ${entry.summary}\n  example: ${JSON.stringify(entry.example)}`;
   };
   return [
-    '# Konvence',
+    '# Conventions',
     ...conventions.map((line) => `- ${line}`),
     '',
     '# Features',
-    'Feature je objekt `feature` příkazu addFeature; přesný tvar je v typech níže.',
+    'A feature is the object `feature` of the command addFeature; its exact shape is in the types below.',
     ...features.map(feature),
     '',
     '# Profile generators',
     'A generator builds the profile of an extrusion from entities of a sketch and parameters: `profile` of the extrusion is `{ type: "generated", generator, sketch, operands, params, refs }`. Numeric parameters are numeric fields at `profile/params/<name>`.',
     ...generators.map(generator),
     '',
-    '# Vazby a kóty',
-    'Vazba je objekt `constraint` příkazu addConstraint. Operandy jsou ID entit skici daného druhu; kóty mají navíc `value` a `driving`.',
+    '# Constraints and dimensions',
+    'A constraint is the object `constraint` of the command addConstraint. Operands are IDs of sketch entities of the given kind; dimensions also have `value` and `driving`.',
     ...constraints.map(constraint),
     '',
     '# Expressions',
@@ -578,8 +580,8 @@ export function apiText(): string {
     `The tool import_outline \`{ path, format?, options?, sketch?, id?, replace?, remove?, name?, x?, y?, turn?, anchor?, regions? }\` reads a 2D outline of one of these formats (it needs a disk, so it is a tool of the server); without \`format\` the extension of the path decides. Without \`sketch\` it answers with the report only; with it, the curves become an entry \`outline\` of the sketch (section Entries of a sketch). The weld puts an open end on an end of another curve within \`weld\` mm, so a file written with few digits closes; no end moves further, and ends that meet are left alone. At most ${OUTLINE_LIMITS.curves} curves and ${OUTLINE_LIMITS.control} control points of splines, ${OUTLINE_LIMITS.bytes} bytes.`,
     ...outlines.map((entry) => [`- ${entry.format} (${entry.title}, .${entry.extensions.join(', .')}): ${entry.summary}`, ...(entry.options.length ? ['  options:', ...entry.options.map((option) => `  - ${option.name}: ${option.description}`)] : ['  options: none'])].join('\n')),
     '',
-    '# Typy (TypeScript, ze zdroje enginu)',
-    'Příkaz je hodnota typu Command; dokument typu Document.',
+    '# Types (TypeScript, from the engine source)',
+    'A command is a value of the type Command; a document of the type Document.',
     '```ts',
     types.trim(),
     '```',

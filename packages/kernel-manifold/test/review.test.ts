@@ -148,8 +148,8 @@ const thrown = (call: () => unknown): string | undefined => {
   return undefined;
 };
 const arrays = (s: Solid) => [[...s.positions], [...s.triangles], [...s.faceIds]];
-const NOT_CLOSED = /není uzavřená plocha/;
-const FOLDED = /přeložený trojúhelník/;
+const NOT_CLOSED = /not a closed surface/;
+const FOLDED = /folded triangle/;
 const SLIVERS: [number, number, number, number, RegExp, number | null][] = [
   // n, r, δ, phase, how the first cleaning alone refuses, the exact volume (null: still refused)
   [24, 1.5, 0, 0.0618, NOT_CLOSED, 0.1734],

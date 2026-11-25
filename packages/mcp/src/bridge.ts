@@ -80,14 +80,14 @@ export function startBridge(port: number = DEFAULT_BRIDGE_PORT): Promise<Bridge>
       if (previous) {
         // Vytlačená aplikace se dozví proč, aby se nepřipojovala znovu: dvě aplikace by si
         // jinak spojení přebíraly dokola a příkaz by mohl skončit v nesprávném dokumentu.
-        drop(previous.session, 'připojila se jiná aplikace');
+        drop(previous.session, 'another app connected');
         previous.response.end('event: displaced\ndata: {}\n\n');
       }
       const keepalive = setInterval(() => response.write(': keepalive\n\n'), KEEPALIVE_MS);
       response.on('close', () => {
         clearInterval(keepalive);
         if (client?.session === session) client = undefined;
-        drop(session, 'aplikace se odpojila');
+        drop(session, 'the app disconnected');
       });
     } else if (request.method === 'POST' && path === '/reply') {
       let body = '';
@@ -124,16 +124,16 @@ export function startBridge(port: number = DEFAULT_BRIDGE_PORT): Promise<Bridge>
         document: () => client?.document,
         call(name, args) {
           const target = client;
-          if (!target) return Promise.resolve({ ok: false, error: 'aplikace není připojená' });
+          if (!target) return Promise.resolve({ ok: false, error: 'the app is not connected' });
           const id = ++calls;
           return new Promise<ToolOutcome>((done) => {
-            const timer = setTimeout(() => settle(id, { ok: false, error: 'aplikace neodpověděla včas' }), CALL_TIMEOUT_MS);
+            const timer = setTimeout(() => settle(id, { ok: false, error: 'the app did not answer in time' }), CALL_TIMEOUT_MS);
             pending.set(id, { resolve: done, timer, session: target.session });
             target.response.write(`event: call\ndata: ${JSON.stringify({ id, name, args })}\n\n`);
           });
         },
         close() {
-          for (const id of [...pending.keys()]) settle(id, { ok: false, error: 'most se zavírá' });
+          for (const id of [...pending.keys()]) settle(id, { ok: false, error: 'the bridge is closing' });
           client?.response.end();
           client = undefined;
           return new Promise<void>((closed) => {

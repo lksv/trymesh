@@ -81,7 +81,7 @@ export function buildPrism(feature: Id, regions: Region[], frame: Frame, span: T
       const [i, j] = [triangles[3 * t + k], triangles[3 * t + ((k + 1) % 3)]];
       if (directed.has(`${j}>${i}`)) continue;
       const curve = curveAt.get(pair(original[i], original[j]));
-      if (curve === undefined) throw new Error('extrude: hrana obrysu bez křivky');
+      if (curve === undefined) throw new Error('extrude: an edge of the outline without a curve');
       boundary.push([i, j, curve]);
     }
   }

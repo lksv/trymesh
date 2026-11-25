@@ -98,7 +98,7 @@ function holePanel(m: HoleMode, host: PanelHost): HTMLElement[] {
   const missingTargets = draft.targets.filter((id) => !bodies.includes(id));
   const extent = draft.extent;
   const out: (HTMLElement | null)[] = [
-    h('h2', {}, m.editing ? `Úprava: ${draft.name}` : 'New hole'),
+    h('h2', {}, m.editing ? `Edit: ${draft.name}` : 'New hole'),
     select(
       'Sketch',
       (value) => set({ ...m.draft, sketch: value, points: [] }),

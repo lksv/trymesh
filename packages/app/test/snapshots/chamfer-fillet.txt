@@ -21,24 +21,24 @@
   document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":10}
   toolbar:
       div.group
-        button title="Prázdný dokument": "Nový"
-        button: "Otevřít"
-        button: "Uložit"
+        button title="Empty document": "New"
+        button: "Open"
+        button: "Save"
         button: "Export STL"
         input type=file hidden
       div.group
-        button title="Propojit s MCP serverem (packages/mcp): AI pak čte a mění dokument otevřený v aplikaci": "AI"
+        button title="Link to the MCP server (packages/mcp): the AI then reads and changes the document open in the app": "AI"
       div.group
-        button title="Ctrl+Z": "↶ Zpět"
-        button disabled title="Ctrl+Shift+Z": "↷ Znovu"
+        button title="Ctrl+Z": "↶ Undo"
+        button disabled title="Ctrl+Shift+Z": "↷ Redo"
       div.group
-        button title="Nová skica na rovině nebo rovinné stěně": "Skica"
-        button title="Vysunout oblasti skici": "Vysunutí"
+        button title="A new sketch on a plane or a planar face": "Sketch"
+        button title="Extrude regions of a sketch": "Extrude"
         button title="Turn regions of a sketch about an axis in its plane": "Revolve"
         button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
         button title="Chamfer edges of a body by a distance": "Chamfer"
         button title="Round edges of a body by a radius": "Fillet"
-        button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
+        button title="A plane offset from a plane or a planar face": "Plane"
         button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
         button title="Place a stored mesh (a bought part read from an STL file) as a body": "Mesh"
         button title="Insert another document (a part saved as a document file) as a part of this one": "Insert"
@@ -75,28 +75,28 @@
           option value="mjcf" title="The mechanism as a MuJoCo model: a folder with robot.xml and one binary STL per body in metres in the frame of its link. One tree from one root link, welded to the world; the frame of a link at the axis of its joint with the axes of the model; the mass, centre of mass and inertia of each link from its bodies (query mass); a mesh geom per body, the two links of a joint excluded from contact; a motor per joint with an `effort` (with `gearRatio`), `rotorInertia · gearRatio²` as the armature of the joint, and the pose of the document as the keyframe `pose`.": "MJCF (MuJoCo)"
         button disabled title="Check which bodies share a volume": "Collisions"
       div.group
-        button: "Zobrazit vše"
+        button: "Fit all"
         button title="Save a picture of the model as PNG: the bodies that are shown, from the camera of the view and cut as the view is; without the selection, sketches, planes and dimensions": "Save picture"
-        button.active title="Zobrazit nebo skrýt roviny XY, XZ, YZ": "Základní roviny"
+        button.active title="Show or hide the planes XY, XZ, YZ": "Base planes"
   timeline:
-      h2: "Časová osa"
+      h2: "Timeline"
       div.row.ok
         span.dot: "●"
         span.name: "plate sketch"
         button.icon title="Hide or show": "👁"
-        button.icon disabled title="Posunout dřív": "↑"
-        button.icon title="Posunout později": "↓"
-        button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+        button.icon disabled title="Move earlier": "↑"
+        button.icon title="Move later": "↓"
+        button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
       div.row.ok
         span.dot: "●"
         span.name: "Plate"
         button.icon title="Hide or show": "👁"
-        button.icon title="Posunout dřív": "↑"
-        button.icon disabled title="Posunout později": "↓"
-        button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+        button.icon title="Move earlier": "↑"
+        button.icon disabled title="Move later": "↓"
+        button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
   panel:
       h2: "Model"
-      p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
+      p.hint: "The right mouse button orbits, the wheel zooms, the middle button (or Shift + right) pans. On a touchpad: Alt/Option + drag orbits, Alt + Shift + drag pans, two fingers zoom. A feature on the timeline is edited by a double click."
       h2: "Parameters (0)"
       div.constraint
         input.pname value="" placeholder="name"
@@ -114,7 +114,7 @@
         button title="Bodies that move as one piece": "New link"
         button disabled title="A joint moves its child link against its parent link": "New joint"
         button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
-  status: Začněte skicou: tlačítko Skica a výběr roviny.
+  status: Start with a sketch: the Sketch button and a choice of plane.
   view: 2 scene(s) set
   scene:
       bodies: plate
@@ -131,15 +131,15 @@
 === 2. a new chamfer: picking edges is armed, no edge yet
   engine: getState("plate")  (x3)
   toolbar:
-    +   button disabled title="Ctrl+Z": "↶ Zpět"
-    -   button title="Ctrl+Z": "↶ Zpět"
-    -   button title="Nová skica na rovině nebo rovinné stěně": "Skica"
-    -   button title="Vysunout oblasti skici": "Vysunutí"
+    +   button disabled title="Ctrl+Z": "↶ Undo"
+    -   button title="Ctrl+Z": "↶ Undo"
+    -   button title="A new sketch on a plane or a planar face": "Sketch"
+    -   button title="Extrude regions of a sketch": "Extrude"
     -   button title="Turn regions of a sketch about an axis in its plane": "Revolve"
     -   button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
     -   button title="Chamfer edges of a body by a distance": "Chamfer"
     -   button title="Round edges of a body by a radius": "Fillet"
-    -   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
+    -   button title="A plane offset from a plane or a planar face": "Plane"
     -   button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
     -   button title="Place a stored mesh (a bought part read from an STL file) as a body": "Mesh"
     -   button title="Insert another document (a part saved as a document file) as a part of this one": "Insert"
@@ -179,16 +179,16 @@
   timeline:
     +   button.icon disabled title="Hide or show": "👁"
     -   button.icon title="Hide or show": "👁"
-    +   button.icon disabled title="Posunout později": "↓"
-    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
-    -   button.icon title="Posunout později": "↓"
-    -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon disabled title="Move later": "↓"
+    +   button.icon disabled title="Roll the model back to here: further features are inserted after this one": "⇤"
+    -   button.icon title="Move later": "↓"
+    -   button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
     +   button.icon disabled title="Hide or show": "👁"
-    +   button.icon disabled title="Posunout dřív": "↑"
+    +   button.icon disabled title="Move earlier": "↑"
     -   button.icon title="Hide or show": "👁"
-    -   button.icon title="Posunout dřív": "↑"
-    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
-    -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon title="Move earlier": "↑"
+    +   button.icon disabled title="Roll the model back to here: further features are inserted after this one": "⇤"
+    -   button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
   panel:
     + h2: "New chamfer"
     + p: "Body: the body of the first edge picked"
@@ -205,7 +205,7 @@
     + p#draft-facts.hint
     + p#draft-problem.issue.error
     - h2: "Model"
-    - p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
+    - p.hint: "The right mouse button orbits, the wheel zooms, the middle button (or Shift + right) pans. On a touchpad: Alt/Option + drag orbits, Alt + Shift + drag pans, two fingers zoom. A feature on the timeline is edited by a double click."
     - h2: "Parameters (0)"
     - div.constraint
     -   input.pname value="" placeholder="name"
@@ -220,7 +220,7 @@
     - h2: "Mechanism"
     - p.hint: "Links are bodies that move as one piece; a joint moves its child link against its parent. The model as modelled is the zero of every joint."
     +   button.primary disabled: "OK"
-    +   button: "Zrušit"
+    +   button: "Cancel"
     -   button title="Bodies that move as one piece": "New link"
     -   button disabled title="A joint moves its child link against its parent link": "New joint"
     -   button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
@@ -235,7 +235,7 @@
     + p: "Body: Plate"
     - p: "Body: the body of the first edge picked"
     +   li
-    +     "Plate – protější víko × Plate – bok (straight)"
+    +     "Plate – opposite cap × Plate – side (straight)"
     +     small: "plate/endCap × plate/side/l0"
     +     button title="Take the edge out of the list": "Remove"
     - p.hint: "No edge picked yet."
@@ -257,7 +257,7 @@
   engine: getState("plate")  (x4)
   panel:
     +   li
-    +     "Plate – protější víko × Plate – bok (straight)"
+    +     "Plate – opposite cap × Plate – side (straight)"
     +     small: "plate/endCap × plate/side/l1"
     +     button title="Take the edge out of the list": "Remove"
     + p#draft-facts.hint: "Setbacks 1 mm."
@@ -277,7 +277,7 @@
     -     small: "plate/endCap × plate/side/l0"
     -     button title="Take the edge out of the list": "Remove"
     -   li
-    -     "Plate – protější víko × Plate – bok (straight)"
+    -     "Plate – opposite cap × Plate – side (straight)"
     + p#draft-facts.hint: "Setback 1 mm."
     - p#draft-facts.hint: "Setbacks 1 mm."
   status: 1 edge picked.
@@ -294,7 +294,7 @@
   engine: getState("plate")  (x2)
   panel:
     +   li
-    +     "Plate – protější víko × Plate – bok (straight)"
+    +     "Plate – opposite cap × Plate – side (straight)"
     +     small: "plate/endCap × plate/side/l0"
     +     button title="Take the edge out of the list": "Remove"
     +     input value="2"
@@ -326,7 +326,7 @@
     -     small: "plate/endCap × plate/side/l1"
     -     button title="Take the edge out of the list": "Remove"
     -   li
-    -     "Plate – protější víko × Plate – bok (straight)"
+    -     "Plate – opposite cap × Plate – side (straight)"
     + p#draft-facts.hint: "Setback 2 mm."
     - p#draft-facts.hint: "Setbacks 2 mm."
   view: 1 scene(s) set
@@ -344,15 +344,15 @@
   feature chamfer1:
       {"id":"chamfer1","name":"Chamfer 1","suppressed":false,"type":"chamfer","body":"plate","edges":[{"a":{"feature":"plate","role":"endCap"},"b":{"feature":"plate","role":"side","curve":"l0"}}],"distance":2}
   toolbar:
-    +   button title="Ctrl+Z": "↶ Zpět"
-    -   button disabled title="Ctrl+Z": "↶ Zpět"
-    +   button title="Nová skica na rovině nebo rovinné stěně": "Skica"
-    +   button title="Vysunout oblasti skici": "Vysunutí"
+    +   button title="Ctrl+Z": "↶ Undo"
+    -   button disabled title="Ctrl+Z": "↶ Undo"
+    +   button title="A new sketch on a plane or a planar face": "Sketch"
+    +   button title="Extrude regions of a sketch": "Extrude"
     +   button title="Turn regions of a sketch about an axis in its plane": "Revolve"
     +   button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
     +   button title="Chamfer edges of a body by a distance": "Chamfer"
     +   button title="Round edges of a body by a radius": "Fillet"
-    +   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
+    +   button title="A plane offset from a plane or a planar face": "Plane"
     +   button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
     +   button title="Place a stored mesh (a bought part read from an STL file) as a body": "Mesh"
     +   button title="Insert another document (a part saved as a document file) as a part of this one": "Insert"
@@ -392,26 +392,26 @@
   timeline:
     +   button.icon title="Hide or show": "👁"
     -   button.icon disabled title="Hide or show": "👁"
-    +   button.icon title="Posunout později": "↓"
-    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
-    -   button.icon disabled title="Posunout později": "↓"
-    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon title="Move later": "↓"
+    +   button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
+    -   button.icon disabled title="Move later": "↓"
+    -   button.icon disabled title="Roll the model back to here: further features are inserted after this one": "⇤"
     +   button.icon title="Hide or show": "👁"
-    +   button.icon title="Posunout dřív": "↑"
-    +   button.icon title="Posunout později": "↓"
-    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon title="Move earlier": "↑"
+    +   button.icon title="Move later": "↓"
+    +   button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
     + div.row.ok
     +   span.dot: "●"
     +   span.name: "Chamfer 1"
     +   button.icon disabled title="A body is hidden at the feature that created it": "👁"
-    +   button.icon title="Posunout dřív": "↑"
+    +   button.icon title="Move earlier": "↑"
     -   button.icon disabled title="Hide or show": "👁"
-    -   button.icon disabled title="Posunout dřív": "↑"
-    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
-    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon disabled title="Move earlier": "↑"
+    +   button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
+    -   button.icon disabled title="Roll the model back to here: further features are inserted after this one": "⇤"
   panel:
     + h2: "Model"
-    + p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
+    + p.hint: "The right mouse button orbits, the wheel zooms, the middle button (or Shift + right) pans. On a touchpad: Alt/Option + drag orbits, Alt + Shift + drag pans, two fingers zoom. A feature on the timeline is edited by a double click."
     + h2: "Parameters (0)"
     + div.constraint
     +   input.pname value="" placeholder="name"
@@ -429,7 +429,7 @@
     - p: "Body: Plate"
     - ol.edges
     -   li
-    -     "Plate – protější víko × Plate – bok (straight)"
+    -     "Plate – opposite cap × Plate – side (straight)"
     -     small: "plate/endCap × plate/side/l0"
     -     button title="Take the edge out of the list": "Remove"
     +   button title="Bodies that move as one piece": "New link"
@@ -446,8 +446,8 @@
     - p#draft-problem.issue.warning
     - div.buttons
     -   button.primary: "OK"
-    -   button: "Zrušit"
-  status: Chamfer přidáno.
+    -   button: "Cancel"
+  status: Chamfer added.
   view: 2 scene(s) set
   scene:
     - line #0ea5e9 width 4 onTop: 6 numbers, sum 264
@@ -460,16 +460,16 @@
   panel:
     + h2: "Chamfer"
     + label
-    +   "Název"
+    +   "Feature name"
     +   input value="Chamfer 1"
     + div.buttons
-    +   button.primary: "Upravit"
-    +   button: "Potlačit"
-    +   button: "Smazat"
+    +   button.primary: "Edit feature"
+    +   button: "Suppress"
+    +   button: "Delete"
     + p.hint: "Chamfer of 1 edge of Plate, distance 2 mm."
     + p.hint: "Setback 2 mm."
     - h2: "Model"
-    - p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
+    - p.hint: "The right mouse button orbits, the wheel zooms, the middle button (or Shift + right) pans. On a touchpad: Alt/Option + drag orbits, Alt + Shift + drag pans, two fingers zoom. A feature on the timeline is edited by a double click."
   view: 1 scene(s) set
   scene:
     + face plate #6 #f97316 opacity 0.3
@@ -477,15 +477,15 @@
 === 11. a new fillet of the plate, picking armed
   engine: getState("chamfer1")  (x3)
   toolbar:
-    +   button disabled title="Ctrl+Z": "↶ Zpět"
-    -   button title="Ctrl+Z": "↶ Zpět"
-    -   button title="Nová skica na rovině nebo rovinné stěně": "Skica"
-    -   button title="Vysunout oblasti skici": "Vysunutí"
+    +   button disabled title="Ctrl+Z": "↶ Undo"
+    -   button title="Ctrl+Z": "↶ Undo"
+    -   button title="A new sketch on a plane or a planar face": "Sketch"
+    -   button title="Extrude regions of a sketch": "Extrude"
     -   button title="Turn regions of a sketch about an axis in its plane": "Revolve"
     -   button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
     -   button title="Chamfer edges of a body by a distance": "Chamfer"
     -   button title="Round edges of a body by a radius": "Fillet"
-    -   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
+    -   button title="A plane offset from a plane or a planar face": "Plane"
     -   button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
     -   button title="Place a stored mesh (a bought part read from an STL file) as a body": "Mesh"
     -   button title="Insert another document (a part saved as a document file) as a part of this one": "Insert"
@@ -525,22 +525,22 @@
   timeline:
     +   button.icon disabled title="Hide or show": "👁"
     -   button.icon title="Hide or show": "👁"
-    +   button.icon disabled title="Posunout později": "↓"
-    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
-    -   button.icon title="Posunout později": "↓"
-    -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon disabled title="Move later": "↓"
+    +   button.icon disabled title="Roll the model back to here: further features are inserted after this one": "⇤"
+    -   button.icon title="Move later": "↓"
+    -   button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
     +   button.icon disabled title="Hide or show": "👁"
-    +   button.icon disabled title="Posunout dřív": "↑"
-    +   button.icon disabled title="Posunout později": "↓"
-    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon disabled title="Move earlier": "↑"
+    +   button.icon disabled title="Move later": "↓"
+    +   button.icon disabled title="Roll the model back to here: further features are inserted after this one": "⇤"
     -   button.icon title="Hide or show": "👁"
-    -   button.icon title="Posunout dřív": "↑"
-    -   button.icon title="Posunout později": "↓"
-    -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
-    +   button.icon disabled title="Posunout dřív": "↑"
-    -   button.icon title="Posunout dřív": "↑"
-    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
-    -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon title="Move earlier": "↑"
+    -   button.icon title="Move later": "↓"
+    -   button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
+    +   button.icon disabled title="Move earlier": "↑"
+    -   button.icon title="Move earlier": "↑"
+    +   button.icon disabled title="Roll the model back to here: further features are inserted after this one": "⇤"
+    -   button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
   panel:
     + h2: "New fillet"
     + p: "Body: the body of the first edge picked"
@@ -556,13 +556,13 @@
     + p.hint: "Each edge gets a face of its own, named by its place in the list. An edge that runs on smoothly into another (a line into the arc of a round corner) needs that one too; a convex and a concave edge that meet go into two features."
     + p#draft-facts.hint
     + p#draft-problem.issue.error
-    -   "Název"
+    -   "Feature name"
     -   input value="Chamfer 1"
     +   button.primary disabled: "OK"
-    +   button: "Zrušit"
-    -   button.primary: "Upravit"
-    -   button: "Potlačit"
-    -   button: "Smazat"
+    +   button: "Cancel"
+    -   button.primary: "Edit feature"
+    -   button: "Suppress"
+    -   button: "Delete"
     - p.hint: "Chamfer of 1 edge of Plate, distance 2 mm."
     - p.hint: "Setback 2 mm."
     - h2: "Parameters (0)"
@@ -597,13 +597,13 @@
     + p: "Body: Plate"
     - p: "Body: the body of the first edge picked"
     +   li
-    +     "Plate – protější víko × Plate – bok (straight)"
+    +     "Plate – opposite cap × Plate – side (straight)"
     +     small: "plate/endCap × plate/side/l3"
     +     button title="Take the edge out of the list": "Remove"
     - p.hint: "No edge picked yet."
     +     input value="20"
     -     input value="1"
-    + p#draft-problem.issue.error: "The chamfer or fillet does not fit on the faces next to the edge: a face would vanish, or the tool reaches material it must not touch. (the face in refs would vanish: the fillet is larger than the face is wide) (the edge Plate – protější víko × Plate – bok, the face Plate – bok)"
+    + p#draft-problem.issue.error: "The chamfer or fillet does not fit on the faces next to the edge: a face would vanish, or the tool reaches material it must not touch. (the face in refs would vanish: the fillet is larger than the face is wide) (the edge Plate – opposite cap × Plate – side, the face Plate – side)"
     - p#draft-problem.issue.error
     +   button.primary: "OK"
     -   button.primary disabled: "OK"
@@ -621,15 +621,15 @@
   feature fillet1:
       {"id":"fillet1","name":"Fillet 1","suppressed":false,"type":"fillet","body":"plate","edges":[{"a":{"feature":"plate","role":"endCap"},"b":{"feature":"plate","role":"side","curve":"l3"}}],"radius":3}
   toolbar:
-    +   button title="Ctrl+Z": "↶ Zpět"
-    -   button disabled title="Ctrl+Z": "↶ Zpět"
-    +   button title="Nová skica na rovině nebo rovinné stěně": "Skica"
-    +   button title="Vysunout oblasti skici": "Vysunutí"
+    +   button title="Ctrl+Z": "↶ Undo"
+    -   button disabled title="Ctrl+Z": "↶ Undo"
+    +   button title="A new sketch on a plane or a planar face": "Sketch"
+    +   button title="Extrude regions of a sketch": "Extrude"
     +   button title="Turn regions of a sketch about an axis in its plane": "Revolve"
     +   button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
     +   button title="Chamfer edges of a body by a distance": "Chamfer"
     +   button title="Round edges of a body by a radius": "Fillet"
-    +   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
+    +   button title="A plane offset from a plane or a planar face": "Plane"
     +   button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
     +   button title="Place a stored mesh (a bought part read from an STL file) as a body": "Mesh"
     +   button title="Insert another document (a part saved as a document file) as a part of this one": "Insert"
@@ -669,34 +669,34 @@
   timeline:
     +   button.icon title="Hide or show": "👁"
     -   button.icon disabled title="Hide or show": "👁"
-    +   button.icon title="Posunout později": "↓"
-    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
-    -   button.icon disabled title="Posunout později": "↓"
-    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon title="Move later": "↓"
+    +   button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
+    -   button.icon disabled title="Move later": "↓"
+    -   button.icon disabled title="Roll the model back to here: further features are inserted after this one": "⇤"
     +   button.icon title="Hide or show": "👁"
-    +   button.icon title="Posunout dřív": "↑"
-    +   button.icon title="Posunout později": "↓"
-    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon title="Move earlier": "↑"
+    +   button.icon title="Move later": "↓"
+    +   button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
     + div.row.ok
     -   button.icon disabled title="Hide or show": "👁"
-    -   button.icon disabled title="Posunout dřív": "↑"
-    -   button.icon disabled title="Posunout později": "↓"
-    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon disabled title="Move earlier": "↑"
+    -   button.icon disabled title="Move later": "↓"
+    -   button.icon disabled title="Roll the model back to here: further features are inserted after this one": "⇤"
     - div.row.ok.selected
-    +   button.icon title="Posunout dřív": "↑"
-    +   button.icon title="Posunout později": "↓"
-    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon title="Move earlier": "↑"
+    +   button.icon title="Move later": "↓"
+    +   button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
     + div.row.ok
     +   span.dot: "●"
     +   span.name: "Fillet 1"
     +   button.icon disabled title="A body is hidden at the feature that created it": "👁"
-    +   button.icon title="Posunout dřív": "↑"
-    -   button.icon disabled title="Posunout dřív": "↑"
-    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
-    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon title="Move earlier": "↑"
+    -   button.icon disabled title="Move earlier": "↑"
+    +   button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
+    -   button.icon disabled title="Roll the model back to here: further features are inserted after this one": "⇤"
   panel:
     + h2: "Model"
-    + p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
+    + p.hint: "The right mouse button orbits, the wheel zooms, the middle button (or Shift + right) pans. On a touchpad: Alt/Option + drag orbits, Alt + Shift + drag pans, two fingers zoom. A feature on the timeline is edited by a double click."
     + h2: "Parameters (0)"
     + div.constraint
     +   input.pname value="" placeholder="name"
@@ -714,7 +714,7 @@
     - p: "Body: Plate"
     - ol.edges
     -   li
-    -     "Plate – protější víko × Plate – bok (straight)"
+    -     "Plate – opposite cap × Plate – side (straight)"
     -     small: "plate/endCap × plate/side/l3"
     -     button title="Take the edge out of the list": "Remove"
     +   button title="Bodies that move as one piece": "New link"
@@ -728,11 +728,11 @@
     -     small.computed data-field="radius" data-unit="mm"
     - p.hint: "Each edge gets a face of its own, named by its place in the list. An edge that runs on smoothly into another (a line into the arc of a round corner) needs that one too; a convex and a concave edge that meet go into two features."
     - p#draft-facts.hint
-    - p#draft-problem.issue.error: "The chamfer or fillet does not fit on the faces next to the edge: a face would vanish, or the tool reaches material it must not touch. (the face in refs would vanish: the fillet is larger than the face is wide) (the edge Plate – protější víko × Plate – bok, the face Plate – bok)"
+    - p#draft-problem.issue.error: "The chamfer or fillet does not fit on the faces next to the edge: a face would vanish, or the tool reaches material it must not touch. (the face in refs would vanish: the fillet is larger than the face is wide) (the edge Plate – opposite cap × Plate – side, the face Plate – side)"
     - div.buttons
     -   button.primary: "OK"
-    -   button: "Zrušit"
-  status: Fillet přidáno.
+    -   button: "Cancel"
+  status: Fillet added.
   view: 3 scene(s) set
   scene:
     + line #26303c width 1.5: 264 numbers, sum 10897.497

@@ -92,7 +92,7 @@ export class App implements SketchHost, SceneHost {
     // tažení přerušené systémem (ztráta ukazatele) se zahodí; po běžném puštění už žádné neběží
     for (const type of ['pointercancel', 'lostpointercapture']) canvas.addEventListener(type, () => this.cancelDrag() && this.refresh());
     window.addEventListener('keydown', (event) => this.onKey(event));
-    this.say('Začněte skicou: tlačítko Skica a výběr roviny.');
+    this.say('Start with a sketch: the Sketch button and a choice of plane.');
     this.refresh();
     this.fit();
   }
@@ -189,7 +189,7 @@ export class App implements SketchHost, SceneHost {
     if (this.bridge) {
       this.bridge.stop();
       this.bridge = undefined;
-      return this.say('Propojení s AI vypnuto.');
+      return this.say('Link to the AI turned off.');
     }
     let restore: (() => void) | undefined;
     this.bridge = connectBridge(this.engine, {
@@ -197,13 +197,13 @@ export class App implements SketchHost, SceneHost {
       host: { engine: this.engine, view: this.pictures },
       onStatus: (status) => {
         this.bridgeStatus = status;
-        if (status === 'connected') this.say('Propojeno s MCP serverem: AI vidí a mění tento dokument.');
-        else if (status === 'connecting') this.say('Čekám na MCP server (spouští ho klient AI)…');
+        if (status === 'connected') this.say('Linked to the MCP server: the AI sees and changes this document.');
+        else if (status === 'connecting') this.say('Waiting for the MCP server (the AI client starts it)…');
         this.renderToolbar();
       },
       onDisplaced: () => {
         this.bridge = undefined;
-        this.say('K AI se připojila jiná aplikace (jiné okno nebo záložka); tady je propojení vypnuté.', true);
+        this.say('Another app (another window or tab) has linked to the AI; the link is off here.', true);
       },
       // Změna od AI pod rozpracovanou operací (vysunutí, rovina) by jí vzala půdu, proto se
       // operace ruší ještě před změnou; jen když příkaz dokument opravdu změní. Načtení jiného
@@ -238,7 +238,7 @@ export class App implements SketchHost, SceneHost {
           restore = undefined;
           this.refresh();
         }
-        this.say(outcome.ok ? `AI: ${name === '_load' ? 'otevřen dokument' : name}` : `AI: ${name === '_load' ? 'otevření dokumentu' : name} selhalo: ${outcome.error}`, !outcome.ok);
+        this.say(outcome.ok ? `AI: ${name === '_load' ? 'document opened' : name}` : `AI: ${name === '_load' ? 'opening the document' : name} failed: ${outcome.error}`, !outcome.ok);
       },
     });
   }
@@ -369,22 +369,22 @@ export class App implements SketchHost, SceneHost {
 
     const groups = [
       group(
-        button('Nový', () => this.newDocument(), { title: 'Prázdný dokument' }),
-        button('Otevřít', () => file.click()),
-        button('Uložit', () => download('model.trymesh.json', this.engine.save(), 'application/json')),
+        button('New', () => this.newDocument(), { title: 'Empty document' }),
+        button('Open', () => file.click()),
+        button('Save', () => download('model.trymesh.json', this.engine.save(), 'application/json')),
         // the printed bodies into one file (D48); a reference or auxiliary body by the link of its line
         button('Export STL', () => download('model.stl', new Uint8Array(this.engine.exportMesh('stl')), 'model/stl'), { disabled: printedBodies(state.evaluation.bodyProperties).length === 0 }),
         file,
       ),
       group(
-        button(this.bridgeStatus === 'connected' ? 'AI: připojeno' : this.bridgeStatus === 'connecting' ? 'AI: čeká…' : 'AI', () => this.toggleBridge(), {
-          title: 'Propojit s MCP serverem (packages/mcp): AI pak čte a mění dokument otevřený v aplikaci',
+        button(this.bridgeStatus === 'connected' ? 'AI: linked' : this.bridgeStatus === 'connecting' ? 'AI: waiting…' : 'AI', () => this.toggleBridge(), {
+          title: 'Link to the MCP server (packages/mcp): the AI then reads and changes the document open in the app',
           active: this.bridgeStatus !== 'off',
         }),
       ),
       group(
-        button('↶ Zpět', () => this.engine.undo(), { disabled: !state.canUndo || drafting, title: 'Ctrl+Z' }),
-        button('↷ Znovu', () => this.engine.redo(), { disabled: !state.canRedo || drafting, title: 'Ctrl+Shift+Z' }),
+        button('↶ Undo', () => this.engine.undo(), { disabled: !state.canUndo || drafting, title: 'Ctrl+Z' }),
+        button('↷ Redo', () => this.engine.redo(), { disabled: !state.canRedo || drafting, title: 'Ctrl+Shift+Z' }),
       ),
     ];
     if (m.kind === 'model') {
@@ -403,22 +403,22 @@ export class App implements SketchHost, SceneHost {
       groups.push(
         group(...(Object.keys(SKETCH_TOOL_UI) as SketchToolName[]).map((tool) => button(SKETCH_TOOL_UI[tool].label, () => setTool(this, tool), { title: SKETCH_TOOL_UI[tool].hint, active: m.tool === tool }))),
         group(
-          button('Konstrukčně', () => ((m.construction = !m.construction), this.say(m.construction ? 'Nové křivky budou konstrukční: pomáhají s vazbami, ale netvoří profil.' : 'Nové křivky budou běžné.'), this.refresh()), {
-            title: 'Kreslicí nástroje zakládají konstrukční (pomocné) křivky',
+          button('Construction', () => ((m.construction = !m.construction), this.say(m.construction ? 'New curves will be construction curves: they help with constraints but do not form a profile.' : 'New curves will be normal.'), this.refresh()), {
+            title: 'The drawing tools create construction (helper) curves',
             active: m.construction === true,
           }),
         ),
-        group(h('button', { textContent: 'Dokončit skicu', className: 'primary', onclick: () => this.finishSketch() })),
+        group(h('button', { textContent: 'Finish sketch', className: 'primary', onclick: () => this.finishSketch() })),
       );
     }
     groups.push(
       group(
-        button('Zobrazit vše', () => this.fit()),
+        button('Fit all', () => this.fit()),
         button('Save picture', () => void this.savePicture(), {
           title: 'Save a picture of the model as PNG: the bodies that are shown, from the camera of the view and cut as the view is; without the selection, sketches, planes and dimensions',
           disabled: Object.keys(this.view().evaluation.bodies).every((body) => this.bodyHidden(body)),
         }),
-        button('Základní roviny', () => ((this.showBasePlanes = !this.showBasePlanes), this.refresh()), { active: this.showBasePlanes, title: 'Zobrazit nebo skrýt roviny XY, XZ, YZ' }),
+        button('Base planes', () => ((this.showBasePlanes = !this.showBasePlanes), this.refresh()), { active: this.showBasePlanes, title: 'Show or hide the planes XY, XZ, YZ' }),
       ),
     );
     byId('toolbar').replaceChildren(...groups);
@@ -428,7 +428,7 @@ export class App implements SketchHost, SceneHost {
     this.resetUi();
     this.engine.load(JSON.stringify(emptyDocument()));
     this.bridge?.documentReplaced();
-    this.say('Nový dokument.');
+    this.say('New document.');
   }
 
   private async open(input: HTMLInputElement): Promise<void> {
@@ -439,11 +439,11 @@ export class App implements SketchHost, SceneHost {
     const result = this.engine.load(text);
     if (result.ok) {
       this.bridge?.documentReplaced();
-      this.say('Dokument načten.');
+      this.say('Document loaded.');
       return this.fit();
     }
     restore();
-    this.say(`Soubor nejde otevřít: ${result.error.message}`, true);
+    this.say(`The file cannot be opened: ${result.error.message}`, true);
   }
 
   // Vrátí UI do výchozího stavu a dá funkci, která původní stav obnoví.
@@ -472,8 +472,8 @@ export class App implements SketchHost, SceneHost {
     const markerIndex = this.insertIndex();
     const editing: Id | undefined = this.mode.kind === 'sketch' ? this.mode.id : isDraft(this.mode) ? this.mode.draft.id : undefined;
     const busy = this.mode.kind !== 'model';
-    const rows: HTMLElement[] = [h('h2', {}, 'Časová osa')];
-    const markerRow = () => h('div', { className: 'marker', title: 'Sem se vkládají nové prvky' }, 'zde se vkládá');
+    const rows: HTMLElement[] = [h('h2', {}, 'Timeline')];
+    const markerRow = () => h('div', { className: 'marker', title: 'New features are inserted here' }, 'insert here');
 
     const bodiless = (f: Feature): boolean => !uiOf(f.type).hideable(f);
     full.document.features.forEach((f, index) => {
@@ -516,9 +516,9 @@ export class App implements SketchHost, SceneHost {
           },
           bodiless(f),
         ),
-        icon('↑', 'Posunout dřív', () => this.run({ type: 'moveFeature', id: f.id, index: index - 1 }), index === 0),
-        icon('↓', 'Posunout později', () => this.run({ type: 'moveFeature', id: f.id, index: index + 1 }), index === full.document.features.length - 1),
-        icon('⇤', 'Vrátit model sem: další prvky se vloží za tento', () => {
+        icon('↑', 'Move earlier', () => this.run({ type: 'moveFeature', id: f.id, index: index - 1 }), index === 0),
+        icon('↓', 'Move later', () => this.run({ type: 'moveFeature', id: f.id, index: index + 1 }), index === full.document.features.length - 1),
+        icon('⇤', 'Roll the model back to here: further features are inserted after this one', () => {
           this.marker = index === full.document.features.length - 1 ? null : f.id;
           this.refresh();
         }),
@@ -526,8 +526,8 @@ export class App implements SketchHost, SceneHost {
       rows.push(row);
       if (index + 1 === markerIndex && markerIndex < full.document.features.length) rows.push(markerRow());
     });
-    if (full.document.features.length === 0) rows.push(h('p', { className: 'hint' }, 'Zatím prázdná. Nové prvky se objeví zde.'));
-    else if (this.marker) rows.push(h('button', { className: 'link', textContent: 'Zobrazit celý model', disabled: busy, onclick: () => ((this.marker = null), this.refresh()) }));
+    if (full.document.features.length === 0) rows.push(h('p', { className: 'hint' }, 'Empty so far. New features will appear here.'));
+    else if (this.marker) rows.push(h('button', { className: 'link', textContent: 'Show the whole model', disabled: busy, onclick: () => ((this.marker = null), this.refresh()) }));
     byId('timeline').replaceChildren(...rows);
   }
 
@@ -563,11 +563,11 @@ export class App implements SketchHost, SceneHost {
   }
 
   describe(pick: Pick): string {
-    if (pick.kind === 'plane') return pick.ref.kind === 'base' ? `Rovina ${pick.ref.plane}` : pick.ref.kind === 'plane' ? `Rovina „${this.nameOf(pick.ref.feature)}“` : 'Rovina';
+    if (pick.kind === 'plane') return pick.ref.kind === 'base' ? `Plane ${pick.ref.plane}` : pick.ref.kind === 'plane' ? `Plane "${this.nameOf(pick.ref.feature)}"` : 'Plane';
     const face = (name: FaceName) => faceLabel(name, this.featureNames, (id) => insertedFeature(this.doc, id)?.feature.type);
-    if (pick.kind === 'face') return `Stěna: ${face(pick.name)}${pick.planar ? '' : ' (není rovinná)'}`;
-    const kinds: Record<EdgeKind, string> = { line: 'úsečka', circle: 'kružnice', coplanar: 'v ploše', other: 'obecná křivka' };
-    return `Hrana (${kinds[pick.edgeKind]}): ${face(pick.name.a)} × ${face(pick.name.b)}`;
+    if (pick.kind === 'face') return `Face: ${face(pick.name)}${pick.planar ? '' : ' (not planar)'}`;
+    const kinds: Record<EdgeKind, string> = { line: 'line', circle: 'circle', coplanar: 'in the surface', other: 'general curve' };
+    return `Edge (${kinds[pick.edgeKind]}): ${face(pick.name.a)} × ${face(pick.name.b)}`;
   }
 
   planeRefOf(pick: Pick | undefined): PlaneRef | undefined {
@@ -747,7 +747,7 @@ export class App implements SketchHost, SceneHost {
     const ref = this.planeRefOf(pick);
     if (this.pending) {
       const what = this.pending;
-      if (!ref) this.say('Vyberte rovinu nebo rovinnou stěnu.', true);
+      if (!ref) this.say('Select a plane or a planar face.', true);
       else if (!this.usePlane(ref)) {
         this.pending = what; // engine výběr odmítl (zpráva je ve stavovém řádku); čeká se na jiný
         this.refresh();
@@ -767,7 +767,7 @@ export class App implements SketchHost, SceneHost {
     const drafting = isDraft(m);
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
       event.preventDefault();
-      if (drafting) this.say('Nejdřív potvrďte nebo zrušte rozpracovaný prvek.', true);
+      if (drafting) this.say('First confirm or cancel the feature in progress.', true);
       else if (event.shiftKey) this.engine.redo();
       else this.engine.undo();
     } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'y') {
@@ -807,7 +807,7 @@ export class App implements SketchHost, SceneHost {
     if (ref && this.usePlane(ref)) return;
     // bez použitelného výběru (nebo když ho engine odmítl) se čeká na kliknutí v pohledu
     this.pending = what;
-    if (!ref) this.say('Vyberte rovinu nebo rovinnou stěnu.');
+    if (!ref) this.say('Select a plane or a planar face.');
     this.refresh();
   }
 
@@ -837,7 +837,7 @@ export class App implements SketchHost, SceneHost {
 
   private finishSketch(): void {
     this.setMode({ kind: 'model' });
-    this.say('Skica dokončena.');
+    this.say('Sketch finished.');
   }
 
   // ----- what the sketch mode uses of the app (SketchHost)

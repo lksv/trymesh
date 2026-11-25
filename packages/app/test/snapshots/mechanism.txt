@@ -1,6 +1,6 @@
 
 === 1. a model of three bodies: the panel of the mechanism offers a new link
-  engine: execute({"type":"batch","commands":[{"type":"addFeature","feature":{"id":"s1","name":"Skica 1","suppressed":false,"type":"sketch","plane":{"kind":"base","plane":"XY"},"points":{},"radii":{},"curves":{},"constraints":{},"external":{},"solved":{"inputs":"","external":{}}},"index":0}]}) -> ok
+  engine: execute({"type":"batch","commands":[{"type":"addFeature","feature":{"id":"s1","name":"Sketch 1","suppressed":false,"type":"sketch","plane":{"kind":"base","plane":"XY"},"points":{},"radii":{},"curves":{},"constraints":{},"external":{},"solved":{"inputs":"","external":{}}},"index":0}]}) -> ok
   engine: getState("s1")
   engine: diagnoseSketch("s1")  (x2)
   engine: getState("s1")
@@ -16,19 +16,19 @@
   engine: execute({"type":"batch","commands":[{"type":"addPoint","sketch":"s1","id":"p4","x":90,"y":15},{"type":"addCurve","sketch":"s1","id":"c5","curve":{"type":"circle","center":"p4"},"radius":5}]}) -> ok
   engine: diagnoseSketch("s1")
   engine: getState("s1")  (x9)
-  engine: preview({"type":"addFeature","feature":{"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"operation":"new"},"index":1}, "e1") -> ok
+  engine: preview({"type":"addFeature","feature":{"id":"e1","name":"Extrude 1","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"operation":"new"},"index":1}, "e1") -> ok
   engine: getState("s1")  (x6)
-  engine: execute({"type":"addFeature","feature":{"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"operation":"new"},"index":1}) -> ok
+  engine: execute({"type":"addFeature","feature":{"id":"e1","name":"Extrude 1","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"operation":"new"},"index":1}) -> ok
   engine: getState("s1")
   engine: getState("e1")  (x3)
   engine: getState("s1")  (x5)
-  engine: preview({"type":"addFeature","feature":{"id":"e2","name":"Vysunutí 2","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c5"]}]},"operation":"new"},"index":2}, "e2") -> ok
+  engine: preview({"type":"addFeature","feature":{"id":"e2","name":"Extrude 2","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c5"]}]},"operation":"new"},"index":2}, "e2") -> ok
   engine: getState("e1")
   engine: getState("s1")  (x2)
   engine: getState("e1")
   engine: getState("s1")  (x2)
-  engine: execute({"type":"addFeature","feature":{"id":"e2","name":"Vysunutí 2","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c5"]}]},"operation":"new"},"index":2}) -> ok
-  engine: execute({"type":"batch","commands":[{"type":"addFeature","feature":{"id":"s2","name":"Skica 2","suppressed":false,"type":"sketch","plane":{"kind":"base","plane":"XY"},"points":{},"radii":{},"curves":{},"constraints":{},"external":{},"solved":{"inputs":"","external":{}}},"index":3}]}) -> ok
+  engine: execute({"type":"addFeature","feature":{"id":"e2","name":"Extrude 2","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c5"]}]},"operation":"new"},"index":2}) -> ok
+  engine: execute({"type":"batch","commands":[{"type":"addFeature","feature":{"id":"s2","name":"Sketch 2","suppressed":false,"type":"sketch","plane":{"kind":"base","plane":"XY"},"points":{},"radii":{},"curves":{},"constraints":{},"external":{},"solved":{"inputs":"","external":{}}},"index":3}]}) -> ok
   engine: getState("s2")
   engine: diagnoseSketch("s2")  (x2)
   engine: getState("s2")
@@ -38,14 +38,14 @@
   engine: execute({"type":"batch","commands":[{"type":"addPoint","sketch":"s2","id":"p5","x":30,"y":10},{"type":"addPoint","sketch":"s2","id":"p6","x":60,"y":25},{"type":"addPoint","sketch":"s2","id":"p7","x":60,"y":10},{"type":"addPoint","sketch":"s2","id":"p8","x":30,"y":25},{"type":"addCurve","sketch":"s2","id":"c6","curve":{"type":"line","a":"p5","b":"p7"}},{"type":"addConstraint","sketch":"s2","id":"k5","constraint":{"type":"horizontal","line":"c6"}},{"type":"addCurve","sketch":"s2","id":"c7","curve":{"type":"line","a":"p7","b":"p6"}},{"type":"addConstraint","sketch":"s2","id":"k6","constraint":{"type":"vertical","line":"c7"}},{"type":"addCurve","sketch":"s2","id":"c8","curve":{"type":"line","a":"p6","b":"p8"}},{"type":"addConstraint","sketch":"s2","id":"k7","constraint":{"type":"horizontal","line":"c8"}},{"type":"addCurve","sketch":"s2","id":"c9","curve":{"type":"line","a":"p8","b":"p5"}},{"type":"addConstraint","sketch":"s2","id":"k8","constraint":{"type":"vertical","line":"c9"}}]}) -> ok
   engine: diagnoseSketch("s2")
   engine: getState("s2")  (x2)
-  engine: preview({"type":"addFeature","feature":{"id":"e3","name":"Vysunutí 3","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s2","regions":[{"outerLoop":["c6","c7","c8","c9"]}]},"operation":"new"},"index":4}, "e3") -> ok
+  engine: preview({"type":"addFeature","feature":{"id":"e3","name":"Extrude 3","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s2","regions":[{"outerLoop":["c6","c7","c8","c9"]}]},"operation":"new"},"index":4}, "e3") -> ok
   engine: getState("s2")  (x3)
-  engine: preview({"type":"addFeature","feature":{"id":"e3","name":"Vysunutí 3","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":8},"profile":{"type":"regions","sketch":"s2","regions":[{"outerLoop":["c6","c7","c8","c9"]}]},"operation":"new"},"index":4}, "e3") -> ok
+  engine: preview({"type":"addFeature","feature":{"id":"e3","name":"Extrude 3","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":8},"profile":{"type":"regions","sketch":"s2","regions":[{"outerLoop":["c6","c7","c8","c9"]}]},"operation":"new"},"index":4}, "e3") -> ok
   engine: getState("s2")  (x4)
-  engine: execute({"type":"addFeature","feature":{"id":"e3","name":"Vysunutí 3","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":8},"profile":{"type":"regions","sketch":"s2","regions":[{"outerLoop":["c6","c7","c8","c9"]}]},"operation":"new"},"index":4}) -> ok
+  engine: execute({"type":"addFeature","feature":{"id":"e3","name":"Extrude 3","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":8},"profile":{"type":"regions","sketch":"s2","regions":[{"outerLoop":["c6","c7","c8","c9"]}]},"operation":"new"},"index":4}) -> ok
   features: s1, e1, e2, s2, e3
   feature s1:
-      {"id":"s1","name":"Skica 1","suppressed":false,"type":"sketch","plane":{"kind":"base","plane":"XY"}}
+      {"id":"s1","name":"Sketch 1","suppressed":false,"type":"sketch","plane":{"kind":"base","plane":"XY"}}
       point p1: {"x":40,"y":30}
       point p2: {"x":40,"y":0}
       point p3: {"x":0,"y":30}
@@ -61,11 +61,11 @@
       constraint k3: {"type":"horizontal","line":"c3"}
       constraint k4: {"type":"vertical","line":"c4"}
   feature e1:
-      {"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"extent":{"type":"distance","start":0,"distance":10},"operation":"new"}
+      {"id":"e1","name":"Extrude 1","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"extent":{"type":"distance","start":0,"distance":10},"operation":"new"}
   feature e2:
-      {"id":"e2","name":"Vysunutí 2","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c5"]}]},"extent":{"type":"distance","start":0,"distance":10},"operation":"new"}
+      {"id":"e2","name":"Extrude 2","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c5"]}]},"extent":{"type":"distance","start":0,"distance":10},"operation":"new"}
   feature s2:
-      {"id":"s2","name":"Skica 2","suppressed":false,"type":"sketch","plane":{"kind":"base","plane":"XY"}}
+      {"id":"s2","name":"Sketch 2","suppressed":false,"type":"sketch","plane":{"kind":"base","plane":"XY"}}
       point p5: {"x":30,"y":10}
       point p6: {"x":60,"y":25}
       point p7: {"x":60,"y":10}
@@ -79,28 +79,28 @@
       constraint k7: {"type":"horizontal","line":"c8"}
       constraint k8: {"type":"vertical","line":"c9"}
   feature e3:
-      {"id":"e3","name":"Vysunutí 3","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s2","regions":[{"outerLoop":["c6","c7","c8","c9"]}]},"extent":{"type":"distance","start":0,"distance":8},"operation":"new"}
+      {"id":"e3","name":"Extrude 3","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s2","regions":[{"outerLoop":["c6","c7","c8","c9"]}]},"extent":{"type":"distance","start":0,"distance":8},"operation":"new"}
   document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":10}
   toolbar:
       div.group
-        button title="Prázdný dokument": "Nový"
-        button: "Otevřít"
-        button: "Uložit"
+        button title="Empty document": "New"
+        button: "Open"
+        button: "Save"
         button: "Export STL"
         input type=file hidden
       div.group
-        button title="Propojit s MCP serverem (packages/mcp): AI pak čte a mění dokument otevřený v aplikaci": "AI"
+        button title="Link to the MCP server (packages/mcp): the AI then reads and changes the document open in the app": "AI"
       div.group
-        button title="Ctrl+Z": "↶ Zpět"
-        button disabled title="Ctrl+Shift+Z": "↷ Znovu"
+        button title="Ctrl+Z": "↶ Undo"
+        button disabled title="Ctrl+Shift+Z": "↷ Redo"
       div.group
-        button title="Nová skica na rovině nebo rovinné stěně": "Skica"
-        button title="Vysunout oblasti skici": "Vysunutí"
+        button title="A new sketch on a plane or a planar face": "Sketch"
+        button title="Extrude regions of a sketch": "Extrude"
         button title="Turn regions of a sketch about an axis in its plane": "Revolve"
         button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
         button title="Chamfer edges of a body by a distance": "Chamfer"
         button title="Round edges of a body by a radius": "Fillet"
-        button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
+        button title="A plane offset from a plane or a planar face": "Plane"
         button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
         button title="Place a stored mesh (a bought part read from an STL file) as a body": "Mesh"
         button title="Insert another document (a part saved as a document file) as a part of this one": "Insert"
@@ -137,49 +137,49 @@
           option value="mjcf" title="The mechanism as a MuJoCo model: a folder with robot.xml and one binary STL per body in metres in the frame of its link. One tree from one root link, welded to the world; the frame of a link at the axis of its joint with the axes of the model; the mass, centre of mass and inertia of each link from its bodies (query mass); a mesh geom per body, the two links of a joint excluded from contact; a motor per joint with an `effort` (with `gearRatio`), `rotorInertia · gearRatio²` as the armature of the joint, and the pose of the document as the keyframe `pose`.": "MJCF (MuJoCo)"
         button title="Check which bodies share a volume": "Collisions"
       div.group
-        button: "Zobrazit vše"
+        button: "Fit all"
         button title="Save a picture of the model as PNG: the bodies that are shown, from the camera of the view and cut as the view is; without the selection, sketches, planes and dimensions": "Save picture"
-        button.active title="Zobrazit nebo skrýt roviny XY, XZ, YZ": "Základní roviny"
+        button.active title="Show or hide the planes XY, XZ, YZ": "Base planes"
   timeline:
-      h2: "Časová osa"
+      h2: "Timeline"
       div.row.ok
         span.dot: "●"
-        span.name: "Skica 1"
+        span.name: "Sketch 1"
         button.icon title="Hide or show": "👁"
-        button.icon disabled title="Posunout dřív": "↑"
-        button.icon title="Posunout později": "↓"
-        button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+        button.icon disabled title="Move earlier": "↑"
+        button.icon title="Move later": "↓"
+        button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
       div.row.ok
         span.dot: "●"
-        span.name: "Vysunutí 1"
+        span.name: "Extrude 1"
         button.icon title="Hide or show": "👁"
-        button.icon title="Posunout dřív": "↑"
-        button.icon title="Posunout později": "↓"
-        button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+        button.icon title="Move earlier": "↑"
+        button.icon title="Move later": "↓"
+        button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
       div.row.ok
         span.dot: "●"
-        span.name: "Vysunutí 2"
+        span.name: "Extrude 2"
         button.icon title="Hide or show": "👁"
-        button.icon title="Posunout dřív": "↑"
-        button.icon title="Posunout později": "↓"
-        button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+        button.icon title="Move earlier": "↑"
+        button.icon title="Move later": "↓"
+        button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
       div.row.ok
         span.dot: "●"
-        span.name: "Skica 2"
+        span.name: "Sketch 2"
         button.icon title="Hide or show": "👁"
-        button.icon title="Posunout dřív": "↑"
-        button.icon title="Posunout později": "↓"
-        button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+        button.icon title="Move earlier": "↑"
+        button.icon title="Move later": "↓"
+        button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
       div.row.ok
         span.dot: "●"
-        span.name: "Vysunutí 3"
+        span.name: "Extrude 3"
         button.icon title="Hide or show": "👁"
-        button.icon title="Posunout dřív": "↑"
-        button.icon disabled title="Posunout později": "↓"
-        button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+        button.icon title="Move earlier": "↑"
+        button.icon disabled title="Move later": "↓"
+        button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
   panel:
       h2: "Model"
-      p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
+      p.hint: "The right mouse button orbits, the wheel zooms, the middle button (or Shift + right) pans. On a touchpad: Alt/Option + drag orbits, Alt + Shift + drag pans, two fingers zoom. A feature on the timeline is edited by a double click."
       h2: "Parameters (0)"
       div.constraint
         input.pname value="" placeholder="name"
@@ -197,7 +197,7 @@
         button title="Bodies that move as one piece": "New link"
         button disabled title="A joint moves its child link against its parent link": "New joint"
         button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
-  status: Vysunutí přidáno.
+  status: Extrude added.
   view: 41 scene(s) set
   scene:
       bodies: e1, e2, e3
@@ -229,13 +229,13 @@
     +   legend: "Bodies"
     +   label.check
     +     input type=checkbox unchecked
-    +     "Vysunutí 1"
+    +     "Extrude 1"
     +   label.check
     +     input type=checkbox unchecked
-    +     "Vysunutí 2"
+    +     "Extrude 2"
     +   label.check
     +     input type=checkbox unchecked
-    +     "Vysunutí 3"
+    +     "Extrude 3"
     +   button.primary: "OK"
     +   button: "Cancel"
     -   button title="Bodies that move as one piece": "New link"
@@ -252,8 +252,8 @@
     +     span.name: "Base (link1)"
     +     button.link title="Change the name and the bodies of the link": "Edit"
     +     button.link title="Remove the link; a link a joint names cannot be removed": "Remove"
-    +   p.hint: "Bodies: Vysunutí 1"
-    + p.hint: "Bodies in no link (they stand as modelled): Vysunutí 2, Vysunutí 3"
+    +   p.hint: "Bodies: Extrude 1"
+    + p.hint: "Bodies in no link (they stand as modelled): Extrude 2, Extrude 3"
     - p.hint: "Links are bodies that move as one piece; a joint moves its child link against its parent. The model as modelled is the zero of every joint."
     - h2: "New link"
     - label
@@ -266,13 +266,13 @@
     -   legend: "Bodies"
     -   label.check
     -     input type=checkbox unchecked
-    -     "Vysunutí 1"
+    -     "Extrude 1"
     -   label.check
     -     input type=checkbox unchecked
-    -     "Vysunutí 2"
+    -     "Extrude 2"
     -   label.check
     -     input type=checkbox unchecked
-    -     "Vysunutí 3"
+    -     "Extrude 3"
     +   button title="Bodies that move as one piece": "New link"
     +   button disabled title="A joint moves its child link against its parent link": "New joint"
     +   button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
@@ -290,9 +290,9 @@
     +     span.name: "Arm (link2)"
     +     button.link title="Change the name and the bodies of the link": "Edit"
     +     button.link title="Remove the link; a link a joint names cannot be removed": "Remove"
-    +   p.hint: "Bodies: Vysunutí 3"
-    + p.hint: "Bodies in no link (they stand as modelled): Vysunutí 2"
-    - p.hint: "Bodies in no link (they stand as modelled): Vysunutí 2, Vysunutí 3"
+    +   p.hint: "Bodies: Extrude 3"
+    + p.hint: "Bodies in no link (they stand as modelled): Extrude 2"
+    - p.hint: "Bodies in no link (they stand as modelled): Extrude 2, Extrude 3"
     +   button title="A joint moves its child link against its parent link": "New joint"
     -   button disabled title="A joint moves its child link against its parent link": "New joint"
   status: A link Arm made.
@@ -386,13 +386,13 @@
     +             span.name: "Arm (link2)"
     +             button.link title="Change the name and the bodies of the link": "Edit"
     +             button.link title="Remove the link; a link a joint names cannot be removed": "Remove"
-    +           p.hint: "Bodies: Vysunutí 3"
+    +           p.hint: "Bodies: Extrude 3"
     - div.mech-link
     -   div.mech-head
     -     span.name: "Arm (link2)"
     -     button.link title="Change the name and the bodies of the link": "Edit"
     -     button.link title="Remove the link; a link a joint names cannot be removed": "Remove"
-    -   p.hint: "Bodies: Vysunutí 3"
+    -   p.hint: "Bodies: Extrude 3"
     - h2: "New joint"
     - label
     -   "ID"
@@ -492,8 +492,8 @@
   engine: undo()
   mechanism: {"links":{"link1":{"name":"Base","bodies":["e1"]},"link2":{"name":"Arm","bodies":["e3"]}},"joints":{"joint1":{"type":"revolute","name":"Elbow","parent":"link1","child":"link2","axis":{"kind":"base","axis":"Z"},"lower":-1.5707963267948966,"upper":1.5707963267948966,"value":0}}}
   toolbar:
-    +   button title="Ctrl+Shift+Z": "↷ Znovu"
-    -   button disabled title="Ctrl+Shift+Z": "↷ Znovu"
+    +   button title="Ctrl+Shift+Z": "↷ Redo"
+    -   button disabled title="Ctrl+Shift+Z": "↷ Redo"
   panel:
     +           input value="0"
     -           input value="90"
@@ -511,8 +511,8 @@
   engine: redo()
   mechanism: {"links":{"link1":{"name":"Base","bodies":["e1"]},"link2":{"name":"Arm","bodies":["e3"]}},"joints":{"joint1":{"type":"revolute","name":"Elbow","parent":"link1","child":"link2","axis":{"kind":"base","axis":"Z"},"lower":-1.5707963267948966,"upper":1.5707963267948966,"value":1.5707963267948966}}}
   toolbar:
-    +   button disabled title="Ctrl+Shift+Z": "↷ Znovu"
-    -   button title="Ctrl+Shift+Z": "↷ Znovu"
+    +   button disabled title="Ctrl+Shift+Z": "↷ Redo"
+    -   button title="Ctrl+Shift+Z": "↷ Redo"
   panel:
     +           input value="90"
     -           input value="0"
@@ -528,15 +528,15 @@
 
 === 11. a click where the turned arm is drawn picks its top face
   panel:
-    + h2: "Výběr"
-    + p: "Stěna: Vysunutí 3 – protější víko"
+    + h2: "Selection"
+    + p: "Face: Extrude 3 – opposite cap"
     + p.hint.body
-    +   "Vysunutí 3: 3600 mm³, 30 × 15 × 8 mm"
+    +   "Extrude 3: 3600 mm³, 30 × 15 × 8 mm"
     +   button.link title="This body alone, whatever its use, as it is at the end of the timeline": "Export STL"
-    + h2: "Properties of Vysunutí 3"
+    + h2: "Properties of Extrude 3"
     + label
     +   "Name"
-    +   input value="" placeholder="Vysunutí 3"
+    +   input value="" placeholder="Extrude 3"
     + label
     +   "Use"
     +   select value=""
@@ -576,15 +576,15 @@
 
 === 12. a picture of the model: the arm in the pose
   panel:
-    - h2: "Výběr"
-    - p: "Stěna: Vysunutí 3 – protější víko"
+    - h2: "Selection"
+    - p: "Face: Extrude 3 – opposite cap"
     - p.hint.body
-    -   "Vysunutí 3: 3600 mm³, 30 × 15 × 8 mm"
+    -   "Extrude 3: 3600 mm³, 30 × 15 × 8 mm"
     -   button.link title="This body alone, whatever its use, as it is at the end of the timeline": "Export STL"
-    - h2: "Properties of Vysunutí 3"
+    - h2: "Properties of Extrude 3"
     - label
     -   "Name"
-    -   input value="" placeholder="Vysunutí 3"
+    -   input value="" placeholder="Extrude 3"
     - label
     -   "Use"
     -   select value=""
@@ -656,7 +656,7 @@
     +   input type=checkbox checked
     -   input type=checkbox unchecked
     + div.row title="Highlight the two bodies. One reaches 4.667 mm into the other"
-    +   span.name: "Vysunutí 1 × Vysunutí 3"
+    +   span.name: "Extrude 1 × Extrude 3"
     +   small: "1200 mm³"
     - p.hint: "No two bodies collide; 3 pair(s) checked. Bodies that only touch do not count."
   status: Collisions: 1 pair(s) of bodies share a volume. · The view shows the model as modelled, as the answer of the query was asked.  [error]
@@ -688,7 +688,7 @@
     -   button.primary: "Ask again"
     -   button: "Close"
     - div.row title="Highlight the two bodies. One reaches 4.667 mm into the other"
-    -   span.name: "Vysunutí 1 × Vysunutí 3"
+    -   span.name: "Extrude 1 × Extrude 3"
     -   small: "1200 mm³"
   status: The view shows the pose of the mechanism.
   view: 1 scene(s) set
@@ -722,7 +722,7 @@
     +   button.primary: "Ask again"
     +   button: "Close"
     + div.row.selected title="Highlight the two bodies. One reaches 1.716 mm into the other"
-    +   span.name: "Vysunutí 1 × Vysunutí 3"
+    +   span.name: "Extrude 1 × Extrude 3"
     +   small: "23.55 mm³"
     +           input value="45"
     -           input value="90"
@@ -754,13 +754,13 @@
   engine: diagnoseSketch("s2")  (x2)
   mechanism: {"links":{"link1":{"name":"Base","bodies":["e1"]},"link2":{"name":"Arm","bodies":["e3"]}},"joints":{"joint1":{"type":"revolute","name":"Elbow","parent":"link1","child":"link2","axis":{"kind":"base","axis":"Z"},"lower":-1.5707963267948966,"upper":1.5707963267948966,"value":1.5707963267948966}}}
   toolbar:
-    +   button.active title="Klikněte na bod nebo křivku (Shift přidává). Bod lze táhnout.": "Výběr"
-    +   button title="Klikněte na místo bodu.": "Bod"
-    +   button title="Klikejte na konce úseček; řetěz ukončí Esc nebo napojení na existující bod.": "Úsečka"
-    +   button title="Klikněte na dva protilehlé rohy.": "Obdélník"
+    +   button.active title="Click a point or a curve (Shift adds). A point can be dragged.": "Select"
+    +   button title="Click the place of the point.": "Point"
+    +   button title="Click the ends of the lines; Esc or joining an existing point ends the chain.": "Line"
+    +   button title="Click two opposite corners.": "Rectangle"
     +   button title="Click the centre and then a vertex; the number of sides is set in the panel.": "Polygon"
-    +   button title="Klikněte na střed a pak na bod obvodu.": "Kružnice"
-    +   button title="Klikněte na střed, začátek a konec (proti směru hodin).": "Oblouk"
+    +   button title="Click the centre and then a point of the rim.": "Circle"
+    +   button title="Click the centre, the start and the end (counterclockwise).": "Arc"
     +   button title="Click the control points; Enter ends the spline, a click on the first point closes it, Esc drops it. Start at the end of a line and click on its extension to run on smoothly from it.": "Spline"
     +   button title="Click the point where two lines meet; the radius is set in the panel.": "Fillet"
     +   button title="Click the piece of a curve to remove.": "Trim"
@@ -769,23 +769,23 @@
     +   button title="Select the curves and points to copy, then click the line to mirror them about.": "Mirror"
     +   button title="Select the curves and points to copy, then click the line to repeat them along.": "Linear pattern"
     +   button title="Select the curves and points to copy, then click the point to turn them about.": "Circular pattern"
-    +   button title="Klikněte na hranu tělesa (úsečku nebo kružnici).": "Promítnout"
+    +   button title="Click an edge of a body (a line or a circle).": "Project"
     +   button title="Click a point or a curve of an earlier sketch (dashed) to project it; the options are in the panel.": "From sketch"
     + div.group
-    +   button title="Kreslicí nástroje zakládají konstrukční (pomocné) křivky": "Konstrukčně"
-    -   button title="Nová skica na rovině nebo rovinné stěně": "Skica"
-    -   button title="Vysunout oblasti skici": "Vysunutí"
+    +   button title="The drawing tools create construction (helper) curves": "Construction"
+    -   button title="A new sketch on a plane or a planar face": "Sketch"
+    -   button title="Extrude regions of a sketch": "Extrude"
     -   button title="Turn regions of a sketch about an axis in its plane": "Revolve"
     -   button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
     -   button title="Chamfer edges of a body by a distance": "Chamfer"
     -   button title="Round edges of a body by a radius": "Fillet"
-    -   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
+    -   button title="A plane offset from a plane or a planar face": "Plane"
     -   button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
     -   button title="Place a stored mesh (a bought part read from an STL file) as a body": "Mesh"
     -   button title="Insert another document (a part saved as a document file) as a part of this one": "Insert"
     -   button title="Join, subtract or intersect finished bodies; subtract with a clearance": "Combine"
     -   button title="Cut a body into two by a plane; both parts get the cut face": "Split"
-    +   button.primary: "Dokončit skicu"
+    +   button.primary: "Finish sketch"
     -   select value="" title="Ask a query about the model"
     -     option selected value="": "Queries…"
     -     option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
@@ -818,69 +818,69 @@
   timeline:
     +   button.icon disabled title="Hide or show": "👁"
     -   button.icon title="Hide or show": "👁"
-    +   button.icon disabled title="Posunout později": "↓"
-    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
-    -   button.icon title="Posunout později": "↓"
-    -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon disabled title="Move later": "↓"
+    +   button.icon disabled title="Roll the model back to here: further features are inserted after this one": "⇤"
+    -   button.icon title="Move later": "↓"
+    -   button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
     +   button.icon disabled title="Hide or show": "👁"
-    +   button.icon disabled title="Posunout dřív": "↑"
-    +   button.icon disabled title="Posunout později": "↓"
-    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon disabled title="Move earlier": "↑"
+    +   button.icon disabled title="Move later": "↓"
+    +   button.icon disabled title="Roll the model back to here: further features are inserted after this one": "⇤"
     -   button.icon title="Hide or show": "👁"
-    -   button.icon title="Posunout dřív": "↑"
-    -   button.icon title="Posunout později": "↓"
-    -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon title="Move earlier": "↑"
+    -   button.icon title="Move later": "↓"
+    -   button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
     +   button.icon disabled title="Hide or show": "👁"
-    +   button.icon disabled title="Posunout dřív": "↑"
-    +   button.icon disabled title="Posunout později": "↓"
-    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon disabled title="Move earlier": "↑"
+    +   button.icon disabled title="Move later": "↓"
+    +   button.icon disabled title="Roll the model back to here: further features are inserted after this one": "⇤"
     + div.row.ok.selected.editing
     -   button.icon title="Hide or show": "👁"
-    -   button.icon title="Posunout dřív": "↑"
-    -   button.icon title="Posunout později": "↓"
-    -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon title="Move earlier": "↑"
+    -   button.icon title="Move later": "↓"
+    -   button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
     - div.row.ok
     +   button.icon disabled title="Hide or show": "👁"
-    +   button.icon disabled title="Posunout dřív": "↑"
-    +   button.icon disabled title="Posunout později": "↓"
-    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon disabled title="Move earlier": "↑"
+    +   button.icon disabled title="Move later": "↓"
+    +   button.icon disabled title="Roll the model back to here: further features are inserted after this one": "⇤"
     -   button.icon title="Hide or show": "👁"
-    -   button.icon title="Posunout dřív": "↑"
-    -   button.icon title="Posunout později": "↓"
-    -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon title="Move earlier": "↑"
+    -   button.icon title="Move later": "↓"
+    -   button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
     +   button.icon disabled title="Hide or show": "👁"
-    +   button.icon disabled title="Posunout dřív": "↑"
+    +   button.icon disabled title="Move earlier": "↑"
     -   button.icon title="Hide or show": "👁"
-    -   button.icon title="Posunout dřív": "↑"
-    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
-    -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon title="Move earlier": "↑"
+    +   button.icon disabled title="Roll the model back to here: further features are inserted after this one": "⇤"
+    -   button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
   panel:
-    + h2: "Skica: Skica 2"
+    + h2: "Sketch: Sketch 2"
     + div#sketch-status
-    +   p.badge.open: "Stupně volnosti: 4"
-    +   p.hint: "Uzavřených oblastí: 1"
-    + p.hint: "Volné (v pohledu modře): body p5, p6, p7, p8."
+    +   p.badge.open: "Degrees of freedom: 4"
+    +   p.hint: "Closed regions: 1"
+    + p.hint: "Free (blue in the view): points p5, p6, p7, p8."
     + div.buttons
-    +   button title="Vybere volné body a kružnice s volným poloměrem": "Vybrat volné"
+    +   button title="Selects the free points and the circles with a free radius": "Select free"
     + div.buttons
     +   button title="Read a DXF or SVG file into this sketch as an outline of fixed curves": "Import an outline…"
     +   input#outline-file type=file hidden
-    + h2: "Výběr (0)"
+    + h2: "Selection (0)"
     + div.buttons
-    +   button disabled title="Dva body leží na stejném místě.": "Totožné"
-    +   button disabled title="Bod leží na úsečce (i na jejím prodloužení), kružnici nebo oblouku.": "Bod na křivce"
-    +   button disabled title="Úsečka je rovnoběžná s osou X skici.": "Vodorovně"
-    +   button disabled title="Úsečka je rovnoběžná s osou Y skici.": "Svisle"
-    +   button disabled title="Dvě úsečky jsou rovnoběžné.": "Rovnoběžně"
-    +   button disabled title="Dvě úsečky jsou na sebe kolmé.": "Kolmo"
-    +   button disabled title="Dvě úsečky mají stejnou délku.": "Stejná délka"
-    +   button disabled title="Úsečka se dotýká kružnice nebo oblouku, nebo se dotýkají dvě kružnice či oblouky.": "Tečně"
-    +   button disabled title="Body a, b jsou souměrné podle přímky, na které leží úsečka line (osa souměrnosti).": "Souměrně"
-    +   button disabled title="Bod leží přesně v polovině úsečky.": "Střed úsečky"
+    +   button disabled title="Two points lie at the same place.": "Coincident"
+    +   button disabled title="A point lies on a line (also on its extension), a circle or an arc.": "Point on curve"
+    +   button disabled title="A line is parallel to the X axis of the sketch.": "Horizontal"
+    +   button disabled title="A line is parallel to the Y axis of the sketch.": "Vertical"
+    +   button disabled title="Two lines are parallel.": "Parallel"
+    +   button disabled title="Two lines are perpendicular to each other.": "Perpendicular"
+    +   button disabled title="Two lines have the same length.": "Equal length"
+    +   button disabled title="A line touches a circle or an arc, or two circles or arcs touch.": "Tangent"
+    +   button disabled title="Points a, b are symmetric about the infinite line on which the line `line` lies (the axis of symmetry).": "Symmetric"
+    +   button disabled title="A point lies exactly halfway along a line.": "Midpoint"
     +   button disabled title="Two circles or arcs have the same radius.": "Equal radius"
     +   button disabled title="An own point of the sketch lies at the coordinates x, y of the sketch.": "Fixed point"
     - h2: "Model"
-    - p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
+    - p.hint: "The right mouse button orbits, the wheel zooms, the middle button (or Shift + right) pans. On a touchpad: Alt/Option + drag orbits, Alt + Shift + drag pans, two fingers zoom. A feature on the timeline is edited by a double click."
     - h2 title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
     - label title="The bodies to check against each other; without it all bodies."
     -   "Bodies (optional)"
@@ -893,13 +893,13 @@
     - label.check title="Ask about the bodies where they are modelled, not where the pose of the mechanism puts them"
     -   input type=checkbox unchecked
     -   "As modelled"
-    +   button disabled title="Dva body nebo úsečka: vzdálenost; bod a úsečka: vzdálenost; dvě úsečky: úhel; kružnice: průměr; oblouk: poloměr": "Kóta"
-    +   button disabled title="Vodorovná vzdálenost dvou bodů nebo konců úsečky": "Kóta ↔"
-    +   button disabled title="Svislá vzdálenost dvou bodů nebo konců úsečky": "Kóta ↕"
+    +   button disabled title="Two points or a line: distance; a point and a line: distance; two lines: angle; a circle: diameter; an arc: radius": "Dimension"
+    +   button disabled title="Horizontal distance of two points or of the ends of a line": "Dimension ↔"
+    +   button disabled title="Vertical distance of two points or of the ends of a line": "Dimension ↕"
     -   button.primary: "Ask again"
     -   button: "Close"
     - div.row.selected title="Highlight the two bodies. One reaches 1.716 mm into the other"
-    -   span.name: "Vysunutí 1 × Vysunutí 3"
+    -   span.name: "Extrude 1 × Extrude 3"
     -   small: "23.55 mm³"
     - h2: "Parameters (0)"
     - div.constraint
@@ -918,7 +918,7 @@
     -     span.name: "Base (link1)"
     -     button.link title="Change the name and the bodies of the link": "Edit"
     -     button.link title="Remove the link; a link a joint names cannot be removed": "Remove"
-    -   p.hint: "Bodies: Vysunutí 1"
+    -   p.hint: "Bodies: Extrude 1"
     -   div.mech-children
     -     div.mech-joint
     -       div.mech-head
@@ -938,35 +938,35 @@
     -             span.name: "Arm (link2)"
     -             button.link title="Change the name and the bodies of the link": "Edit"
     -             button.link title="Remove the link; a link a joint names cannot be removed": "Remove"
-    -           p.hint: "Bodies: Vysunutí 3"
-    - p.hint: "Bodies in no link (they stand as modelled): Vysunutí 2"
-    +   button disabled: "Konstrukční"
-    +   button disabled title="Delete": "Smazat"
-    + h2: "Vazby a kóty (4)"
-    + div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    -           p.hint: "Bodies: Extrude 3"
+    - p.hint: "Bodies in no link (they stand as modelled): Extrude 2"
+    +   button disabled: "Construction"
+    +   button disabled title="Delete": "Delete"
+    + h2: "Constraints and dimensions (4)"
+    + div.constraint.clickable title="A click shows whether the constraint follows from others"
     +   span.name
-    +     "Vodorovně"
+    +     "Horizontal"
     +     small: "c6"
-    +   button.icon title="Smazat vazbu": "✕"
-    + div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    +   button.icon title="Delete the constraint": "✕"
+    + div.constraint.clickable title="A click shows whether the constraint follows from others"
     +   span.name
-    +     "Svisle"
+    +     "Vertical"
     +     small: "c7"
-    +   button.icon title="Smazat vazbu": "✕"
-    + div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    +   button.icon title="Delete the constraint": "✕"
+    + div.constraint.clickable title="A click shows whether the constraint follows from others"
     +   span.name
-    +     "Vodorovně"
+    +     "Horizontal"
     +     small: "c8"
-    +   button.icon title="Smazat vazbu": "✕"
-    + div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    +   button.icon title="Delete the constraint": "✕"
+    + div.constraint.clickable title="A click shows whether the constraint follows from others"
     +   span.name
-    +     "Svisle"
+    +     "Vertical"
     +     small: "c9"
-    +   button.icon title="Smazat vazbu": "✕"
+    +   button.icon title="Delete the constraint": "✕"
     -   button title="Bodies that move as one piece": "New link"
     -   button title="A joint moves its child link against its parent link": "New joint"
     -   button title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
-  status: Klikněte na bod nebo křivku (Shift přidává). Bod lze táhnout. · The view shows the model as modelled: sketches and features are edited there.
+  status: Click a point or a curve (Shift adds). A point can be dragged. · The view shows the model as modelled: sketches and features are edited there.
   view: 3 scene(s) set
   scene:
     + bodies: e1, e2
@@ -997,25 +997,25 @@
 
 === 18. back in the model: the pose
   toolbar:
-    +   button title="Nová skica na rovině nebo rovinné stěně": "Skica"
-    +   button title="Vysunout oblasti skici": "Vysunutí"
+    +   button title="A new sketch on a plane or a planar face": "Sketch"
+    +   button title="Extrude regions of a sketch": "Extrude"
     +   button title="Turn regions of a sketch about an axis in its plane": "Revolve"
     +   button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
     +   button title="Chamfer edges of a body by a distance": "Chamfer"
     +   button title="Round edges of a body by a radius": "Fillet"
-    +   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
+    +   button title="A plane offset from a plane or a planar face": "Plane"
     +   button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
     +   button title="Place a stored mesh (a bought part read from an STL file) as a body": "Mesh"
     +   button title="Insert another document (a part saved as a document file) as a part of this one": "Insert"
     +   button title="Join, subtract or intersect finished bodies; subtract with a clearance": "Combine"
     +   button title="Cut a body into two by a plane; both parts get the cut face": "Split"
-    -   button.active title="Klikněte na bod nebo křivku (Shift přidává). Bod lze táhnout.": "Výběr"
-    -   button title="Klikněte na místo bodu.": "Bod"
-    -   button title="Klikejte na konce úseček; řetěz ukončí Esc nebo napojení na existující bod.": "Úsečka"
-    -   button title="Klikněte na dva protilehlé rohy.": "Obdélník"
+    -   button.active title="Click a point or a curve (Shift adds). A point can be dragged.": "Select"
+    -   button title="Click the place of the point.": "Point"
+    -   button title="Click the ends of the lines; Esc or joining an existing point ends the chain.": "Line"
+    -   button title="Click two opposite corners.": "Rectangle"
     -   button title="Click the centre and then a vertex; the number of sides is set in the panel.": "Polygon"
-    -   button title="Klikněte na střed a pak na bod obvodu.": "Kružnice"
-    -   button title="Klikněte na střed, začátek a konec (proti směru hodin).": "Oblouk"
+    -   button title="Click the centre and then a point of the rim.": "Circle"
+    -   button title="Click the centre, the start and the end (counterclockwise).": "Arc"
     -   button title="Click the control points; Enter ends the spline, a click on the first point closes it, Esc drops it. Start at the end of a line and click on its extension to run on smoothly from it.": "Spline"
     -   button title="Click the point where two lines meet; the radius is set in the panel.": "Fillet"
     -   button title="Click the piece of a curve to remove.": "Trim"
@@ -1024,7 +1024,7 @@
     -   button title="Select the curves and points to copy, then click the line to mirror them about.": "Mirror"
     -   button title="Select the curves and points to copy, then click the line to repeat them along.": "Linear pattern"
     -   button title="Select the curves and points to copy, then click the point to turn them about.": "Circular pattern"
-    -   button title="Klikněte na hranu tělesa (úsečku nebo kružnici).": "Promítnout"
+    -   button title="Click an edge of a body (a line or a circle).": "Project"
     -   button title="Click a point or a curve of an earlier sketch (dashed) to project it; the options are in the panel.": "From sketch"
     +   select value="" title="Ask a query about the model"
     +     option selected value="": "Queries…"
@@ -1055,62 +1055,62 @@
     +     option value="urdf" title="The mechanism as a URDF robot description for ROS and simulators: a folder with robot.urdf and one binary STL per body in metres in the frame of its link. One tree from one root link; the frame of a link at the axis of its joint with the axes of the model; the mass, centre of mass and inertia of each link from its bodies (query mass); a visual and a collision mesh per body. Every revolute and prismatic joint needs `effort` and `velocity` (setJoint). The root is not fixed: the simulator decides.": "URDF (robot)"
     +     option value="mjcf" title="The mechanism as a MuJoCo model: a folder with robot.xml and one binary STL per body in metres in the frame of its link. One tree from one root link, welded to the world; the frame of a link at the axis of its joint with the axes of the model; the mass, centre of mass and inertia of each link from its bodies (query mass); a mesh geom per body, the two links of a joint excluded from contact; a motor per joint with an `effort` (with `gearRatio`), `rotorInertia · gearRatio²` as the armature of the joint, and the pose of the document as the keyframe `pose`.": "MJCF (MuJoCo)"
     +   button title="Check which bodies share a volume": "Collisions"
-    -   button title="Kreslicí nástroje zakládají konstrukční (pomocné) křivky": "Konstrukčně"
-    -   button.primary: "Dokončit skicu"
+    -   button title="The drawing tools create construction (helper) curves": "Construction"
+    -   button.primary: "Finish sketch"
     - div.group
   timeline:
     +   button.icon title="Hide or show": "👁"
     -   button.icon disabled title="Hide or show": "👁"
-    +   button.icon title="Posunout později": "↓"
-    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
-    -   button.icon disabled title="Posunout později": "↓"
-    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon title="Move later": "↓"
+    +   button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
+    -   button.icon disabled title="Move later": "↓"
+    -   button.icon disabled title="Roll the model back to here: further features are inserted after this one": "⇤"
     +   button.icon title="Hide or show": "👁"
-    +   button.icon title="Posunout dřív": "↑"
-    +   button.icon title="Posunout později": "↓"
-    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon title="Move earlier": "↑"
+    +   button.icon title="Move later": "↓"
+    +   button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
     -   button.icon disabled title="Hide or show": "👁"
-    -   button.icon disabled title="Posunout dřív": "↑"
-    -   button.icon disabled title="Posunout později": "↓"
-    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon disabled title="Move earlier": "↑"
+    -   button.icon disabled title="Move later": "↓"
+    -   button.icon disabled title="Roll the model back to here: further features are inserted after this one": "⇤"
     +   button.icon title="Hide or show": "👁"
-    +   button.icon title="Posunout dřív": "↑"
-    +   button.icon title="Posunout později": "↓"
-    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon title="Move earlier": "↑"
+    +   button.icon title="Move later": "↓"
+    +   button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
     + div.row.ok.selected
     -   button.icon disabled title="Hide or show": "👁"
-    -   button.icon disabled title="Posunout dřív": "↑"
-    -   button.icon disabled title="Posunout později": "↓"
-    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon disabled title="Move earlier": "↑"
+    -   button.icon disabled title="Move later": "↓"
+    -   button.icon disabled title="Roll the model back to here: further features are inserted after this one": "⇤"
     - div.row.ok.selected.editing
     +   button.icon title="Hide or show": "👁"
-    +   button.icon title="Posunout dřív": "↑"
-    +   button.icon title="Posunout později": "↓"
-    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon title="Move earlier": "↑"
+    +   button.icon title="Move later": "↓"
+    +   button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
     -   button.icon disabled title="Hide or show": "👁"
-    -   button.icon disabled title="Posunout dřív": "↑"
-    -   button.icon disabled title="Posunout později": "↓"
-    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon disabled title="Move earlier": "↑"
+    -   button.icon disabled title="Move later": "↓"
+    -   button.icon disabled title="Roll the model back to here: further features are inserted after this one": "⇤"
     +   button.icon title="Hide or show": "👁"
-    +   button.icon title="Posunout dřív": "↑"
+    +   button.icon title="Move earlier": "↑"
     -   button.icon disabled title="Hide or show": "👁"
-    -   button.icon disabled title="Posunout dřív": "↑"
-    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
-    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon disabled title="Move earlier": "↑"
+    +   button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
+    -   button.icon disabled title="Roll the model back to here: further features are inserted after this one": "⇤"
   panel:
-    + h2: "Skica"
+    + h2: "Sketch"
     + label
-    +   "Název"
-    +   input value="Skica 2"
-    - h2: "Skica: Skica 2"
+    +   "Feature name"
+    +   input value="Sketch 2"
+    - h2: "Sketch: Sketch 2"
     - div#sketch-status
-    -   p.badge.open: "Stupně volnosti: 4"
-    -   p.hint: "Uzavřených oblastí: 1"
-    - p.hint: "Volné (v pohledu modře): body p5, p6, p7, p8."
-    +   button.primary: "Upravit"
-    +   button: "Potlačit"
-    +   button: "Smazat"
-    + button disabled title="Nejdřív vyberte v pohledu rovinu nebo rovinnou stěnu": "Přenést skicu na vybranou rovinu"
+    -   p.badge.open: "Degrees of freedom: 4"
+    -   p.hint: "Closed regions: 1"
+    - p.hint: "Free (blue in the view): points p5, p6, p7, p8."
+    +   button.primary: "Edit feature"
+    +   button: "Suppress"
+    +   button: "Delete"
+    + button disabled title="First select a plane or a planar face in the view": "Move the sketch to the selected plane"
     + h2: "Parameters (0)"
     + div.constraint
     +   input.pname value="" placeholder="name"
@@ -1128,7 +1128,7 @@
     +     span.name: "Base (link1)"
     +     button.link title="Change the name and the bodies of the link": "Edit"
     +     button.link title="Remove the link; a link a joint names cannot be removed": "Remove"
-    +   p.hint: "Bodies: Vysunutí 1"
+    +   p.hint: "Bodies: Extrude 1"
     +   div.mech-children
     +     div.mech-joint
     +       div.mech-head
@@ -1148,57 +1148,57 @@
     +             span.name: "Arm (link2)"
     +             button.link title="Change the name and the bodies of the link": "Edit"
     +             button.link title="Remove the link; a link a joint names cannot be removed": "Remove"
-    +           p.hint: "Bodies: Vysunutí 3"
-    + p.hint: "Bodies in no link (they stand as modelled): Vysunutí 2"
-    -   button title="Vybere volné body a kružnice s volným poloměrem": "Vybrat volné"
+    +           p.hint: "Bodies: Extrude 3"
+    + p.hint: "Bodies in no link (they stand as modelled): Extrude 2"
+    -   button title="Selects the free points and the circles with a free radius": "Select free"
     +   button title="Bodies that move as one piece": "New link"
     +   button title="A joint moves its child link against its parent link": "New joint"
     +   button title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
     -   button title="Read a DXF or SVG file into this sketch as an outline of fixed curves": "Import an outline…"
     -   input#outline-file type=file hidden
-    - h2: "Výběr (0)"
+    - h2: "Selection (0)"
     - div.buttons
-    -   button disabled title="Dva body leží na stejném místě.": "Totožné"
-    -   button disabled title="Bod leží na úsečce (i na jejím prodloužení), kružnici nebo oblouku.": "Bod na křivce"
-    -   button disabled title="Úsečka je rovnoběžná s osou X skici.": "Vodorovně"
-    -   button disabled title="Úsečka je rovnoběžná s osou Y skici.": "Svisle"
-    -   button disabled title="Dvě úsečky jsou rovnoběžné.": "Rovnoběžně"
-    -   button disabled title="Dvě úsečky jsou na sebe kolmé.": "Kolmo"
-    -   button disabled title="Dvě úsečky mají stejnou délku.": "Stejná délka"
-    -   button disabled title="Úsečka se dotýká kružnice nebo oblouku, nebo se dotýkají dvě kružnice či oblouky.": "Tečně"
-    -   button disabled title="Body a, b jsou souměrné podle přímky, na které leží úsečka line (osa souměrnosti).": "Souměrně"
-    -   button disabled title="Bod leží přesně v polovině úsečky.": "Střed úsečky"
+    -   button disabled title="Two points lie at the same place.": "Coincident"
+    -   button disabled title="A point lies on a line (also on its extension), a circle or an arc.": "Point on curve"
+    -   button disabled title="A line is parallel to the X axis of the sketch.": "Horizontal"
+    -   button disabled title="A line is parallel to the Y axis of the sketch.": "Vertical"
+    -   button disabled title="Two lines are parallel.": "Parallel"
+    -   button disabled title="Two lines are perpendicular to each other.": "Perpendicular"
+    -   button disabled title="Two lines have the same length.": "Equal length"
+    -   button disabled title="A line touches a circle or an arc, or two circles or arcs touch.": "Tangent"
+    -   button disabled title="Points a, b are symmetric about the infinite line on which the line `line` lies (the axis of symmetry).": "Symmetric"
+    -   button disabled title="A point lies exactly halfway along a line.": "Midpoint"
     -   button disabled title="Two circles or arcs have the same radius.": "Equal radius"
     -   button disabled title="An own point of the sketch lies at the coordinates x, y of the sketch.": "Fixed point"
     - div.buttons
-    -   button disabled title="Dva body nebo úsečka: vzdálenost; bod a úsečka: vzdálenost; dvě úsečky: úhel; kružnice: průměr; oblouk: poloměr": "Kóta"
-    -   button disabled title="Vodorovná vzdálenost dvou bodů nebo konců úsečky": "Kóta ↔"
-    -   button disabled title="Svislá vzdálenost dvou bodů nebo konců úsečky": "Kóta ↕"
+    -   button disabled title="Two points or a line: distance; a point and a line: distance; two lines: angle; a circle: diameter; an arc: radius": "Dimension"
+    -   button disabled title="Horizontal distance of two points or of the ends of a line": "Dimension ↔"
+    -   button disabled title="Vertical distance of two points or of the ends of a line": "Dimension ↕"
     - div.buttons
-    -   button disabled: "Konstrukční"
-    -   button disabled title="Delete": "Smazat"
-    - h2: "Vazby a kóty (4)"
-    - div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    -   button disabled: "Construction"
+    -   button disabled title="Delete": "Delete"
+    - h2: "Constraints and dimensions (4)"
+    - div.constraint.clickable title="A click shows whether the constraint follows from others"
     -   span.name
-    -     "Vodorovně"
+    -     "Horizontal"
     -     small: "c6"
-    -   button.icon title="Smazat vazbu": "✕"
-    - div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    -   button.icon title="Delete the constraint": "✕"
+    - div.constraint.clickable title="A click shows whether the constraint follows from others"
     -   span.name
-    -     "Svisle"
+    -     "Vertical"
     -     small: "c7"
-    -   button.icon title="Smazat vazbu": "✕"
-    - div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    -   button.icon title="Delete the constraint": "✕"
+    - div.constraint.clickable title="A click shows whether the constraint follows from others"
     -   span.name
-    -     "Vodorovně"
+    -     "Horizontal"
     -     small: "c8"
-    -   button.icon title="Smazat vazbu": "✕"
-    - div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
+    -   button.icon title="Delete the constraint": "✕"
+    - div.constraint.clickable title="A click shows whether the constraint follows from others"
     -   span.name
-    -     "Svisle"
+    -     "Vertical"
     -     small: "c9"
-    -   button.icon title="Smazat vazbu": "✕"
-  status: Skica dokončena. · The view shows the pose of the mechanism.
+    -   button.icon title="Delete the constraint": "✕"
+  status: Sketch finished. · The view shows the pose of the mechanism.
   view: 1 scene(s) set
   scene:
     + bodies: e1, e2, e3 posed [0, -1, 0] [1, 0, 0] [0, 0, 1] + [0, 0, 0]
@@ -1256,7 +1256,7 @@
     +       p.issue.error: "The value of the joint is outside its limits. (3 rad above 1.57079632679 rad)"
     -         input.pose type=range value="28.64789" disabled title="The value follows its expression; type a number into the field to set it by hand"
     +           p.issue.warning: "Not in its pose: the joint Elbow has no motion, so the link is drawn with that joint at zero and a query about its bodies fails."
-  status: Skica dokončena. · The view shows the pose of the mechanism. The joint Elbow has no motion (The value of the joint is outside its limits. (3 rad above 1.57079632679 rad)): Arm drawn with it at zero.
+  status: Sketch finished. · The view shows the pose of the mechanism. The joint Elbow has no motion (The value of the joint is outside its limits. (3 rad above 1.57079632679 rad)): Arm drawn with it at zero.
   view: 1 scene(s) set
   scene:
     + bodies: e1, e2, e3
@@ -1296,7 +1296,7 @@
     +   input type=checkbox checked
     -   input type=checkbox unchecked
     + div.row title="Highlight the two bodies. One reaches 4.667 mm into the other"
-    +   span.name: "Vysunutí 1 × Vysunutí 3"
+    +   span.name: "Extrude 1 × Extrude 3"
     +   small: "1200 mm³"
     - p.issue.error: "interference: the pose of the body "e3" is not known: the joint "joint1" has no motion (jointOutOfLimits: The value of the joint is outside its limits. (3 rad above 1.57079632679 rad)). The bodies beyond it can be read as modelled with geometry: 'modelled'"
   status: Collisions: 1 pair(s) of bodies share a volume. · The view shows the model as modelled, as the answer of the query was asked.  [error]
@@ -1327,7 +1327,7 @@
     -   button.primary: "Ask again"
     -   button: "Close"
     - div.row title="Highlight the two bodies. One reaches 4.667 mm into the other"
-    -   span.name: "Vysunutí 1 × Vysunutí 3"
+    -   span.name: "Extrude 1 × Extrude 3"
     -   small: "1200 mm³"
     +     div.mech-joint
     -     div.mech-joint.error
@@ -1370,19 +1370,19 @@
     +   button disabled title="Check which bodies share a volume": "Collisions"
     -   button title="Check which bodies share a volume": "Collisions"
   timeline:
-    + div.marker title="Sem se vkládají nové prvky": "zde se vkládá"
+    + div.marker title="New features are inserted here": "insert here"
     + div.row.ok.later
     - div.row.ok
     + div.row.ok.selected.later
     - div.row.ok.selected
     + div.row.ok.later
     - div.row.ok
-    + button.link: "Zobrazit celý model"
+    + button.link: "Show the whole model"
   panel:
     +           p.hint: "Bodies: e3 (missing)"
     +           p.issue.warning: "The model has no body e3: the link lists it, and a body made under that ID will be in the link."
-    -           p.hint: "Bodies: Vysunutí 3"
-    - p.hint: "Bodies in no link (they stand as modelled): Vysunutí 2"
+    -           p.hint: "Bodies: Extrude 3"
+    - p.hint: "Bodies in no link (they stand as modelled): Extrude 2"
   view: 1 scene(s) set
   scene:
     + bodies: e1
@@ -1410,16 +1410,16 @@
     -   button disabled title="Check which bodies share a volume": "Collisions"
   timeline:
     + div.row.ok
-    - div.marker title="Sem se vkládají nové prvky": "zde se vkládá"
+    - div.marker title="New features are inserted here": "insert here"
     - div.row.ok.later
     + div.row.ok.selected
     - div.row.ok.selected.later
     + div.row.ok
     - div.row.ok.later
-    - button.link: "Zobrazit celý model"
+    - button.link: "Show the whole model"
   panel:
-    +           p.hint: "Bodies: Vysunutí 3"
-    + p.hint: "Bodies in no link (they stand as modelled): Vysunutí 2"
+    +           p.hint: "Bodies: Extrude 3"
+    + p.hint: "Bodies in no link (they stand as modelled): Extrude 2"
     -           p.hint: "Bodies: e3 (missing)"
     -           p.issue.warning: "The model has no body e3: the link lists it, and a body made under that ID will be in the link."
   status: removeLink.id: the link "link1" is named by the joint "joint1"; remove or change it first, in the same batch  [error]
@@ -1844,7 +1844,7 @@
     +     span.name: "Arm (link2)"
     +     button.link title="Change the name and the bodies of the link": "Edit"
     +     button.link title="Remove the link; a link a joint names cannot be removed": "Remove"
-    +   p.hint: "Bodies: Vysunutí 3"
+    +   p.hint: "Bodies: Extrude 3"
     -   div.mech-children
     -     div.mech-joint
     -       div.mech-head
@@ -1865,7 +1865,7 @@
     -             span.name: "Arm (link2)"
     -             button.link title="Change the name and the bodies of the link": "Edit"
     -             button.link title="Remove the link; a link a joint names cannot be removed": "Remove"
-    -           p.hint: "Bodies: Vysunutí 3"
+    -           p.hint: "Bodies: Extrude 3"
     - h2: "Joint Elbow"
     - label
     -   "ID"

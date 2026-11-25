@@ -259,10 +259,10 @@ describe('diagnostika skici: chování API', () => {
     run(engine, { type: 'setSuppressed', id: 'S2', suppressed: false }, { type: 'setSuppressed', id: 'E1', suppressed: true });
     expect(engine.diagnoseSketch('S2')).toMatchObject({ status: 'unavailable', redundant: [], free: [] });
     expect(engine.explainConstraint('S2', 'qw')).toEqual({ redundant: false, impliedBy: [] });
-    expect(() => engine.diagnoseSketch('nic')).toThrow(/skica "nic" neexistuje/);
-    expect(() => engine.diagnoseSketch('E1')).toThrow(/skica "E1" neexistuje/);
-    expect(() => engine.explainConstraint('S1', 'nic')).toThrow(/vazba "nic"/);
-    expect(() => engine.explainConstraint('S1', 'toString')).toThrow(/vazba "toString"/);
+    expect(() => engine.diagnoseSketch('nic')).toThrow(/the sketch "nic" does not exist/);
+    expect(() => engine.diagnoseSketch('E1')).toThrow(/the sketch "E1" does not exist/);
+    expect(() => engine.explainConstraint('S1', 'nic')).toThrow(/the constraint "nic"/);
+    expect(() => engine.explainConstraint('S1', 'toString')).toThrow(/the constraint "toString"/);
   });
 
   it('diagnostika dokument ani vyhodnocení nemění', () => {

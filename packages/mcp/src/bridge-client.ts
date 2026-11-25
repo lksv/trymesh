@@ -62,7 +62,7 @@ export function connectBridge(engine: Engine, options: BridgeClientOptions = {})
       const text = error instanceof Error ? error.message : String(error);
       // Výjimka může přijít i z posluchače enginu až po zapsání změny, proto ta výhrada. A question
       // (a query, a read, an operation of the app) wrote nothing, and says so instead.
-      outcome = { ok: false, error: MUTATING.includes(call.name) ? `v aplikaci nastala chyba (změna už mohla být provedena, ověř stav): ${text}` : `the app failed to answer ${call.name} (nothing was changed): ${text}` };
+      outcome = { ok: false, error: MUTATING.includes(call.name) ? `an error occurred in the app (the change may already have been made, check the state): ${text}` : `the app failed to answer ${call.name} (nothing was changed): ${text}` };
     }
     try {
       options.onCall?.(call.name, outcome, call.args ?? {});
@@ -74,7 +74,7 @@ export function connectBridge(engine: Engine, options: BridgeClientOptions = {})
 
   const listen = async () => {
     const response = await fetch(`${url}/events`, { headers: { Accept: 'text/event-stream', [BRIDGE_HEADER]: '1' }, signal: abort.signal });
-    if (!response.ok || !response.body) throw new Error(`most odpověděl ${response.status}`);
+    if (!response.ok || !response.body) throw new Error(`the bridge answered ${response.status}`);
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';

@@ -134,10 +134,10 @@ describe('the form of a mirror or pattern (D68)', () => {
   it('a copy is no operand of a constraint, no point of a curve, nothing to remove, drag or construct', () => {
     const d = applyCommand(doc, add('m', { type: 'pattern', sources: SQUARE, transform: { type: 'mirror', axis: 'origin/y' } }));
     expect(refused(d, { type: 'addConstraint', sketch: S, id: 'k', constraint: { type: 'horizontal', line: 'm/1/qc' } })).toBe('addConstraint.constraint.line: "m/1/qc" is a copy of the mirror or pattern "m": a copy cannot be constrained in its own sketch, it is computed after the sketch is solved; constrain its source "qc", or project the copy in a later sketch');
-    expect(refused(d, { type: 'addCurve', sketch: S, id: 'x', curve: lineOf('m/1/q1', 'q1') })).toContain('"m/1/q1" není vlastní bod skici ani počátek');
-    expect(refused(d, { type: 'removeEntity', sketch: S, id: 'm/1/qa' })).toContain('není vlastní bod ani křivka');
-    expect(refused(d, { type: 'dragPoint', sketch: S, point: 'm/1/q1', x: 0, y: 0 })).toContain('není vlastní bod');
-    expect(refused(d, { type: 'setConstruction', sketch: S, id: 'm/1/qa', construction: true })).toContain('není křivka skici');
+    expect(refused(d, { type: 'addCurve', sketch: S, id: 'x', curve: lineOf('m/1/q1', 'q1') })).toContain('"m/1/q1" is neither an own point of the sketch nor the origin');
+    expect(refused(d, { type: 'removeEntity', sketch: S, id: 'm/1/qa' })).toContain('is neither an own point nor a curve');
+    expect(refused(d, { type: 'dragPoint', sketch: S, point: 'm/1/q1', x: 0, y: 0 })).toContain('is not an own point');
+    expect(refused(d, { type: 'setConstruction', sketch: S, id: 'm/1/qa', construction: true })).toContain('is not a curve of the sketch');
     expect(refused(d, { type: 'updateExternal', sketch: S, id: 'm', ref: { type: 'edge', body: 'B', edge: { a: { feature: 'B', role: 'endCap' }, b: { feature: 'B', role: 'startCap' } }, kind: 'line' } })).toContain('updateExternal');
   });
 

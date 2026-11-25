@@ -6,8 +6,8 @@ import { polyline } from '../sketch-view';
 import { type SketchPlaceTool, anchor, drawn } from './spec';
 
 export const line: SketchPlaceTool<undefined> = {
-  label: 'Úsečka',
-  hint: 'Klikejte na konce úseček; řetěz ukončí Esc nebo napojení na existující bod.',
+  label: 'Line',
+  hint: 'Click the ends of the lines; Esc or joining an existing point ends the chain.',
   clicks: 2,
   infer: true,
   click: (host, m, places, context) => {

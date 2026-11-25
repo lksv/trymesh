@@ -178,7 +178,7 @@ describe('an operation of the app', () => {
     // an older app: the server offers an operation the app does not have
     const older = newEngine();
     const second = await appWith(older, { engine: older, picture: async () => '' }, {});
-    expect(await session.call('count_bodies')).toEqual({ error: 'neznámý nástroj "count_bodies"' });
+    expect(await session.call('count_bodies')).toEqual({ error: 'unknown tool "count_bodies"' });
     second.connection.stop();
     await until(() => !bridge.connected(), 'the app to disconnect');
     await session.close();
@@ -193,7 +193,7 @@ describe('an operation of the app', () => {
     const unsubscribe = app.subscribe(() => {
       throw new Error('a listener fell over');
     });
-    expect((await session.call('execute', { command: disc })).error).toMatch(/v aplikaci nastala chyba \(změna už mohla být provedena, ověř stav\): a listener fell over/);
+    expect((await session.call('execute', { command: disc })).error).toMatch(/an error occurred in the app \(the change may already have been made, check the state\): a listener fell over/);
     unsubscribe();
     connection.stop();
     await until(() => !bridge.connected(), 'the app to disconnect');

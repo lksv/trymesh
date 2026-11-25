@@ -2085,8 +2085,8 @@ describe('scenario 13, the part of 3c: two ball bearings and a cable clip as ins
     expect(messages[2]).toMatch(/no stored document "nope"/);
     expect(messages[3]).toMatch(/has no parameter "width"/);
     expect(messages[4]).toMatch(/inserted by the features b1, b2/);
-    expect(messages[5]).toMatch(/feature "b9" neexistuje/);
-    expect(messages[6]).toMatch(/feature "upper" není an inserted document/);
+    expect(messages[5]).toMatch(/feature "b9" does not exist/);
+    expect(messages[6]).toMatch(/feature "upper" is not an inserted document/);
     expect(messages[7]).toMatch(/cannot make the body "typo"/);
   });
 

@@ -175,7 +175,7 @@ function confirmDraft(host: PanelHost, m: AnyDraft): void {
   // The form is left as soon as the command is in: the refresh the engine triggers must not
   // preview the same change once more on top of the changed document (seconds for a slow pattern).
   host.drafting.confirming = true;
-  const done = host.run(m.form.command(m.draft, m.editing, m.index, m.extra), m.editing ? 'Změna uložena.' : `${FEATURE_TYPES[(m.draft as Feature).type]} přidáno.`);
+  const done = host.run(m.form.command(m.draft, m.editing, m.index, m.extra), m.editing ? 'Change saved.' : `${FEATURE_TYPES[(m.draft as Feature).type]} added.`);
   host.drafting.confirming = false;
   if (!done) return;
   if (!m.editing) host.inserted(m.draft.id);
@@ -190,7 +190,7 @@ export function draftButtons(host: PanelHost, m: AnyDraft): HTMLElement[] {
       'div',
       { className: 'buttons' },
       h('button', { textContent: 'OK', className: 'primary', disabled: m.form.incomplete?.(m.draft) === true, onclick: () => confirmDraft(host, m) }),
-      h('button', { textContent: 'Zrušit', onclick: () => host.closeDraft(false) }),
+      h('button', { textContent: 'Cancel', onclick: () => host.closeDraft(false) }),
     ),
   ];
 }

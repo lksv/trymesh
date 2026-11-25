@@ -331,7 +331,7 @@ export function check(seed: number, rejected?: Rejections): string[] {
     out = run(c.ops, c.frame);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    if (rejected && /není uzavřená plocha|přeložený trojúhelník/.test(message)) {
+    if (rejected && /not a closed surface|folded triangle/.test(message)) {
       rejected[c.mayReject ? 'loose' : 'strict']++;
       return [];
     }

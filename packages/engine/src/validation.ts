@@ -23,24 +23,24 @@ export const fail = (message: string, expression?: ExpressionProblem): never => 
 
 export type Dict = Record<string, unknown>;
 export const isObject = (v: unknown): v is Dict => typeof v === 'object' && v !== null && !Array.isArray(v);
-export const object = (v: unknown, what: string): Dict => (isObject(v) ? v : fail(`${what}: čeká se objekt`));
-export const string = (v: unknown, what: string): string => (typeof v === 'string' ? v : fail(`${what}: čeká se řetězec`));
+export const object = (v: unknown, what: string): Dict => (isObject(v) ? v : fail(`${what}: an object is expected`));
+export const string = (v: unknown, what: string): string => (typeof v === 'string' ? v : fail(`${what}: a string is expected`));
 // Čísla dokumentu: konečná a v rozumném rozsahu (souřadnice tělesa jsou float32). Záporná nula
 // se ukládá jako nula, aby se uložený a znovu načtený dokument nelišil.
 export const finite = (v: unknown, what: string): number => {
-  if (typeof v !== 'number' || !Number.isFinite(v)) return fail(`${what}: čeká se konečné číslo`);
-  if (Math.abs(v) > MAX_NUMBER) return fail(`${what}: číslo je mimo rozsah ±${MAX_NUMBER}`);
+  if (typeof v !== 'number' || !Number.isFinite(v)) return fail(`${what}: a finite number is expected`);
+  if (Math.abs(v) > MAX_NUMBER) return fail(`${what}: the number is outside the range ±${MAX_NUMBER}`);
   return v + 0;
 };
-export const boolean = (v: unknown, what: string): boolean => (typeof v === 'boolean' ? v : fail(`${what}: čeká se true nebo false`));
+export const boolean = (v: unknown, what: string): boolean => (typeof v === 'boolean' ? v : fail(`${what}: true or false is expected`));
 export const oneOf = <T extends string>(v: unknown, options: readonly T[], what: string): T =>
-  options.includes(v as T) ? (v as T) : fail(`${what}: čeká se jedna z hodnot ${options.join(', ')}`);
+  options.includes(v as T) ? (v as T) : fail(`${what}: one of the values ${options.join(', ')} is expected`);
 
 // ID generuje volající. Nesmí obsahovat `/` (odvozená ID promítnuté geometrie), nesmí být `origin`
 // ani jméno vlastnosti, kterou má každý objekt (`constructor`, `toString`…): ID jsou klíče záznamů.
 export function newId(v: unknown, what: string): Id {
   const id = string(v, what);
-  if (id === '' || id.includes('/') || id === ORIGIN || id in Object.prototype) fail(`${what}: ID "${id}" není přípustné`);
+  if (id === '' || id.includes('/') || id === ORIGIN || id in Object.prototype) fail(`${what}: the ID "${id}" is not allowed`);
   return id;
 }
 
@@ -196,7 +196,7 @@ export const faceRefs = (face: FaceName, path: string): FeatureRef[] => [
 export function edgeName(v: unknown, what: string): EdgeName {
   const o = object(v, what);
   const edge = { a: faceName(o.a, `${what}.a`), b: faceName(o.b, `${what}.b`) };
-  if (faceKey(edge.a) === faceKey(edge.b)) fail(`${what}: hrana je rozhraní dvou různých stěn`);
+  if (faceKey(edge.a) === faceKey(edge.b)) fail(`${what}: an edge is the boundary between two different faces`);
   return canonicalEdge(edge);
 }
 
@@ -228,7 +228,7 @@ export interface FeatureRef {
   accepts?: readonly string[];
   notProjected?: boolean;
 }
-export const REF_LABEL: Record<Exclude<RefKind, 'entity' | 'generated' | 'tool'>, string> = { plane: 'rovina', sketch: 'skica', body: 'těleso', faceSource: 'a feature that names faces', pattern: 'a feature that tags copied faces (a pattern, or a combine as a difference)', mesh: 'stored mesh', document: 'stored document', insertion: 'an inserted document (a feature of the type insert)', parameter: 'parameter of the stored document', documentBody: 'body of the stored document' };
+export const REF_LABEL: Record<Exclude<RefKind, 'entity' | 'generated' | 'tool'>, string> = { plane: 'a plane', sketch: 'a sketch', body: 'a body', faceSource: 'a feature that names faces', pattern: 'a feature that tags copied faces (a pattern, or a combine as a difference)', mesh: 'stored mesh', document: 'stored document', insertion: 'an inserted document (a feature of the type insert)', parameter: 'parameter of the stored document', documentBody: 'body of the stored document' };
 
 // What a helper that checks a reference needs. Whether the target of a reference exists, is of the
 // right kind and lies before the referring feature is a question for the registry of feature types

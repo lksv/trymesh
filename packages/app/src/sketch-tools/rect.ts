@@ -3,8 +3,8 @@ import { rectangleCommands } from '../sketch-commands';
 import { type SketchPlaceTool, anchor, drawn } from './spec';
 
 export const rect: SketchPlaceTool<undefined> = {
-  label: 'Obdélník',
-  hint: 'Klikněte na dva protilehlé rohy.',
+  label: 'Rectangle',
+  hint: 'Click two opposite corners.',
   clicks: 2,
   click: (host, m, places, context) => {
     drawn(host, m, rectangleCommands(m.id, context.tool, anchor(places[0]), anchor(places[1]), host.newId));

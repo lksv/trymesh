@@ -26,9 +26,9 @@ describe('names for a human', () => {
   });
 
   it('a face names its feature, its role and the copies it went through', () => {
-    expect(faceLabel({ feature: 'plate', role: 'endCap' }, nameOf)).toBe('Plate – protější víko');
-    expect(faceLabel({ feature: 'hole', role: 'side', curve: 'k', copy: [{ pattern: 'P', index: 2 }] }, nameOf)).toBe('Hole – bok, copy 2 of Pattern 5');
-    expect(faceLabel({ feature: 'hole', role: 'side', curve: 'k', copy: [{ pattern: 'P', index: 2 }, { pattern: 'Q', index: 1 }] }, nameOf)).toBe('Hole – bok, copy 2 of Pattern 5, copy 1 of (Q)');
+    expect(faceLabel({ feature: 'plate', role: 'endCap' }, nameOf)).toBe('Plate – opposite cap');
+    expect(faceLabel({ feature: 'hole', role: 'side', curve: 'k', copy: [{ pattern: 'P', index: 2 }] }, nameOf)).toBe('Hole – side, copy 2 of Pattern 5');
+    expect(faceLabel({ feature: 'hole', role: 'side', curve: 'k', copy: [{ pattern: 'P', index: 2 }, { pattern: 'Q', index: 1 }] }, nameOf)).toBe('Hole – side, copy 2 of Pattern 5, copy 1 of (Q)');
   });
 
   it('a string of refs is named only when the document knows it', () => {
@@ -57,9 +57,9 @@ describe('the text of an issue', () => {
     const typeOf = (id: string) => (id === 'K' ? 'combine' : id === 'P' ? 'pattern' : undefined) as 'combine' | 'pattern' | undefined;
     const wall: FaceName = { feature: 'motor', role: 'side', curve: 'c' };
     const issue: Issue = { code: 'invalidClearance', message: 'The tool cannot be moved.', refs: ['motor', wall, { feature: 'motor', role: 'endCap' }] };
-    expect(issueText(issue, nameOf, undefined, typeOf)).toBe('The tool cannot be moved. (Motor, Motor – bok, Motor – protější víko)');
+    expect(issueText(issue, nameOf, undefined, typeOf)).toBe('The tool cannot be moved. (Motor, Motor – side, Motor – opposite cap)');
     expect(issueText({ code: 'kernelFailure', message: 'Failed.', refs: ['motor'] }, nameOf)).toBe('Failed. (Motor)');
-    expect(faceLabel({ ...wall, copy: [{ pattern: 'P', index: 2 }, { pattern: 'K', index: 4 }] }, nameOf, typeOf)).toBe('Motor – bok, copy 2 of Screws, in the pocket of tool 4 of Pocket');
+    expect(faceLabel({ ...wall, copy: [{ pattern: 'P', index: 2 }, { pattern: 'K', index: 4 }] }, nameOf, typeOf)).toBe('Motor – side, copy 2 of Screws, in the pocket of tool 4 of Pocket');
     expect(faceLabel({ feature: 'S', role: 'splitFace' }, (id) => (id === 'S' ? 'Split' : undefined))).toBe('Split – cut face of a split');
   });
 

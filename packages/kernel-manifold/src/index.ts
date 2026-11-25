@@ -48,17 +48,17 @@ export async function createManifoldKernel(options: ManifoldKernelOptions = {}):
       // přitom zahodí, neuvolní; a obrácenou orientaci nebo čísla stěn od 2^31 přijme potichu.
       const load = (name: string, s: Solid): Manifold => {
         const problem = inputProblem(s);
-        if (problem) throw new Error(`jádro nepřijalo vstup (${name}): ${problem}`);
+        if (problem) throw new Error(`the kernel did not accept the input (${name}): ${problem}`);
         try {
           return keep(toManifold(s));
         } catch (error) {
-          throw new Error(`jádro nepřijalo vstup (${name}): ${error instanceof Error ? error.message : String(error)}`);
+          throw new Error(`the kernel did not accept the input (${name}): ${error instanceof Error ? error.message : String(error)}`);
         }
       };
-      const A = load('těleso', a);
-      const B = load('nástroj', b);
+      const A = load('body', a);
+      const B = load('tool', b);
       const result = keep(op === 'union' ? A.add(B) : op === 'difference' ? A.subtract(B) : A.intersect(B));
-      if (result.status() !== 'NoError') throw new Error(`boolean selhal: ${result.status()}`);
+      if (result.status() !== 'NoError') throw new Error(`the boolean failed: ${result.status()}`);
       const mesh = result.getMesh();
       // kopie: pole z knihovny mohou ukazovat do paměti WASM
       return { positions: Float32Array.from(mesh.vertProperties), triangles: Uint32Array.from(mesh.triVerts), faceIds: Uint32Array.from(mesh.faceID) };
@@ -120,8 +120,8 @@ export async function createManifoldKernel(options: ManifoldKernelOptions = {}):
     triangulate(loops) {
       if (loops.length === 0) return new Uint32Array(0);
       for (const loop of loops) {
-        if (loop.length % 2 !== 0 || loop.length < 6) throw new Error('triangulace: smyčka potřebuje aspoň tři body (dvojice x, y)');
-        if (!loop.every(Number.isFinite)) throw new Error('triangulace: souřadnice musí být konečná čísla');
+        if (loop.length % 2 !== 0 || loop.length < 6) throw new Error('triangulation: a loop needs at least three points (pairs x, y)');
+        if (!loop.every(Number.isFinite)) throw new Error('triangulation: coordinates must be finite numbers');
       }
       // Obalová funkce knihovny neuvolňuje vektor s výsledkem ani dočasné vektory smyček (u velké
       // smyčky kilobajty na volání). Volá se proto funkce pod ní a vše se uvolní zde.
@@ -156,10 +156,10 @@ export async function createManifoldKernel(options: ManifoldKernelOptions = {}):
 
 // The two checks of a cleaned result; the message of the refusal, or undefined when it passes.
 function verify(out: Solid, t: Tolerances): string | undefined {
-  if (!isClosed(out)) return 'výsledek booleanu není uzavřená plocha (těleso se nejspíš samo sebe dotýká jen hranou nebo vrcholem)';
+  if (!isClosed(out)) return 'the result of the boolean is not a closed surface (the body most likely touches itself only at an edge or a vertex)';
   // Detail menší než přesah (asi 1e-4 rozměru modelu) těsně u lícujících stěn návrat nezvládne:
   // vrcholy se při něm předběhnou a trojúhelník se otočí. Lepší chyba než potichu vadná síť.
-  if (isFolded(out, t) || isFolded(out, tolerances(out))) return 'výsledek booleanu má přeložený trojúhelník (detail menší než tolerance jádra u lícujících stěn)';
+  if (isFolded(out, t) || isFolded(out, tolerances(out))) return 'the result of the boolean has a folded triangle (a detail smaller than the kernel tolerance at flush faces)';
   return undefined;
 }
 
@@ -186,13 +186,13 @@ function sharedFace(a: Solid, b: Solid): number | undefined {
 // Proč vstupní těleso nejde použít; undefined = v pořádku. Prázdné těleso je v pořádku.
 function inputProblem(s: Solid): string | undefined {
   const count = s.triangles.length / 3;
-  if (!Number.isInteger(count) || s.positions.length % 3 !== 0) return 'délka polí neodpovídá trojicím';
-  if (s.faceIds.length !== count) return 'počet čísel stěn neodpovídá počtu trojúhelníků';
-  for (const id of s.faceIds) if (id >= 0x80000000) return 'číslo stěny je mimo rozsah jádra';
-  if (!s.positions.every(Number.isFinite)) return 'souřadnice nejsou konečná čísla';
+  if (!Number.isInteger(count) || s.positions.length % 3 !== 0) return 'the length of the arrays does not match triples';
+  if (s.faceIds.length !== count) return 'the count of face numbers does not match the count of triangles';
+  for (const id of s.faceIds) if (id >= 0x80000000) return 'a face number is outside the range of the kernel';
+  if (!s.positions.every(Number.isFinite)) return 'the coordinates are not finite numbers';
   const vertexCount = s.positions.length / 3;
-  for (const i of s.triangles) if (i >= vertexCount) return 'index vrcholu mimo rozsah';
-  if (!isClosed(s)) return 'síť není uzavřená plocha';
+  for (const i of s.triangles) if (i >= vertexCount) return 'a vertex index is out of range';
+  if (!isClosed(s)) return 'the mesh is not a closed surface';
   let volume = 0;
   for (let t = 0; t < count; t++) {
     const [a, b, c] = [0, 1, 2].map((k) => 3 * s.triangles[3 * t + k]);
@@ -200,6 +200,6 @@ function inputProblem(s: Solid): string | undefined {
     volume +=
       p[a] * (p[b + 1] * p[c + 2] - p[b + 2] * p[c + 1]) + p[a + 1] * (p[b + 2] * p[c] - p[b] * p[c + 2]) + p[a + 2] * (p[b] * p[c + 1] - p[b + 1] * p[c]);
   }
-  if (volume < 0) return 'síť je orientovaná dovnitř';
+  if (volume < 0) return 'the mesh is oriented inwards';
   return undefined;
 }

@@ -237,7 +237,7 @@ suite('port SolidKernel', () => {
 
   it('vstup, který není uzavřené těleso, vyhodí výjimku', () => {
     const open: Solid = { ...box, triangles: box.triangles.slice(3), faceIds: box.faceIds.slice(1) };
-    expect(() => kernel.boolean('union', open, prism(IDENTITY, rect(10, 10, 20, 20), 10, 15, ids4(30)))).toThrow(/jádro nepřijalo vstup/);
+    expect(() => kernel.boolean('union', open, prism(IDENTITY, rect(10, 10, 20, 20), 10, 15, ids4(30)))).toThrow(/the kernel did not accept the input/);
   });
 
   it('dva kvádry se společnou hranou: výsledek je uzavřená síť, kterou jádro přijme', () => {
@@ -251,18 +251,18 @@ suite('port SolidKernel', () => {
   it('vadné vstupní těleso se odmítne dřív, než se dostane ke knihovně', () => {
     const tool = prism(IDENTITY, rect(10, 10, 20, 20), 10, 15, ids4(30));
     const inverted: Solid = { ...box, triangles: Uint32Array.from(box.triangles, (_, i) => box.triangles[i % 3 === 1 ? i + 1 : i % 3 === 2 ? i - 1 : i]) };
-    expect(() => kernel.boolean('union', inverted, tool)).toThrow(/orientovaná dovnitř/);
-    expect(() => kernel.boolean('union', box, { ...tool, faceIds: new Uint32Array(0) })).toThrow(/nástroj.*počet čísel stěn/);
-    expect(() => kernel.boolean('union', box, { ...tool, faceIds: tool.faceIds.map(() => 0x80000000) })).toThrow(/mimo rozsah jádra/);
-    expect(() => kernel.boolean('union', { ...box, positions: box.positions.map((v, i) => (i === 0 ? Number.NaN : v)) }, tool)).toThrow(/konečná čísla/);
-    expect(() => kernel.boolean('union', { ...box, triangles: box.triangles.map((v, i) => (i === 0 ? 99 : v)) }, tool)).toThrow(/mimo rozsah/);
+    expect(() => kernel.boolean('union', inverted, tool)).toThrow(/oriented inwards/);
+    expect(() => kernel.boolean('union', box, { ...tool, faceIds: new Uint32Array(0) })).toThrow(/tool.*the count of face numbers/);
+    expect(() => kernel.boolean('union', box, { ...tool, faceIds: tool.faceIds.map(() => 0x80000000) })).toThrow(/outside the range of the kernel/);
+    expect(() => kernel.boolean('union', { ...box, positions: box.positions.map((v, i) => (i === 0 ? Number.NaN : v)) }, tool)).toThrow(/finite numbers/);
+    expect(() => kernel.boolean('union', { ...box, triangles: box.triangles.map((v, i) => (i === 0 ? 99 : v)) }, tool)).toThrow(/out of range/);
   });
 
   it('triangulate: vadný vstup je chyba, prázdný seznam prázdný výsledek', () => {
     expect(kernel.triangulate([])).toEqual(new Uint32Array(0));
-    expect(() => kernel.triangulate([Float64Array.from([0, 0, 1, 0])])).toThrow(/aspoň tři body/);
-    expect(() => kernel.triangulate([Float64Array.from([0, 0, 1, 0, 1, 1, 0])])).toThrow(/aspoň tři body/);
-    expect(() => kernel.triangulate([Float64Array.from([0, 0, 1, 0, Number.NaN, 1])])).toThrow(/konečná čísla/);
+    expect(() => kernel.triangulate([Float64Array.from([0, 0, 1, 0])])).toThrow(/at least three points/);
+    expect(() => kernel.triangulate([Float64Array.from([0, 0, 1, 0, 1, 1, 0])])).toThrow(/at least three points/);
+    expect(() => kernel.triangulate([Float64Array.from([0, 0, 1, 0, Number.NaN, 1])])).toThrow(/finite numbers/);
   });
 
   it('triangulate a boolean nenechávají paměť WASM růst', async () => {

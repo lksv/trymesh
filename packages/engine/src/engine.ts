@@ -110,7 +110,7 @@ export function createEngine(deps: EngineDeps): Engine {
   };
 
   const stateAt = (at?: Id): EngineState => {
-    if (at !== undefined && !document.features.some((feature) => feature.id === at)) throw new Error(`getState: feature "${at}" neexistuje`);
+    if (at !== undefined && !document.features.some((feature) => feature.id === at)) throw new Error(`getState: the feature "${at}" does not exist`);
     return state(document, at === undefined ? evaluation : evaluate(document, { upTo: at }).evaluation);
   };
 
@@ -137,7 +137,7 @@ export function createEngine(deps: EngineDeps): Engine {
   // and throw; then they run the entry of the catalog that `query` runs, over the same context.
   const contextOf = (name: string, of: EngineState, geometry?: 'modelled') => queryContext(name, of.evaluation, internals.get(of.evaluation) as Internals, queryDeps, geometry);
   const sketchOf = (id: Id, what: string): void => {
-    if (!document.features.some((feature) => feature.id === id && feature.type === 'sketch')) throw new Error(`${what}: skica "${id}" neexistuje`);
+    if (!document.features.some((feature) => feature.id === id && feature.type === 'sketch')) throw new Error(`${what}: the sketch "${id}" does not exist`);
   };
 
   return {
@@ -171,7 +171,7 @@ export function createEngine(deps: EngineDeps): Engine {
         return invalid(error, 'invalidCommand');
       }
       if (at !== undefined && !applied.features.some((feature) => feature.id === at)) {
-        return { ok: false, error: { code: 'invalidCommand', message: `preview: feature "${at}" v dokumentu po příkazu není` } };
+        return { ok: false, error: { code: 'invalidCommand', message: `preview: the feature "${at}" is not in the document after the command` } };
       }
       return { ok: true, state: state(applied, evaluate(applied, { upTo: at, drag: dragOf(cmd) }).evaluation) };
     },
@@ -204,7 +204,7 @@ export function createEngine(deps: EngineDeps): Engine {
     explainConstraint(id, constraint) {
       sketchOf(id, 'explainConstraint');
       const feature = document.features.find((f) => f.id === id);
-      if (feature?.type !== 'sketch' || !has(feature.constraints, constraint)) throw new Error(`explainConstraint: vazba "${constraint}" ve skice "${id}" není`);
+      if (feature?.type !== 'sketch' || !has(feature.constraints, constraint)) throw new Error(`explainConstraint: the constraint "${constraint}" is not in the sketch "${id}"`);
       return QUERIES.constraintExplanation.run(contextOf('constraintExplanation', stateAt()), { sketch: id, constraint });
     },
 
@@ -230,7 +230,7 @@ export function createEngine(deps: EngineDeps): Engine {
     // Without a list the printed bodies (the format `stl` decides), otherwise the listed ones in the
     // order of the list, each once.
     exportMesh(format, bodies) {
-      if (format !== 'stl') throw new Error(`export: formát ${String(format)} není podporovaný`);
+      if (format !== 'stl') throw new Error(`export: the format ${String(format)} is not supported`);
       const all = evaluation.bodies;
       if (bodies !== undefined && (!Array.isArray(bodies) || bodies.some((id) => typeof id !== 'string'))) throw new Error('exportMesh: bodies is a list of body IDs');
       for (const id of bodies ?? []) if (!has(all, id)) throw new Error(`exportMesh: the body "${id}" does not exist`);

@@ -461,21 +461,21 @@ describe('souměrnost a střed úsečky', () => {
 
   it('střed úsečky chce úsečku: kružnice je chyba vstupu', () => {
     const bad = input({ points: { o: { x: 0, y: 0 }, p: { x: 1, y: 1 } }, radii: { k: 3 }, curves: { k: { type: 'circle', center: 'o' } }, constraints: { m: { type: 'midpoint', point: 'p', line: 'k' } } });
-    expect(() => solver.solve(bad)).toThrow(/čeká úsečku/);
+    expect(() => solver.solve(bad)).toThrow(/expects a line/);
   });
 });
 
 describe('chyby vstupu a okrajové chování', () => {
   it('neznámý bod, křivka a nesprávný druh křivky vyhodí výjimku', () => {
     const curves: Record<Id, Curve> = { l: { type: 'line', a: 'a', b: 'missing' } };
-    expect(() => solver.solve(input({ points: { a: { x: 0, y: 0 } }, curves }))).toThrow(/neznámý bod/);
+    expect(() => solver.solve(input({ points: { a: { x: 0, y: 0 } }, curves }))).toThrow(/unknown point/);
     const source = rect();
     source.constraints.bad = { type: 'horizontal', line: 'nope' };
-    expect(() => solver.solve(source)).toThrow(/neznámou křivku/);
+    expect(() => solver.solve(source)).toThrow(/an unknown curve/);
     const two = rect();
     two.constraints.bad = { type: 'tangent', a: 'l1', b: 'l2' };
-    expect(() => solver.solve(two)).toThrow(/tečnost/);
-    expect(() => solver.solve(input({ points: { m: { x: 0, y: 0 } }, curves: { k: { type: 'circle', center: 'm' } } }))).toThrow(/poloměr/);
+    expect(() => solver.solve(two)).toThrow(/tangency/);
+    expect(() => solver.solve(input({ points: { m: { x: 0, y: 0 } }, curves: { k: { type: 'circle', center: 'm' } } }))).toThrow(/radius/);
   });
 
   it('po výjimce i po konfliktu solver dál funguje', () => {
@@ -623,11 +623,11 @@ describe('nálezy z revize', () => {
   it('neznámý druh křivky, nepřípustné fixed a kolize s pomocnými ID vyhodí výjimku', () => {
     const points = { a: { x: 0, y: 0 }, b: { x: 5, y: 0 }, c: { x: 0, y: 5 } };
     const ellipse = { type: 'ellipse', center: 'a', start: 'b', end: 'c' } as unknown as Curve;
-    expect(() => solver.solve(input({ points, curves: { e: ellipse } }))).toThrow(/neznámý druh křivky/);
+    expect(() => solver.solve(input({ points, curves: { e: ellipse } }))).toThrow(/unknown kind of curve/);
     const arc: Curve = { type: 'arc', center: 'a', start: 'b', end: 'c' };
-    expect(() => solver.solve(input({ points, curves: { arc }, fixed: ['arc'] }))).toThrow(/není bod ani kružnice/);
-    expect(() => solver.solve(input({ points, fixed: ['ghost'] }))).toThrow(/není bod ani kružnice/);
-    expect(() => solver.solve(input({ points: { ...points, '//x': { x: 1, y: 1 } } }))).toThrow(/koliduje/);
+    expect(() => solver.solve(input({ points, curves: { arc }, fixed: ['arc'] }))).toThrow(/is neither a point nor a circle/);
+    expect(() => solver.solve(input({ points, fixed: ['ghost'] }))).toThrow(/is neither a point nor a circle/);
+    expect(() => solver.solve(input({ points: { ...points, '//x': { x: 1, y: 1 } } }))).toThrow(/collides/);
   });
 
   it('výsledek nezávisí na pořadí klíčů ani u skici bez přesného řešení', () => {

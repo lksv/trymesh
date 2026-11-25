@@ -252,17 +252,17 @@ export function addConstraints(host: SketchHost, m: SketchMode, constraints: Con
   // Vazbu, kterou skica už má, engine odmítne; ze sady se přidá jen to, co chybí.
   const feature = host.sketchContext()?.feature;
   const fresh = feature ? constraints.filter((c) => duplicateOf(feature, c) === undefined) : constraints;
-  if (fresh.length === 0) return host.say(constraints.some(isDimension) ? 'Tuhle kótu už skica má; její hodnotu upravíte v seznamu vazeb.' : 'Tuhle vazbu už skica má.', true);
+  if (fresh.length === 0) return host.say(constraints.some(isDimension) ? 'The sketch already has this dimension; change its value in the list of constraints.' : 'The sketch already has this constraint.', true);
   constraints = fresh;
   const commands = (list: Constraint[]): Command => ({ type: 'batch', commands: list.map((constraint): Command => ({ type: 'addConstraint', sketch: m.id, id: host.newId('k'), constraint })) });
   const result: CommandResult = host.engine.execute(commands(constraints));
-  if (result.ok) return host.say('Vazba přidána.');
+  if (result.ok) return host.say('Constraint added.');
   // kótu jen mezi pevnými entitami engine odmítne jako řídicí; nabídne se jako referenční
   const reference = constraints.map((c) => (isDimension(c) ? { ...c, driving: false } : c));
   // stejná referenční kóta už ve skice je: engine duplicity hlídá jen u řídicích vazeb
   const keys = new Set(Object.values(feature?.constraints ?? {}).map(constraintKey));
-  if (reference.every((c) => isDimension(c) && keys.has(constraintKey(c)))) return host.say('Tuhle kótu už skica má.', true);
-  if (constraints.some(isDimension) && host.engine.execute(commands(reference)).ok) return host.say('Kóta je mezi pevnými entitami, proto je jen referenční.');
+  if (reference.every((c) => isDimension(c) && keys.has(constraintKey(c)))) return host.say('The sketch already has this dimension.', true);
+  if (constraints.some(isDimension) && host.engine.execute(commands(reference)).ok) return host.say('The dimension is between fixed entities, so it is only a reference dimension.');
   host.say(result.error.message, true);
 }
 
@@ -275,9 +275,9 @@ export function deleteSelection(host: SketchHost, m: SketchMode): void {
   const copy = m.selection.find((id) => context.view.points.get(id)?.derived === true || context.view.curves.get(id)?.derived === true);
   const entry = copy === undefined ? undefined : derivedOrigin(context.feature, copy)?.entry;
   const copyHint = entry === undefined ? '' : `"${copy}" is a copy of the mirror or pattern "${entry}" and is not deleted by itself: remove "${entry}" by ✕ in its row, or change its sources in its form.`;
-  if (commands.length === 0) return host.say(copyHint || 'Počátek a body promítnuté geometrie smazat nejdou; promítnutí se maže výběrem jeho křivky.', true);
+  if (commands.length === 0) return host.say(copyHint || 'The origin and the points of projected geometry cannot be deleted; a projection is deleted by selecting its curve.', true);
   m.selection = [];
-  host.run({ type: 'batch', commands }, copyHint ? `Deleted the own entities of the selection; ${copyHint}` : 'Smazáno.');
+  host.run({ type: 'batch', commands }, copyHint ? `Deleted the own entities of the selection; ${copyHint}` : 'Deleted.');
 }
 
 // Vysvětlení označené vazby. Pamatuje se podle diagnostiky, aby se při každém překreslení
@@ -421,6 +421,6 @@ export function sketchScene(host: SketchHost, m: SketchMode, model: SceneModel):
     for (const points of tool.draw?.(places, cursor, context, toolOptions(host, m.tool)) ?? []) pushPolyline(rubber, frame, points);
     model.lines.push({ segments: rubber, color: m.infer ? COLOR.select : m.construction ? COLOR.construction : COLOR.rubber, width: 1.5, dashed: true, onTop: true });
     if (cursor.snap) model.points.push({ positions: toWorld(frame, at[0], at[1]), color: 0x16a34a, size: 12 });
-    if (m.infer) model.labels.push({ at: toWorld(frame, at[0], at[1]), text: m.infer === 'horizontal' ? 'vodorovně' : m.infer === 'vertical' ? 'svisle' : 'tangent', tone: 'reference' });
+    if (m.infer) model.labels.push({ at: toWorld(frame, at[0], at[1]), text: m.infer === 'horizontal' ? 'horizontal' : m.infer === 'vertical' ? 'vertical' : 'tangent', tone: 'reference' });
   }
 }

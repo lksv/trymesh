@@ -201,17 +201,17 @@ function spread(input: SolveInput, constraints: Id[]): SolveInput {
 function buildPrimitives(input: SolveInput, drag?: SolveInput['drag'], without?: Set<string>, collapsed?: Set<Id>): Loose[] {
   const fixed = new Set(input.fixed);
   for (const id of [...Object.keys(input.points), ...Object.keys(input.curves), ...Object.keys(input.constraints)]) {
-    if (isSynthetic(id)) throw new Error(`solver: ID "${id}" koliduje s pomocnými ID adaptéru`);
+    if (isSynthetic(id)) throw new Error(`solver: the ID "${id}" collides with the auxiliary IDs of the adapter`);
   }
   // Pevné smějí být body a kružnice (pevný poloměr); nic jiného adaptér zafixovat neumí.
   for (const id of fixed) {
-    if (!input.points[id] && input.curves[id]?.type !== 'circle') throw new Error(`solver: "${id}" ve fixed není bod ani kružnice`);
+    if (!input.points[id] && input.curves[id]?.type !== 'circle') throw new Error(`solver: "${id}" in fixed is neither a point nor a circle`);
   }
   const out: Loose[] = [];
   const sorted = <T>(record: Record<Id, T>) => Object.keys(record).sort().map((id) => [id, record[id] as T] as const);
   const point = (id: Id): Point2 => {
     const p = input.points[id];
-    if (!p) throw new Error(`solver: neznámý bod ${id}`);
+    if (!p) throw new Error(`solver: unknown point ${id}`);
     return p;
   };
 
@@ -234,7 +234,7 @@ function buildPrimitives(input: SolveInput, drag?: SolveInput['drag'], without?:
       case 'circle': {
         point(curve.center);
         const radius = input.radii[id];
-        if (radius === undefined) throw new Error(`solver: kružnice ${id} nemá poloměr`);
+        if (radius === undefined) throw new Error(`solver: the circle ${id} has no radius`);
         out.push({ id, type: 'circle', c_id: curve.center, radius });
         if (fixed.has(id)) out.push({ id: `${SYNTHETIC}fixRadius/${id}`, type: 'circle_radius', c_id: id, radius });
         break;
@@ -267,7 +267,7 @@ function buildPrimitives(input: SolveInput, drag?: SolveInput['drag'], without?:
         break;
       default: {
         const unknown: never = curve; // a kind added to Curve needs its case here
-        throw new Error(`solver: neznámý druh křivky u ${id}`, { cause: unknown });
+        throw new Error(`solver: unknown kind of curve at ${id}`, { cause: unknown });
       }
     }
   }
@@ -310,17 +310,17 @@ type Ends = TangentEnds;
 
 // A spline is never an operand of a constraint (D70): the engine refuses it before the solver.
 const neverASpline = (id: Id): never => {
-  throw new Error(`solver: vazba ${id}: a spline is never an operand of a constraint`);
+  throw new Error(`solver: constraint ${id}: a spline is never an operand of a constraint`);
 };
 
 function translate(id: Id, c: Exclude<Constraint, { type: 'fixed' }>, curves: Record<Id, Curve>, constraints: Record<Id, Constraint>, ends: Ends): Record<string, unknown> & { type: string } {
   const kind = (curveId: Id): Curve['type'] => {
     const curve = curves[curveId];
-    if (!curve) throw new Error(`solver: vazba ${id} odkazuje na neznámou křivku ${curveId}`);
+    if (!curve) throw new Error(`solver: the constraint ${id} refers to an unknown curve ${curveId}`);
     return curve.type;
   };
   const line = (curveId: Id): Id => {
-    if (kind(curveId) !== 'line') throw new Error(`solver: vazba ${id} čeká úsečku, ${curveId} je ${kind(curveId)}`);
+    if (kind(curveId) !== 'line') throw new Error(`solver: the constraint ${id} expects a line, ${curveId} is ${kind(curveId)}`);
     return curveId;
   };
   switch (c.type) {
@@ -339,7 +339,7 @@ function translate(id: Id, c: Exclude<Constraint, { type: 'fixed' }>, curves: Re
           return neverASpline(id);
         default: {
           const unknown: never = k;
-          throw new Error(`solver: vazba ${id}: neznámý druh křivky ${c.curve}`, { cause: unknown });
+          throw new Error(`solver: constraint ${id}: unknown kind of curve ${c.curve}`, { cause: unknown });
         }
       }
     }
@@ -358,10 +358,10 @@ function translate(id: Id, c: Exclude<Constraint, { type: 'fixed' }>, curves: Re
       const [first, second] = kind(c.a) === 'arc' && kind(c.b) === 'circle' ? [c.b, c.a] : [c.a, c.b];
       const [k1, k2] = [kind(first), kind(second)];
       const refused = (): never => {
-        throw new Error(`solver: vazba ${id}: equal radius needs circles or arcs`);
+        throw new Error(`solver: constraint ${id}: equal radius needs circles or arcs`);
       };
       const unknown = (k: never): never => {
-        throw new Error(`solver: vazba ${id}: neznámý druh křivky (${String(k)})`);
+        throw new Error(`solver: constraint ${id}: unknown kind of curve (${String(k)})`);
       };
       switch (k1) {
         case 'circle':
@@ -414,7 +414,7 @@ function translate(id: Id, c: Exclude<Constraint, { type: 'fixed' }>, curves: Re
       if (pair === 'circle-circle') return { type: 'tangent_cc', c1_id: first, c2_id: second };
       if (pair === 'circle-arc') return { type: 'tangent_ca', c_id: first, a_id: second };
       if (pair === 'arc-arc') return { type: 'tangent_aa', a1_id: first, a2_id: second };
-      throw new Error(`solver: vazba ${id}: tečnost dvou úseček nedává smysl`);
+      throw new Error(`solver: constraint ${id}: tangency of two lines makes no sense`);
     }
     case 'symmetric':
       return { type: 'p2p_symmetric_ppl', p1_id: c.a, p2_id: c.b, l_id: line(c.line) };
@@ -445,7 +445,7 @@ function translate(id: Id, c: Exclude<Constraint, { type: 'fixed' }>, curves: Re
           return { type: 'circle_radius', c_id: c.curve, radius: c.value };
         default: {
           const unknown: never = k;
-          throw new Error(`solver: vazba ${id}: neznámý druh křivky ${c.curve} (${String(unknown)})`);
+          throw new Error(`solver: constraint ${id}: unknown kind of curve ${c.curve} (${String(unknown)})`);
         }
       }
     }
@@ -461,7 +461,7 @@ function translate(id: Id, c: Exclude<Constraint, { type: 'fixed' }>, curves: Re
           return { type: 'circle_diameter', c_id: c.curve, diameter: c.value };
         default: {
           const unknown: never = k;
-          throw new Error(`solver: vazba ${id}: neznámý druh křivky ${c.curve} (${String(unknown)})`);
+          throw new Error(`solver: constraint ${id}: unknown kind of curve ${c.curve} (${String(unknown)})`);
         }
       }
     }

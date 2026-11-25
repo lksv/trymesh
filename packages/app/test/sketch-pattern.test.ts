@@ -43,7 +43,7 @@ async function square(): Promise<Harness> {
   return h;
 }
 const selectSquare = (h: Harness): void => {
-  h.press('toolbar', 'Výběr');
+  h.press('toolbar', 'Select');
   h.click(at(25, 5));
   h.click(at(45, 25), { shiftKey: true });
   h.click(at(25, 45), { shiftKey: true });
@@ -110,15 +110,15 @@ describe('mirror and pattern in the app (D68)', () => {
     const h = await square();
     run(h, { type: 'addExternal', sketch: 's', id: 'm', ref: { type: 'pattern', sources: ['qa'], transform: { type: 'mirror', axis: 'origin/y' } } });
     // a point at the copied corner (−5, 5): a new point, tied to nothing
-    h.press('toolbar', 'Bod');
+    h.press('toolbar', 'Point');
     h.click(at(-5, 5));
     const added = Object.keys(sketchOf(h).points).filter((id) => !id.startsWith('q'));
     expect(added).toHaveLength(1);
     expect(Object.values(sketchOf(h).constraints).filter((c) => JSON.stringify(c).includes('m/1/'))).toEqual([]);
     // the select tool selects the copy; no constraint is offered
-    h.press('toolbar', 'Výběr');
+    h.press('toolbar', 'Select');
     h.click(at(-25, 5));
-    expect(h.button('panel', 'Vodorovně').disabled).toBe(true);
+    expect(h.button('panel', 'Horizontal').disabled).toBe(true);
     // Use selection in the form of `m`: the right side `qb` alone
     h.click(at(45, 25));
     Array.from(h.document.querySelectorAll<HTMLElement>('#panel .constraint .name')).find((name) => name.textContent?.startsWith('Mirror'))?.click();

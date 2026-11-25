@@ -404,7 +404,7 @@ describe('the section meshes and its commands', () => {
     expect(step?.run(older)).toEqual({ ...older, meshes: {} });
     expect(step?.run({ ...older, meshes: null })).toEqual({ ...older, meshes: null });
     expect(validateDocument(older).meshes).toEqual({});
-    expect(() => validateDocument({ ...older, meshes: null })).toThrow(/document\.meshes: čeká se objekt/);
+    expect(() => validateDocument({ ...older, meshes: null })).toThrow(/document\.meshes: an object is expected/);
     expect(SECTION_INFO.meshes).toMatchObject({ title: 'Stored meshes', commands: ['addMesh', 'removeMesh'], fields: [] });
   });
 
@@ -412,11 +412,11 @@ describe('the section meshes and its commands', () => {
     const doc = applyCommand(emptyDocument(), { type: 'addMesh', id: 'tetra', mesh: TETRA_STORED });
     expect(doc.meshes).toEqual({ tetra: TETRA_STORED });
     refused(doc, { type: 'addMesh', id: 'tetra', mesh: BOX_STORED }, /addMesh\.id: the document has a stored mesh "tetra" already/);
-    refused(doc, { type: 'addMesh', id: 'origin', mesh: BOX_STORED }, /addMesh\.id: ID "origin" není přípustné/);
+    refused(doc, { type: 'addMesh', id: 'origin', mesh: BOX_STORED }, /addMesh\.id: the ID "origin" is not allowed/);
     refused(doc, { type: 'addMesh', id: 'constructor', mesh: BOX_STORED }, /addMesh\.id/);
     refused(doc, { type: 'addMesh', id: 'b', mesh: { ...BOX_STORED, colour: 'red' } }, /addMesh\.mesh\.colour: a stored mesh has no such field/);
     refused(doc, { type: 'addMesh', id: 'b', mesh: { ...BOX_STORED, name: ' box' } }, /addMesh\.mesh\.name/);
-    refused(doc, { type: 'addMesh', id: 'b', mesh: { positions: BOX_STORED.positions } }, /addMesh\.mesh\.triangles: čeká se řetězec/);
+    refused(doc, { type: 'addMesh', id: 'b', mesh: { positions: BOX_STORED.positions } }, /addMesh\.mesh\.triangles: a string is expected/);
     refused(doc, { type: 'addMesh', id: 'b', mesh: storedMesh(meshOf(inverted(box([0, 0, 0], [1, 1, 1])))) }, /addMesh\.mesh: the volume of the mesh/);
     refused(doc, { type: 'addMesh', id: 'b', mesh: { ...BOX_STORED, positions: `${BOX_STORED.positions.slice(0, -4)} ${BOX_STORED.positions.slice(-3)}` } }, /addMesh\.mesh\.positions: the character " "/);
   });
@@ -495,7 +495,7 @@ describe('the feature mesh: a stored mesh placed as a body with one face', () =>
     expect(engine.execute({ type: 'updateFeature', id: 'b', patch: { placement: { scale: 2 } } as never })).toMatchObject({ ok: false, error: { message: expect.stringContaining('scale') } });
     expect(engine.execute({ type: 'setField', feature: 'b', path: 'placement/scale', value: 2 })).toMatchObject({ ok: false, error: { message: expect.stringContaining('not a numeric field') } });
     // a frame of a sketch point is checked: the sketch and its point
-    expect(engine.execute({ type: 'updateFeature', id: 'b', patch: { placement: { frame: { kind: 'sketchPoint', sketch: 's', point: 'p' } } } })).toMatchObject({ ok: false, error: { message: expect.stringContaining('feature "s" neexistuje') } });
+    expect(engine.execute({ type: 'updateFeature', id: 'b', patch: { placement: { frame: { kind: 'sketchPoint', sketch: 's', point: 'p' } } } })).toMatchObject({ ok: false, error: { message: expect.stringContaining('feature "s" does not exist') } });
     expect(engine.execute({ type: 'updateFeature', id: 'b', patch: { placement: { frame: { kind: 'sketchPoint', sketch: 's', point: 'p', axis: 'Z' } } } as never })).toMatchObject({ ok: false, error: { message: expect.stringContaining('axis') } });
   });
 

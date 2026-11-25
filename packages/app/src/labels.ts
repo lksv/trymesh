@@ -6,7 +6,7 @@ import { valueText } from './fields';
 import type { ExtentSide, ExtrudeDraft } from './sketch-commands';
 
 export const FEATURE_TYPES = Object.fromEntries(Object.entries(FEATURE_TYPE_INFO).map(([type, info]) => [type, info.title])) as Record<Feature['type'], string>;
-export const OPERATIONS: Record<ExtrudeFeature['operation'], string> = { new: 'Nové těleso', add: 'Přidat k tělesu', cut: 'Odebrat z tělesa' };
+export const OPERATIONS: Record<ExtrudeFeature['operation'], string> = { new: 'New body', add: 'Join to body', cut: 'Cut from body' };
 // A numeric field of a feature for a summary: its expression with the value, or the value alone.
 export const shownValue = (feature: Feature, path: string, value: number): string => (feature.expressions?.[path] ? `${feature.expressions[path]} = ${fmt(value)}` : fmt(value));
 // An angle of a summary in degrees, with its expression.

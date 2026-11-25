@@ -64,7 +64,7 @@ describe('the section and its upgrade step', () => {
     expect(step?.run({ ...older, bodyProperties: null })).toEqual({ ...older, bodyProperties: null });
     // a document of master before the merge of 3a (version 4, no names) loads with the empty section
     expect(validateDocument(older).bodyProperties).toEqual({});
-    expect(() => validateDocument({ ...older, bodyProperties: null })).toThrow(/document\.bodyProperties: čeká se objekt/);
+    expect(() => validateDocument({ ...older, bodyProperties: null })).toThrow(/document\.bodyProperties: an object is expected/);
     // a document of version 1 goes through every step
     expect(validateDocument({ schemaVersion: 1, settings: { chordTolerance: 0.01 }, features: [] }).bodyProperties).toEqual({});
   });
@@ -84,13 +84,13 @@ describe('the section and its upgrade step', () => {
 
   it('an entry is strict: a field this build does not know is refused, not dropped', () => {
     expect(() => base({ motor: { mass: 280, printOrientation: 'up' } })).toThrow(/document\.bodyProperties\.motor\.printOrientation: the properties of a body has no such field/);
-    expect(() => base({ motor: { use: 'bought' } })).toThrow(/motor\.use: čeká se jedna z hodnot part, reference, auxiliary/);
+    expect(() => base({ motor: { use: 'bought' } })).toThrow(/motor\.use: one of the values part, reference, auxiliary/);
     expect(() => base({ motor: { mass: '280' } })).toThrow(/an expression belongs in expressions/);
     expect(() => base({ motor: { mass: 280, expressions: { density: 'a' } } })).toThrow(/motor\.expressions\.density: the entry has no numeric field "density"/);
     expect(() => base({ motor: { mass: 280, expressions: { mass: '2 *' } } })).toThrow(/motor\.mass: expression "2 \*"/);
     expect(() => base({ motor: { density: 1240 } })).toThrow(/motor\.density: the value 1240 is not in the interval \(0, 25\]/);
     expect(() => base({ 'a/b/': {} })).not.toThrow(); // the key: a body ID whose feature part could be an ID
-    expect(() => base({ '/2': { use: 'reference' } })).toThrow(/ID "" není přípustné/);
+    expect(() => base({ '/2': { use: 'reference' } })).toThrow(/the ID "" is not allowed/);
     expect(() => base({ 'screws/': { use: 'reference' } })).toThrow(/"screws\/" is not a body ID/);
   });
 
@@ -128,11 +128,11 @@ describe('the commands', () => {
     refused(base(), set('motor', { name: ' NEMA 17' }), /patch\.name: a text that is not empty, has no leading or trailing space and at most 200 characters/);
     refused(base(), set('motor', { material: 'x'.repeat(201) }), /patch\.material: a text that is not empty/);
     refused(base(), set('motor', { name: '' }), /patch\.name/);
-    refused(base(), set('motor', { use: 'bought' }), /patch\.use: čeká se jedna z hodnot part, reference, auxiliary/);
+    refused(base(), set('motor', { use: 'bought' }), /patch\.use: one of the values part, reference, auxiliary/);
     refused(base(), set('motor', { density: 1240 }), /patch\.density: the value 1240 is not in the interval \(0, 25\]/);
     refused(base(), set('motor', { mass: 0 }), /patch\.mass: the value must be positive/);
-    refused(base(), set('motor', { mass: true }), /patch\.mass: čeká se konečné číslo/);
-    refused(base(), { type: 'setBodyProperties', body: 'motor' } as never, /setBodyProperties\.patch: čeká se objekt/);
+    refused(base(), set('motor', { mass: true }), /patch\.mass: a finite number is expected/);
+    refused(base(), { type: 'setBodyProperties', body: 'motor' } as never, /setBodyProperties\.patch: an object is expected/);
   });
 
   it('a numeric field: a string is an expression evaluated at once, a number removes the expression; an error names the field in the section', () => {

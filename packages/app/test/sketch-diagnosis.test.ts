@@ -80,7 +80,7 @@ describe('volné a určené entity', () => {
     expect(d.status).not.toBe('solved');
     expect(freeEntities(d, viewOf(engine))).toBeUndefined();
     expect(anchorPoints(d)).toEqual([]);
-    expect(explainText(engine, 'w2')).toMatch(/není vyřešená/);
+    expect(explainText(engine, 'w2')).toMatch(/is not solved/);
   });
 });
 
@@ -89,9 +89,9 @@ describe('věta o volných entitách', () => {
     const engine = rectangle();
     add(engine, 'w', { type: 'horizontalDistance', a: 'a', b: 'b', value: 40, driving: true });
     add(engine, 'hgt', { type: 'verticalDistance', a: 'b', b: 'c', value: 30, driving: true });
-    expect(freeSummary(engine.diagnoseSketch('s'))).toBe('Volné (v pohledu modře): body a, b, c, d. Skicu dourčí určení polohy kteréhokoli z nich: například dvěma kótami od počátku.');
+    expect(freeSummary(engine.diagnoseSketch('s'))).toBe('Free (blue in the view): points a, b, c, d. Fixing the position of any of them fully constrains the sketch: for example by two dimensions from the origin.');
     add(engine, 'x', { type: 'horizontalDistance', a: 'origin', b: 'a', value: 0, driving: true });
-    expect(freeSummary(engine.diagnoseSketch('s'))).toBe('Volné (v pohledu modře): body a, b, c, d. Skicu dourčí určení polohy kteréhokoli z nich: stačí jedna kóta nebo vazba ve směru, kterým se může hýbat.');
+    expect(freeSummary(engine.diagnoseSketch('s'))).toBe('Free (blue in the view): points a, b, c, d. Fixing the position of any of them fully constrains the sketch: one dimension or constraint in the direction it can move is enough.');
     add(engine, 'y', { type: 'verticalDistance', a: 'origin', b: 'a', value: 0, driving: true });
     expect(freeSummary(engine.diagnoseSketch('s'))).toBeUndefined();
   });
@@ -103,7 +103,7 @@ describe('věta o volných entitách', () => {
       { type: 'addPoint', sketch: 's', id: 'p', x: 20, y: 5 },
       { type: 'addCurve', sketch: 's', id: 'l', curve: { type: 'line', a: 'origin', b: 'p' } },
     ] as Command[]) expect(line.execute(command).ok).toBe(true);
-    expect(freeSummary(line.diagnoseSketch('s'))).toBe('Volné (v pohledu modře): bod p. Skicu dourčí určení polohy bodu p: například dvěma kótami od počátku.');
+    expect(freeSummary(line.diagnoseSketch('s'))).toBe('Free (blue in the view): point p. Fixing the position of the point p fully constrains the sketch: for example by two dimensions from the origin.');
 
     const circle = createEngine(deps);
     for (const command of [
@@ -113,15 +113,15 @@ describe('věta o volných entitách', () => {
     const d = circle.diagnoseSketch('s');
     expect(d).toMatchObject({ degreesOfFreedom: 1, free: [{ id: 'k', kind: 'radius', freedom: 1 }] });
     expect(anchorPoints(d)).toEqual([]);
-    expect(freeSummary(d)).toBe('Volné (v pohledu modře): poloměr k.');
+    expect(freeSummary(d)).toBe('Free (blue in the view): radius k.');
   });
 
   it('dlouhý výčet se zkrátí se správným tvarem slova „další"', () => {
     const ids = Array.from({ length: 14 }, (_, i) => `p${i}`);
     expect(listed(ids.slice(0, 8))).toBe('p0, p1, p2, p3, p4, p5, p6, p7');
-    expect(listed(ids.slice(0, 9))).toBe('p0, p1, p2, p3, p4, p5, p6, p7 a 1 další');
-    expect(listed(ids.slice(0, 11))).toBe('p0, p1, p2, p3, p4, p5, p6, p7 a další 3');
-    expect(listed(ids)).toBe('p0, p1, p2, p3, p4, p5, p6, p7 a dalších 6');
+    expect(listed(ids.slice(0, 9))).toBe('p0, p1, p2, p3, p4, p5, p6, p7 and 1 more');
+    expect(listed(ids.slice(0, 11))).toBe('p0, p1, p2, p3, p4, p5, p6, p7 and 3 more');
+    expect(listed(ids)).toBe('p0, p1, p2, p3, p4, p5, p6, p7 and 6 more');
   });
 });
 
@@ -133,9 +133,9 @@ describe('označení a vysvětlení vazeb', () => {
     expect(markOf(d, 'par')).toBe('surplus');
     expect(markOf(d, 'h1')).toBeUndefined(); // starší vazby zůstávají neoznačené
     expect(duplicateTwins(d)).toEqual([]);
-    expect(explainText(engine, 'par')).toBe('Vazba plyne z vazeb: <h1>; <h2>. Odebrat jde ona nebo kterákoli z nich, geometrie se tím nezmění.');
-    expect(explainText(engine, 'h1')).toMatch(/^Vazba plyne z vazeb: <h2>; <par>\./);
-    expect(explainText(engine, 'v1')).toBe('Vazba je potřebná: z ostatních neplyne.');
+    expect(explainText(engine, 'par')).toBe('The constraint follows from the constraints: <h1>; <h2>. Either it or any one of them can be removed without changing the geometry.');
+    expect(explainText(engine, 'h1')).toMatch(/^The constraint follows from the constraints: <h2>; <par>\./);
+    expect(explainText(engine, 'v1')).toBe('The constraint is needed: it does not follow from the others.');
   });
 
   it('duplicita z dokumentu starší verze: označí se novější dvojče a vysvětlení ji pojmenuje', () => {
@@ -148,7 +148,7 @@ describe('označení a vysvětlení vazeb', () => {
     expect(markOf(d, 'h1again')).toBe('duplicate');
     expect(markOf(d, 'h1')).toBeUndefined();
     // dvojčata mají stejný popisek, takže ho věta neopakuje; které to je, ukáže podbarvení v seznamu
-    expect(explainText(engine, 'h1again')).toBe('Vazba je duplicita: stejnou vazbu už skica má (v seznamu podbarvená).');
+    expect(explainText(engine, 'h1again')).toBe('The constraint is a duplicate: the sketch already has the same constraint (highlighted in the list).');
     expect(explainText(engine, 'h1')).toBe(explainText(engine, 'h1again'));
     // tři stejné vazby: starší zůstává, obě novější jsou dvojčata; vysvětlení jmenuje jednu z nich
     document.features[0].constraints.h1third = { type: 'horizontal', line: 'ab' };
@@ -164,27 +164,27 @@ describe('označení a vysvětlení vazeb', () => {
     add(engine, 'mid', { type: 'midpoint', point: 'm', line: 'ab' });
     add(engine, 'on', { type: 'pointOnCurve', point: 'm', curve: 'ab' });
     const before = engine.diagnoseSketch('s').degreesOfFreedom;
-    expect(explainText(engine, 'on')).toBe('Vazba plyne z vazby: <mid>. Odebrat jde tahle vazba, geometrie se tím nezmění.');
+    expect(explainText(engine, 'on')).toBe('The constraint follows from the constraint: <mid>. This constraint can be removed without changing the geometry.');
     expect(engine.preview({ type: 'removeConstraint', sketch: 's', id: 'on' })).toMatchObject({ ok: true });
     expect(engine.execute({ type: 'removeConstraint', sketch: 's', id: 'mid' }).ok).toBe(true);
     expect(engine.diagnoseSketch('s').degreesOfFreedom).toBe(before + 1); // rada „kterákoli z nich" by tu lhala
     // dvě vazby s jednou rovnicí, které říkají totéž jinak: zaměnitelné jsou
     add(engine, 'h1b', { type: 'verticalDistance', a: 'a', b: 'b', value: 0, driving: true });
-    expect(explainText(engine, 'h1b')).toBe('Vazba plyne z vazby: <h1>. Odebrat jde ona nebo ta druhá, geometrie se tím nezmění.');
+    expect(explainText(engine, 'h1b')).toBe('The constraint follows from the constraint: <h1>. Either it or the other one can be removed without changing the geometry.');
   });
 
   it('vazba vynechaná při řešení a skica, která se nevyhodnotila', () => {
     const engine = rectangle();
     const d = engine.diagnoseSketch('s');
     const h1 = featureOf(engine).constraints.h1;
-    expect(explanationText(h1, 'h1', { redundant: false, impliedBy: [] }, d, label, true)).toMatch(/při řešení vynechala/);
-    expect(explanationText(h1, 'h1', { redundant: false, impliedBy: [] }, { ...d, status: 'unavailable' }, label)).toBe('Skica se nevyhodnotila, vazby nejde posoudit.');
+    expect(explanationText(h1, 'h1', { redundant: false, impliedBy: [] }, d, label, true)).toMatch(/left out of the solve/);
+    expect(explanationText(h1, 'h1', { redundant: false, impliedBy: [] }, { ...d, status: 'unavailable' }, label)).toBe('The sketch was not evaluated, so its constraints cannot be judged.');
   });
 
   it('referenční kóta a vazba plynoucí z definice oblouku', () => {
     const engine = rectangle();
     add(engine, 'ref', { type: 'distance', a: 'a', b: 'c', value: 50, driving: false });
-    expect(explainText(engine, 'ref')).toBe('Referenční kóta jen měří, geometrii neurčuje.');
+    expect(explainText(engine, 'ref')).toBe('A reference dimension only measures; it does not drive the geometry.');
     for (const command of [
       { type: 'addPoint', sketch: 's', id: 'm', x: 60, y: 0 },
       { type: 'addPoint', sketch: 's', id: 's1', x: 70, y: 0 },
@@ -193,6 +193,6 @@ describe('označení a vysvětlení vazeb', () => {
     ] as Command[]) expect(engine.execute(command).ok).toBe(true);
     add(engine, 'onArc', { type: 'pointOnCurve', point: 'e1', curve: 'arc' });
     expect(markOf(engine.diagnoseSketch('s'), 'onArc')).toBe('surplus');
-    expect(explainText(engine, 'onArc')).toBe('Vazba je navíc: plyne už z definice křivky.');
+    expect(explainText(engine, 'onArc')).toBe('The constraint is surplus: it already follows from the definition of the curve.');
   });
 });

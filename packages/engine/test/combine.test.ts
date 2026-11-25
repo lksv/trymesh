@@ -64,12 +64,12 @@ describe('the feature combine (D56)', () => {
     invalid(doc, add(combine('K', { tools: ['A'] })), /is not its own tool/);
     invalid(doc, add(combine('K', { tools: ['B', 'B'] })), /listed twice/);
     invalid(doc, add(combine('K', { tools: [] })), /non-empty list/);
-    invalid(doc, add(combine('K', { tools: ['C'] })), /není těleso/); // a cut creates no body
-    invalid(doc, add(combine('K', { target: 'X' })), /neexistuje/);
+    invalid(doc, add(combine('K', { tools: ['C'] })), /is not a body/); // a cut creates no body
+    invalid(doc, add(combine('K', { target: 'X' })), /does not exist/);
     invalid(doc, add(combine('K', { operation: 'xor' as never })), /operation/);
     invalid(doc, add({ ...combine('K'), keepTools: undefined } as never), /keepTools: say whether/);
     // a body is one a feature before this one creates
-    invalid(doc, add(combine('K'), 1), /musí ležet před/);
+    invalid(doc, add(combine('K'), 1), /must lie before/);
   });
 
   it('the clearance is an optional field: setField reaches it while absent, null removes it, another operation drops it', () => {
@@ -108,8 +108,8 @@ describe('the feature split (D56)', () => {
     const doc = base();
     invalid(doc, add(split('L', { side: 'both' as never })), /side/);
     invalid(doc, add(split('L', { plane: 'P' as never })), /plane/);
-    invalid(doc, add(split('L', { body: 'C' })), /není těleso/);
-    invalid(doc, add(split('L', { plane: { kind: 'plane', feature: 'X' } })), /neexistuje/);
+    invalid(doc, add(split('L', { body: 'C' })), /is not a body/);
+    invalid(doc, add(split('L', { plane: { kind: 'plane', feature: 'X' } })), /does not exist/);
   });
 
   it('the cut face is a role of its own; a copy tag of a combine names a difference before it', () => {

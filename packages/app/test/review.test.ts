@@ -116,7 +116,7 @@ describe('the axis of a round face in the app (D60)', () => {
     // an axis of a face without a pick (the revolve form) is still shown
     const shown = axisRows(host, PIN, [], () => undefined, '');
     expect(options(shown)).toContain('face');
-    expect(shown.map((row) => row.textContent)).toContain('Face: Boss – bok (body b)');
+    expect(shown.map((row) => row.textContent)).toContain('Face: Boss – side (body b)');
   });
 
   it('the text of the axis, and a pick of the view for the axis argument of a query', () => {
@@ -175,7 +175,7 @@ describe('the axis of a round face in the app: the review of D60', () => {
   it('the summary of a pattern names the face of its axis and of each direction', () => {
     const linear = { id: 'n', name: 'Pins', suppressed: false, type: 'pattern', source: { type: 'body', body: 'b' }, transform: { type: 'linear', direction: { kind: 'face', body: 'b', face: PIN_FACE }, count: 2, span: { type: 'spacing', spacing: 5 }, second: { direction: { kind: 'face', body: 'c', face: PIN_FACE }, count: 2, span: { type: 'spacing', spacing: 5 } } } } as PatternFeature;
     const text = FEATURE_UI.pattern.summary(host, linear as never, undefined)[0].textContent;
-    expect(text).toContain('along the axis of the face Boss – bok of body b, spacing 5 mm, and along the axis of the face Boss – bok of body c');
+    expect(text).toContain('along the axis of the face Boss – side of body b, spacing 5 mm, and along the axis of the face Boss – side of body c');
   });
 
   // a face of the copies the previewed pattern makes is refused as its axis, as for the plane of a mirror
@@ -230,7 +230,7 @@ describe('the sketch mode: the review of the implementation of 6a (D64)', () => 
     const table = SKETCH_TOOL_UI as Record<string, unknown>;
     table.collect = collect;
     try {
-      h.press('toolbar', 'Skica');
+      h.press('toolbar', 'Sketch');
       h.press('panel', 'XY');
       h.press('toolbar', 'Collect');
       const enter = (): boolean => {
@@ -283,7 +283,7 @@ describe('mirror and pattern in the app: the review of the implementation of 6c 
     run(h, sketch(), ...line(h, 5, 5));
     run(h, { type: 'addExternal', sketch: 's', id: 'm', ref: { type: 'pattern', sources: ['l5'], transform: { type: 'mirror', axis: 'origin/y' } } });
     open(h);
-    h.press('toolbar', 'Výběr');
+    h.press('toolbar', 'Select');
     h.click(at(-15, 5));
     expect(rowOf(h, 'Mirror')?.classList.contains('selected')).toBe(true);
     h.key('Delete');
@@ -291,8 +291,8 @@ describe('mirror and pattern in the app: the review of the implementation of 6c 
     expect(sketchOf(h).curves.l5).toBeDefined();
     // a mixed selection: no dimension or constraint is offered; Delete removes the own line only
     h.click(at(15, 5), { shiftKey: true });
-    expect(h.button('panel', 'Kóta').disabled).toBe(true);
-    expect(h.button('panel', 'Vodorovně').disabled).toBe(true);
+    expect(h.button('panel', 'Dimension').disabled).toBe(true);
+    expect(h.button('panel', 'Horizontal').disabled).toBe(true);
     h.key('Delete');
     expect(sketchOf(h).curves.l5).toBeUndefined();
     expect(status(h)).toMatch(/^Deleted the own entities of the selection; "m\/1\/l5" is a copy/);
@@ -344,7 +344,7 @@ describe('mirror and pattern in the app: the review of the implementation of 6c 
       ['deg(360)', { type: 'full' }],
       ['90', { type: 'angle', angle: Math.PI / 2 }],
     ] as const) {
-      h.press('toolbar', 'Výběr');
+      h.press('toolbar', 'Select');
       h.click(at(15, 5));
       h.press('toolbar', 'Circular pattern');
       h.type(h.field('Angle'), angle, true);
@@ -363,7 +363,7 @@ describe('mirror and pattern in the app: the review of the implementation of 6c 
     // the angle it is, and the pattern follows the parameter
     expect(fullTurn('turn', [{ name: 'turn', expr: '2 * pi' }])).toBe(false);
     run(h, { type: 'setParameter', name: 'sweep', expr: '2 * pi' });
-    h.press('toolbar', 'Výběr');
+    h.press('toolbar', 'Select');
     h.click(at(15, 5));
     h.press('toolbar', 'Circular pattern');
     h.type(h.field('Angle'), 'sweep', true);

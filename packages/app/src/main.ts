@@ -8,12 +8,12 @@ import { createPlanegcsSolver } from '@trymesh/solver-planegcs';
 import { App } from './app';
 
 const status = document.getElementById('status') as HTMLElement;
-status.textContent = 'Načítám geometrické jádro a solver…';
+status.textContent = 'Loading the geometry kernel and the solver…';
 try {
   const [solver, kernel] = await Promise.all([createPlanegcsSolver({ locateFile: () => planegcsWasm }), createManifoldKernel({ locateFile: () => manifoldWasm })]);
   const app = new App(createEngine({ solver, kernel, deflater: createPakoDeflater() }));
   (window as unknown as { trymesh: App }).trymesh = app; // pro ladění z konzole
 } catch (error) {
-  status.textContent = `Start selhal: ${error instanceof Error ? error.message : String(error)}`;
+  status.textContent = `Start failed: ${error instanceof Error ? error.message : String(error)}`;
   throw error;
 }

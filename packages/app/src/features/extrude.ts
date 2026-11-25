@@ -100,7 +100,7 @@ function extrudePanel(m: ExtrudeMode, host: PanelHost): HTMLElement[] {
   const toSource = (source: ProfileKind): ExtrudeChange =>
     source === 'regions' || source === 'wall' || rememberedProfile(m.extra.profiles ?? {}, source, profile.sketch) ? { source } : { source, operands: defaultOperands(host, source, profile.sketch) };
   return [
-    h('h2', {}, m.editing ? `Úprava: ${m.draft.name}` : 'Nové vysunutí'),
+    h('h2', {}, m.editing ? `Edit: ${m.draft.name}` : 'New extrude'),
     // The profile: regions of the sketch, a wall along its curves, or a profile generator from the catalog.
     h(
       'label',
@@ -114,7 +114,7 @@ function extrudePanel(m: ExtrudeMode, host: PanelHost): HTMLElement[] {
             set(toSource(source));
             // what a click in the view picks now
             if (source === 'wall') host.say('Click curves of the sketch in the view: the wall follows them.');
-            else if (source === 'regions') host.say('Klikáním v pohledu vyberte oblasti skici.');
+            else if (source === 'regions') host.say('Click regions of the sketch in the view to pick them.');
           },
         },
         option('regions', 'Sketch regions', kind === 'regions'),
@@ -125,19 +125,19 @@ function extrudePanel(m: ExtrudeMode, host: PanelHost): HTMLElement[] {
     h(
       'label',
       {},
-      'Skica',
+      'Sketch',
       h(
         'select',
         { onchange: (event: Event) => set(toSketch((event.target as HTMLSelectElement).value)) },
         ...sketches.map((f) => option(f.id, f.name, f.id === profile.sketch)),
-        sketches.some((f) => f.id === profile.sketch) ? null : option(profile.sketch, '(chybí)', true),
+        sketches.some((f) => f.id === profile.sketch) ? null : option(profile.sketch, '(missing)', true),
       ),
     ),
     ...(profile.type === 'regions' ? regionsFields(host, m, profile, set) : profile.type === 'wall' ? wallFields(host, m, profile, set) : generatorFields(host, m, profile, set)),
     h(
       'label',
       {},
-      'Operace',
+      'Operation',
       h(
         'select',
         { onchange: (event: Event) => set({ operation: (event.target as HTMLSelectElement).value as ExtrudeFeature['operation'] }) },
@@ -187,12 +187,12 @@ function extrudePanel(m: ExtrudeMode, host: PanelHost): HTMLElement[] {
       ? h(
           'label',
           {},
-          'Těleso',
+          'Body',
           h(
             'select',
             { onchange: (event: Event) => set({ target: (event.target as HTMLSelectElement).value }) },
             ...bodies.map((body) => option(body, host.bodyName(body), body === targets[0])),
-            ...missing.map((body) => option(body, '(chybí)', true)),
+            ...missing.map((body) => option(body, '(missing)', true)),
           ),
         )
       : null,
@@ -315,12 +315,12 @@ const form: FeatureForm<ExtrudeFeature, Extra> = {
   draft(host, at) {
     const sketches = host.doc.features.slice(0, at.index).filter((f): f is SketchFeature => f.type === 'sketch');
     const chosen = sketches.find((f) => f.id === host.selectedFeature) ?? sketches[sketches.length - 1];
-    if (!chosen) return { problem: 'Vysunutí potřebuje skicu. Nejdřív nějakou nakreslete.' };
+    if (!chosen) return { problem: 'An extrude needs a sketch. Draw one first.' };
     const id = host.newId('e');
     return {
-      draft: { id, name: `Vysunutí ${id.slice(1)}`, suppressed: false, type: 'extrude', extent: { type: 'distance', start: 0, distance: 10 }, ...extrudeDefaults(host, chosen, at.index) },
+      draft: { id, name: `Extrude ${id.slice(1)}`, suppressed: false, type: 'extrude', extent: { type: 'distance', start: 0, distance: 10 }, ...extrudeDefaults(host, chosen, at.index) },
       extra: {},
-      say: 'Klikáním v pohledu vyberte oblasti skici.',
+      say: 'Click regions of the sketch in the view to pick them.',
     };
   },
   command: draftCommand,
@@ -370,7 +370,7 @@ const form: FeatureForm<ExtrudeFeature, Extra> = {
 };
 
 export const extrude: FeatureUi<ExtrudeFeature, Extra> = {
-  button: { label: 'Vysunutí', title: 'Vysunout oblasti skici' },
+  button: { label: 'Extrude', title: 'Extrude regions of a sketch' },
   create: { run: (host, at) => startDraft(host, form, at) },
   edit: (host, feature) => editDraft(host, form, feature, {}),
   summary(host, f) {

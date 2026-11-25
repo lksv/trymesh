@@ -9,9 +9,9 @@ export type BodyNameOf = (body: Id) => string | undefined;
 export type TypeOf = (feature: Id) => Feature['type'] | undefined;
 
 export const ROLES: Record<FaceName['role'], string> = {
-  side: 'bok',
-  startCap: 'víko ve skice',
-  endCap: 'protější víko',
+  side: 'side',
+  startCap: 'cap in the sketch',
+  endCap: 'opposite cap',
   wallSide: 'side of a wall',
   wallEnd: 'end of a wall',
   holeBore: 'bore of a hole',

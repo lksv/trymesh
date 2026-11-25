@@ -54,12 +54,15 @@ export class SketchKit {
   }
   // A B-spline as Onshape's feature holds it (control points flat in metres), with its two end
   // points in the geometry endpoint.
-  spline(control: V2[], knots: number[], degree: number, opts: { id?: string; rational?: boolean; periodic?: boolean; ends?: [V2, V2] } = {}): { id: string; start: string; end: string } {
+  // The geometry endpoint has its end points and its parameter range, the feature its control
+  // points; `noIds` leaves the feature's end point IDs empty (as one of a dump's splines has them).
+  spline(control: V2[], knots: number[], degree: number, opts: { id?: string; rational?: boolean; periodic?: boolean; ends?: [V2, V2]; construction?: boolean; noIds?: boolean } = {}): { id: string; start: string; end: string } {
     const id = opts.id ?? this.id('s');
     const ends = opts.ends ?? [control[0], control[control.length - 1]];
     const [start, end] = [this.point(ends[0], { id: `${id}.start` }), this.point(ends[1], { id: `${id}.end` })];
-    this.entities.push({ jsonType: 'BTSketchCurveSegmentInfo', sketchEntityId: id, sketchEntityType: 'skSpline', isConstruction: false, startPointId: start, endPointId: end });
-    this.featureEntities.push({ btType: 'BTMSketchCurveSegment-155', entityId: id, isConstruction: false, startPointId: start, endPointId: end, startParam: knots[0], endParam: knots[knots.length - 1], geometry: { btType: 'BTCurveGeometryControlPointSpline-2197', degree, isRational: !!opts.rational, isPeriodic: !!opts.periodic, controlPointCount: control.length, controlPoints: control.flatMap(([x, y]) => [M(x), M(y)]), knots } });
+    const [lo, hi] = [knots[0], knots[knots.length - 1]];
+    this.entities.push({ jsonType: 'BTSketchCurveSegmentInfo', sketchEntityId: id, sketchEntityType: 'skSplineSegment', isConstruction: !!opts.construction, startPointId: start, endPointId: end, startParameter: lo, endParameter: hi });
+    this.featureEntities.push({ btType: 'BTMSketchCurveSegment-155', entityId: id, isConstruction: !!opts.construction, startPointId: opts.noIds ? '' : start, endPointId: opts.noIds ? '' : end, startParam: lo, endParam: hi, geometry: { btType: 'BTCurveGeometrySpline-118', degree, isRational: !!opts.rational, isPeriodic: !!opts.periodic, dimension: 2, controlPointCount: control.length, controlPoints: control.flatMap(([x, y]) => [M(x), M(y)]), knots } });
     return { id, start, end };
   }
   constrain(type: string, parameters: Record<string, ParamValue>, id?: string): string {

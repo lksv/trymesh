@@ -26,6 +26,7 @@ export interface MapContext {
   parameters: readonly { name: string; expr: string }[];
   resolve: ExternalResolver;
   plans: EntryPlan[]; // the patterns and mirrors of curves, and which are entries
+  chains: Map<string, { curves: Id[]; points: Id[] }>; // the splines written, by Onshape entity
   spokes: Set<Id>; // the spokes made so far
   entities: Map<string, any>; // the Onshape entities of the geometry endpoint
 }
@@ -159,6 +160,13 @@ export function mapConstraints(ctx: MapContext, list: any[]): { records: Constra
     if (/PATTERN/.test(t)) {
       if (!plan || c.constraintType !== 'CIRCULAR_PATTERN' || p.openPattern?.value) return lose(plan?.why);
       return spokes(plan);
+    }
+    // FIX of a spline written: every control point of its chain fixed at its place, each once
+    const chain = t === 'FIX' && typeof p.localFirst?.value === 'string' ? ctx.chains.get(p.localFirst.value) : undefined;
+    if (chain) {
+      for (const pid of new Set(chain.points)) { const [x, y] = P(pid); add({ type: 'fixed', point: pid, x, y }); }
+      rec.detail = 'every control point';
+      return;
     }
     // the operands, local first, then the external ones resolved against them
     const slot = (name: string): Operand | undefined | { lost: Cause; detail: string } => {

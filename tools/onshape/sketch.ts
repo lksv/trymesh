@@ -1,12 +1,13 @@
 // An Onshape sketch as a sketch of trymesh: its points, lines and circles in the frame of a base plane,
 // the curves split where they cross, and the constraints that have a counterpart.
 import type { Command, Engine, Id, PlaneRef, RegionRef } from '../../packages/engine/src/index';
-import { type SketchToolResult, constraintKey, emptySketch, freshIds, sketchTool, solvedCurves } from '../../packages/engine/src/index';
+import { type SketchToolResult, constraintKey, emptySketch, freshIds, sketchTool, solvedCurves, splineBeziers } from '../../packages/engine/src/index';
 import { type Report, type V2, type V3, dot, exec, expression, sane } from './common';
 import { type Expected, type Pair, TOLERANCE, impliedConstraints, impliedLines, ladder, probeSketch, sketchChanges, strip } from './check';
-import { type ExternalResolver, type MapContext, instanceRows, knownOperand, mapConstraints, numberConstraints, onshapeKind, params, twiceByMeaning } from './constraints';
+import { type ExternalResolver, type MapContext, horizontalOf, instanceRows, knownOperand, mapConstraints, numberConstraints, onshapeKind, params, twiceByMeaning } from './constraints';
 import { type Cause, type ConstraintRecord, FATES, type Fate, type SketchSummary, finalFate, sketchLines } from './fates';
 import { type EntryPlan, copiesMatch, planEntries } from './derived';
+import { SPLINE_BUDGET, distanceToPolyline, isSpline, planSpline, sampleChain } from './splines';
 import { type Candidate, type IdClass, ORIGIN_ID, type StudioOperations, classText, decode, edgeCandidates, fitting, pickCandidate, sketchCandidates } from './operands';
 
 // The frame of an Onshape sketch (world, mm) and the base plane of trymesh it is drawn on.
@@ -51,9 +52,10 @@ export interface Converted {
   frame: SketchFrame;
   kind: Map<string, 'point' | 'line' | 'circle' | 'arc'>; // Onshape entity -> what it is
   rep: Map<string, Id>; // Onshape point -> point of trymesh
+  chains?: Map<string, { curves: Id[]; points: Id[] }>; // Onshape spline -> its curves in order and their points
 }
 
-type C = { id: string; src: string; construction: boolean; line?: [string, string]; circle?: { c: string; r: number }; arc?: [string, string, string] };
+type C = { id: string; src: string; construction: boolean; line?: [string, string]; circle?: { c: string; r: number }; arc?: [string, string, string]; spline?: string[] };
 
 // Where a sketch is converted: its studio, the decode of external IDs there, and its key.
 export interface SketchPlace {
@@ -82,6 +84,7 @@ export function convertSketch(engine: Engine, report: Report, id: Id, name: stri
   for (const e of geom.entities) if (e.sketchEntityType === 'skPoint' && !copies.has(e.sketchEntityId)) kind.set(e.sketchEntityId, 'point');
   const curves: C[] = [];
   const skipped: Record<string, number> = {};
+  const splines: any[] = [];
   // An exact duplicate (the same kind over the same points with the same construction flag; a
   // circle: the same centre and radius) is written once; its Onshape entity points at the first, a
   // line drawn the other way as "the same line, reversed".
@@ -105,6 +108,9 @@ export function convertSketch(engine: Engine, report: Report, id: Id, name: stri
       const turned = e.geometry?.clockWise !== (frame.sign < 0);
       kind.set(e.sketchEntityId, 'arc');
       c = { id: cid, src: e.sketchEntityId, arc: [rep.get(e.centerId)!, turned ? t : s, turned ? s : t], construction: e.isConstruction };
+    } else if (isSpline(e)) {
+      splines.push(e);
+      continue;
     } else if (e.sketchEntityType !== 'skPoint') skipped[e.sketchEntityType] = (skipped[e.sketchEntityType] ?? 0) + 1;
     if (!c) continue;
     const first = curves.find((x) => same(c!, x));
@@ -115,6 +121,41 @@ export function convertSketch(engine: Engine, report: Report, id: Id, name: stri
     }
     curves.push(c);
   }
+  // Splines (rules 1 to 5): planned all, then written all or none of the sketch's.
+  const chains = new Map<string, { curves: Id[]; points: Id[] }>();
+  {
+    const at = (pid?: string): V2 | undefined => { const q = (geom.entities as any[]).find((x) => x.sketchEntityId === pid); return q?.position2d ? [q.position2d.x * 1000, q.position2d.y * 1000] : undefined; };
+    const plans = splines.map((e) => ({ e, plan: planSpline(e, (feature.entities ?? []).find((x: any) => x.entityId === e.sketchEntityId), [at(e.startPointId), at(e.endPointId)]) }));
+    const total = plans.reduce((n, x) => n + (x.plan.ok ? x.plan.points : 0), 0);
+    for (const { e, plan } of plans) {
+      const cid = P(e.sketchEntityId);
+      if (!plan.ok) { report.later('Splines', `${place.studio}, ${name}: ${e.sketchEntityId}: not converted (${plan.why})`); skipped.spline = (skipped.spline ?? 0) + 1; continue; }
+      if (total > SPLINE_BUDGET) { report.later('Splines', `${place.studio}, ${name}: ${e.sketchEntityId}: ${plan.points} control points to write, ${total} in the sketch, over the budget of ${SPLINE_BUDGET}: none of the sketch's splines is written`); skipped.spline = (skipped.spline ?? 0) + 1; continue; }
+      const [a, b] = [rep.get(e.startPointId)!, rep.get(e.endPointId)!];
+      let q = 0;
+      const fresh = (v: V2): Id => { const pid = `${cid}.q${++q}`; pos.set(pid, toBase(frame, v)); return pid; };
+      const chain = { curves: [] as Id[], points: [a] as Id[] };
+      const construction = !!e.isConstruction;
+      if (plan.whole) {
+        const inner = plan.control.slice(1, -1).map(fresh);
+        curves.push({ id: cid, src: e.sketchEntityId, construction, spline: [a, ...inner, b] });
+        chain.curves.push(cid);
+        chain.points.push(...inner, b);
+      } else {
+        plan.pieces.forEach((piece, k) => {
+          const last = k === plan.pieces.length - 1;
+          const ids = [chain.points[chain.points.length - 1], ...piece.slice(1, -1).map(fresh), last ? b : fresh(piece[piece.length - 1])];
+          const id = plan.pieces.length === 1 ? cid : `${cid}.b${k}`;
+          curves.push(plan.degree === 1 ? { id, src: e.sketchEntityId, construction, line: [ids[0], ids[1]] } : { id, src: e.sketchEntityId, construction, spline: ids });
+          chain.curves.push(id);
+          chain.points.push(...ids.slice(1));
+        });
+      }
+      chains.set(e.sketchEntityId, chain);
+      report.knowledge('a spline under the budget', `${place.studio}, ${name}, ${e.sketchEntityId}`);
+      report.later('Splines', `${place.studio}, ${name}: ${e.sketchEntityId}: ${plan.whole ? `one spline over ${plan.points} control points` : `${plan.pieces.length} piece(s) of degree ${plan.degree}, ${plan.points} control points`}`);
+    }
+  }
   if (Object.keys(skipped).length) report.note(`${name}: entities without a counterpart, left out: ${JSON.stringify(skipped)}`);
   const base: Command[] = [
     { type: 'addFeature', feature: emptySketch(id, name, plane) },
@@ -123,11 +164,11 @@ export function convertSketch(engine: Engine, report: Report, id: Id, name: stri
       type: 'addCurve',
       sketch: id,
       id: c.id,
-      curve: { ...(c.line ? { type: 'line', a: c.line[0], b: c.line[1] } : c.arc ? { type: 'arc', center: c.arc[0], start: c.arc[1], end: c.arc[2] } : { type: 'circle', center: c.circle!.c }), ...(c.construction ? { construction: true } : {}) } as any,
+      curve: { ...(c.spline ? { type: 'spline', points: c.spline } : c.line ? { type: 'line', a: c.line[0], b: c.line[1] } : c.arc ? { type: 'arc', center: c.arc[0], start: c.arc[1], end: c.arc[2] } : { type: 'circle', center: c.circle!.c }), ...(c.construction ? { construction: true } : {}) } as any,
       ...(c.circle ? { radius: c.circle.r } : {}),
     })),
   ];
-  const conv: Converted = { id, frame, kind, rep };
+  const conv: Converted = { id, frame, kind, rep, chains };
   // the entries: the sources are the seed curves, and seed points no seed curve has
   const entryOf = new Map<EntryPlan, Id>();
   const curveId = (v: string) => curveOf.get(v)?.id ?? P(v);
@@ -172,6 +213,7 @@ export function convertSketch(engine: Engine, report: Report, id: Id, name: stri
     if (!p.pick) return { lost: lostAs, detail: `${classText(cls)}: ${p.why}` };
     op.inferred = true;
     if (p.others.length) op.note = `${p.why}; the other: ${p.others.map((c) => c.text).join('; ')}`;
+    if (cls.what === 'solid' && cls.decoded.kind === 'vertex') report.knowledge('a vertex of a body', `${place.studio}, ${name}, ${eid}`);
     const c = p.pick;
     const key = JSON.stringify(c.ref);
     let xid = entries.get(key);
@@ -183,8 +225,11 @@ export function convertSketch(engine: Engine, report: Report, id: Id, name: stri
     const entity = c.sub ? `${xid}/${c.sub}` : xid;
     return { k: c.kind, id: entity, ext: c.ref.type === 'edge' ? 'edge' : 'sketch', at: c.at, ends: c.ends, center: c.center, radius: c.radius };
   };
-  const ctx: MapContext = { studio: place.studio, sketch: id, name, helper: place.helper, kind, rep, pos, curves, curveOf, entityType, split: new Set(), ops: place.ops, frame, parameters: engine.getState().document.parameters, resolve, plans, spokes: new Set(), entities: new Map((geom.entities as any[]).map((e) => [e.sketchEntityId, e])) };
+  const ctx: MapContext = { studio: place.studio, sketch: id, name, helper: place.helper, kind, rep, pos, curves, curveOf, entityType, split: new Set(), ops: place.ops, frame, parameters: engine.getState().document.parameters, resolve, plans, chains, spokes: new Set(), entities: new Map((geom.entities as any[]).map((e) => [e.sketchEntityId, e])) };
   const { records } = mapConstraints(ctx, feature.constraints ?? []);
+  for (const x of plans) if (x.type === 'pattern' && (x.constraint.constraintType !== 'CIRCULAR_PATTERN' || params(x.constraint).openPattern?.value)) report.knowledge(`${x.constraint.constraintType === 'CIRCULAR_PATTERN' ? 'an open' : 'a linear'} pattern`, `${place.studio}, ${name}, #${x.index}`);
+  if (!horizontalOf(frame)) report.knowledge('a sketch turned in its plane', `${place.studio}, ${name}`);
+  for (const r of records) if (r.fate !== 'lost' && r.operands.some((o) => !o.external && entityType.get(o.id) === 'arc')) report.knowledge('an arc under a constraint', `${place.studio}, ${name}, ${r.type} #${r.index}`);
   report.records.push(...records);
   twiceByMeaning(records, engine.getState().document.parameters);
   numberConstraints(records, id);
@@ -560,7 +605,25 @@ export function matchRegion(engine: Engine, conv: Converted, region: any): Regio
     const [ta, tm, tb, tp] = [ang(e.a2), ang(e.m2), ang(e.b2), ang([x, y])];
     return norm(tm - ta) < norm(tb - ta) ? norm(tp - ta) <= norm(tb - ta) + 1e-9 : norm(ta - tp) <= norm(ta - tb) + 1e-9;
   };
-  const curveOnRegion = (cid: Id): boolean => {
+  // a curve of a spline's chain: the whole chain in the loop, and an edge of the kind `other` with
+  // the chain's ends whose middle lies on the chain (sampled finer than the engine's polyline)
+  const chainOf = (cid: Id) => [...(conv.chains?.values() ?? [])].find((x) => x.curves.includes(cid));
+  const sampled = new Map<object, V2[]>();
+  const onChain = (chain: { curves: Id[]; points: Id[] }, loop: Id[]): boolean => {
+    if (!chain.curves.every((x) => loop.includes(x))) return false;
+    let line = sampled.get(chain);
+    if (!line) {
+      const pieces = chain.curves.flatMap((x): V2[][] => { const s: any = solved.curves.get(x)?.shape; return s?.type === 'spline' ? splineBeziers(s.points.map(pt)) : s?.type === 'line' ? [[pt(s.a), pt(s.b)]] : []; });
+      line = sampleChain(pieces);
+      sampled.set(chain, line);
+    }
+    const [s, z] = [pt(chain.points[0]), pt(chain.points[chain.points.length - 1])];
+    const near = (u: V2, v: V2) => Math.hypot(u[0] - v[0], u[1] - v[1]) < 1e-3;
+    return edges.some((e) => e.curve === 'other' && ((near(e.a2, s) && near(e.b2, z)) || (near(e.a2, z) && near(e.b2, s))) && distanceToPolyline(line!, e.m2) < 1e-3);
+  };
+  const curveOnRegion = (cid: Id, loop: Id[]): boolean => {
+    const chain = chainOf(cid);
+    if (chain) return onChain(chain, loop);
     const c: any = solved.curves.get(cid)?.shape;
     if (!c) return false;
     if (c.type === 'circle') return edges.some((e) => e.curve === 'circle' && Math.hypot(pt(c.center)[0] - e.c2[0], pt(c.center)[1] - e.c2[1]) < 1e-3 && Math.abs(solved.geometry.radii[cid] - e.radius) < 1e-3);
@@ -581,7 +644,7 @@ export function matchRegion(engine: Engine, conv: Converted, region: any): Regio
   let best: { ref: RegionRef; err: number } | undefined;
   for (const r of res.regions) {
     const err = Math.abs(regionArea(r.loops) - region.area);
-    if (err > Math.max(0.02 * region.area, 0.05) || !r.ref.outerLoop.every(curveOnRegion) || !edges.every((e) => nearLoops(r.loops, e.m2))) continue;
+    if (err > Math.max(0.02 * region.area, 0.05) || !r.ref.outerLoop.every((cid) => curveOnRegion(cid, r.ref.outerLoop)) || !edges.every((e) => nearLoops(r.loops, e.m2))) continue;
     if (!best || err < best.err) best = { ref: r.ref, err };
   }
   return best?.ref;

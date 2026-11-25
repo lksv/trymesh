@@ -185,7 +185,11 @@ describe('patterns', () => {
     const a = s.circle([10, 0], 1);
     const b = s.circle([0, 10], 1);
     s.pattern(o, '2', [[a.id, b.id], [a.center, b.center]], { open: true });
-    const { records } = await convert(s);
-    expect(records[0]).toMatchObject({ fate: 'lost', cause: 'pattern' });
+    const c = s.circle([20, 0], 1);
+    const d = s.circle([30, 0], 1);
+    s.constrain('LINEAR_PATTERN', { patternc1: { q: '2' }, 'localInstance0,0': c.id, 'localInstance0,1': d.id, 'localInstance1,0': c.center, 'localInstance1,1': d.center });
+    const { records, report } = await convert(s);
+    expect(records.map((r) => [r.fate, r.cause])).toEqual([['lost', 'pattern'], ['lost', 'pattern']]);
+    expect(report.tail['From knowledge']).toEqual(['an open pattern: S, Sketch 1, #0', 'a linear pattern: S, Sketch 1, #1']);
   });
 });

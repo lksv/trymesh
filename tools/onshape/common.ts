@@ -77,6 +77,12 @@ export class Report {
   later(section: string, line: string) {
     (this.tail[section] ??= []).push(line);
   }
+  // A path the converter knows only from knowledge, not from a dump (a linear or an open pattern, a
+  // turned sketch, an arc under a constraint, a spline under the budget, a vertex of a body): listed,
+  // so the owner sees the first time it runs on real data.
+  knowledge(path: string, where: string) {
+    this.later('From knowledge', `${path}: ${where}`);
+  }
   section(title: string) {
     this.lines.push('', `## ${title}`, '');
   }

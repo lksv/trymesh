@@ -1,3 +1,4 @@
+import { solvedCurves as solvedCurvesOf } from '../../packages/engine/src/index';
 // What an external operand of an Onshape sketch constraint is (design of 6h, "External operands").
 // A constraint names it by one deterministic ID and nothing else. The ID decodes (read off a dump,
 // not documented by Onshape): after the first character, the second is the operation that made the
@@ -129,6 +130,7 @@ export function categoryOf(c: IdClass): ExternalCategory {
   }
 }
 
+const an = (kind: string) => (/^[aeiou]/.test(kind) ? `an ${kind}` : `a ${kind}`);
 export function classText(c: IdClass): string {
   switch (c.what) {
     case 'origin':
@@ -136,14 +138,164 @@ export function classText(c: IdClass): string {
     case 'plane':
       return `the ${c.name} plane`;
     case 'sketch':
-      return `a ${c.decoded.kind} of the sketch ${c.feature}`;
+      return `${an(c.decoded.kind)} of the sketch ${c.feature}`;
     case 'derived':
-      return `a ${c.decoded.kind} of a sketch derived by ${c.feature}`;
+      return `${an(c.decoded.kind)} of a sketch derived by ${c.feature}`;
     case 'solid':
-      return `a ${c.decoded.kind} of a body (operation ${c.decoded.op} of ${c.features.join(', ')})`;
+      return `${an(c.decoded.kind)} of a body (operation ${c.decoded.op} of ${c.features.join(', ')})`;
     case 'planeFeature':
       return `a face of the plane feature ${c.feature}`;
     default:
       return `unknown: ${c.why}`;
   }
 }
+
+// ---------------------------------------------------------------- found operands
+
+type V2 = [number, number];
+type V3 = [number, number, number];
+// A candidate for an external operand: an entity of a sketch (an entry `sketch`) or an edge of a body
+// (an entry `edge`), with its place in the sketch being converted.
+export interface Candidate {
+  ref: any; // the entry: { type: 'sketch', sketch, entity, kind } or { type: 'edge', body, edge, kind }
+  sub?: 'a' | 'b' | 'center'; // a point of an edge entry
+  kind: 'point' | 'line' | 'circle' | 'arc';
+  at?: V2;
+  ends?: [V2, V2];
+  center?: V2;
+  radius?: number;
+  span?: [number, number]; // an arc: from the angle of its start counter-clockwise to its end
+  beyond?: boolean; // holds the point on its extension only
+  side?: string; // a circular edge: the key of its side face
+  order?: [number, number]; // a circular edge: the place of its other face's feature on the timeline, start cap first
+  tapered?: boolean;
+  text: string;
+}
+const fmt = (v: number) => v.toFixed(6);
+
+// The points and curves of a converted sketch, own and of its entries, in its 2D (the converter's
+// sketches on parallel planes share the 2D of their base plane).
+export function sketchCandidates(engine: any, sketch: string, kind: 'vertex' | 'edge'): Candidate[] {
+  const st = engine.getState();
+  const f = st.document.features.find((x: any) => x.id === sketch);
+  const res = st.evaluation.features[sketch]?.sketch;
+  if (!f || !res) return [];
+  const sc = solvedCurvesOf(f, res);
+  const P = (i: string): V2 => [sc.geometry.points[i].x, sc.geometry.points[i].y];
+  const out: Candidate[] = [];
+  if (kind === 'vertex') {
+    const ids = new Set<string>(Object.keys(res.points));
+    for (const [, c] of sc.curves) for (const k of ['a', 'b', 'center', 'start', 'end']) if (typeof (c.shape as any)[k] === 'string') ids.add((c.shape as any)[k]);
+    for (const pid of ids) {
+      if (pid === 'origin' || pid.startsWith('origin/') || !sc.geometry.points[pid]) continue;
+      const at = P(pid);
+      out.push({ ref: { type: 'sketch', sketch, entity: pid, kind: 'point' }, kind: 'point', at, text: `point ${pid} at ${at.map(fmt).join(',')}` });
+    }
+    return out;
+  }
+  for (const [cid, c] of sc.curves) {
+    if (cid.startsWith('origin/')) continue;
+    const sh: any = c.shape;
+    if (sh.type === 'line') { const ends: [V2, V2] = [P(sh.a), P(sh.b)]; out.push({ ref: { type: 'sketch', sketch, entity: cid, kind: 'line' }, kind: 'line', ends, text: `line ${cid} ${ends.flat().map(fmt).join(',')}` }); }
+    else if (sh.type === 'circle') { const center = P(sh.center); const radius = sc.geometry.radii[cid]; out.push({ ref: { type: 'sketch', sketch, entity: cid, kind: 'circle' }, kind: 'circle', center, radius, text: `circle ${cid} at ${center.map(fmt).join(',')} r ${fmt(radius)}` }); }
+    else if (sh.type === 'arc') {
+      const [center, s, e] = [P(sh.center), P(sh.start), P(sh.end)];
+      const radius = Math.hypot(s[0] - center[0], s[1] - center[1]);
+      out.push({ ref: { type: 'sketch', sketch, entity: cid, kind: 'arc' }, kind: 'arc', center, radius, span: [Math.atan2(s[1] - center[1], s[0] - center[0]), Math.atan2(e[1] - center[1], e[0] - center[0])], text: `arc ${cid} at ${center.map(fmt).join(',')} r ${fmt(radius)}` });
+    }
+  }
+  return out;
+}
+
+// The edges of the bodies of the state before the sketch, seen in the sketch: a circle only with its
+// axis along the sketch's normal (1e-4 rad); a straight edge perpendicular to the sketch is a point
+// and no candidate. A vertex is an end of a straight edge.
+export function edgeCandidates(engine: any, toBase: (w: V3) => V2, normal: V3, kind: 'vertex' | 'edge'): Candidate[] {
+  const st = engine.getState();
+  const out: Candidate[] = [];
+  const index = new Map<string, number>(st.document.features.map((f: any, i: number) => [f.id, i]));
+  for (const body of Object.keys(st.evaluation.bodies)) {
+    const answer = engine.query('body', { body });
+    if (!answer.ok) continue;
+    for (const e of answer.result.edges as any[]) {
+      if (e.kind === 'line') {
+        const ends: [V2, V2] = [toBase(e.from), toBase(e.to)];
+        if (Math.hypot(ends[1][0] - ends[0][0], ends[1][1] - ends[0][1]) < 1e-6) continue;
+        const ref = { type: 'edge', body, edge: e.name, kind: 'line' };
+        if (kind === 'edge') out.push({ ref, kind: 'line', ends, text: `edge ${JSON.stringify(e.name)} line ${ends.flat().map(fmt).join(',')}` });
+        else for (const [sub, at] of [['a', ends[0]], ['b', ends[1]]] as const) out.push({ ref, sub, kind: 'point', at, text: `end ${sub} of edge ${JSON.stringify(e.name)} at ${at.map(fmt).join(',')}` });
+      } else if (e.kind === 'circle' && kind === 'edge') {
+        const axis = e.circle.axis as V3;
+        if (Math.abs(Math.abs(axis[0] * normal[0] + axis[1] * normal[1] + axis[2] * normal[2]) - 1) > 5e-9) continue; // 1e-4 rad
+        const center = toBase(e.circle.center);
+        const faces = [e.name.a, e.name.b];
+        const side = faces.find((x: any) => x.role === 'side');
+        const other = faces.find((x: any) => x !== side);
+        const feature = st.document.features.find((f: any) => f.id === side?.feature);
+        out.push({
+          ref: { type: 'edge', body, edge: e.name, kind: 'circle' }, kind: 'circle', center, radius: e.circle.radius,
+          side: side && feature?.type === 'extrude' ? JSON.stringify(side) : undefined, tapered: !!feature?.extent?.taper,
+          order: [index.get(other?.feature) ?? 1e9, other?.role === 'startCap' ? 0 : 1],
+          text: `edge ${JSON.stringify(e.name)} circle at ${center.map(fmt).join(',')} r ${fmt(e.circle.radius)}`,
+        });
+      }
+    }
+  }
+  return out;
+}
+
+// The candidates that fit every use: a point at the place of the local point it is coincident
+// with; a curve through it (within its extent when any candidate holds it so); a round curve of the
+// radius of the one it is equal to; a line in the direction a parallel or a perpendicular asks.
+export function fitting(cands: Candidate[], type: string, locals: { k: string; at?: V2; ends?: [V2, V2]; radius?: number }[]): Candidate[] {
+  const pt = locals.find((l) => l.k === 'point')?.at;
+  const round = locals.find((l) => l.k === 'circle' || l.k === 'arc');
+  const line = locals.find((l) => l.k === 'line')?.ends;
+  const out: Candidate[] = [];
+  for (const c of cands) {
+    let ok = true;
+    let beyond = false;
+    if (type === 'COINCIDENT' && pt) {
+      if (c.kind === 'point') ok = Math.hypot(c.at![0] - pt[0], c.at![1] - pt[1]) <= 1e-6;
+      else if (c.kind === 'line') {
+        const [a, b] = c.ends!;
+        const L = Math.hypot(b[0] - a[0], b[1] - a[1]);
+        const t = ((pt[0] - a[0]) * (b[0] - a[0]) + (pt[1] - a[1]) * (b[1] - a[1])) / (L * L);
+        ok = Math.abs((b[0] - a[0]) * (pt[1] - a[1]) - (b[1] - a[1]) * (pt[0] - a[0])) / L <= 1e-6;
+        beyond = t < -1e-9 || t > 1 + 1e-9;
+      } else {
+        ok = Math.abs(Math.hypot(pt[0] - c.center![0], pt[1] - c.center![1]) - c.radius!) <= 1e-6;
+        if (c.kind === 'arc') { const norm = (x: number) => ((x % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI); const t = Math.atan2(pt[1] - c.center![1], pt[0] - c.center![0]); beyond = norm(t - c.span![0]) > norm(c.span![1] - c.span![0]) + 1e-9; }
+      }
+    } else if (type === 'EQUAL' && round) ok = (c.kind === 'circle' || c.kind === 'arc') && Math.abs(c.radius! - round.radius!) <= 1e-6;
+    else if (type === 'EQUAL' && line) ok = c.kind === 'line' && Math.abs(Math.hypot(c.ends![1][0] - c.ends![0][0], c.ends![1][1] - c.ends![0][1]) - Math.hypot(line[1][0] - line[0][0], line[1][1] - line[0][1])) <= 1e-6;
+    else if ((type === 'PARALLEL' || type === 'PERPENDICULAR') && line) {
+      if (c.kind !== 'line') ok = false;
+      else {
+        const [u, v] = [[c.ends![1][0] - c.ends![0][0], c.ends![1][1] - c.ends![0][1]], [line[1][0] - line[0][0], line[1][1] - line[0][1]]];
+        const [cr, dt] = [Math.abs(u[0] * v[1] - u[1] * v[0]), Math.abs(u[0] * v[0] + u[1] * v[1])];
+        ok = (type === 'PARALLEL' ? cr : dt) <= 1e-9 * Math.hypot(u[0], u[1]) * Math.hypot(v[0], v[1]);
+      }
+    }
+    if (ok) out.push({ ...c, beyond });
+  }
+  return out.some((c) => !c.beyond) ? out.filter((c) => !c.beyond) : out;
+}
+
+// The pick: one candidate; several only when they are the same by construction: one written entity,
+// or whole circular edges on one side face of one untapered extrusion under a constraint that uses
+// the edge as a curve (the first by the timeline, the start cap first). Anything else is not chosen.
+export function pickCandidate(cands: Candidate[], type: string): { pick?: Candidate; why: string; others: Candidate[] } {
+  const seen = new Map<string, Candidate>();
+  for (const c of cands) seen.set(JSON.stringify([c.ref, c.sub ?? '']), c);
+  const list = [...seen.values()];
+  if (!list.length) return { why: 'no candidate fits', others: [] };
+  if (list.length === 1) return { pick: list[0], why: 'one candidate', others: [] };
+  const curveUse = type === 'COINCIDENT' || type === 'EQUAL';
+  if (curveUse && list.every((c) => c.kind === 'circle' && c.side && !c.tapered && c.side === list[0].side)) {
+    const sorted = [...list].sort((a, b) => a.order![0] - b.order![0] || a.order![1] - b.order![1]);
+    return { pick: sorted[0], why: `${list.length} whole circular edges on one side face of an untapered extrusion: the same by construction, the first by the timeline`, others: sorted.slice(1) };
+  }
+  return { why: `${list.length} candidates that are not the same by construction`, others: list };
+}
+

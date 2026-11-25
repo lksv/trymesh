@@ -47,6 +47,10 @@ export async function newEngine(): Promise<Engine> {
   deps ??= { solver: await createPlanegcsSolver(), kernel: await createManifoldKernel(), deflater: createPakoDeflater() };
   return createEngine(deps);
 }
+// The settings of a run, by the environment: ONSHAPE_HELPERS=0 leaves the helper copies out (the
+// design's "no" to its question 2, for a comparison).
+export const settings = { helpers: process.env.ONSHAPE_HELPERS !== '0' };
+
 // An engine once `newEngine` has loaded the adapters.
 export function engineNow(): Engine {
   if (!deps) throw new Error('engineNow before newEngine');

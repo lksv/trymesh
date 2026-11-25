@@ -15,7 +15,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { test } from 'vitest';
 import { AssemblyConverter } from './assembly';
-import { Input, Report, engineNow, newEngine, sane } from './common';
+import { Input, Report, engineNow, newEngine, sane, settings } from './common';
 import { type Summary, compareSummaries, fingerprint, finalFate, recordForSummary, tally, tallyTables } from './fates';
 import { FAILING, documentProbe, probeLines } from './probe';
 import { type Overrides, convertStudio } from './studio';
@@ -62,7 +62,7 @@ test('convert', async () => {
   report.section('Sketch constraints');
   report.lines.push(...tallyTables(t, tally(helpers)));
   report.section('External operands');
-  for (const r of report.records) for (const o of r.operands) if (o.external) report.note(`${r.studio}, ${r.sketchName}, ${r.what} (#${r.index}): \`${o.id}\` is ${o.decoded}${o.resolved ? `; written on ${o.resolved}${o.inferred ? ' (inferred)' : ''}` : ''}${o.candidates ? `; candidates: ${o.candidates.join('; ') || 'none'}` : ''}${o.note ? `; ${o.note}` : ''} — ${finalFate(r, all).fate}`);
+  for (const r of report.records) for (const o of r.operands) if (o.external) report.note(`${r.studio}, ${r.sketchName}, ${r.what} (#${r.index}): \`${o.id}\` is ${o.decoded}${o.resolved ? `; resolved to ${o.resolved}${o.inferred ? ' (inferred)' : ''}` : ''}${o.candidates ? `; candidates: ${o.candidates.join('; ') || 'none'}` : ''}${o.note ? `; ${o.note}` : ''} — ${finalFate(r, all).fate}`);
   for (const [section, lines] of Object.entries(report.tail)) {
     report.section(section);
     for (const l of lines) report.note(l);
@@ -89,7 +89,7 @@ test('convert', async () => {
   const perSketch: Summary['perSketch'] = {};
   for (const s of Object.values(report.sketches)) perSketch[s.key] = s.counts;
   const summary: Summary = {
-    run: { commit: git('git rev-parse HEAD'), dirty: git('git status --porcelain -- tools/onshape') !== '', fingerprint: fingerprint(resolve(dir)), overrides: process.env.ONSHAPE_OVERRIDES, settings: { probe: process.env.ONSHAPE_PROBE !== '0' }, seconds },
+    run: { commit: git('git rev-parse HEAD'), dirty: git('git status --porcelain -- tools/onshape') !== '', fingerprint: fingerprint(resolve(dir)), overrides: process.env.ONSHAPE_OVERRIDES, settings: { probe: process.env.ONSHAPE_PROBE !== '0', ...settings }, seconds },
     tally: t,
     helperTally: tally(helpers),
     perSketch,

@@ -6,7 +6,7 @@ import { type Report, type V2, type V3, dot, exec, expression, sane } from './co
 import { type Expected, type Pair, TOLERANCE, impliedConstraints, impliedLines, ladder, probeSketch, sketchChanges, strip } from './check';
 import { type ExternalResolver, type MapContext, knownOperand, mapConstraints, numberConstraints, onshapeKind, params, twiceByMeaning } from './constraints';
 import { type Cause, type ConstraintRecord, FATES, type Fate, type SketchSummary, finalFate, sketchLines } from './fates';
-import { ORIGIN_ID, type StudioOperations, decode } from './operands';
+import { type Candidate, type IdClass, ORIGIN_ID, type StudioOperations, classText, decode, edgeCandidates, fitting, pickCandidate, sketchCandidates } from './operands';
 
 // The frame of an Onshape sketch (world, mm) and the base plane of trymesh it is drawn on.
 export interface SketchFrame {
@@ -61,6 +61,7 @@ export interface SketchPlace {
   helper: boolean;
   onshapeRegions?: number; // the faces the Onshape sketch feature created
   derivedFrom?: string; // `<source studio>/<source feature>` of a derived copy
+  sketchesFor?: (cls: IdClass & { what: 'sketch' | 'derived' }) => Id[]; // the trymesh sketches made from what an ID decodes to
 }
 
 // Points of Onshape within this distance of each other, in chains, are one point of trymesh.
@@ -123,8 +124,40 @@ export function convertSketch(engine: Engine, report: Report, id: Id, name: stri
   ];
   const conv: Converted = { id, frame, kind, rep };
   const entityType = new Map<string, string>((geom.entities as any[]).map((e) => [e.sketchEntityId, onshapeKind(e)]));
-  // an external operand: the origin and the default planes here; what the decode finds, in point 5
-  const resolve: ExternalResolver = (eid, op) => knownOperand(eid, frame) ?? { lost: op.category === 'unknown' || !op.category ? 'unknown' : (op.category as Cause), detail: op.decoded ?? 'not resolved' };
+  // An external operand: the origin, a default plane; else what the decode says (an entity of
+  // another sketch, an edge of a body), found by geometry among the candidates the decode allows,
+  // and entered once per source entity.
+  const entries = new Map<string, Id>();
+  const resolve: ExternalResolver = (eid, op, locals, type) => {
+    const known = knownOperand(eid, frame);
+    if (known) return known;
+    const cls = place.ops.classify(eid);
+    let cands: Candidate[];
+    const lostAs: Cause = cls.what === 'solid' ? 'edge' : 'sketch';
+    if (cls.what === 'sketch' || cls.what === 'derived') {
+      const ids = place.sketchesFor?.(cls) ?? [];
+      if (!ids.length) return { lost: 'sketch', detail: `${classText(cls)}: the sketch is not in this document` };
+      cands = ids.flatMap((sid) => sketchCandidates(engine, sid, cls.decoded.kind as 'vertex' | 'edge'));
+    } else if (cls.what === 'solid') cands = edgeCandidates(engine, (w) => worldToBase(frame, w), frame.base.normal as V3, cls.decoded.kind as 'vertex' | 'edge');
+    else if (cls.what === 'planeFeature') return { lost: 'plane', detail: classText(cls) };
+    else return { lost: 'unknown', detail: classText(cls) };
+    const fit = fitting(cands, type, locals);
+    const p = pickCandidate(fit, type);
+    op.candidates = fit.map((c) => c.text);
+    if (!p.pick) return { lost: lostAs, detail: `${classText(cls)}: ${p.why}` };
+    op.inferred = true;
+    if (p.others.length) op.note = `${p.why}; the other: ${p.others.map((c) => c.text).join('; ')}`;
+    const c = p.pick;
+    const key = JSON.stringify(c.ref);
+    let xid = entries.get(key);
+    if (!xid) {
+      xid = `${id}.ref${entries.size}`;
+      entries.set(key, xid);
+      base.push({ type: 'addExternal', sketch: id, id: xid, ref: c.ref } as Command);
+    }
+    const entity = c.sub ? `${xid}/${c.sub}` : xid;
+    return { k: c.kind, id: entity, ext: c.ref.type === 'edge' ? 'edge' : 'sketch', at: c.at, ends: c.ends, center: c.center, radius: c.radius };
+  };
   const ctx: MapContext = { studio: place.studio, sketch: id, name, helper: place.helper, kind, rep, pos, curves, curveOf, entityType, split: new Set(), ops: place.ops, frame, parameters: engine.getState().document.parameters, resolve };
   const { records } = mapConstraints(ctx, feature.constraints ?? []);
   report.records.push(...records);

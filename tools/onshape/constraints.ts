@@ -87,7 +87,7 @@ export interface Operand {
 }
 export type Resolved = Operand | { lost: Cause; detail: string };
 // Resolves an external ID for a use (the local operands beside it): the origin, an axis, an entry.
-export type ExternalResolver = (id: string, op: OperandRecord, locals: Operand[]) => Resolved;
+export type ExternalResolver = (id: string, op: OperandRecord, locals: Operand[], type: string) => Resolved;
 
 // Onshape's horizontal is the X of the sketch's matrix: along the base's X it is trymesh's
 // horizontal, along the base's Y its vertical; turned otherwise, nothing (the sense does not matter).
@@ -150,7 +150,7 @@ export function mapConstraints(ctx: MapContext, list: any[]): { records: Constra
       if (id === undefined) return undefined;
       const op = rec.operands.find((o) => o.external && o.id === id && o.param === `external${name}`)!;
       const locals = [p.localFirst, p.localSecond].map((y) => (typeof y?.value === 'string' ? local(y.value) : undefined)).filter(Boolean) as Operand[];
-      const r = ctx.resolve(id, op, locals);
+      const r = ctx.resolve(id, op, locals, t);
       if ('lost' in r) { op.note = r.detail; return r; }
       op.resolved = r.id;
       return r;

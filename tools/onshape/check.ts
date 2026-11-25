@@ -67,9 +67,10 @@ export function ladder(engine: Engine, sketch: Id, base: Command[], units: Const
       previews++;
       const k = previewJudge(engine, sketch, [...base, ...kept, ...numbers], expected);
       if (k.ok) {
+        const why = j.why;
         j = k;
         written = 'number';
-        for (const c of u.commands as any[]) if (typeof c.constraint?.value === 'string') (u.numbers ??= []).push(`${c.id}: \`${c.constraint.value}\` as ${+c.measured.toFixed(9)}: the geometry does not have the expression's value (${first.why})`);
+        for (const c of u.commands as any[]) if (typeof c.constraint?.value === 'string') (u.numbers ??= []).push(`${c.id}: \`${c.constraint.value}\` as ${+c.measured.toFixed(9)}: the geometry does not have the expression's value (with it: ${why})`);
         u.commands = (u.commands as any[]).map((c) => (typeof c.constraint?.value === 'string' ? { ...c, constraint: { ...c.constraint, value: c.measured } } : c));
         own.splice(0, own.length, ...numbers);
       }

@@ -121,6 +121,23 @@ export class StudioKit {
     this.created[featureId] = { bodies: [], faces: Array.from({ length: faces }, (_, i) => encode(op, 'face', i)) };
     return op;
   }
+  // An importDerived of sketches of another studio of the document; it owns two operations per
+  // sketch it brings (their bodies and faces), as Onshape's does.
+  derive(featureId: string, name: string, source: StudioKit, sketches: string[], regions = 0): { faces: string[] } {
+    this.features.push({ featureType: 'importDerived', featureId, name, suppressed: false, parameters: [
+      { parameterId: 'buildFunction', namespace: `e${source.eid}::mABC`, value: 'build' },
+      { parameterId: 'parts', queries: sketches.map((f) => ({ queryString: `query=qCreatedBy(id + "${f}", EntityType.BODY);` })) },
+    ] });
+    const faces: string[] = [];
+    const bodies: string[] = [];
+    for (let i = 0; i < sketches.length; i++) {
+      const [op, faceOp] = [this.nextOp(), this.nextOp()];
+      bodies.push(encode(op, 'body', 0));
+      for (let k = 0; k < regions; k++) faces.push(encode(faceOp, 'face', k));
+    }
+    this.created[featureId] = { bodies, faces };
+    return { faces };
+  }
   // A blind extrusion of regions (their Onshape faces, with the geometry of `at`), new body.
   extrude(featureId: string, name: string, regions: { id: string; area: number; edges: RegionEdge[] }[], depth: string, opts: { operation?: 'NEW' | 'ADD' | 'REMOVE'; part?: string; scope?: string[] } = {}): { op: string; body: string } {
     const op = this.nextOp();

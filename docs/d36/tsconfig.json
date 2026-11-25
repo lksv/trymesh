@@ -1,4 +1,5 @@
 {
   "extends": "../../tsconfig.json",
-  "include": ["./**/*.ts"]
+  "include": ["./**/*.ts"],
+  "exclude": ["./6f-outline-import/probes/**"]
 }

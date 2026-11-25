@@ -2,9 +2,11 @@
 // chamfers and fillets; derived sketches are copied in. The document says which of its bodies is
 // which Onshape part, for the insertions of the assembly.
 import { type Engine, type EdgeName, type Id, type PlaneRef, type RegionRef, faceKey } from '../../packages/engine/src/index';
-import { type Input, type Report, type V3, dot, exec, expression, near, newEngine, numberOr, sane, sub } from './common';
+import { type Input, type Report, type V3, dot, exec, expression, near, newEngine, numberOr, sane, settings, sub } from './common';
 import { type BoundaryEdge, type FaceCandidate, type OnshapeFace, extentFor, faceOf } from './extent-start';
-import { type Converted, convertSketch, matchRegion, sketchFrame } from './sketch';
+import { type IdClass, StudioOperations } from './operands';
+import { parametersNamed } from './probe';
+import { type Converted, type SketchPlace, convertSketch, matchRegion, sketchFrame } from './sketch';
 
 // A hook that converts one Onshape feature in place of the converter (`overrides/`), by the name of
 // the studio and of the feature. It returns false to leave the feature to the converter.
@@ -57,11 +59,33 @@ export async function convertStudio(input: Input, eid: string, report: Report, o
   const made = new Map<string, Id[]>(); // Onshape extrusion -> the trymesh extrusions made for it
   const starts = { from: 0, number: 0 }; // starts at a face: written as `from`, as a number (D66)
   const owner = (face: string) => Object.entries(dump.created as Record<string, any>).find(([, v]) => v.faces.includes(face))?.[0];
-  const sketchFrom = (fid: Id, id: Id, name: string, f: any, geom: any, by: string) => {
+  // The operations of a studio, for the decode of external IDs (operands.ts), with its self-test.
+  const operations = new Map<string, StudioOperations>();
+  const opsOf = (studio: string): StudioOperations => {
+    if (!operations.has(studio)) {
+      const ops = new StudioOperations(input.json(`studios/${studio}/features.json`).features, input.json(`studios/${studio}/fs.json`).created);
+      if (!ops.selfTestPassed) report.note(`${input.elementName(studio)}: the decode of deterministic IDs fails its self-test (${ops.failures.length} IDs of \`created\` do not decode to their kind, ${ops.failures.slice(0, 3).join(', ')}); no external operand is resolved by it`);
+      operations.set(studio, ops);
+    }
+    return operations.get(studio)!;
+  };
+  // The trymesh sketches made from an Onshape sketch (`<studio>:<feature>`; a derived copy in the
+  // studio of its source, a helper copy too) and from an importDerived (`<studio>:derived:<feature>`).
+  const madeFrom = new Map<string, Id[]>();
+  const madeBy = new Map<string, Converted[]>(); // the Onshape feature that created the regions -> every sketch it brought
+  const converted = new Map<Id, Converted>(); // every sketch converted, helper copies too, by its ID
+  const sketchOf = (sid: Id) => converted.get(sid);
+  const sketchesFor = (studio: string) => (cls: IdClass & { what: 'sketch' | 'derived' }): Id[] => madeFrom.get(cls.what === 'sketch' ? `${studio}:${cls.feature}` : `${studio}:derived:${cls.feature}`) ?? [];
+  const sketchFrom = (fid: Id, id: Id, name: string, f: any, geom: any, by: string, place: SketchPlace, madeKeys: string[]) => {
     const frame = sketchFrame(geom.sketchMatrix);
     if (!frame) { report.note(`${name}: the sketch plane is not parallel to a base plane, left out`); return; }
-    const conv = convertSketch(engine, report, id, name, planeOf(frame), frame, f, geom);
-    if (conv) sketches.set(by, conv);
+    const conv = convertSketch(engine, report, id, name, planeOf(frame), frame, f, geom, place);
+    if (!conv) return;
+    converted.set(id, conv);
+    for (const k of madeKeys) madeFrom.set(k, [...(madeFrom.get(k) ?? []), id]);
+    if (place.helper) return;
+    sketches.set(by, conv);
+    madeBy.set(by, [...(madeBy.get(by) ?? []), conv]);
   };
 
   for (const f of features) {
@@ -75,7 +99,7 @@ export async function convertStudio(input: Input, eid: string, report: Report, o
     if (f.suppressed) { report.note(`${name}: suppressed in Onshape, left out`); continue; }
     switch (f.featureType) {
       case 'newSketch':
-        sketchFrom(f.featureId, id, name, f, sketchesOf(eid).find((s) => s.featureId === f.featureId), f.featureId);
+        sketchFrom(f.featureId, id, name, f, sketchesOf(eid).find((s) => s.featureId === f.featureId), f.featureId, { studio: studioName, ops: opsOf(eid), helper: false, onshapeRegions: dump.created[f.featureId]?.faces?.length, sketchesFor: sketchesFor(eid), sketchOf }, [`${eid}:${f.featureId}`]);
         break;
       case 'importDerived': {
         // the sketches of another studio of the document: copied in (inserting a document, D62,
@@ -85,9 +109,23 @@ export async function convertStudio(input: Input, eid: string, report: Report, o
         const from = (P.parts.queries as any[]).map((q) => /qCreatedBy\(id \+ "([^"]+)"/.exec(q.queryString ?? '')?.[1]).filter(Boolean) as string[];
         if (!src) { report.note(`${name}: derived from another document, left out`); break; }
         const srcFeatures = input.json(`studios/${src}/features.json`).features as any[];
-        for (const sf of srcFeatures.filter((g) => from.includes(g.featureId))) {
+        const srcCreated = input.json(`studios/${src}/fs.json`).created;
+        const derived = srcFeatures.filter((g) => from.includes(g.featureId));
+        for (const sf of derived) {
           if (sf.featureType !== 'newSketch') { report.note(`${name}: derives the bodies of "${sf.name}"; only sketches are taken`); continue; }
-          sketchFrom(f.featureId, `${id}_${sane(sf.name)}`, `${name} (${input.elementName(src)}: ${sf.name})`, sf, sketchesOf(src).find((s) => s.featureId === sf.featureId), f.featureId);
+          // A helper copy (one level, one per destination and source): a sketch of the source studio
+          // that the derived sketch's constraints name and this studio does not derive is copied
+          // first, as a sketch of construction use, so the operands are found in it.
+          const srcOps = opsOf(src);
+          for (const c of sf.constraints ?? []) for (const q of c.parameters) if (/^external/.test(q.parameterId)) for (const x of q.queries ?? []) for (const did of x.deterministicIds ?? []) {
+            const cls = srcOps.classify(did);
+            if (!settings.helpers || cls.what !== 'sketch' || madeFrom.has(`${src}:${cls.feature}`) || derived.some((g) => g.featureId === cls.feature)) continue;
+            const g = srcFeatures.find((y) => y.featureId === cls.feature);
+            if (!g) continue;
+            report.note(`${name}: "${g.name}" of "${input.elementName(src)}" copied as a helper: the derived sketch is held on it`);
+            sketchFrom(f.featureId, `${id}_${sane(g.name)}`, `${name} (${input.elementName(src)}: ${g.name}, a helper)`, g, sketchesOf(src).find((y) => y.featureId === g.featureId), `helper:${g.featureId}`, { studio: studioName, ops: srcOps, helper: true, onshapeRegions: srcCreated[g.featureId]?.faces?.length, derivedFrom: `${input.elementName(src)}/${g.featureId}`, sketchesFor: sketchesFor(src), sketchOf }, [`${src}:${g.featureId}`]);
+          }
+          sketchFrom(f.featureId, `${id}_${sane(sf.name)}`, `${name} (${input.elementName(src)}: ${sf.name})`, sf, sketchesOf(src).find((s) => s.featureId === sf.featureId), f.featureId, { studio: studioName, ops: srcOps, helper: false, onshapeRegions: srcCreated[sf.featureId]?.faces?.length, derivedFrom: `${input.elementName(src)}/${sf.featureId}`, sketchesFor: sketchesFor(src), sketchOf }, [`${src}:${sf.featureId}`, `${eid}:derived:${f.featureId}`]);
         }
         report.note(`${name}: sketches derived from "${input.elementName(src)}" copied in`);
         break;
@@ -112,9 +150,12 @@ export async function convertStudio(input: Input, eid: string, report: Report, o
     const bySketch = new Map<Converted, RegionRef[]>();
     for (const r of regionIds) {
       const e = at.ids[r];
-      const conv = sketches.get(owner(r) ?? '');
-      if (!conv || e?.kind !== 'face' || !e.sketch) { report.note(`${name}: region ${r} is not a region of a converted sketch (a face of a body as a profile is not converted)`); continue; }
-      const ref = matchRegion(engine, conv, e);
+      const convs = madeBy.get(owner(r) ?? '') ?? [];
+      if (!convs.length || e?.kind !== 'face' || !e.sketch) { report.note(`${name}: region ${r} is not a region of a converted sketch (a face of a body as a profile is not converted)`); continue; }
+      // the sketches one importDerived brought: the one whose region it is
+      let conv = convs[0];
+      let ref: RegionRef | undefined;
+      for (const c of convs) { ref = matchRegion(engine, c, e); if (ref) { conv = c; break; } }
       if (!ref) { report.note(`${name}: region ${r} (${e.area.toFixed(2)} mm²) has no counterpart${e.edges.some((x: any) => x.curve === 'other') ? ' (bounded by a spline)' : ''}`); continue; }
       if (!bySketch.has(conv)) bySketch.set(conv, []);
       const list = bySketch.get(conv)!;
@@ -226,6 +267,7 @@ export async function convertStudio(input: Input, eid: string, report: Report, o
       }
     }
     if (startEntity && !bothSides) {
+      report.outcomes[`${studioName}/${f.name}`] = { studio: studioName, feature: f.name, type: 'extrude', start: useFrom ? 'from' : 'number' };
       if (useFrom) starts.from++;
       else {
         starts.number++;
@@ -346,8 +388,12 @@ export async function convertStudio(input: Input, eid: string, report: Report, o
     const size = isChamfer ? num('width') : num('radius');
     const byBody = new Map<Id, EdgeName[]>();
     let missed = 0;
+    const onshapeEdges: EdgeName[][] = []; // by the place of the edge in Onshape's list: the trymesh edges found for it
+    let place = -1;
     for (const q of P.entities.queries as any[])
       for (const did of q.deterministicIds ?? []) {
+        place++;
+        onshapeEdges[place] = [];
         const e = at.ids[did];
         const body = e?.owner?.map((o: string) => bodies.get(o)).find(Boolean);
         if (e?.kind !== 'edge' || !body) { missed++; continue; }
@@ -365,28 +411,36 @@ export async function convertStudio(input: Input, eid: string, report: Report, o
           return false;
         });
         if (!found.length) { missed++; continue; }
+        onshapeEdges[place] = found.map((x) => x.name);
         if (!byBody.has(body)) byBody.set(body, []);
         const list = byBody.get(body)!;
         for (const x of found) if (!list.some((y) => JSON.stringify(y) === JSON.stringify(x.name))) list.push(x.name);
       }
     if (missed) report.note(`${name}: ${missed} edge(s) not found on the converted bodies (an edge of a spline, of a body not converted)`);
+    const converted: EdgeName[] = [];
     let k = 0;
+    const keptAll: EdgeName[] = [];
     for (const [body, edges] of byBody) {
       const make = (fid: Id, list: EdgeName[]) => ({ id: fid, name: f.name, suppressed: false, type: f.featureType, body, edges: list, ...(isChamfer ? { distance: size } : { radius: size }) }) as any;
       const fid = byBody.size === 1 ? id : `${id}_${k++}`;
       const ok = (fid2: Id) => engine.getState().evaluation.features[fid2]?.status === 'ok';
-      if (exec(engine, report, { type: 'addFeature', feature: make(fid, edges) }, name) && ok(fid)) { report.note(`${name}: ${edges.length} edge(s) of ${body}`); continue; }
+      if (exec(engine, report, { type: 'addFeature', feature: make(fid, edges) }, name) && ok(fid)) { report.note(`${name}: ${edges.length} edge(s) of ${body}`); converted.push(...edges); continue; }
       const why = engine.getState().evaluation.features[fid]?.error;
       engine.execute({ type: 'removeFeature', id: fid });
       let kept = 0;
+      const keptEdges: EdgeName[] = [];
       const reasons = new Set<string>();
       edges.forEach((edge, j) => {
         const one = `${fid}_e${j + 1}`;
-        if (exec(engine, report, { type: 'addFeature', feature: make(one, [edge]) }, name) && ok(one)) kept++;
+        if (exec(engine, report, { type: 'addFeature', feature: make(one, [edge]) }, name) && ok(one)) { kept++; keptEdges.push(edge); }
         else { const e = engine.getState().evaluation.features[one]?.error; if (e) reasons.add(`${e.code}: ${e.message}`); engine.execute({ type: 'removeFeature', id: one }); }
       });
       report.note(`${name}: refused as one feature (${why?.code}); ${kept} of ${edges.length} edge(s) kept one by one${reasons.size ? '; why: ' + [...reasons].slice(0, 3).join(' | ') : ''}`);
+      keptAll.push(...keptEdges);
     }
+    converted.push(...keptAll);
+    const same = (a: EdgeName, b: EdgeName) => JSON.stringify(a) === JSON.stringify(b);
+    report.outcomes[`${studioName}/${f.name}`] = { studio: studioName, feature: f.name, type: f.featureType, asked: onshapeEdges.length, converted: onshapeEdges.flatMap((list, i) => (list.length && list.some((e) => converted.some((x) => same(x, e))) ? [i] : [])) };
   }
 
   // names of the parts, and the check of the volume against Onshape
@@ -396,13 +450,29 @@ export async function convertStudio(input: Input, eid: string, report: Report, o
   for (const p of parts) {
     names.set(p.partId, p.name);
     const b = bodies.get(p.partId);
-    if (!b || !ev.bodies[b]) { report.note(`part "${p.name}": no body`); bodies.delete(p.partId); continue; }
+    const ov0 = mass[p.partId]?.volume?.[0];
+    if (!b || !ev.bodies[b]) { report.note(`part "${p.name}": no body`); bodies.delete(p.partId); report.parts[`${studioName}/${p.name}`] = { studio: studioName, part: p.name, volume: null, onshape: typeof ov0 === 'number' ? ov0 * 1e9 : null }; continue; }
     exec(engine, report, { type: 'setBodyProperties', body: b, patch: { name: p.name, use: 'part' } }, `name of ${p.name}`);
     const ov = (mass[p.partId]?.volume?.[0] ?? NaN) * 1e9;
     const tv = (engine.getState().evaluation.bodies[b] as any).volume as number;
+    report.parts[`${studioName}/${p.name}`] = { studio: studioName, part: p.name, body: b, volume: tv, onshape: Number.isFinite(ov) ? ov : null };
     report.note(`part "${p.name}" = ${b}: volume ${tv.toFixed(1)} mm³, Onshape ${ov.toFixed(1)} mm³ (${(((tv - ov) / ov) * 100).toFixed(2)} %)`);
   }
   for (const [fid, r] of Object.entries(engine.getState().evaluation.features)) if (r.status === 'error') report.note(`feature ${fid}: error ${r.error?.code} ${r.error?.message?.slice(0, 200)}`);
   if (starts.from + starts.number) report.note(`starts at a face (D66): ${starts.from} written as \`from\`, ${starts.number} as numbers`);
-  return { document: JSON.parse(engine.save()), bodies, names };
+  const document = JSON.parse(engine.save());
+  // a parameter that only a helper copy reads is not in use by the part; one that a helper copy
+  // reads and a sketch of the part projects from it is
+  const helpers = new Set(report.promisesOf(studioName).helpers);
+  const byId = new Map<Id, any>(document.features.map((x: any) => [x.id, x]));
+  const reached = new Set<Id>();
+  const reach = (fid: Id) => {
+    const f = byId.get(fid);
+    if (!f || reached.has(fid)) return;
+    reached.add(fid);
+    for (const x of Object.values(f.external ?? {}) as any[]) if (x.type === 'sketch') reach(x.sketch);
+  };
+  for (const f of document.features) if (!helpers.has(f.id)) reach(f.id);
+  report.parametersInUse[studioName] = [...parametersNamed(document, document.features.filter((x: any) => reached.has(x.id))).names].sort();
+  return { document, bodies, names };
 }

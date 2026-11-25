@@ -6,6 +6,8 @@ import { createPakoDeflater } from '../../packages/deflate-pako/src/index';
 import { type Command, type Engine, type EngineDeps, createEngine } from '../../packages/engine/src/index';
 import { createManifoldKernel } from '../../packages/kernel-manifold/src/index';
 import { createPlanegcsSolver } from '../../packages/solver-planegcs/src/index';
+import type { ConstraintRecord, OutcomeSummary, PartSummary, SketchSummary } from './fates';
+import { type StudioPromises, emptyPromises } from './probe';
 
 export type V3 = [number, number, number];
 export type V2 = [number, number];
@@ -45,11 +47,42 @@ export async function newEngine(): Promise<Engine> {
   deps ??= { solver: await createPlanegcsSolver(), kernel: await createManifoldKernel(), deflater: createPakoDeflater() };
   return createEngine(deps);
 }
+// The settings of a run, by the environment: ONSHAPE_HELPERS=0 leaves the helper copies out (the
+// design's "no" to its question 2, for a comparison).
+export const settings = { helpers: process.env.ONSHAPE_HELPERS !== '0' };
+
+// An engine once `newEngine` has loaded the adapters.
+export function engineNow(): Engine {
+  if (!deps) throw new Error('engineNow before newEngine');
+  return createEngine(deps);
+}
 
 // ---------------------------------------------------------------- report
 
+// What a run collects besides its lines: the records of the constraints and what `summary.json`
+// holds (fates.ts), and what the conversion promised for the document's probe (probe.ts).
 export class Report {
   readonly lines: string[] = [];
+  readonly records: ConstraintRecord[] = [];
+  readonly sketches: Record<string, SketchSummary> = {};
+  readonly parts: Record<string, PartSummary> = {};
+  readonly outcomes: Record<string, OutcomeSummary> = {};
+  readonly promises: Record<string, StudioPromises> = {};
+  readonly parametersInUse: Record<string, string[]> = {};
+  // the sections at the end of the report, by title
+  readonly tail: Record<string, string[]> = {};
+  promisesOf(studio: string): StudioPromises {
+    return (this.promises[studio] ??= emptyPromises());
+  }
+  later(section: string, line: string) {
+    (this.tail[section] ??= []).push(line);
+  }
+  // A path the converter knows only from knowledge, not from a dump (a linear or an open pattern, a
+  // turned sketch, an arc under a constraint, a spline under the budget, a vertex of a body): listed,
+  // so the owner sees the first time it runs on real data.
+  knowledge(path: string, where: string) {
+    this.later('From knowledge', `${path}: ${where}`);
+  }
   section(title: string) {
     this.lines.push('', `## ${title}`, '');
   }
@@ -70,14 +103,34 @@ export function exec(engine: Engine, report: Report, cmd: Command, what: string)
 
 // ---------------------------------------------------------------- expressions and IDs
 
-// An Onshape expression to one of trymesh: `#var` -> `var`, `3 mm` -> `3`, `30 deg` -> `deg(30)`.
-// Units other than millimetres and degrees are not converted (undefined).
+// An Onshape expression to one of trymesh: `#var` -> `var`, a unit as a factor: `3 mm` and `3*mm`
+// -> `3`, `30 deg`, `30.0*deg` and `30°` -> `30 * deg(1)`, `(a + b) * deg` -> `(a + b) * deg(1)`,
+// `2 in` -> `2 * 25.4`, `1.5e-3 m` -> `1.5e-3 * 1000`, `#a * deg` -> `a * deg(1)`. Every unit is a
+// factor after what it follows, so `#a/2 deg` is `a/2 * deg(1)` as `1/4 in` is `1/4 * 25.4`. Onshape
+// names a variable with `#`; any other word is a unit, a function or a constant, and a unit the
+// converter does not know, or any other character that is no part of an expression of trymesh,
+// leaves the expression unconverted (undefined). A digit inside a name (`#gap_2mm`) is no number: a
+// number starts where no letter, digit, `_`, `#` or `.` stands before it.
+const UNITS: Record<string, string | undefined> = { '°': 'deg(1)', mm: '', millimeter: '', cm: '10', centimeter: '10', m: '1000', meter: '1000', in: '25.4', inch: '25.4', ft: '304.8', foot: '304.8', deg: 'deg(1)', degree: 'deg(1)', rad: '', radian: '' };
+const WORDS = new Set(['pi', 'sin', 'cos', 'tan', 'asin', 'acos', 'atan', 'atan2', 'sqrt', 'abs', 'min', 'max', 'round', 'floor', 'ceil', 'exp', 'log', 'deg']);
+export const NUMBER = String.raw`(?<![A-Za-z0-9_#.])(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][-+]?[0-9]+)?`;
+const VARIABLE = String.raw`#[A-Za-z_][A-Za-z0-9_]*(?![A-Za-z0-9_])`;
 export function expression(e: string | undefined): string | undefined {
   if (e === undefined) return undefined;
-  let s = e.trim().replace(/#/g, '');
-  s = s.replace(/([0-9.]+)\s*deg\b/g, 'deg($1)').replace(/([0-9.]+)\s*mm\b/g, '$1').replace(/\s*\bmm\b/g, '');
-  if (/\b(in|inch|cm|meter|m|ft|rad|radian)\b/.test(s)) return undefined;
-  return s;
+  let s = e.trim();
+  // a number, a variable or a closing bracket followed by a unit, with or without `*`
+  s = s.replace(new RegExp(String.raw`(${NUMBER}|${VARIABLE}|\))\s*\*?\s*(°|[A-Za-z]+\b)(?!\s*\()`, 'g'), (all, value: string, word: string) => {
+    if (!(word in UNITS)) return all;
+    const f = UNITS[word]!;
+    return f ? `${value} * ${f}` : value;
+  });
+  // a character no expression of trymesh has (a `°` after anything but a number, a variable or a bracket)
+  if (/[^A-Za-z0-9_#.\s+\-*/^%(),=!<>&|]/.test(s)) return undefined;
+  // a word that is no variable (`#`), no unit taken above, no function and no constant (the
+  // numbers taken out first, so the exponent of `1e-3` is no word)
+  const words = s.replace(new RegExp(NUMBER, 'g'), ' 0 ');
+  for (const m of words.matchAll(/(#?)([A-Za-z_][A-Za-z0-9_]*)/g)) if (!m[1] && !WORDS.has(m[2])) return undefined;
+  return s.replace(/#/g, '');
 }
 export const isNumber = (s: string) => /^-?[0-9.]+(e-?[0-9]+)?$/i.test(s);
 export const numberOr = (s: string): number | string => (isNumber(s) ? Number(s) : s);

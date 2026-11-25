@@ -311,6 +311,9 @@ const TOOL_EXAMPLES: Record<SketchToolName, Record<string, unknown>> = {
   trim: { at: [50, 15], repair: 'on' },
   extend: { curve: 'x', end: 'a', repair: 'on' },
   split: {},
+  // into the sketch after an earlier sketch `base` on a parallel plane that holds the rectangle of
+  // the example of `rectangle`: an own outline over its four lines, held on their projections
+  projectSketch: { sketch: 'base', entities: ['c1', 'c2', 'c3', 'c4'], as: 'own' },
 };
 export function sketchToolCatalog(): SketchToolDescription[] {
   const describe = (input: SketchToolInput): string =>
@@ -324,12 +327,16 @@ export function sketchToolCatalog(): SketchToolDescription[] {
             ? `the ID of a curve of the sketch${input.reference ? ' (an own curve, or reference geometry: a projected edge, an axis `origin/x` or `origin/y`)' : ' (an own curve)'}`
             : input.kind === 'place'
               ? 'a place `[x, y]` in the sketch (coordinates; nothing snaps to it)'
-              : `a number, ${rangeText(input.spec)}${input.spec.unit === 'count' || input.spec.unit === 'none' ? '' : `, ${input.spec.unit}`}${input.expression ? ', or an expression' : ''}`;
+              : input.kind === 'sketch'
+                ? 'the ID of an earlier sketch of the document'
+                : input.kind === 'entities'
+                  ? `IDs of points and curves of the sketch \`${input.of}\`, as its get_sketch or the query sketchSources lists them`
+                  : `a number, ${rangeText(input.spec)}${input.spec.unit === 'count' || input.spec.unit === 'none' ? '' : `, ${input.spec.unit}`}${input.expression ? ', or an expression' : ''}`;
   return (Object.keys(SKETCH_TOOLS) as SketchToolName[]).map((tool) => ({
     tool,
     title: SKETCH_TOOLS[tool].title,
     summary: SKETCH_TOOLS[tool].summary,
-    inputs: Object.entries(SKETCH_TOOLS[tool].inputs).map(([name, input]) => ({ name, description: describe(input), required: input.kind === 'anchor' || input.kind === 'point' || input.optional !== true })),
+    inputs: Object.entries(SKETCH_TOOLS[tool].inputs).map(([name, input]) => ({ name, description: describe(input), required: input.kind === 'anchor' || input.kind === 'point' || input.kind === 'sketch' || input.optional !== true })),
     ids: Object.entries(SKETCH_TOOLS[tool].ids).map(([name, description]) => ({ name, description })),
     example: TOOL_EXAMPLES[tool],
   }));

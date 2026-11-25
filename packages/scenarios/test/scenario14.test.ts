@@ -139,7 +139,7 @@ describe('scenario 14: turned parts, a V-belt pulley and a knob with an O-ring (
     const fillets = ['p4', 'p5'].map((corner, i) => {
       const state = engine.getState();
       const sketch = state.document.features.find((f) => f.id === 'pulleyS') as SketchFeature;
-      const made = sketchTool('fillet', { sketch, result: state.evaluation.features.pulleyS.sketch, parameters: state.evaluation.parameters, document: state.document }, { corner, radius: 'gr' }, freshIds(state.document, `gf${i + 1}_`));
+      const made = sketchTool('fillet', { sketch, result: state.evaluation.features.pulleyS.sketch, parameters: state.evaluation.parameters, document: state.document, features: state.evaluation.features }, { corner, radius: 'gr' }, freshIds(state.document, `gf${i + 1}_`));
       if (!made.ok) throw new Error(made.message);
       run(engine, batch(...made.commands));
       return made.ids;

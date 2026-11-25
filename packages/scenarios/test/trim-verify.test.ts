@@ -8,7 +8,7 @@ type CutTool = 'trim' | 'extend' | 'split';
 const sketchOf = (state: EngineState, id: Id): SketchFeature => state.document.features.find((f) => f.id === id) as SketchFeature;
 function cut<K extends CutTool>(engine: Engine, name: K, sketch: Id, input: SketchToolInputs[K], prefix = 'x_'): Record<string, Id[]> {
   const state = engine.getState();
-  const made = sketchTool(name, { sketch: sketchOf(state, sketch), result: state.evaluation.features[sketch].sketch, parameters: state.evaluation.parameters, document: state.document }, input, freshIds(state.document, prefix));
+  const made = sketchTool(name, { sketch: sketchOf(state, sketch), result: state.evaluation.features[sketch].sketch, parameters: state.evaluation.parameters, document: state.document, features: state.evaluation.features }, input, freshIds(state.document, prefix));
   if (!made.ok) throw new Error(made.message);
   run(engine, { type: 'batch', commands: made.commands });
   return made.ids;
@@ -260,7 +260,7 @@ describe('to verify: performance', () => {
     run(engine, ...lines);
     const started = performance.now();
     const state = engine.getState();
-    const made = sketchTool('split', { sketch: sketchOf(state, 's'), result: solved(state), parameters: state.evaluation.parameters, document: state.document }, {}, freshIds(state.document, 'g_'));
+    const made = sketchTool('split', { sketch: sketchOf(state, 's'), result: solved(state), parameters: state.evaluation.parameters, document: state.document, features: state.evaluation.features }, {}, freshIds(state.document, 'g_'));
     const took = performance.now() - started;
     expect(made.ok).toBe(true);
     if (!made.ok) return;

@@ -172,7 +172,7 @@ function outline(sketch: Id, p: string, width: Expr, height: Expr): Command[] {
     dim(sketch, `${p}h`, 'verticalDistance', `${p}2`, `${p}3`, height),
   ];
 }
-const toolContext = (state: EngineState, sketch: Id) => ({ sketch: sketchOf(state, sketch), result: resultOf(state, sketch), parameters: state.evaluation.parameters, document: state.document });
+const toolContext = (state: EngineState, sketch: Id) => ({ sketch: sketchOf(state, sketch), result: resultOf(state, sketch), parameters: state.evaluation.parameters, document: state.document, features: state.evaluation.features });
 function cut<K extends CutTool>(engine: Engine, name: K, sketch: Id, input: SketchToolInputs[K], prefix: string): CutIds {
   const state = engine.getState();
   const made = sketchTool(name, toolContext(state, sketch), input, freshIds(state.document, prefix));

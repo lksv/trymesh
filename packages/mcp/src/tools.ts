@@ -783,7 +783,7 @@ function sketchToolBatch(engine: Engine, args: Record<string, unknown>): { comma
   const input = args.input;
   if (typeof input !== 'object' || input === null || Array.isArray(input)) throw new ToolError('argument "input": an object with the inputs of the tool is expected, see describe_api');
   const state = engine.getState();
-  const context = { sketch, result: state.evaluation.features[sketch.id]?.sketch, parameters: state.evaluation.parameters, document: state.document };
+  const context = { sketch, result: state.evaluation.features[sketch.id]?.sketch, parameters: state.evaluation.parameters, document: state.document, features: state.evaluation.features };
   const made = sketchTool(tool as SketchToolName, context, input as never, freshIds(state.document, prefix));
   if (!made.ok) throw new ToolError(`${tool}: ${made.message}`);
   return { command: { type: 'batch', commands: made.commands }, ids: made.ids };

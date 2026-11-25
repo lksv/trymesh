@@ -41,7 +41,8 @@ function contactsOf(doc: Document) {
   const world = sketchWorld(toolBase(sketch, result));
   return sketchContactsOf(contactPlaces(world, result.valid, doc.settings.chordTolerance), world.curves, doc, sketch, result.valid);
 }
-const context = (doc: Document) => ({ sketch: sketchOf(doc), result: resultOf(doc), parameters: evaluateParameters(doc.parameters), document: doc });
+// the cuts read no other feature: no results of the features (D69)
+const context = (doc: Document) => ({ sketch: sketchOf(doc), result: resultOf(doc), parameters: evaluateParameters(doc.parameters), document: doc, features: {} });
 function tool<K extends CutTool>(doc: Document, name: K, input: SketchToolInputs[K]): { doc: Document; ids: Record<string, Id[]>; commands: Command[] } {
   const made = sketchTool(name, context(doc), input, freshIds(doc, 'x_'));
   if (!made.ok) throw new Error(made.message);

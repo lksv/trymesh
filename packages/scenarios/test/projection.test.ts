@@ -289,7 +289,7 @@ describe('when the source changes (D69)', () => {
 type Made = { ids: Record<string, Id[]>; state: EngineState };
 function tool<K extends keyof SketchToolInputs>(engine: Engine, sketch: Id, name: K, input: SketchToolInputs[K], prefix: string): Made | string {
   const state = engine.getState();
-  const made = sketchTool(name, { sketch: sketchOf(state, sketch), result: resultOf(state, sketch), parameters: state.evaluation.parameters, document: state.document }, input, freshIds(state.document, prefix));
+  const made = sketchTool(name, { sketch: sketchOf(state, sketch), result: resultOf(state, sketch), parameters: state.evaluation.parameters, document: state.document, features: state.evaluation.features }, input, freshIds(state.document, prefix));
   return made.ok ? { ids: made.ids, state: run(engine, { type: 'batch', commands: made.commands }) } : made.message;
 }
 const made = (answer: Made | string): Made => {
@@ -389,5 +389,163 @@ describe('a projection at the plug-in points of 6e (D69)', () => {
     expect(resultOf(filleted.state, s).valid).toBe(true);
     expect(status(filleted.state).pad).toBe('ok');
     expect(regionsOf(filleted.state, s)).toContainEqual(PAD);
+  });
+});
+
+// How far the own curves of a sketch are from the projections they were drawn over (`curves[i]`
+// over `entries[i]`): the largest distance of a centre, a start or an end of an own arc, an end of
+// an own line, a centre of an own circle, from the same point of its projection.
+export function offProjection(state: EngineState, s: Id, curves: Id[], entries: Id[]): number {
+  const [f, r] = [sketchOf(state, s), resultOf(state, s)];
+  const far = (own: Id, projected: Id): number => Math.hypot((r.points[own]?.x ?? NaN) - (r.points[projected]?.x ?? NaN), (r.points[own]?.y ?? NaN) - (r.points[projected]?.y ?? NaN));
+  return Math.max(
+    ...curves.map((own, i) => {
+      const curve = f.curves[own];
+      if (curve.type === 'arc') return Math.max(far(curve.center, `${entries[i]}/center`), far(curve.start, `${entries[i]}/start`), far(curve.end, `${entries[i]}/end`));
+      return curve.type === 'line' ? Math.max(far(curve.a, `${entries[i]}/a`), far(curve.b, `${entries[i]}/b`)) : far(curve.center, `${entries[i]}/center`);
+    }),
+  );
+}
+const countFlagged = (state: EngineState, s: Id): number => Object.values(sketchOf(state, s).external).filter((ref) => (ref as SketchProjection).regions).length;
+
+describe('the sketch tool projectSketch (D69)', () => {
+  it('a whole sketch, each curve in the role it has in its source', () => {
+    const engine = newEngine();
+    chain(engine);
+    run(engine, addSketch('copyB', onPlane('framePl')));
+    let answer = made(tool(engine, 'copyB', 'projectSketch', { sketch: 'board' }, 'b'));
+    expect(answer.ids.entries).toHaveLength(12);
+    expect(countFlagged(answer.state, 'copyB')).toBe(12);
+    expect(regionsOf(answer.state, 'copyB')).toHaveLength(5);
+    run(engine, addSketch('copyF', onPlane('framePl')));
+    answer = made(tool(engine, 'copyF', 'projectSketch', { sketch: 'frame' }, 'c'));
+    expect(answer.ids.sources).toEqual(['fa0', 'fl0', 'fh0', 'fa1', 'fl1', 'fh1', 'fa2', 'fl2', 'fh2', 'fa3', 'fl3', 'fh3']);
+    expect(countFlagged(answer.state, 'copyF')).toBe(0);
+    expect(regionsOf(answer.state, 'copyF')).toEqual([]);
+    run(engine, addSketch('copyR', onPlane('framePl')));
+    answer = made(tool(engine, 'copyR', 'projectSketch', { sketch: 'frame', as: 'regions', entities: ['fa0', 'fl0', 'fa1', 'fl1', 'fa2', 'fl2', 'fa3', 'fl3'] }, 'r'));
+    expect(regionsOf(answer.state, 'copyR')).toHaveLength(1);
+    // reference: none forms regions
+    run(engine, addSketch('copyS', onPlane('framePl')));
+    answer = made(tool(engine, 'copyS', 'projectSketch', { sketch: 'board', as: 'reference' }, 's'));
+    expect(countFlagged(answer.state, 'copyS')).toBe(0);
+    // run again: everything is projected already
+    expect(tool(engine, 'copyB', 'projectSketch', { sketch: 'board' }, 'f')).toBe('nothing to project: of board 12 entities are projected already');
+    expect(made(tool(engine, 'copyB', 'projectSketch', { sketch: 'board', entities: ['hc0', 'bl0'] }, 'g')).ids).toMatchObject({ sources: ['hc0'], skipped: ['bl0'] });
+  });
+
+  it('as own: the outline of the frame drawn over its projections, fully determined, one region, following the board', () => {
+    const engine = newEngine();
+    chain(engine);
+    run(engine, plane('basePl', -7), addSketch('baseSk', onPlane('basePl')));
+    const state0 = engine.getState();
+    const raw = sketchTool('projectSketch', { sketch: sketchOf(state0, 'baseSk'), result: resultOf(state0, 'baseSk'), document: state0.document, features: state0.evaluation.features }, { sketch: 'frame', entities: RIM.map((id) => id.replace('r', 'f')), as: 'own' }, freshIds(state0.document, 'o'));
+    if (!raw.ok) throw new Error(raw.message);
+    expect(raw.commands).toHaveLength(44);
+    expect([raw.ids.entries.length, raw.ids.points.length, raw.ids.curves.length, raw.ids.helpers.length, raw.ids.constraints.length]).toEqual([8, 12, 8, 4, 12]);
+    let state = run(engine, { type: 'batch', commands: raw.commands }, addExtrude('base', 'baseSk', [raw.ids.curves], 2));
+    const held = (s: EngineState): void => {
+      const diagnosis = engine.diagnoseSketch('baseSk');
+      expect(diagnosis.status).toBe('solved');
+      expect(diagnosis.degreesOfFreedom).toBe(0);
+      expect(diagnosis.redundant).toEqual([]);
+      expect(resultOf(s, 'baseSk').redundant).toEqual([]);
+      expect(regionsOf(s, 'baseSk')).toEqual([[...raw.ids.curves].sort()]);
+      expect(offProjection(s, 'baseSk', raw.ids.curves, raw.ids.entries)).toBeLessThan(1e-7);
+      expect(status(s).base).toBe('ok');
+    };
+    held(state);
+    for (const [name, expr] of [['boardR', '6'], ['boardR', '3'], ['boardW', '80'], ['boardW', '60']]) {
+      state = run(engine, { type: 'setParameter', name, expr });
+      held(state);
+    }
+  });
+
+  it('as own on the other side (normal −Z): the arcs swapped and still held', () => {
+    const engine = newEngine();
+    standInBoard(engine);
+    run(engine, addSketch('under', onFace('pcb', cap('pcb', 'startCap'))));
+    const answer = made(tool(engine, 'under', 'projectSketch', { sketch: 'board', entities: ['ba0', 'bl0', 'ba1', 'bl1', 'ba2', 'bl2', 'ba3', 'bl3'], as: 'own' }, 'u'));
+    const diagnosis = engine.diagnoseSketch('under');
+    expect([diagnosis.degreesOfFreedom, diagnosis.redundant]).toEqual([0, []]);
+    expect(regionsOf(answer.state, 'under')).toEqual([[...answer.ids.curves].sort()]);
+    expect(offProjection(answer.state, 'under', answer.ids.curves, answer.ids.entries)).toBeLessThan(1e-7);
+  });
+
+  it('as own: a slot of two half turns and a circle, held with no freedom and no redundancy', () => {
+    const engine = newEngine();
+    const s = 'slot';
+    run(
+      engine,
+      addSketch(s, XY),
+      point(s, 'c1', 0, 0),
+      point(s, 'c2', 20, 0),
+      point(s, 'a1', 0, -5),
+      point(s, 'a2', 20, -5),
+      point(s, 'b2', 20, 5),
+      point(s, 'b1', 0, 5),
+      line(s, 'l1', 'a1', 'a2'),
+      arc(s, 'r2', 'c2', 'a2', 'b2'),
+      line(s, 'l2', 'b2', 'b1'),
+      arc(s, 'r1', 'c1', 'b1', 'a1'),
+      { type: 'addCurve', sketch: s, id: 'h', curve: { type: 'circle', center: 'c2' }, radius: 2 },
+      ...([['c1', 0, 0], ['c2', 20, 0], ['a1', 0, -5], ['a2', 20, -5], ['b2', 20, 5], ['b1', 0, 5]] as const).map(([p, x, y]) => fixed(s, `f${p}`, p, x, y)),
+      dimension(s, 'hr', { type: 'radius', curve: 'h' }, 2),
+    );
+    run(engine, plane('slotPl', 4), addSketch('own', onPlane('slotPl')));
+    const answer = made(tool(engine, 'own', 'projectSketch', { sketch: s, as: 'own' }, 'q'));
+    expect(answer.ids.curves).toHaveLength(5);
+    const diagnosis = engine.diagnoseSketch('own');
+    expect([diagnosis.degreesOfFreedom, diagnosis.redundant]).toEqual([0, []]);
+    expect(regionsOf(answer.state, 'own')).toHaveLength(2);
+    expect(offProjection(answer.state, 'own', answer.ids.curves, answer.ids.entries)).toBeLessThan(1e-7);
+  });
+
+  it('one own curve per place: a line drawn twice the other way round and a circle twice', () => {
+    const engine = newEngine();
+    const s = 'twice';
+    run(engine, addSketch(s, XY), rectangle(s, 'r', 0, 0, 20, 10), point(s, 'k', 10, 5), { type: 'addCurve', sketch: s, id: 'c', curve: { type: 'circle', center: 'k' }, radius: 2 }, { type: 'addCurve', sketch: s, id: 'cc', curve: { type: 'circle', center: 'k', construction: true }, radius: 2 }, constrain(s, 'ce', { type: 'equalRadius', a: 'c', b: 'cc' }), dimension(s, 'cr', { type: 'radius', curve: 'c' }, 2), fixed(s, 'fk', 'k', 10, 5), line(s, 'rr', 'r2', 'r1', true));
+    run(engine, plane('twPl', 3), addSketch('tw', onPlane('twPl')));
+    const answer = made(tool(engine, 'tw', 'projectSketch', { sketch: s, entities: ['ra', 'rb', 'rc', 'rd', 'rr', 'c', 'cc'], as: 'own' }, 't'));
+    expect(answer.ids.doubled).toEqual(['rr', 'cc']);
+    expect(answer.ids.curves).toHaveLength(5);
+    expect(engine.diagnoseSketch('tw').degreesOfFreedom).toBe(0);
+    expect(regionsOf(answer.state, 'tw')).toHaveLength(2);
+  });
+
+  it('a source with a T: two regions whatever the role', () => {
+    for (const as of ['source', 'regions', 'own'] as const) {
+      const engine = newEngine();
+      const s = 'tee';
+      run(engine, addSketch(s, XY), rectangle(s, 'r', 0, 0, 20, 10), point(s, 'm1', 10, 0), point(s, 'm2', 10, 10), constrain(s, 'k1', { type: 'pointOnCurve', point: 'm1', curve: 'ra' }), constrain(s, 'k2', { type: 'pointOnCurve', point: 'm2', curve: 'rc' }), line(s, 'mid', 'm1', 'm2'), dimension(s, 'md', { type: 'horizontalDistance', a: 'r1', b: 'm1' }, 10), constrain(s, 'mv', { type: 'vertical', line: 'mid' }));
+      // the T is in pieces in the source so its profile is valid: split it first
+      made(tool(engine, s, 'split', {}, 'z'));
+      expect(regionsOf(engine.getState(), s)).toHaveLength(2);
+      run(engine, plane('tPl', 3), addSketch('t', onPlane('tPl')));
+      const answer = made(tool(engine, 't', 'projectSketch', { sketch: s, as }, 'p'));
+      expect(regionsOf(answer.state, 't'), as).toHaveLength(2);
+      if (as === 'own') expect([engine.diagnoseSketch('t').degreesOfFreedom, engine.diagnoseSketch('t').redundant], as).toEqual([0, []]);
+    }
+  });
+
+  it('refuses a tilted plane, a source that is not evaluated, a later sketch, itself, an entity it lacks, anything under origin/, every curve with regions where two lie on each other', () => {
+    const engine = newEngine();
+    chain(engine);
+    run(engine, plane('tiltPl', 20, { axis: 'X', angle: 0.3 }), addSketch('tilted', onPlane('tiltPl')));
+    expect(tool(engine, 'tilted', 'projectSketch', { sketch: 'frame' }, 'w')).toBe('the plane of frame is at 17.2° to this sketch; only a sketch on a parallel plane is projected');
+    run(engine, addSketch('t2', onPlane('framePl')));
+    expect(tool(engine, 't2', 'projectSketch', { sketch: 'nope' }, 'w')).toBe('the document has no sketch "nope"');
+    expect(tool(engine, 't2', 'projectSketch', { sketch: 't2' }, 'w')).toBe('t2 is this sketch; only an earlier sketch is projected');
+    expect(tool(engine, 'rimSk', 'projectSketch', { sketch: 't2' }, 'w')).toBe('t2 is after this sketch; only an earlier sketch is projected');
+    expect(tool(engine, 't2', 'projectSketch', { sketch: 'frame', entities: ['zz'] }, 'w')).toBe('frame has no point or curve "zz"');
+    expect(tool(engine, 't2', 'projectSketch', { sketch: 'frame', entities: ['origin/x'] }, 'w')).toContain('origin/x of frame is not projected');
+    run(engine, { type: 'setSuppressed', id: 'frame', suppressed: true });
+    expect(tool(engine, 't2', 'projectSketch', { sketch: 'frame' }, 'w')).toBe('frame is not evaluated: suppressed, in error, or its plane is broken');
+    run(engine, { type: 'setSuppressed', id: 'frame', suppressed: false });
+    // an own outline over projections, all with regions: two on each place
+    run(engine, addSketch('over', onPlane('framePl')));
+    const own = made(tool(engine, 'over', 'projectSketch', { sketch: 'frame', entities: ['fa0', 'fl0', 'fa1', 'fl1', 'fa2', 'fl2', 'fa3', 'fl3'], as: 'own' }, 'v'));
+    run(engine, addSketch('t3', onPlane('framePl')));
+    expect(tool(engine, 't3', 'projectSketch', { sketch: 'over', as: 'regions' }, 'w')).toBe(`${own.ids.curves[0]} and ${own.ids.entries[0]} of over lie on each other: projected with regions both would bound the same regions; name the entities, or use as: "source"`);
   });
 });

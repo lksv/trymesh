@@ -80,7 +80,10 @@ const distance = (a: Vec2, b: Vec2): number => Math.hypot(a[0] - b[0], a[1] - b[
 //   centre): `degenerateProjection`. Checked before the arc is made exact.
 // An arc's ends swap across a flip of the normal (it stays counter-clockwise), and its end is put
 // on the circle of its start: end = center + |start − center| · (end − center) / |end − center|.
-export function projectFromSketch(ref: SketchProjection, source: SketchState | undefined, frame: Frame): Projected | ReferenceFailure {
+// `source` is what the recompute keeps of the solved source (its state), or the same read from its
+// result by a sketch tool (`solvedCurves`).
+export type ProjectionSource = Pick<SketchState, 'frame' | 'geometry' | 'curves'>;
+export function projectFromSketch(ref: SketchProjection, source: ProjectionSource | undefined, frame: Frame): Projected | ReferenceFailure {
   const { sketch, entity, kind } = ref;
   if (!source) return { code: 'brokenProjection', detail: SOURCE_NOT_EVALUATED(sketch) };
   const map = sketchMap(source.frame, frame);

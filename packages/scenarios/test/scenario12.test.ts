@@ -966,7 +966,7 @@ describe('scenario 12, the part of 2d: round corners by the fillet of the sketch
   const allOk = (state: EngineState): boolean => state.document.features.every((feature) => state.evaluation.features[feature.id].status === 'ok');
   const facesOf = (state: EngineState, body: Id): string[] => state.evaluation.bodies[body].faces.map((face) => faceKey(state.evaluation.faceNames[face.id]));
   const keptFaces = (before: EngineState, after: EngineState): boolean => ['box', 'lid'].every((body) => facesOf(before, body).every((name) => facesOf(after, body).includes(name)));
-  const contextOf = (state: EngineState, sketch: Id) => ({ sketch: state.document.features.find((f) => f.id === sketch) as SketchFeature, result: state.evaluation.features[sketch].sketch, parameters: state.evaluation.parameters, document: state.document });
+  const contextOf = (state: EngineState, sketch: Id) => ({ sketch: state.document.features.find((f) => f.id === sketch) as SketchFeature, result: state.evaluation.features[sketch].sketch, parameters: state.evaluation.parameters, document: state.document, features: state.evaluation.features });
   const filletCorner = (sketch: Id, corner: Id, radius: number | string, prefix: string): Record<string, Id[]> => {
     const state = engine.getState();
     const made = sketchTool('fillet', contextOf(state, sketch), { corner, radius }, freshIds(state.document, prefix));

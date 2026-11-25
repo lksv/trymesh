@@ -12,7 +12,8 @@ import { namedBySections } from './sections/index';
 import { toolBase } from './references/world';
 import { type SolvedCurves, lineExtent, pointJoins, solvedCurves } from './sketch';
 import { CUT_IDS, type CurveChanges, type ExtendInput, type SplitInput, type TrimInput, copiesByNames, copyAsSnap, copyInTool, copyParts, cutTool, entryCommands, entryPatches, namedOutside, profileSourceOf, readersOf } from './sketch-cut';
-import type { Command, Constraint, Curve, CurvePointName, Document, Expr, FeaturePatch, Id, ParameterResult, Point2, RegionRef, SketchFeature, SketchPattern, SketchResult, Vec2 } from './types';
+import { PROJECT_SKETCH_IDS, type ProjectSketchInput, projectSketch } from './sketch-project';
+import type { Command, Constraint, Curve, CurvePointName, Document, Expr, FeaturePatch, FeatureResult, Id, ParameterResult, Point2, RegionRef, SketchFeature, SketchPattern, SketchResult, Vec2 } from './types';
 import { ANGLE_TOLERANCE, LENGTH_TOLERANCE, ORIGIN, cross2, dist2, dot2, has, sub2, unreachable } from './util';
 
 // A place in a sketch and what it should snap to. The app passes a click after snapping, an AI
@@ -36,13 +37,16 @@ export interface SketchToolContext {
 // return IDs the whole document does not have; see `freshIds`.
 export type NewId = (prefix: string) => Id;
 
-// What `sketchTool` takes: the context of a sketch with the document it is in (D52). A tool that
-// changes curves other features name (the fillet) reads the document to change those features in
-// the same batch; the other tools do not read it. It is required, so that a fillet cannot be drawn
-// without its patches. The functions that never read a document (`placeAnchor`, `anchorPosition`,
-// `nearestCurvePoint`) take the plain context.
+// What `sketchTool` takes: the context of a sketch with the document it is in (D52) and the results
+// of the features (`evaluation.features`, D69). A tool that changes curves other features name (the
+// fillet) reads the document to change those features in the same batch; a tool that reads another
+// sketch (projectSketch) reads its solved result and its plane in `features`, and the plane of its
+// own sketch. Both are required, so that a fillet cannot be drawn without its patches and a caller
+// that forgot the results is found by the compiler. The functions that never read a document
+// (`placeAnchor`, `anchorPosition`, `nearestCurvePoint`) take the plain context.
 export interface SketchToolCall extends SketchToolContext {
   document: Document;
+  features: Readonly<Record<Id, Pick<FeatureResult, 'sketch' | 'plane'>>>;
 }
 
 export interface SketchToolInputs {
@@ -58,6 +62,8 @@ export interface SketchToolInputs {
   extend: ExtendInput;
   // D65: curves cut at the points where other curves meet them; without `curve` the whole sketch.
   split: SplitInput;
+  // D69: entities of an earlier sketch projected into this one, or an own outline over them.
+  projectSketch: ProjectSketchInput;
 }
 export type SketchToolName = keyof SketchToolInputs;
 
@@ -72,7 +78,11 @@ export type SketchToolInput =
   // geometry (a projected edge, an axis of the origin). A copy of a mirror or a pattern is refused.
   | { kind: 'curve'; reference?: boolean; optional?: boolean }
   // a place `[x, y]` of the sketch: nothing is made there and nothing snaps to it (D65)
-  | { kind: 'place'; optional?: boolean };
+  | { kind: 'place'; optional?: boolean }
+  // the ID of a sketch of the document (D69); the tool says which it takes
+  | { kind: 'sketch' }
+  // IDs of points and curves of the sketch named by the input `of` (D69)
+  | { kind: 'entities'; of: string; optional?: boolean };
 
 export interface SketchToolSpec {
   title: string;
@@ -157,6 +167,13 @@ export const SKETCH_TOOLS: Record<SketchToolName, SketchToolSpec> = {
     'Cuts curves into pieces at the points where other curves cross them, end on them or touch them, and nothing is removed. With `curve`: that curve at all its cuts (`with`: at its contacts with that curve only; `at`: at the one cut nearest to `at`, not on a circle). Without `curve` (and without `with` and `at`): every contact of two outline curves in the sketch, which is what makes a profile with crossing curves invalid, and two ends at one place that are not joined are joined (the curve whose end nothing else names re-pointed onto the other point, else a coincident constraint); a sketch with nothing to cut gives an empty batch when its profile is valid, and a refusal with the reason when it is invalid for something a cut cannot repair (curves lying on each other, a curve of no length, two arcs that only touch, a circle with one point). The query sketchContacts lists the places beforehand, each with what split would do there. Each piece is a curve of its own, so each region between crossing curves has its own name (a line through a circle gives two regions, named by the two arcs and the middle piece). Constraints stay as for trim; a circle cut at two or more points becomes arcs on its centre, the first under its ID. A circle touched at one point only cannot be split (`ids.uncut`). The regions of the features over the sketch follow: a region cut into several is replaced by all of them, so the bodies do not change. Then trim the pieces that should go, each by a place on it.',
   inputs: { curve: { kind: 'curve', optional: true }, with: { kind: 'curve', reference: true, optional: true }, at: { kind: 'place', optional: true } },
   ids: CUT_IDS,
+  },
+  projectSketch: {
+    title: 'Project from a sketch',
+    summary:
+      'Projects entities of an earlier sketch `sketch` on a parallel plane into this sketch, each by one addExternal of the kind `sketch` (section Entries of a sketch) with a fresh ID and its `kind` from the source. `entities`: the points and curves to project, in that order (the query sketchSources lists every one with its place here). Without it the whole sketch: its own curves that are not construction curves, then the curves of its entries in their order (every curve of a projection, the copies of a mirror or pattern that form regions), then its lone points (an own point no own curve names, which may be a leftover such as the corner a fillet keeps; and a projected point); never anything under `origin/`. `as`, the role of the projected curves here: `source` (the default) forms regions exactly where the curve forms regions in its source, so a sketch projected whole has the regions of its source; `reference` none (a skeleton); `regions` every curve (refused when two of them lie on each other in the source: name the entities, or use `source`); `own` none, and an own outline is drawn over the projected curves and held on them, which is the outline the sketch tools trim, extend and split: one own point per place where projected ends lie (coincident with one of them), an own line between two of them, an own circle (centre coincident, equalRadius), an own arc with a centre of its own, a construction line from it to the arc\'s start (`ids.helpers`) and the projected centre on that line (pointOnCurve), so it has no second solution; 0 degrees of freedom and no redundant constraint. With `own` one own curve is drawn per place: a curve at the place of one before it in the list, or of an own curve that forms regions in this sketch already, is left out (`ids.doubled`), so the whole of a sketch that holds an own outline over its projections gives one outline; curves that only overlap are drawn as they are (after a trim the own outline of a sketch is in pieces over whole projections: project its own curves by `entities`). An entity this sketch projects already is skipped (`ids.skipped`), so the tool can be run again after the source grew. Refused: a sketch the document does not have, this sketch, a later one, a source or this sketch not evaluated, a plane that is not parallel (the angle is said), an entity the source does not have, anything under `origin/`, nothing left to project.',
+    inputs: { sketch: { kind: 'sketch' }, entities: { kind: 'entities', of: 'sketch', optional: true }, as: { kind: 'option', options: ['source', 'reference', 'regions', 'own'], optional: true } },
+    ids: PROJECT_SKETCH_IDS,
   },
 };
 
@@ -338,7 +355,7 @@ function inputProblem(spec: SketchToolSpec, context: SketchToolContext, input: u
   for (const [name, kind] of Object.entries(spec.inputs)) {
     const value = input[name];
     if (value === undefined) {
-      if (kind.kind === 'anchor' || kind.kind === 'point' || kind.optional !== true) return `the input "${name}" is missing`;
+      if (kind.kind === 'anchor' || kind.kind === 'point' || kind.kind === 'sketch' || kind.optional !== true) return `the input "${name}" is missing`;
       continue;
     }
     if (kind.kind === 'anchor') {
@@ -350,6 +367,10 @@ function inputProblem(spec: SketchToolSpec, context: SketchToolContext, input: u
     } else if (kind.kind === 'curve') {
       const problem = curveInputProblem(context, value, kind.reference === true);
       if (problem) return `${name}: ${problem}`;
+    } else if (kind.kind === 'sketch') {
+      if (typeof value !== 'string' || value === '') return `${name}: the ID of a sketch of the document is expected`;
+    } else if (kind.kind === 'entities') {
+      if (!Array.isArray(value) || value.length === 0 || !value.every((id) => typeof id === 'string' && id !== '')) return `${name}: a non-empty list of IDs of points and curves of the sketch "${kind.of}" names is expected`;
     } else if (kind.kind === 'place') {
       if (!Array.isArray(value) || value.length !== 2 || !value.every((n) => typeof n === 'number' && Number.isFinite(n))) return `${name}: two finite numbers \`[x, y]\` are expected`;
       if (!value.every((n) => Math.abs(n) <= MAX_NUMBER)) return `${name}: out of the range ±${MAX_NUMBER}`;
@@ -682,6 +703,7 @@ export function sketchTool<K extends SketchToolName>(tool: K, context: SketchToo
     trim: (call, given, ids) => cutTool(call, { tool: 'trim', ...given }, ids),
     extend: (call, given, ids) => cutTool(call, { tool: 'extend', ...given }, ids),
     split: (call, given, ids) => cutTool(call, { tool: 'split', ...given }, ids),
+    projectSketch,
   };
   return (run[tool] as (context: SketchToolCall, input: SketchToolInputs[K], newId: NewId) => SketchToolResult)(context, input, newId);
 }

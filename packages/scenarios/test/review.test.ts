@@ -890,7 +890,7 @@ describe('the review of the implementation of 6c (D68): copies under the sketch 
   type Made = { ids: Record<string, string[]>; state: EngineState };
   const tool = (engine: ReturnType<typeof newEngine>, name: 'trim' | 'extend' | 'split' | 'fillet', input: object, prefix: string): Made | string => {
     const state = engine.getState();
-    const made = sketchTool(name, { sketch: sketchOf6c(state), result: state.evaluation.features[S].sketch, parameters: state.evaluation.parameters, document: state.document }, input as never, freshIds(state.document, prefix));
+    const made = sketchTool(name, { sketch: sketchOf6c(state), result: state.evaluation.features[S].sketch, parameters: state.evaluation.parameters, document: state.document, features: state.evaluation.features }, input as never, freshIds(state.document, prefix));
     return made.ok ? { ids: made.ids as Record<string, string[]>, state: run(engine, batch(...made.commands)) } : made.message;
   };
   const pulley = (center: string): Command => ({ type: 'addFeature', feature: { id: 'G', name: 'G', suppressed: false, type: 'extrude', profile: { type: 'generated', generator: 'gt2Pulley', sketch: S, operands: { center }, params: { teeth: 12 } }, extent: { type: 'distance', start: 0, distance: 5 }, operation: 'new' } } as Command);
@@ -1085,6 +1085,102 @@ describe('the design review of D69 (6b): planes parallel only within the toleran
     for (const end of apart) {
       expect(end.distance).toBeGreaterThan(1e-6);
       expect(end.distance).toBeLessThan((1010 * 9e-5 * 9e-5) / 2 + 1e-7);
+    }
+  });
+});
+
+describe('the design review of D69 (6b): the own outline of projectSketch', () => {
+  const pt6 = (s: string, id: string, x: number, y: number): Command => ({ type: 'addPoint', sketch: s, id, x, y });
+  const plane6 = (id: string, offset: number): Command => ({ type: 'addFeature', feature: { id, name: id, suppressed: false, type: 'plane', base: XY, offset } }) as Command;
+  const result6 = (engine: ReturnType<typeof newEngine>, s: string): SketchResult6 => engine.getState().evaluation.features[s].sketch as unknown as SketchResult6;
+  const project6 = (engine: ReturnType<typeof newEngine>, target: string, input: object, prefix: string): { commands: number; ids: Record<string, string[]> } | string => {
+    const state = engine.getState();
+    const made = sketchTool('projectSketch', { sketch: state.document.features.find((f) => f.id === target) as SketchFeature, result: state.evaluation.features[target].sketch, parameters: state.evaluation.parameters, document: state.document, features: state.evaluation.features }, input as never, freshIds(state.document, prefix));
+    if (!made.ok) return made.message;
+    run(engine, batch(...made.commands));
+    return { commands: made.commands.length, ids: made.ids };
+  };
+  // a rounded rectangle 60 × 40 R 3 of fixed points, and `held` on a plane above it: the outline
+  // projected without the flag and an own outline over it
+  function rounded(engine: ReturnType<typeof newEngine>): string[] {
+    const s = 'src';
+    const commands: Command[] = [addSketch(s, XY)];
+    const corners = [[27, 17], [-27, 17], [-27, -17], [27, -17]];
+    corners.forEach(([cx, cy], i) => {
+      const t = (i * Math.PI) / 2;
+      const [sx, sy] = [cx + 3 * Math.round(Math.cos(t)), cy + 3 * Math.round(Math.sin(t))];
+      const [ex, ey] = [cx + 3 * Math.round(Math.cos(t + Math.PI / 2)), cy + 3 * Math.round(Math.sin(t + Math.PI / 2))];
+      commands.push(pt6(s, `c${i}`, cx, cy), pt6(s, `s${i}`, sx, sy), pt6(s, `e${i}`, ex, ey), { type: 'addCurve', sketch: s, id: `a${i}`, curve: { type: 'arc', center: `c${i}`, start: `s${i}`, end: `e${i}` } });
+      for (const [p, x, y] of [[`c${i}`, cx, cy], [`s${i}`, sx, sy], [`e${i}`, ex, ey]] as const) commands.push(constrain(s, `f${p}`, { type: 'fixed', point: p, x, y }));
+    });
+    for (let i = 0; i < 4; i++) commands.push({ type: 'addCurve', sketch: s, id: `l${i}`, curve: { type: 'line', a: `e${i}`, b: `s${(i + 1) % 4}` } });
+    run(engine, ...commands);
+    return ['a0', 'l0', 'a1', 'l1', 'a2', 'l2', 'a3', 'l3'];
+  }
+
+  // the second round, finding 1: an own curve over every projected curve of a sketch that holds an
+  // own outline over its projections gave 72 commands, two outlines on each other, the sketch `ok`
+  // and determined, `valid: false` and no region; one own curve per place gives one outline
+  it('the whole of a sketch that holds an own outline over its projections, as own: one outline, and again from the result; run again it makes nothing', () => {
+    const engine = newEngine();
+    const outline = rounded(engine);
+    run(engine, plane6('p1', 3), addSketch('held', { kind: 'plane', feature: 'p1' }));
+    const first = project6(engine, 'held', { sketch: 'src', entities: outline, as: 'own' }, 'o');
+    expect(typeof first === 'object' && first.commands).toBe(44);
+    for (const [source, target, prefix] of [['held', 'copyO', 'g'], ['copyO', 'copyP', 'j']]) {
+      run(engine, plane6(`${target}Pl`, 6), addSketch(target, { kind: 'plane', feature: `${target}Pl` }));
+      const answer = project6(engine, target, { sketch: source, as: 'own' }, prefix);
+      if (typeof answer === 'string') throw new Error(answer);
+      expect(answer.commands).toBe(44);
+      expect([answer.ids.entries.length, answer.ids.curves.length, answer.ids.doubled.length]).toEqual([8, 8, 8]);
+      const held = engine.getState().document.features.find((f) => f.id === source) as SketchFeature;
+      expect(answer.ids.sources.every((id) => id in held.curves)).toBe(true);
+      expect([engine.diagnoseSketch(target).degreesOfFreedom, engine.diagnoseSketch(target).redundant]).toEqual([0, []]);
+      expect(result6(engine, target).regions.map((region) => region.ref.outerLoop)).toEqual([[...answer.ids.curves].sort()]);
+    }
+    // run again: the doubles are decided before the skip, so nothing is drawn twice
+    expect(project6(engine, 'copyO', { sketch: 'held', as: 'own' }, 'k')).toBe('nothing to project: of held 8 entities are projected already, 8 at a place another curve has');
+    // an outline from another source at the places this sketch holds is not drawn twice
+    expect(project6(engine, 'copyO', { sketch: 'src', entities: outline, as: 'own' }, 'l')).toBe('nothing to project: of src 0 entities are projected already, 8 at a place another curve has');
+  });
+
+  // the hold of an own arc on a projected one (owner, answer 29): by its ends and a construction line
+  // from its centre to its start with the projected centre on it; `equalRadius` there has a second
+  // solution that a change of the sweep from 170° to 204° reaches (8.3 mm off, the sketch `ok`), and
+  // a double root at a half turn (1 freedom and 1 redundant constraint)
+  it('an own arc stays on its projection while the sweep of the source goes from 170° through 204° and 119°, turns, a half turn and 216°', () => {
+    const engine = newEngine();
+    const s = 'arcSrc';
+    for (const [name, expr] of [['acx', '23'], ['acy', '7'], ['ar', '10'], ['at', '15'], ['aw', '170']]) run(engine, { type: 'setParameter', name, expr });
+    run(
+      engine,
+      addSketch(s, XY),
+      pt6(s, 'c', 23, 7),
+      pt6(s, 's', 32.66, 9.59),
+      pt6(s, 'e', 13.04, 6.13),
+      { type: 'addCurve', sketch: s, id: 'a', curve: { type: 'arc', center: 'c', start: 's', end: 'e' } },
+      constrain(s, 'kc', { type: 'fixed', point: 'c', x: 'acx', y: 'acy' } as never),
+      constrain(s, 'ks', { type: 'fixed', point: 's', x: 'acx + ar * cos(deg(at))', y: 'acy + ar * sin(deg(at))' } as never),
+      constrain(s, 'ke', { type: 'fixed', point: 'e', x: 'acx + ar * cos(deg(at + aw))', y: 'acy + ar * sin(deg(at + aw))' } as never),
+      plane6('arcPl', 5),
+      addSketch('arcOwn', { kind: 'plane', feature: 'arcPl' }),
+    );
+    const answer = project6(engine, 'arcOwn', { sketch: s, as: 'own' }, 'h');
+    if (typeof answer === 'string') throw new Error(answer);
+    const [own, entry] = [answer.ids.curves[0], answer.ids.entries[0]];
+    const held = (label: string): void => {
+      const diagnosis = engine.diagnoseSketch('arcOwn');
+      expect(engine.getState().evaluation.features.arcOwn.status, label).toBe('ok');
+      expect([diagnosis.degreesOfFreedom, diagnosis.redundant], label).toEqual([0, []]);
+      const r = result6(engine, 'arcOwn');
+      const curve = (engine.getState().document.features.find((f) => f.id === 'arcOwn') as SketchFeature).curves[own] as { center: string; start: string; end: string };
+      const off = Math.max(...([[curve.center, 'center'], [curve.start, 'start'], [curve.end, 'end']] as const).map(([p, name]) => Math.hypot(r.points[p].x - r.points[`${entry}/${name}`].x, r.points[p].y - r.points[`${entry}/${name}`].y)));
+      expect(off, label).toBeLessThan(1e-7);
+    };
+    held('170');
+    for (const [name, expr] of [['aw', '204'], ['aw', '119'], ['at', '75'], ['ar', '20'], ['acx', '60'], ['at', '195'], ['aw', '180'], ['at', '15'], ['aw', '216'], ['ar', '10']]) {
+      run(engine, { type: 'setParameter', name, expr });
+      held(`${name} ${expr}`);
     }
   });
 });

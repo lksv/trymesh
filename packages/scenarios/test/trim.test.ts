@@ -10,14 +10,14 @@ type CutTool = 'trim' | 'extend' | 'split';
 const sketchOf = (state: EngineState, id: Id): SketchFeature => state.document.features.find((f) => f.id === id) as SketchFeature;
 function cut<K extends CutTool | 'polygon'>(engine: Engine, name: K, sketch: Id, input: SketchToolInputs[K], prefix = 'x_'): Record<string, Id[]> {
   const state = engine.getState();
-  const made = sketchTool(name, { sketch: sketchOf(state, sketch), result: state.evaluation.features[sketch].sketch, parameters: state.evaluation.parameters, document: state.document }, input, freshIds(state.document, prefix));
+  const made = sketchTool(name, { sketch: sketchOf(state, sketch), result: state.evaluation.features[sketch].sketch, parameters: state.evaluation.parameters, document: state.document, features: state.evaluation.features }, input, freshIds(state.document, prefix));
   if (!made.ok) throw new Error(made.message);
   run(engine, { type: 'batch', commands: made.commands });
   return made.ids;
 }
 function refused<K extends CutTool>(engine: Engine, name: K, sketch: Id, input: SketchToolInputs[K]): string {
   const state = engine.getState();
-  const made = sketchTool(name, { sketch: sketchOf(state, sketch), result: state.evaluation.features[sketch].sketch, parameters: state.evaluation.parameters, document: state.document }, input, freshIds(state.document, 'r_'));
+  const made = sketchTool(name, { sketch: sketchOf(state, sketch), result: state.evaluation.features[sketch].sketch, parameters: state.evaluation.parameters, document: state.document, features: state.evaluation.features }, input, freshIds(state.document, 'r_'));
   if (made.ok) throw new Error(`${name} was not refused`);
   return made.message;
 }

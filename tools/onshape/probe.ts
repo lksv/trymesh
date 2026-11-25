@@ -3,6 +3,7 @@
 // that has a sketch; the sketch's probe (check.ts) runs inside the converter over one sketch. Both
 // take their changes and their steps from here.
 import { CONSTRAINTS, type Command, type Constraint, type Engine, GENERATORS, type Id, checkNumber, isDimension } from '../../packages/engine/src/index';
+import { NUMBER } from './common';
 
 // ---------------------------------------------------------------- what the conversion promised
 
@@ -39,7 +40,8 @@ export interface Change {
 
 const IDENT = /[A-Za-z_][A-Za-z0-9_]*/g;
 const NOT_NAMES = new Set(['pi', 'deg', 'rad', 'sin', 'cos', 'tan', 'asin', 'acos', 'atan', 'atan2', 'sqrt', 'abs', 'min', 'max', 'round', 'floor', 'ceil', 'e', 'mm', 'if']);
-export const namesIn = (expr: string): string[] => (String(expr).match(IDENT) ?? []).filter((n) => !NOT_NAMES.has(n));
+// the numbers taken out first, so the exponent of `1E-3` names no parameter `E`
+export const namesIn = (expr: string): string[] => (String(expr).replace(new RegExp(NUMBER, 'g'), ' 0 ').match(IDENT) ?? []).filter((n) => !NOT_NAMES.has(n));
 
 // The parameters an expression of the document names (and those their expressions name), and which
 // of them are read as a count (of an entry, a pattern or a generator).

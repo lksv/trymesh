@@ -211,12 +211,19 @@ export function planEntries(feature: any, geom: any, forbidden: Set<number>, ec:
       if (why) plan.why = why;
     }
   }
-  // rule 3: an image may be a copy of one entry only, and no source may be a copy
+  // rule 3: an image may be a copy of one entry only, and no source may be a copy; the pivot of a
+  // pattern is a point the sketch has, so no copy of another entry (an image is not made). A plan is
+  // judged before its images become copies, so a plan kept out adds none.
   const copies = new Set<string>();
-  for (const plan of plans) if (!plan.why) { if ([...plan.images].some((v) => copies.has(v))) plan.why = 'an image is a copy of another entry'; else for (const v of plan.images) copies.add(v); }
+  const pivots = new Set<string>(); // the pivots of the plans taken so far
+  for (const plan of plans) {
+    if (plan.why) continue;
+    if ([...plan.images].some((v) => copies.has(v))) plan.why = 'an image is a copy of another entry';
+    else if (plan.pivot && copies.has(plan.pivot)) plan.why = 'the pivot is a copy of another entry';
+    else if ([...plan.images].some((v) => pivots.has(v))) plan.why = 'an image is the pivot of another entry';
+    else { for (const v of plan.images) copies.add(v); if (plan.pivot) pivots.add(plan.pivot); }
+  }
   for (const plan of plans) if (!plan.why && [...withPoints(E, plan.seeds)].some((v) => copies.has(v))) plan.why = 'a seed is a copy of another entry';
-  // the pivot of a pattern is a point the sketch has: not a copy of another entry (an image is not made)
-  for (const plan of plans) if (!plan.why && plan.pivot && copies.has(plan.pivot)) plan.why = 'the pivot is a copy of another entry';
   return plans;
 }
 

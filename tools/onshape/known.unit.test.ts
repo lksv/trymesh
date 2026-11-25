@@ -175,8 +175,8 @@ describe('horizontal of two points, the distance of two lines', () => {
 
 describe('expressions', () => {
   test('units as factors', () => {
-    expect(expression('45.0*deg')).toBe('deg(45.0)');
-    expect(expression('45 deg')).toBe('deg(45)');
+    expect(expression('45.0*deg')).toBe('45.0 * deg(1)');
+    expect(expression('45 deg')).toBe('45 * deg(1)');
     expect(expression('2*mm')).toBe('2');
     expect(expression('#Phi_R / 2 + 1 mm')).toBe('Phi_R / 2 + 1');
     expect(expression('(#a + 5) * deg')).toBe('(a + 5) * deg(1)');

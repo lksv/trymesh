@@ -7,7 +7,8 @@ import { engineNow, expression, newEngine } from './common';
 import { planEntries } from './derived';
 import { SketchKit, StudioKit, circleEdge, writeDump } from './kit';
 import { encode } from './operands';
-import { cutPieces, sketchFrame, toBase } from './sketch';
+import { namesIn, parametersNamed } from './probe';
+import { cutPieces, settleRemoved, sketchFrame, toBase } from './sketch';
 import { convertStudio } from './studio';
 
 const XY = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
@@ -315,8 +316,125 @@ describe('the check (review A1, A5, C5)', () => {
     s.pattern(o, '6', [[a.id, b.id], [a.center, b.center]]);
     s.line([20, 0], [30, 0]);
     s.line([20, 0], [30, 0]); // an exact duplicate: a line of the section Duplicates
+    s.spline([[40, 0], [45, 5], [50, 0]], [0, 0, 0, 1, 1, 1], 2, { rational: true }); // not converted: a note of the sketch's own lines
     const { report } = await one(s);
     expect(report.lines.join('\n')).toMatch(/rule 5/);
     expect(report.tail.Duplicates).toHaveLength(1);
+    expect(report.lines.filter((l) => /entities without a counterpart, left out/.test(l))).toHaveLength(1);
+  });
+});
+
+// The second round of review of the implementation (R2-1 to R2-6), and the fixtures the first round's
+// fixes lacked (R2-5).
+describe('the second round of review', () => {
+  test('R2-1: a new piece of a cut is of the outline curve the cut touched, not of a construction line over it', async () => {
+    const s = new SketchKit('Sketch 1', 'F1', XY);
+    s.line([-20, 0], [20, 0], { construction: true });
+    s.line([-20, 0], [20, 0]);
+    s.circle([0, 0], 5);
+    const { result } = await one(s, 2);
+    const engine = engineNow();
+    engine.load(JSON.stringify(result.document));
+    const sk: any = result.document.features.find((f: any) => f.id === 'Sketch_1');
+    const pts = new Map<string, [number, number]>(Object.entries(engine.getState().evaluation.features.Sketch_1.sketch!.points).map(([k, q]) => [k, [q.x, q.y]]));
+    const before = [
+      { id: 'Sketch_1.l1', src: 'l1', construction: true, line: ['Sketch_1.l1.start', 'Sketch_1.l1.end'] as [string, string] },
+      { id: 'Sketch_1.l2', src: 'l2', construction: false, line: ['Sketch_1.l1.start', 'Sketch_1.l1.end'] as [string, string] },
+      { id: 'Sketch_1.c3', src: 'c3', construction: false, circle: { c: 'Sketch_1.c3.center', r: 5 } },
+    ];
+    const added = Object.keys(sk.curves).filter((c) => c.includes('.cut.'));
+    expect(added.length).toBeGreaterThan(1);
+    const r = cutPieces(engine, 'Sketch_1', before, { points: pts, radii: new Map() }, { ids: { changed: ['Sketch_1.l2', 'Sketch_1.c3'], added }, commands: [] });
+    expect(r.problems).toEqual([]);
+    expect(added.map((c) => [sk.curves[c].type, r.of.get(c)])).toEqual(added.map((c) => [sk.curves[c].type, sk.curves[c].type === 'line' ? 'Sketch_1.l2' : 'Sketch_1.c3']));
+  });
+
+  test('R2-1: a point the cut makes a junction of two new arcs of a circle is shared, with a construction circle over it drawn first', async () => {
+    const s = new SketchKit('Sketch 1', 'F1', XY);
+    s.circle([10, 0], 3, { construction: true });
+    const L = s.line([-20, 0], [20, 0]);
+    s.line([10, -10], [10, 10]);
+    const c = s.circle([10, 0], 3);
+    const p = s.point([7, 0]);
+    s.constrain('COINCIDENT', { localFirst: p, localSecond: c.id });
+    s.constrain('COINCIDENT', { localFirst: p, localSecond: L.id });
+    const { records } = await one(s, 4);
+    expect(records.map((r) => [r.fate, r.detail])).toEqual([['shared', 'by the cut'], ['shared', 'by the cut']]);
+  });
+
+  test('R2-1: a new arc is of the arc of its circle whose span holds it, not of the first arc on that centre', async () => {
+    const s = new SketchKit('Sketch 1', 'F1', XY);
+    s.arc([0, 0], 5, Math.PI / 18, (8 * Math.PI) / 18);
+    s.arc([0, 0], 5, (10 * Math.PI) / 18, (17 * Math.PI) / 18);
+    s.line([-10, 3], [10, 3]); // crosses each arc once
+    const { result } = await one(s, 0);
+    const engine = engineNow();
+    engine.load(JSON.stringify(result.document));
+    const sk: any = result.document.features.find((f: any) => f.id === 'Sketch_1');
+    const pts = new Map<string, [number, number]>(Object.entries(engine.getState().evaluation.features.Sketch_1.sketch!.points).map(([k, q]) => [k, [q.x, q.y]]));
+    const before = [
+      { id: 'Sketch_1.a1', src: 'a1', construction: false, arc: ['Sketch_1.a1.center', 'Sketch_1.a1.start', 'Sketch_1.a1.end'] as [string, string, string] },
+      { id: 'Sketch_1.a2', src: 'a2', construction: false, arc: ['Sketch_1.a1.center', 'Sketch_1.a2.start', 'Sketch_1.a2.end'] as [string, string, string] },
+      { id: 'Sketch_1.l3', src: 'l3', construction: false, line: ['Sketch_1.l3.start', 'Sketch_1.l3.end'] as [string, string] },
+    ];
+    const arcs = Object.keys(sk.curves).filter((c) => c.includes('.cut.') && sk.curves[c].type === 'arc');
+    expect(arcs).toHaveLength(2);
+    const r = cutPieces(engine, 'Sketch_1', before, { points: pts, radii: new Map() }, { ids: { changed: ['Sketch_1.a1', 'Sketch_1.a2', 'Sketch_1.l3'], added: arcs }, commands: [] });
+    expect(r.problems).toEqual([]);
+    // each new arc ends where its arc ended
+    expect(arcs.map((c) => r.of.get(c))).toEqual(arcs.map((c) => sk.curves[c].end.replace(/\.end$/, '')));
+  });
+
+  test('R2-2: a unit is a factor after what it follows, also after a division; the degree sign', () => {
+    expect(['#a/2 deg', '360/6 deg', '30 °', '30°', '#a °', '(#a + 1)°', 'pi °', '30 deg'].map(expression)).toEqual(['a/2 * deg(1)', '360/6 * deg(1)', '30 * deg(1)', '30 * deg(1)', 'a * deg(1)', '(a + 1) * deg(1)', undefined, '30 * deg(1)']);
+    expect(expressionValue(expression('360/6 deg')!, [])).toBeCloseTo(Math.PI / 3, 12);
+    expect(expressionValue(expression('#a/2 deg')!, [{ name: 'a', expr: '60' }] as any)).toBeCloseTo(Math.PI / 6, 12);
+  });
+
+  test('R2-3: a number in scientific notation names no parameter', () => {
+    expect(namesIn('1E-3')).toEqual([]);
+    expect(namesIn('1E2 * E + 2e-3')).toEqual(['E']);
+    const doc = { features: [{ id: 'F', expressions: { 'constraints/c/value': '1E-3 * 2' } }], parameters: [{ name: 'E', expr: '5' }, { name: 'E2', expr: '1' }] };
+    expect([...parametersNamed(doc).names]).toEqual([]);
+  });
+
+  test('R2-6: a constraint of a point the cut removed is not "its curve went"', () => {
+    const doc = { id: 'S', curves: { 'S.l1': { type: 'line', a: 'S.p2', b: 'S.p3' } }, points: { 'S.p2': {}, 'S.p3': {} }, constraints: {} };
+    const engine: any = { getState: () => ({ document: { features: [doc] } }) };
+    const record: any = { key: 'k', ids: ['S.c1', 'S.c2'], commands: [{ id: 'S.c1', constraint: { type: 'coincident', a: 'S.p1', b: 'S.p2' } }, { id: 'S.c2', constraint: { type: 'horizontal', line: 'S.l1' } }], fate: 'written' };
+    settleRemoved(engine, 'S', [record], { removed: ['S.c1', 'S.p1'] }, new Map(), [{ id: 'S.l1', src: 'l1', construction: false, line: ['S.p2', 'S.p3'] }] as any);
+    expect(record.extra.cut).toEqual(['S.c1: lost (removed by the cut (reason not identified))']);
+  });
+
+  test('R2-5 (C1): a pattern whose local pivot is no point is no entry: its images are own curves, the pattern lost', async () => {
+    const s = new SketchKit('Sketch 1', 'F1', XY);
+    const o = s.line([-1, 0], [1, 0]);
+    const holes = [0, 1, 2, 3].map((k) => s.circle(ring(k, 4), 1));
+    s.pattern(o.id, '4', [holes.map((h) => h.id), holes.map((h) => h.center)]);
+    const { records, sketch, summary } = await one(s);
+    expect(summary.entries[0]).toMatchObject({ entry: false, why: 'the pivot is not a point of the sketch' });
+    expect(records[0]).toMatchObject({ fate: 'lost', cause: 'pattern' });
+    expect(Object.keys(sketch.curves)).toHaveLength(5);
+  });
+
+  test('R2-5 (B5): a parameter that only a helper copy reads is in use when a sketch of the part projects from that copy', async () => {
+    const src = new StudioKit('Source', 'e00000000000000000000002');
+    const a = new SketchKit('Sketch 1', 'G1');
+    const c = a.circle([0, 0], 6);
+    a.constrain('DIAMETER', { localFirst: c.id, length: { q: '#P' } });
+    const { op } = src.sketch(a, 1);
+    const b = new SketchKit('Sketch 2', 'G2');
+    const p = b.point([6, 0]);
+    b.circle([20, 0], 1);
+    b.constrain('COINCIDENT', { localFirst: p, externalSecond: { ext: encode(op, 'edge', 0) } });
+    src.sketch(b, 1);
+    const dst = new StudioKit('Dest');
+    dst.derive('D1', 'Derived', src, ['G2'], 1);
+    const { input, report } = writeDump([dst, src], [{ name: 'P', expression: '12 mm' }]);
+    await newEngine();
+    const res = await convertStudio(input, dst.eid, report);
+    expect(report.promises.Dest.helpers).toEqual(['Derived_Sketch_1']);
+    expect(Object.values(res.document.features.find((f: any) => f.id === 'Derived_Sketch_2').external)).toMatchObject([{ type: 'sketch', sketch: 'Derived_Sketch_1' }]);
+    expect(report.parametersInUse.Dest).toEqual(['P']);
   });
 });

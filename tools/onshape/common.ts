@@ -104,25 +104,28 @@ export function exec(engine: Engine, report: Report, cmd: Command, what: string)
 // ---------------------------------------------------------------- expressions and IDs
 
 // An Onshape expression to one of trymesh: `#var` -> `var`, a unit as a factor: `3 mm` and `3*mm`
-// -> `3`, `30 deg` and `30.0*deg` -> `deg(30)`, `(a + b) * deg` -> `(a + b) * deg(1)`, `2 in` ->
-// `2 * 25.4`, `1.5e-3 m` -> `1.5e-3 * 1000`, `#a * deg` -> `#a * deg(1)`. Onshape names a variable
-// with `#`; any other word is a unit, a function or a constant, and a unit the converter does not
-// know leaves the expression unconverted (undefined). A digit inside a name (`#gap_2mm`) is no
-// number: a number starts where no letter, digit, `_`, `#` or `.` stands before it.
-const UNITS: Record<string, string | undefined> = { mm: '', millimeter: '', cm: '10', centimeter: '10', m: '1000', meter: '1000', in: '25.4', inch: '25.4', ft: '304.8', foot: '304.8', deg: 'deg', degree: 'deg', rad: '', radian: '' };
+// -> `3`, `30 deg`, `30.0*deg` and `30°` -> `30 * deg(1)`, `(a + b) * deg` -> `(a + b) * deg(1)`,
+// `2 in` -> `2 * 25.4`, `1.5e-3 m` -> `1.5e-3 * 1000`, `#a * deg` -> `a * deg(1)`. Every unit is a
+// factor after what it follows, so `#a/2 deg` is `a/2 * deg(1)` as `1/4 in` is `1/4 * 25.4`. Onshape
+// names a variable with `#`; any other word is a unit, a function or a constant, and a unit the
+// converter does not know, or any other character that is no part of an expression of trymesh,
+// leaves the expression unconverted (undefined). A digit inside a name (`#gap_2mm`) is no number: a
+// number starts where no letter, digit, `_`, `#` or `.` stands before it.
+const UNITS: Record<string, string | undefined> = { '°': 'deg(1)', mm: '', millimeter: '', cm: '10', centimeter: '10', m: '1000', meter: '1000', in: '25.4', inch: '25.4', ft: '304.8', foot: '304.8', deg: 'deg(1)', degree: 'deg(1)', rad: '', radian: '' };
 const WORDS = new Set(['pi', 'sin', 'cos', 'tan', 'asin', 'acos', 'atan', 'atan2', 'sqrt', 'abs', 'min', 'max', 'round', 'floor', 'ceil', 'exp', 'log', 'deg']);
-const NUMBER = String.raw`(?<![A-Za-z0-9_#.])(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][-+]?[0-9]+)?`;
+export const NUMBER = String.raw`(?<![A-Za-z0-9_#.])(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][-+]?[0-9]+)?`;
 const VARIABLE = String.raw`#[A-Za-z_][A-Za-z0-9_]*(?![A-Za-z0-9_])`;
 export function expression(e: string | undefined): string | undefined {
   if (e === undefined) return undefined;
   let s = e.trim();
   // a number, a variable or a closing bracket followed by a unit, with or without `*`
-  s = s.replace(new RegExp(String.raw`(${NUMBER}|${VARIABLE}|\))\s*\*?\s*([A-Za-z]+)\b(?!\s*\()`, 'g'), (all, value: string, word: string) => {
+  s = s.replace(new RegExp(String.raw`(${NUMBER}|${VARIABLE}|\))\s*\*?\s*(°|[A-Za-z]+\b)(?!\s*\()`, 'g'), (all, value: string, word: string) => {
     if (!(word in UNITS)) return all;
     const f = UNITS[word]!;
-    if (f === 'deg') return value === ')' || value.startsWith('#') ? `${value} * deg(1)` : `deg(${value})`;
     return f ? `${value} * ${f}` : value;
   });
+  // a character no expression of trymesh has (a `°` after anything but a number, a variable or a bracket)
+  if (/[^A-Za-z0-9_#.\s+\-*/^%(),=!<>&|]/.test(s)) return undefined;
   // a word that is no variable (`#`), no unit taken above, no function and no constant (the
   // numbers taken out first, so the exponent of `1e-3` is no word)
   const words = s.replace(new RegExp(NUMBER, 'g'), ' 0 ');

@@ -189,7 +189,8 @@ export function convertSketch(engine: Engine, report: Report, id: Id, name: stri
     let transform: any;
     if (plan.type === 'pattern') {
       const center = plan.pivot ? rep.get(plan.pivot) : (() => { const k = plan.pivotExternal ? knownOperand(plan.pivotExternal, frame) : undefined; return k && !('lost' in k) && k.k === 'point' ? k.id : undefined; })();
-      if (!center) { plan.why = 'the pivot is not a point of the sketch or the origin'; continue; }
+      // planEntries kept out every plan whose pivot is no point here: its images are left out already
+      if (!center) throw new Error(`${place.studio}, ${name}: the pivot of the entry of CIRCULAR_PATTERN #${plan.index} is no point of the sketch, after its images were left out`);
       transform = { type: 'circular', center, count: plan.count, span: { type: 'full' } };
     } else {
       const axis = plan.axisExternal ? (knownOperand(plan.axis!, frame) as any).id : curveId(plan.axis!);
@@ -338,11 +339,12 @@ type CutDone = { ids: Record<string, Id[]>; commands: Command[] };
 const dist = (a?: V2, b?: V2) => (a && b ? Math.hypot(a[0] - b[0], a[1] - b[1]) : Infinity);
 
 // The pieces of a cut, each by the curve it was before the cut (`before`, at Onshape's places in
-// `expected`): a curve that keeps its ID is its own; a new arc lies on the circle or the arc with its
-// centre (of those, the radius nearest); a new line on the line before whose stretch holds both its
-// ends. And the check of the geometry the cut made, within 1e-6 mm: every arc of a cut curve has the
-// radius of that curve, every line piece lies on the line of its curve, every point the batch adds
-// is where the batch put it. (The areas of the regions are not compared: the polygon of an arc piece
+// `expected`): a curve that keeps its ID is its own; a new piece is of a curve the cut touched (it
+// kept its ID or was removed) and that is no construction curve: a new arc of the circle or the arc
+// with its centre whose span holds the piece (of those, the radius nearest), a new line of the line
+// whose stretch holds both its ends. And the check of the geometry the cut made, within 1e-6 mm:
+// every arc of a cut curve has the radius of that curve, every line piece lies on the line of its
+// curve, every point the batch adds is where the batch put it. (The areas of the regions are not compared: the polygon of an arc piece
 // is not that part of the polygon of the whole circle.)
 export function cutPieces(engine: Engine, sketch: Id, before: C[], expected: Expected, done: CutDone): { of: Map<Id, Id>; problems: string[] } {
   const st = engine.getState();
@@ -362,14 +364,33 @@ export function cutPieces(engine: Engine, sketch: Id, before: C[], expected: Exp
     return t < -TOLERANCE || t > L + TOLERANCE ? Infinity : off;
   };
   const byId = new Map(before.map((c) => [c.id, c]));
+  // a new piece is of a curve the cut touched, never of a construction curve (the cut leaves those)
+  const touched = new Set([...(done.ids.changed ?? []), ...(done.ids.removed ?? [])]);
+  const carriers = before.filter((x) => touched.has(x.id) && !x.construction);
+  // the turn from a to b counter-clockwise about o, in [0, 2π)
+  const turn = (o: V2, a: V2, b: V2) => { const t = Math.atan2(b[1] - o[1], b[0] - o[0]) - Math.atan2(a[1] - o[1], a[0] - o[0]); return t < 0 ? t + 2 * Math.PI : t; };
+  // an arc before the cut holds the piece: both ends of the piece within its span (a circle holds any)
+  const spans = (x: C, c: any): boolean => {
+    if (!x.arc) return true;
+    const [o, s, e] = [was(x.arc[0]), was(x.arc[1]), was(x.arc[2])];
+    const [ps, pe] = [now(c.start), now(c.end)];
+    if (!o || !s || !e || !ps || !pe) return false;
+    const span = turn(o, s, e) || 2 * Math.PI;
+    const slack = TOLERANCE / Math.max(dist(o, s), TOLERANCE);
+    // where a point is along the arc from its start (a point a hair before the start is at it)
+    const along = (p: V2) => { const t = turn(o, s, p); return t >= 2 * Math.PI - slack ? 0 : t; };
+    // the piece runs counter-clockwise from its start to its end, both within the span, in that order
+    const [ts, te] = [along(ps), along(pe)];
+    return ts <= span + slack && te <= span + slack && ts <= te + slack;
+  };
   for (const cid of [...(done.ids.changed ?? []), ...(done.ids.added ?? [])]) {
     const c = f.curves[cid];
     if (!c || (c.type !== 'line' && c.type !== 'arc')) continue;
     let orig = byId.get(cid);
     if (!orig && c.type === 'arc') {
       const r = dist(now(c.center), now(c.start));
-      orig = before.filter((x) => (x.circle?.c ?? x.arc?.[0]) === c.center).sort((a, b) => Math.abs(radiusBefore(a) - r) - Math.abs(radiusBefore(b) - r))[0];
-    } else if (!orig) orig = before.find((x) => x.line && Math.max(offLine(was(x.line[0])!, was(x.line[1])!, now(c.a)), offLine(was(x.line[0])!, was(x.line[1])!, now(c.b))) <= TOLERANCE);
+      orig = carriers.filter((x) => (x.circle?.c ?? x.arc?.[0]) === c.center && spans(x, c)).sort((a, b) => Math.abs(radiusBefore(a) - r) - Math.abs(radiusBefore(b) - r))[0];
+    } else if (!orig) orig = carriers.find((x) => x.line && Math.max(offLine(was(x.line[0])!, was(x.line[1])!, now(c.a)), offLine(was(x.line[0])!, was(x.line[1])!, now(c.b))) <= TOLERANCE);
     if (!orig) { problems.push(`the piece ${cid} lies on no curve of the sketch before the cut`); continue; }
     of.set(cid, orig.id);
     if (c.type === 'arc' && (orig.circle || orig.arc)) {
@@ -453,7 +474,7 @@ function cutSketch(engine: Engine, report: Report, sketch: Id, name: string, bas
   };
   const j = tryCut(first.tool);
   if (j.ok) {
-    settleRemoved(engine, sketch, written, first.tool.ids, j.pieces ?? new Map());
+    settleRemoved(engine, sketch, written, first.tool.ids, j.pieces ?? new Map(), before);
     report.note(`${name}: cut by split: ${JSON.stringify(counts(first.tool.ids))}, ${first.tool.commands.length} commands, ${first.ms.toFixed(0)} ms`);
     return { info: { ...counts(first.tool.ids), commands: first.tool.commands.length, ms: first.ms }, drift: j.drift, pieces: j.pieces };
   }
@@ -492,7 +513,7 @@ function cutSketch(engine: Engine, report: Report, sketch: Id, name: string, bas
     report.later('Cuts', `${name}: the bare geometry does not pass after the cut (${l.why}); left as written; ${contactRows(engine, sketch)}`);
     return { info: { failed: l.why }, step: 'the cut does not pass' };
   }
-  if (last.tool.ok) settleRemoved(engine, sketch, written.filter((u) => u.fate === 'written'), last.tool.ids, l.pieces ?? new Map());
+  if (last.tool.ok) settleRemoved(engine, sketch, written.filter((u) => u.fate === 'written'), last.tool.ids, l.pieces ?? new Map(), before);
   return { info: last.tool.ok ? { ...counts(last.tool.ids), commands: last.tool.commands.length, ms: last.ms } : {}, drift: l.drift, step: 'one by one with the cut', pieces: l.pieces };
 }
 
@@ -501,8 +522,10 @@ function cutSketch(engine: Engine, report: Report, sketch: Id, name: string, bas
 // curves it would repeat one the sketch has (twice) or name one curve twice (refused); else lost
 // with the reason not identified. A unit all of whose constraints went takes the worst reason (lost,
 // then twice, then shared); a unit that keeps some stays written and its detail names what went.
-function settleRemoved(engine: Engine, sketch: Id, written: ConstraintRecord[], ids: Record<string, Id[]>, pieces: Map<Id, Id>) {
+// `before`: the curves before the cut (a removed ID that was none of them is no curve).
+export function settleRemoved(engine: Engine, sketch: Id, written: ConstraintRecord[], ids: Record<string, Id[]>, pieces: Map<Id, Id>, before: C[]) {
   const removed = new Set(ids.removed ?? []);
+  const curvesBefore = new Set(before.map((c) => c.id));
   if (!removed.size) return;
   const f: any = engine.getState().document.features.find((x) => x.id === sketch);
   const keyOwner = new Map<string, Id>();
@@ -514,7 +537,7 @@ function settleRemoved(engine: Engine, sketch: Id, written: ConstraintRecord[], 
   const reasonOf = (c: any): Partial<ConstraintRecord> => {
     if (!c) return { fate: 'lost', cause: 'refused', detail: 'removed by the cut (reason not identified)' };
     if (c.type === 'pointOnCurve' && f.points[c.point] && piecesOf(c.curve).some((k) => endOf(c.point, f.curves[k]))) return { fate: 'shared', detail: 'by the cut' };
-    const curveFields = Object.keys(c).filter((k) => k !== 'type' && typeof c[k] === 'string' && (f.curves[c[k]] || pieces.has(c[k]) || removed.has(c[k])));
+    const curveFields = Object.keys(c).filter((k) => k !== 'type' && typeof c[k] === 'string' && (f.curves[c[k]] || pieces.has(c[k]) || (removed.has(c[k]) && curvesBefore.has(c[k]))));
     let twiceOf: Id | undefined;
     let selfRef = false;
     const variants = (i: number, acc: any) => {

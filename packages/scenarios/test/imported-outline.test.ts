@@ -369,3 +369,92 @@ describe('the input of the solver narrowed to what the constraints name (D72)', 
     expect(Math.hypot(p.x - 12, p.y - 10)).toBeCloseTo(0.4, 9);
   });
 });
+
+describe('the limits of an outline in a sketch (D72)', () => {
+  it('500 splines of four control points (the 2000 control points of an outline) in one closed chain that forms regions, and a change in the sketch', () => {
+    const engine = newEngine();
+    const curves: Record<Id, ImportedCurve> = {};
+    const n = 500;
+    const at = (i: number): [number, number] => [100 * Math.cos((2 * Math.PI * i) / n), 100 * Math.sin((2 * Math.PI * i) / n)];
+    for (let i = 0; i < n; i++) {
+      const [p, q] = [at(i), at(i + 1)];
+      curves[`s${i + 1}`] = { type: 'spline', points: [p, [p[0] + (q[0] - p[0]) / 3 + 0.05, p[1] + (q[1] - p[1]) / 3], [p[0] + (2 * (q[0] - p[0])) / 3 - 0.05, p[1] + (2 * (q[1] - p[1])) / 3], i === n - 1 ? at(0) : q] };
+    }
+    let state = run(engine, addSketch('s', XY), addOutline('s', 'o', { curves }));
+    expect(resultOf(state, 's').valid).toBe(true);
+    expect(loopsOf(state, 's')).toHaveLength(1);
+    const t = performance.now();
+    state = run(engine, pt('s', 'p', 0, 0), constrain('s', 'k', { type: 'coincident', a: 'p', b: 'o/s1/0' }));
+    expect(performance.now() - t).toBeLessThan(10_000);
+    expect(resultOf(state, 's').points.p.x).toBeCloseTo(100, 9);
+  });
+});
+
+describe('a tangency at a corner: two fixed points at one place are one end (D72, the adapter)', () => {
+  const at = (state: EngineState, sketch: Id, point: Id): [number, number] => [resultOf(state, sketch).points[point].x, resultOf(state, sketch).points[point].y];
+  const drag = (engine: Engine, sketch: Id, point: Id, x: number, y: number): EngineState => run(engine, { type: 'dragPoint', sketch, point, x, y } as Command);
+  const tangent = (sketch: Id, id: Id, a: Id, b: Id): Command => constrain(sketch, id, { type: 'tangent', a, b });
+
+  // the corner of the board at (27, −20): the end of the bottom side `o/l1/b` and the start of the
+  // corner arc `o/a1/start` are two fixed points at one place
+  it.each(['o/a1/start', 'o/l1/b'])('an own line from the corner, held on %s and tangent to the corner arc, is exact and slides', (held) => {
+    const engine = newEngine();
+    board(engine);
+    let state = run(engine, batch(pt('board', 'p', 27, -20), pt('board', 'q', 40, -19), ln('board', 'n', 'p', 'q')), constrain('board', 'k', { type: 'coincident', a: 'p', b: held }), tangent('board', 't', 'n', 'o/a1'));
+    expect(status(state).board).toBe('ok');
+    expect(at(state, 'board', 'q')[1]).toBeCloseTo(-20, 9);
+    expect(resultOf(state, 'board').degreesOfFreedom).toBe(1);
+    expect(resultOf(state, 'board').redundant).toEqual([]);
+    state = drag(engine, 'board', 'q', 50, -18);
+    expect(at(state, 'board', 'q')[1]).toBeCloseTo(-20, 9);
+    expect(at(state, 'board', 'q')[0]).toBeCloseTo(50, 3);
+  });
+
+  it('an own arc held on the start of the corner arc and tangent to the side is exact', () => {
+    const engine = newEngine();
+    board(engine);
+    const state = run(
+      engine,
+      batch(pt('board', 'c', 26.9, -15.1), pt('board', 's', 27, -20), pt('board', 'e', 31.9, -15), { type: 'addCurve', sketch: 'board', id: 'A', curve: { type: 'arc', center: 'c', start: 's', end: 'e' } }),
+      constrain('board', 'k', { type: 'coincident', a: 's', b: 'o/a1/start' }),
+      tangent('board', 't', 'A', 'o/l1'),
+    );
+    expect(state.evaluation.features.board.warnings).toEqual([]);
+    expect(at(state, 'board', 'c')[0]).toBeCloseTo(27, 9);
+  });
+
+  it('the same for two projections of an earlier sketch that meet at a corner', () => {
+    const engine = newEngine();
+    board(engine);
+    let state = run(engine, addSketch('top', XY), project('top', 'pl', 'board', 'o/l1', 'line'), project('top', 'pa', 'board', 'o/a1', 'arc'));
+    state = run(engine, batch(pt('top', 'p', 27, -20), pt('top', 'q', 40, -19), ln('top', 'n', 'p', 'q')), constrain('top', 'k', { type: 'coincident', a: 'p', b: 'pl/b' }), tangent('top', 't', 'n', 'pa'));
+    expect(at(state, 'top', 'q')[1]).toBeCloseTo(-20, 9);
+    state = drag(engine, 'top', 'q', 45, -17);
+    expect(at(state, 'top', 'q')[1]).toBeCloseTo(-20, 9);
+  });
+
+  it('an own line from origin where a fixed arc starts: exact, and it slides', () => {
+    const engine = newEngine();
+    const curves: Record<Id, ImportedCurve> = { a1: { type: 'arc', center: [0, 3], start: [0, 0], end: [3, 3] } };
+    let state = run(engine, addSketch('s', XY), addOutline('s', 'o', { curves, regions: false }), pt('s', 'q', 10, 0.5), { type: 'addCurve', sketch: 's', id: 'n', curve: { type: 'line', a: 'origin', b: 'q' } }, tangent('s', 't', 'n', 'o/a1'));
+    expect(at(state, 's', 'q')[1]).toBeCloseTo(0, 9);
+    state = drag(engine, 's', 'q', 15, 2);
+    expect(at(state, 's', 'q')[1]).toBeCloseTo(0, 9);
+    expect(at(state, 's', 'q')[0]).toBeCloseTo(15, 3);
+  });
+
+  // a fixed arc of radius `r` from (0, 0) about (0, r), and the end of a fixed line `inside` mm
+  // inside its start, towards the centre; an own line held on that end, tangent to the arc
+  const near = (r: number, inside: number): EngineState => {
+    const engine = newEngine();
+    const curves: Record<Id, ImportedCurve> = { a1: { type: 'arc', center: [0, r], start: [0, 0], end: [r, r] }, l1: { type: 'line', a: [-10, inside], b: [0, inside] } };
+    return run(engine, addSketch('s', XY), addOutline('s', 'o', { curves, regions: false }), batch(pt('s', 'p', 0, 0), pt('s', 'q', 10, 0.5), ln('s', 'n', 'p', 'q')), constrain('s', 'k', { type: 'coincident', a: 'p', b: 'o/l1/b' }), tangent('s', 't', 'n', 'o/a1'));
+  };
+  it('a fixed point within 1e-6 of the radius of a fixed arc and 1e-6 mm of its start is the common end; one further is not, as before', () => {
+    const taken = near(3, 5e-7);
+    expect(taken.evaluation.features.s.warnings).toEqual([]);
+    expect(resultOf(taken, 's').degreesOfFreedom).toBe(1);
+    // 2e-6 mm inside: no tangent passes through the point, and the form is the general one, as before
+    expect(near(3, 2e-6).evaluation.features.s.warnings.map((w) => w.code)).toContain('sketchConflict');
+  });
+});

@@ -47,7 +47,7 @@ describe('the fillet tool: the batch', () => {
     const engine = plate();
     const before = engine.getState();
     const made = fillet(engine, 's', 'o3', 6);
-    expect(made.ids).toEqual({ arc: ['f_c1'], center: ['f_p3'], lines: ['ob', 'oc'], ends: ['f_p1', 'f_p2'], constraints: ['f_k1', 'f_k2', 'f_k3', 'f_k4'], radius: ['f_k5'], patched: ['E'], moved: [], shortened: [] });
+    expect(made.ids).toEqual({ arc: ['f_c1'], center: ['f_p3'], lines: ['ob', 'oc'], ends: ['f_p1', 'f_p2'], constraints: ['f_k1', 'f_k2', 'f_k3', 'f_k4'], radius: ['f_k5'], patched: ['E'], moved: [], shortened: [], entries: [] });
     expect(made.commands.map((command) => command.type)).toEqual(['addPoint', 'addPoint', 'addPoint', 'setCurvePoint', 'setCurvePoint', 'addCurve', 'addConstraint', 'addConstraint', 'addConstraint', 'addConstraint', 'addConstraint', 'updateFeature']);
     expect(made.commands.slice(3)).toEqual([
       { type: 'setCurvePoint', sketch: 's', id: 'ob', point: 'b', to: 'f_p1' },

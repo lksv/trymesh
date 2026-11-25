@@ -38,15 +38,15 @@ const steps = (engine: Engine, made: Made): number[] => {
 describe('the catalog of sketch tools', () => {
   it('lists every tool with its inputs and what it returns', () => {
     expect(Object.keys(SKETCH_TOOLS)).toEqual(['rectangle', 'polygon', 'fillet', 'trim', 'extend', 'split']);
-    // D65: the three cuts return the same fifteen lists
-    const lists = ['changed', 'added', 'span', 'points', 'constraints', 'reattached', 'removed', 'uncut', 'patched', 'dropped', 'pending', 'reshaped', 'moved', 'shortened', 'broken'];
+    // D65: the three cuts return the same lists, fifteen and 6c's `entries` (D68)
+    const lists = ['changed', 'added', 'span', 'points', 'constraints', 'reattached', 'removed', 'uncut', 'patched', 'dropped', 'pending', 'reshaped', 'moved', 'shortened', 'broken', 'entries'];
     for (const tool of ['trim', 'extend', 'split'] as const) expect(Object.keys(SKETCH_TOOLS[tool].ids)).toEqual(lists);
     const repair = { kind: 'option', options: ['on', 'off'], optional: true };
     expect(SKETCH_TOOLS.trim.inputs).toEqual({ at: { kind: 'place' }, curve: { kind: 'curve', optional: true }, with: { kind: 'curve', reference: true, optional: true }, repair });
     expect(SKETCH_TOOLS.extend.inputs).toEqual({ curve: { kind: 'curve' }, end: { kind: 'option', options: ['a', 'b', 'start', 'end'] }, with: { kind: 'curve', reference: true, optional: true }, repair });
     expect(SKETCH_TOOLS.split.inputs).toEqual({ curve: { kind: 'curve', optional: true }, with: { kind: 'curve', reference: true, optional: true }, at: { kind: 'place', optional: true } });
     expect(SKETCH_TOOLS.fillet.inputs).toMatchObject({ corner: { kind: 'point' }, radius: { kind: 'number', spec: { unit: 'mm', min: { value: 0, open: true } }, expression: true } });
-    expect(Object.keys(SKETCH_TOOLS.fillet.ids)).toEqual(['arc', 'center', 'lines', 'ends', 'constraints', 'radius', 'patched', 'moved', 'shortened']);
+    expect(Object.keys(SKETCH_TOOLS.fillet.ids)).toEqual(['arc', 'center', 'lines', 'ends', 'constraints', 'radius', 'patched', 'moved', 'shortened', 'entries']);
     expect(Object.keys(SKETCH_TOOLS.rectangle.inputs)).toEqual(['first', 'opposite']);
     expect(Object.keys(SKETCH_TOOLS.rectangle.ids)).toEqual(['points', 'lines', 'constraints']);
     expect(SKETCH_TOOLS.polygon.inputs).toMatchObject({ center: { kind: 'anchor' }, vertex: { kind: 'anchor' }, sides: { kind: 'number', spec: { integer: true, min: { value: 3 }, max: { value: MAX_POLYGON_SIDES } } }, sizeKind: { kind: 'option', options: ['circumscribed', 'acrossFlats'], optional: true }, size: { kind: 'number', optional: true, expression: true } });

@@ -8,6 +8,7 @@ import { applyCommand, emptyDocument, emptySketch, entityOf, entryInput, fieldsO
 import { entryOrder, positionJoins } from '../src/references/derive';
 import { sketchWorld, toolBase } from '../src/references/world';
 import { type SketchCurve, type SketchGeometry, detectProfile, joinsOf, profileOf } from '../src/sketch';
+import { type CurveChanges, contactFix, copyParts, curvePredicates, entryCommands, entryPatches, piecesOf, readersOf, reshapedProbes, sameTransform } from '../src/sketch-cut';
 import type { Command, Constraint, Curve, Document, ExternalRef, Id, Input, SketchFeature, SketchPattern, SketchResult } from '../src/types';
 import { LENGTH_TOLERANCE } from '../src/util';
 
@@ -374,5 +375,119 @@ describe('the joins by position (rules 1 to 3) and the open ends', () => {
       for (const a of free) for (const b of free) if (a !== b && Math.hypot(points[a].x - points[b].x, points[a].y - points[b].y) <= tol) expect(groups(a), `case ${k}`).toBe(groups(b));
       for (const [a, b] of joins) expect(Math.hypot(points[a].x - points[b].x, points[a].y - points[b].y)).toBeLessThanOrEqual(tol);
     }
+  });
+});
+
+// ---------------------------------------------------------------- the sketch tools (point 4)
+
+const handResult = (doc: Document): SketchResult => {
+  const sketch = sketchOf(doc);
+  return { points: { origin: { x: 0, y: 0 }, ...sketch.points }, radii: { ...sketch.radii }, curves: {}, degreesOfFreedom: 0, conflicting: [], redundant: [], measurements: {}, valid: true, regions: [] };
+};
+const changesOf = (over: Partial<CurveChanges>): CurveChanges => ({ changed: [], restarted: [], rekinded: [], removed: [], removedPoints: [], added: [], span: [], pieces: {}, stretches: [], ...over });
+
+describe('the copies and the sketch tools (D68)', () => {
+  it('a copy is named by its entry, copy number and source; other IDs are not copies', () => {
+    const [p, c] = square('q', 2, 0);
+    const sketch = sketchOf(build(p, c, [add('m', { type: 'pattern', sources: SQUARE, transform: { type: 'mirror', axis: 'origin/y' } })]));
+    expect(copyParts(sketch, 'm/1/qa')).toEqual({ entry: 'm', copy: '1', source: 'qa' });
+    expect(copyParts(sketch, 'qa')).toBeUndefined();
+    expect(copyParts(sketch, 'n/1/qa')).toBeUndefined();
+    expect(copyParts(sketch, 'origin/y')).toBeUndefined();
+  });
+
+  it('contactFix: own against a copy and copies of two entries are none; the image of a contact of two sources is not listed', () => {
+    const [p, c] = square('q', 2, 0);
+    const doc = build(p, c, [add('m', { type: 'pattern', sources: SQUARE, transform: { type: 'mirror', axis: 'origin/y' } }), add('r', { type: 'pattern', sources: ['qa'], transform: { type: 'linear', direction: 'origin/x', count: 2, span: { type: 'spacing', spacing: 1 } } })]);
+    const sketch = sketchOf(doc);
+    const { world } = worldOf(doc);
+    const predicates = curvePredicates(doc, sketch);
+    const curve = (id: Id): SketchCurve => world.curves.get(id) as SketchCurve;
+    expect(contactFix(curve('qa'), curve('m/1/qb'), 'crossing', predicates, sketch)).toEqual({ fix: 'none', why: 'it is a copy of the mirror or pattern "m" ("m/1/qb"), which is never cut: move the curve or change the source of the copy' });
+    expect(contactFix(curve('m/1/qa'), curve('m/1/qb'), 'crossing', predicates, sketch)).toBeUndefined();
+    expect(contactFix(curve('m/1/qa'), curve('r/1/qa'), 'overlap', predicates, sketch)).toEqual({ fix: 'none', why: '"m/1/qa" and "r/1/qa" are copies, which are never cut: change their sources, the count or the spacing' });
+  });
+
+  it('sameTransform compares the input forms: an expression is its text', () => {
+    const [p, c] = square('q', 2, 0);
+    const row = (count: number | string): Input<SketchPattern> => ({ type: 'pattern', sources: ['qa'], transform: { type: 'linear', direction: 'origin/x', count, span: { type: 'spacing', spacing: 20 } } } as Input<SketchPattern>);
+    const doc = build(p, c, [{ type: 'setParameter', name: 'n', expr: '3' }, add('a', row(3)), add('b', row(3)), add('e', row('n'))]);
+    const sketch = sketchOf(doc);
+    expect(sameTransform(sketch, 'a', 'b')).toBe(true);
+    expect(sameTransform(sketch, 'a', 'e')).toBe(false);
+  });
+
+  it('entryPatches: pieces in place, a curve removed whole leaves the list, the last one stays; a split adds nothing; the axis removed', () => {
+    const [p, c] = square('q', 2, 0);
+    const doc = build({ ...p, l1: [-5, -20], l2: [-5, 20] }, { ...c, ax: lineOf('l1', 'l2', true) }, [add('m', { type: 'pattern', sources: SQUARE, transform: { type: 'mirror', axis: 'ax' } }), add('one', { type: 'pattern', sources: ['qc'], transform: { type: 'mirror', axis: 'origin/y' } })]);
+    const sketch = sketchOf(doc);
+    const base = toolBase(sketch, handResult(doc));
+    const found = entryPatches(sketch, base, changesOf({ pieces: { qa: ['qa', 'qa2'] }, removed: ['qc', 'ax'] }), 'split');
+    expect(found.patches).toEqual([{ entry: 'm', sources: ['qa', 'qa2', 'qb', 'qd'] }]); // `one` keeps its last source
+    expect(found.orphaned).toEqual(['m']);
+    expect(found.joined).toEqual([]);
+    expect(entryCommands(sketch, found.patches)).toEqual([{ type: 'updateExternal', sketch: S, id: 'm', ref: { type: 'pattern', sources: ['qa', 'qa2', 'qb', 'qd'], transform: { type: 'mirror', axis: 'ax' } } }]);
+  });
+
+  it('entryPatches: a curve the batch made between two open ends of one entry joins it; between two entries only with the same transform, the first of them', () => {
+    // two halves of an open chain `h1` (listed by `a`) and `h2` (by `b`), and a line `j` from the
+    // free end of one to the free end of the other, made by the batch
+    const points: Points = { p1: [0, 0], p2: [10, 0], p3: [20, 0], p4: [30, 0] };
+    const curves: Curves = { h1: lineOf('p1', 'p2'), j: lineOf('p2', 'p3'), h2: lineOf('p3', 'p4'), k: lineOf('p4', 'p1') };
+    const row = (source: Id, spacing: number): Input<SketchPattern> => ({ type: 'pattern', sources: [source], transform: { type: 'linear', direction: 'origin/y', count: 2, span: { type: 'spacing', spacing } } } as Input<SketchPattern>);
+    for (const [spacing, expected] of [
+      [50, ['a']],
+      [60, []],
+    ] as const) {
+      const doc = build(points, curves, [add('a', row('h1', 50)), add('b', row('h2', spacing))]);
+      const sketch = sketchOf(doc);
+      const found = entryPatches(sketch, toolBase(sketch, handResult(doc)), changesOf({ added: ['j'] }), 'trim');
+      expect(found.patches.map((patch) => patch.entry)).toEqual(expected);
+      if (expected.length) {
+        expect(found.patches[0].sources).toEqual(['h1', 'j']);
+        expect(found.joined).toEqual([{ curve: 'j', entry: 'a', between: [{ entry: 'a', curve: 'h1' }, { entry: 'b', curve: 'h2' }] }]);
+      }
+    }
+    // one entry listing both halves: `j` and `k` both stand between its open ends, `j` made by the batch
+    const doc = build(points, curves, [add('a', { type: 'pattern', sources: ['h1', 'h2'], transform: { type: 'mirror', axis: 'origin/y' } })]);
+    const sketch = sketchOf(doc);
+    expect(entryPatches(sketch, toolBase(sketch, handResult(doc)), changesOf({ added: ['j'] }), 'trim').patches).toEqual([{ entry: 'a', sources: ['h1', 'h2', 'j'] }]);
+    // a curve there already, with no end at a bound of a stretch the batch took out: stays out
+    expect(entryPatches(sketch, toolBase(sketch, handResult(doc)), changesOf({}), 'trim').patches).toEqual([]);
+    // the same made by a split: a split adds only pieces
+    expect(entryPatches(sketch, toolBase(sketch, handResult(doc)), changesOf({ added: ['j'] }), 'split').patches).toEqual([]);
+    // a span line never joins
+    expect(entryPatches(sketch, toolBase(sketch, handResult(doc)), changesOf({ added: ['j'], span: ['j'] }), 'trim').patches).toEqual([]);
+  });
+
+  it('piecesOf reads a copy of a cut source as the copies of its listed pieces, whatever the copy number', () => {
+    const [p, c] = square('q', 2, 0);
+    const before = sketchOf(build(p, c, [add('m', { type: 'pattern', sources: SQUARE, transform: { type: 'mirror', axis: 'origin/y' } })]));
+    const after: SketchFeature = { ...before, external: { m: { ...(before.external.m as SketchPattern), sources: ['qa', 'qa2', 'qb', 'qc', 'qd'] } } };
+    const changes = changesOf({ pieces: { qa: ['qa', 'qa2', 'qa3'] } });
+    expect(piecesOf(changes, after, 'm/1/qa')).toEqual(['m/1/qa', 'm/1/qa2']);
+    expect(piecesOf(changes, after, 'm/7/qa')).toEqual(['m/7/qa', 'm/7/qa2']);
+    expect(piecesOf(changes, after, 'm/1/qb')).toBeUndefined();
+  });
+
+  it('reshapedProbes adds the images of a place under the copies of every entry that lists its curve', () => {
+    const [p, c] = square('q', 2, 0);
+    const doc = build(p, c, [add('m', { type: 'pattern', sources: SQUARE, transform: { type: 'mirror', axis: 'origin/y' } }), add('r', { type: 'pattern', sources: ['qa'], transform: { type: 'linear', direction: 'origin/x', count: 3, span: { type: 'spacing', spacing: 20 } } }), add('t', { type: 'pattern', sources: ['qb'], transform: { type: 'circular', center: 'origin', count: 4, span: { type: 'full' } } })]);
+    const { world } = worldOf(doc);
+    const probes = reshapedProbes(sketchOf(doc), world, [
+      { curve: 'qa', at: [7, 0] },
+      { curve: 'qb', at: [12, 5] },
+    ]);
+    const near = (q: [number, number]) => probes.some((r) => Math.abs(r[0] - q[0]) < 1e-9 && Math.abs(r[1] - q[1]) < 1e-9);
+    for (const q of [[7, 0], [-7, 0], [27, 0], [47, 0], [12, 5], [-12, 5], [-5, 12], [-12, -5], [5, -12]] as [number, number][]) expect(near(q), String(q)).toBe(true);
+    expect(probes).toHaveLength(9);
+  });
+
+  it('readersOf: an axis on a copy of a removed line is broken', () => {
+    const [p, c] = square('q', 2, 0);
+    let doc = build(p, c, [add('m', { type: 'pattern', sources: SQUARE, transform: { type: 'mirror', axis: 'origin/y' } })]);
+    doc = applyCommand(doc, { type: 'addFeature', feature: { id: 'rev', name: 'rev', suppressed: false, type: 'revolve', profile: { type: 'regions', sketch: S, regions: [{ outerLoop: SQUARE }] }, axis: { kind: 'sketchLine', sketch: S, line: 'm/1/qd' }, extent: { type: 'full' }, operation: 'new' } as never });
+    expect(readersOf(doc, S, changesOf({ removed: ['qd'] })).broken).toEqual(['rev']);
+    expect(readersOf(doc, S, changesOf({ removed: ['qb'] })).broken).toEqual([]);
   });
 });

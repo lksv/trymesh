@@ -1,6 +1,7 @@
 // The sketch mode: its tools, what a press, a move and a click in the view mean, the drag of
 // a point, and what the mode draws. The app keeps the pointer and key handlers and hands the events
 // over; the panel of the mode is panels/sketch.ts.
+import type { OutlineDraft } from './panels/outline-draft';
 import { type Command, type CommandResult, type Constraint, type ConstraintExplanation, type EngineState, type Frame, type Id, type SketchDiagnosis, type SketchFeature, type SketchResult, type QueryResult, type SketchToolCall, constraintKey, derivedOrigin, duplicateOf, isDimension, isOriginAxis } from '@trymesh/engine';
 import { fmt } from './dom';
 import { COLOR, pushPolyline, toWorld } from './draw';
@@ -29,6 +30,7 @@ export interface SketchMode {
   preview?: EngineState; // stav při tažení bodu
   repair?: Id; // promítnutí, které další kliknutí nástrojem Promítnout opraví
   entry?: Id; // the entry of `external` whose form is open in the panel (a mirror or pattern, D68)
+  outline?: OutlineDraft; // the import of an outline in progress (D72)
 }
 export const sketchMode = (id: Id): SketchMode => ({ kind: 'sketch', id, tool: 'select', clicks: [], selection: [] });
 

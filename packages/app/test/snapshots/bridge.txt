@@ -904,6 +904,7 @@
     + line #8b9bb4 width 1: 24 numbers, sum 418.382
     + line #8b9bb4 width 1: 24 numbers, sum 278.922
     + line #8b9bb4 width 1: 24 numbers, sum 139.461
+    + line #5b7aa8 width 1.5: 24 numbers, sum 0
     + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 19.923
     + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 19.923
     + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 19.923

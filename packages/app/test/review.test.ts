@@ -310,26 +310,27 @@ describe('mirror and pattern in the app: the review of the implementation of 6c 
   });
 
   // M4: a copy beyond the 100 a picker lists was labelled missing, and a direction offered a false repair
+  // (D72: a picker lists the first 100 of the kind it asks for, so the count is 160 lines of copies)
   it('a picker names a copy it does not list as a copy, says how many it left out, and offers no repair', () => {
     const s = emptySketch('s', 's', { kind: 'base', plane: 'XY' });
-    const feature: SketchFeature = { ...s, points: { a: { x: 0, y: 0 }, b: { x: 1, y: 0 } }, curves: { l: { type: 'line', a: 'a', b: 'b' } }, external: { r: { type: 'pattern', sources: ['l'], transform: { type: 'linear', direction: 'origin/y', count: 60, span: { type: 'spacing', spacing: 3 } } } } };
-    expect(entryEntities(feature).some((e) => e.id === 'r/40/l')).toBe(false);
-    expect(unlistedLabel(feature, 'r/40/l')).toBe('r/40/l (copy)');
-    expect(unlistedLabel(feature, 'r/70/l')).toBe('r/70/l (missing)');
+    const feature: SketchFeature = { ...s, points: { a: { x: 0, y: 0 }, b: { x: 1, y: 0 } }, curves: { l: { type: 'line', a: 'a', b: 'b' } }, external: { r: { type: 'pattern', sources: ['l'], transform: { type: 'linear', direction: 'origin/y', count: 160, span: { type: 'spacing', spacing: 3 } } } } };
+    expect(entryEntities(feature).some((e) => e.id === 'r/140/l')).toBe(false);
+    expect(unlistedLabel(feature, 'r/140/l')).toBe('r/140/l (copy)');
+    expect(unlistedLabel(feature, 'r/200/l')).toBe('r/200/l (missing)');
     const host = { feature: (id: string) => (id === 's' ? feature : undefined), nameOf: (id: string) => id } as unknown as PanelHost;
     const texts = (rows: HTMLElement[]): string[] => rows.flatMap((row) => Array.from(row.querySelectorAll('option')).map((o) => `${o.textContent}${o.disabled ? ' [disabled]' : ''}`));
-    const lineRows = texts(axisRows(host, { kind: 'sketchLine', sketch: 's', line: 'r/40/l' }, ['s'], () => undefined, ''));
-    expect(lineRows).toContain('r/40/l (copy)');
-    expect(lineRows).toContain('… 25 more copies of r, not listed [disabled]');
-    const direction = axisRows(host, { kind: 'sketchPoint', sketch: 's', point: 'r/40/a' }, ['s'], () => undefined, '', FIRST_DIRECTION);
+    const lineRows = texts(axisRows(host, { kind: 'sketchLine', sketch: 's', line: 'r/140/l' }, ['s'], () => undefined, ''));
+    expect(lineRows).toContain('r/140/l (copy)');
+    expect(lineRows).toContain('… 59 more copies of r, not listed [disabled]');
+    const direction = axisRows(host, { kind: 'sketchPoint', sketch: 's', point: 'r/140/a' }, ['s'], () => undefined, '', FIRST_DIRECTION);
     expect(direction.some((row) => row.textContent?.includes('is no longer in the sketch'))).toBe(false);
-    const gone = axisRows(host, { kind: 'sketchPoint', sketch: 's', point: 'r/70/a' }, ['s'], () => undefined, '', FIRST_DIRECTION);
+    const gone = axisRows(host, { kind: 'sketchPoint', sketch: 's', point: 'r/200/a' }, ['s'], () => undefined, '', FIRST_DIRECTION);
     expect(gone.some((row) => row.textContent?.includes('is no longer in the sketch'))).toBe(true);
     // round 2, finding 4: the line of an axis argument of a query did not say how many it left out
     const form = { host, state: { document: { features: [feature] }, evaluation: { features: { s: {} }, bodies: {} } }, armed: undefined, arm: () => undefined, set: () => undefined, get: () => undefined, title: (_spec: unknown, name: string) => name } as unknown as Form;
-    const queryLines = texts(CONTROLS.axis({ kind: 'axis' }, { kind: 'sketchLine', sketch: 's', line: 'r/40/l' }, ['about'], form, {}));
-    expect(queryLines).toContain('r/40/l (copy)');
-    expect(queryLines).toContain('… 25 more copies of r, not listed [disabled]');
+    const queryLines = texts(CONTROLS.axis({ kind: 'axis' }, { kind: 'sketchLine', sketch: 's', line: 'r/140/l' }, ['about'], form, {}));
+    expect(queryLines).toContain('r/140/l (copy)');
+    expect(queryLines).toContain('… 59 more copies of r, not listed [disabled]');
   });
 
   // M6: a full turn given as an expression was sent as an angle, the last copy on the source

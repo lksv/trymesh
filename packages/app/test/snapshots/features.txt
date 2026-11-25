@@ -1116,6 +1116,9 @@
     + div#sketch-status
     +   p.badge.open: "Prázdná skica"
     +   p.hint: "Uzavřených oblastí: 0"
+    + div.buttons
+    +   button title="Read a DXF or SVG file into this sketch as an outline of fixed curves": "Import an outline…"
+    +   input#outline-file type=file hidden
     + h2: "Výběr (0)"
     + div.buttons
     +   button disabled title="Dva body leží na stejném místě.": "Totožné"
@@ -1415,7 +1418,6 @@
     +     option value="upTo": "Up to a plane or face"
     + p: "Start at: Sketch plane"
     -   button title="Vybere volné body a kružnice s volným poloměrem": "Vybrat volné"
-    - h2: "Výběr (0)"
     +   button: "Pick the start"
     + label
     +   "Start (mm or an expression; offset from the sketch plane along its normal)"
@@ -1438,6 +1440,11 @@
     +     option selected value="e1": "Vysunutí 1"
     +     option value="e2": "Vysunutí 2"
     + p#draft-problem.issue.warning
+    -   button title="Read a DXF or SVG file into this sketch as an outline of fixed curves": "Import an outline…"
+    -   input#outline-file type=file hidden
+    - h2: "Výběr (0)"
+    +   button.primary: "OK"
+    +   button: "Zrušit"
     -   button disabled title="Dva body leží na stejném místě.": "Totožné"
     -   button disabled title="Bod leží na úsečce (i na jejím prodloužení), kružnici nebo oblouku.": "Bod na křivce"
     -   button disabled title="Úsečka je rovnoběžná s osou X skici.": "Vodorovně"
@@ -1450,8 +1457,7 @@
     -   button disabled title="Bod leží přesně v polovině úsečky.": "Střed úsečky"
     -   button disabled title="Two circles or arcs have the same radius.": "Equal radius"
     -   button disabled title="An own point of the sketch lies at the coordinates x, y of the sketch.": "Fixed point"
-    +   button.primary: "OK"
-    +   button: "Zrušit"
+    - div.buttons
     -   button disabled title="Dva body nebo úsečka: vzdálenost; bod a úsečka: vzdálenost; dvě úsečky: úhel; kružnice: průměr; oblouk: poloměr": "Kóta"
     -   button disabled title="Vodorovná vzdálenost dvou bodů nebo konců úsečky": "Kóta ↔"
     -   button disabled title="Svislá vzdálenost dvou bodů nebo konců úsečky": "Kóta ↕"
@@ -2978,6 +2984,9 @@
     + div#sketch-status
     +   p.badge.open: "Prázdná skica"
     +   p.hint: "Uzavřených oblastí: 0"
+    + div.buttons
+    +   button title="Read a DXF or SVG file into this sketch as an outline of fixed curves": "Import an outline…"
+    +   input#outline-file type=file hidden
     + h2: "Výběr (0)"
     + div.buttons
     +   button disabled title="Dva body leží na stejném místě.": "Totožné"
@@ -3106,7 +3115,6 @@
     - div#sketch-status
     -   p.badge.open: "Prázdná skica"
     -   p.hint: "Uzavřených oblastí: 0"
-    - h2: "Výběr (0)"
     +   button: "Zrušit výběr oblastí"
     + label
     +   "Offset (mm or an expression; positive grows the profile; empty = none)"
@@ -3126,18 +3134,9 @@
     +     option value="throughAll" disabled: "Through all (a cut only)"
     +     option value="upTo": "Up to a plane or face"
     + p: "Start at: Sketch plane"
-    -   button disabled title="Dva body leží na stejném místě.": "Totožné"
-    -   button disabled title="Bod leží na úsečce (i na jejím prodloužení), kružnici nebo oblouku.": "Bod na křivce"
-    -   button disabled title="Úsečka je rovnoběžná s osou X skici.": "Vodorovně"
-    -   button disabled title="Úsečka je rovnoběžná s osou Y skici.": "Svisle"
-    -   button disabled title="Dvě úsečky jsou rovnoběžné.": "Rovnoběžně"
-    -   button disabled title="Dvě úsečky jsou na sebe kolmé.": "Kolmo"
-    -   button disabled title="Dvě úsečky mají stejnou délku.": "Stejná délka"
-    -   button disabled title="Úsečka se dotýká kružnice nebo oblouku, nebo se dotýkají dvě kružnice či oblouky.": "Tečně"
-    -   button disabled title="Body a, b jsou souměrné podle přímky, na které leží úsečka line (osa souměrnosti).": "Souměrně"
-    -   button disabled title="Bod leží přesně v polovině úsečky.": "Střed úsečky"
-    -   button disabled title="Two circles or arcs have the same radius.": "Equal radius"
-    -   button disabled title="An own point of the sketch lies at the coordinates x, y of the sketch.": "Fixed point"
+    -   button title="Read a DXF or SVG file into this sketch as an outline of fixed curves": "Import an outline…"
+    -   input#outline-file type=file hidden
+    - h2: "Výběr (0)"
     +   button: "Pick the start"
     + label
     +   "Start (mm or an expression; offset from the sketch plane along its normal)"
@@ -3155,11 +3154,24 @@
     +     input value=""
     +     small.computed data-field="extent/taper" data-unit="rad"
     + p#draft-problem.issue.warning
+    -   button disabled title="Dva body leží na stejném místě.": "Totožné"
+    -   button disabled title="Bod leží na úsečce (i na jejím prodloužení), kružnici nebo oblouku.": "Bod na křivce"
+    -   button disabled title="Úsečka je rovnoběžná s osou X skici.": "Vodorovně"
+    -   button disabled title="Úsečka je rovnoběžná s osou Y skici.": "Svisle"
+    -   button disabled title="Dvě úsečky jsou rovnoběžné.": "Rovnoběžně"
+    -   button disabled title="Dvě úsečky jsou na sebe kolmé.": "Kolmo"
+    -   button disabled title="Dvě úsečky mají stejnou délku.": "Stejná délka"
+    -   button disabled title="Úsečka se dotýká kružnice nebo oblouku, nebo se dotýkají dvě kružnice či oblouky.": "Tečně"
+    -   button disabled title="Body a, b jsou souměrné podle přímky, na které leží úsečka line (osa souměrnosti).": "Souměrně"
+    -   button disabled title="Bod leží přesně v polovině úsečky.": "Střed úsečky"
+    -   button disabled title="Two circles or arcs have the same radius.": "Equal radius"
+    -   button disabled title="An own point of the sketch lies at the coordinates x, y of the sketch.": "Fixed point"
+    +   button.primary: "OK"
+    +   button: "Zrušit"
     -   button disabled title="Dva body nebo úsečka: vzdálenost; bod a úsečka: vzdálenost; dvě úsečky: úhel; kružnice: průměr; oblouk: poloměr": "Kóta"
     -   button disabled title="Vodorovná vzdálenost dvou bodů nebo konců úsečky": "Kóta ↔"
     -   button disabled title="Svislá vzdálenost dvou bodů nebo konců úsečky": "Kóta ↕"
-    +   button.primary: "OK"
-    +   button: "Zrušit"
+    - div.buttons
     -   button disabled: "Konstrukční"
     -   button disabled title="Delete": "Smazat"
     - h2: "Vazby a kóty (0)"
@@ -5805,6 +5817,9 @@
     + p.hint: "Volné (v pohledu modře): bod p6; poloměr c6."
     + div.buttons
     +   button title="Vybere volné body a kružnice s volným poloměrem": "Vybrat volné"
+    + div.buttons
+    +   button title="Read a DXF or SVG file into this sketch as an outline of fixed curves": "Import an outline…"
+    +   input#outline-file type=file hidden
     + h2: "Výběr (0)"
     + div.buttons
     +   button disabled title="Dva body leží na stejném místě.": "Totožné"
@@ -6053,6 +6068,9 @@
     + button disabled title="Nejdřív vyberte v pohledu rovinu nebo rovinnou stěnu": "Přenést skicu na vybranou rovinu"
     + h2: "Parameters (0)"
     -   button title="Vybere volné body a kružnice s volným poloměrem": "Vybrat volné"
+    - div.buttons
+    -   button title="Read a DXF or SVG file into this sketch as an outline of fixed curves": "Import an outline…"
+    -   input#outline-file type=file hidden
     - h2: "Výběr (0)"
     - div.buttons
     -   button disabled title="Dva body leží na stejném místě.": "Totožné"
@@ -6372,6 +6390,9 @@
     + div#sketch-status
     +   p.badge.open: "Prázdná skica"
     +   p.hint: "Uzavřených oblastí: 0"
+    + div.buttons
+    +   button title="Read a DXF or SVG file into this sketch as an outline of fixed curves": "Import an outline…"
+    +   input#outline-file type=file hidden
     + h2: "Výběr (0)"
     + div.buttons
     +   button disabled title="Dva body leží na stejném místě.": "Totožné"

@@ -203,6 +203,9 @@
     + div#sketch-status
     +   p.badge.open: "Prázdná skica"
     +   p.hint: "Uzavřených oblastí: 0"
+    + div.buttons
+    +   button title="Read a DXF or SVG file into this sketch as an outline of fixed curves": "Import an outline…"
+    +   input#outline-file type=file hidden
     + h2: "Výběr (0)"
     + div.buttons
     +   button disabled title="Dva body leží na stejném místě.": "Totožné"
@@ -1602,6 +1605,9 @@
     +   input.expr value="" placeholder="condition, e.g. a < b"
     +   button: "Add"
     -   button title="Vybere volné body a kružnice s volným poloměrem": "Vybrat volné"
+    - div.buttons
+    -   button title="Read a DXF or SVG file into this sketch as an outline of fixed curves": "Import an outline…"
+    -   input#outline-file type=file hidden
     - h2: "Výběr (1)"
     - div.buttons
     -   button disabled title="Dva body leží na stejném místě.": "Totožné"

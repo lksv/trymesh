@@ -41,6 +41,7 @@ export { type AnyImportFormat, type ImportCatalog, ImportFailure, type ImportFor
 export { STL_IMPORT_OPTIONS, UNIT_IN_MM } from './import/stl';
 export { OUTLINE_FORMATS, type OutlineOutcome, type OutlineReport, type OutlineRevision, WELD_DEFAULT, curveCounts, importOutline, outlineFormatOf, outlineRevision } from './import/outline-formats';
 export { OUTLINE_LIMITS } from './imported-curve';
+export { OUTLINE_ANCHORS, OUTLINE_PLACE, OUTLINE_TURN } from './references/outline';
 export { type AnyOutlineFormat, OUTLINE_SHARED_OPTIONS, type OutlineCatalog, type OutlineFormat, type OutlineFormatSpec, type OutlineFormats, type OutlineOptions, type ReadOutline } from './import/spec';
 export { DXF_OPTIONS } from './import/dxf';
 export { SVG_OPTIONS } from './import/svg';

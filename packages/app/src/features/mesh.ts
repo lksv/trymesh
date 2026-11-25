@@ -112,7 +112,7 @@ export function frameRows(m: PlacedMode, host: PanelHost, what = 'mesh'): HTMLEl
   ];
   if (frame.kind === 'sketchPoint') {
     const sketch = host.feature(frame.sketch);
-    const points = sketch?.type === 'sketch' ? ['origin', ...Object.keys(sketch.points), ...entryEntities(sketch).filter((entity) => entity.kind === 'point').map((entity) => entity.id)] : [];
+    const points = sketch?.type === 'sketch' ? ['origin', ...Object.keys(sketch.points), ...entryEntities(sketch, (kind) => kind === 'point').map((entity) => entity.id)] : [];
     const ids = sketches.map((s) => s.id);
     out.push(
       h(

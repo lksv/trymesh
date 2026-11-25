@@ -104,7 +104,7 @@ export function axisRows(host: PanelHost, axis: AxisRef, sketches: Id[], set: (c
     return out;
   }
   const sketch = axis.kind === 'sketchPoint' ? host.feature(axis.sketch) : undefined;
-  const points = axis.kind === 'sketchPoint' && sketch?.type === 'sketch' && sketches.includes(axis.sketch) ? ['origin', ...Object.keys(sketch.points), ...entryEntities(sketch).filter((entity) => entity.kind === 'point').map((entity) => entity.id)] : [];
+  const points = axis.kind === 'sketchPoint' && sketch?.type === 'sketch' && sketches.includes(axis.sketch) ? ['origin', ...Object.keys(sketch.points), ...entryEntities(sketch, (kind) => kind === 'point').map((entity) => entity.id)] : [];
   if (axis.kind === 'sketchPoint' && direction) {
     // The point does not matter for a direction, but the engine checks it: a point that is gone
     // (removed, or given through MCP) is offered to be replaced by the origin of the sketch.

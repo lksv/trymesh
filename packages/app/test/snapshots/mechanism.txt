@@ -862,6 +862,9 @@
     + p.hint: "Volné (v pohledu modře): body p5, p6, p7, p8."
     + div.buttons
     +   button title="Vybere volné body a kružnice s volným poloměrem": "Vybrat volné"
+    + div.buttons
+    +   button title="Read a DXF or SVG file into this sketch as an outline of fixed curves": "Import an outline…"
+    +   input#outline-file type=file hidden
     + h2: "Výběr (0)"
     + div.buttons
     +   button disabled title="Dva body leží na stejném místě.": "Totožné"
@@ -1148,10 +1151,13 @@
     +           p.hint: "Bodies: Vysunutí 3"
     + p.hint: "Bodies in no link (they stand as modelled): Vysunutí 2"
     -   button title="Vybere volné body a kružnice s volným poloměrem": "Vybrat volné"
-    - h2: "Výběr (0)"
     +   button title="Bodies that move as one piece": "New link"
     +   button title="A joint moves its child link against its parent link": "New joint"
     +   button title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
+    -   button title="Read a DXF or SVG file into this sketch as an outline of fixed curves": "Import an outline…"
+    -   input#outline-file type=file hidden
+    - h2: "Výběr (0)"
+    - div.buttons
     -   button disabled title="Dva body leží na stejném místě.": "Totožné"
     -   button disabled title="Bod leží na úsečce (i na jejím prodloužení), kružnici nebo oblouku.": "Bod na křivce"
     -   button disabled title="Úsečka je rovnoběžná s osou X skici.": "Vodorovně"

@@ -6,6 +6,8 @@ import { createPakoDeflater } from '../../packages/deflate-pako/src/index';
 import { type Command, type Engine, type EngineDeps, createEngine } from '../../packages/engine/src/index';
 import { createManifoldKernel } from '../../packages/kernel-manifold/src/index';
 import { createPlanegcsSolver } from '../../packages/solver-planegcs/src/index';
+import type { ConstraintRecord, OutcomeSummary, PartSummary, SketchSummary } from './fates';
+import { type StudioPromises, emptyPromises } from './probe';
 
 export type V3 = [number, number, number];
 export type V2 = [number, number];
@@ -45,11 +47,32 @@ export async function newEngine(): Promise<Engine> {
   deps ??= { solver: await createPlanegcsSolver(), kernel: await createManifoldKernel(), deflater: createPakoDeflater() };
   return createEngine(deps);
 }
+// An engine once `newEngine` has loaded the adapters.
+export function engineNow(): Engine {
+  if (!deps) throw new Error('engineNow before newEngine');
+  return createEngine(deps);
+}
 
 // ---------------------------------------------------------------- report
 
+// What a run collects besides its lines: the records of the constraints and what `summary.json`
+// holds (fates.ts), and what the conversion promised for the document's probe (probe.ts).
 export class Report {
   readonly lines: string[] = [];
+  readonly records: ConstraintRecord[] = [];
+  readonly sketches: Record<string, SketchSummary> = {};
+  readonly parts: Record<string, PartSummary> = {};
+  readonly outcomes: Record<string, OutcomeSummary> = {};
+  readonly promises: Record<string, StudioPromises> = {};
+  readonly parametersInUse: Record<string, string[]> = {};
+  // the sections at the end of the report, by title
+  readonly tail: Record<string, string[]> = {};
+  promisesOf(studio: string): StudioPromises {
+    return (this.promises[studio] ??= emptyPromises());
+  }
+  later(section: string, line: string) {
+    (this.tail[section] ??= []).push(line);
+  }
   section(title: string) {
     this.lines.push('', `## ${title}`, '');
   }

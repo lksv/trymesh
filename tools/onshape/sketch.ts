@@ -2,7 +2,10 @@
 // the curves split where they cross, and the constraints that have a counterpart.
 import type { Command, Engine, Id, PlaneRef, RegionRef } from '../../packages/engine/src/index';
 import { emptySketch } from '../../packages/engine/src/index';
-import { type Report, type V2, type V3, dot, exec, expression, numberOr, sane } from './common';
+import { type Report, type V2, type V3, dot, exec, expression, sane } from './common';
+import { type MapContext, mapConstraints, onshapeKind, params } from './constraints';
+import { type ConstraintRecord, FATES, type Fate, type SketchSummary, finalFate, sketchLines } from './fates';
+import { ORIGIN_ID, type StudioOperations, decode } from './operands';
 
 // The frame of an Onshape sketch (world, mm) and the base plane of trymesh it is drawn on.
 export interface SketchFrame {
@@ -50,7 +53,16 @@ export interface Converted {
 
 type C = { id: string; src: string; construction: boolean; line?: [string, string]; circle?: { c: string; r: number }; arc?: [string, string, string] };
 
-export function convertSketch(engine: Engine, report: Report, id: Id, name: string, plane: PlaneRef, frame: SketchFrame, feature: any, geom: any): Converted | undefined {
+// Where a sketch is converted: its studio, the decode of external IDs there, and its key.
+export interface SketchPlace {
+  studio: string;
+  ops: StudioOperations; // the operations of the studio that holds the Onshape feature
+  helper: boolean;
+  onshapeRegions?: number; // the faces the Onshape sketch feature created
+  derivedFrom?: string; // `<source studio>/<source feature>` of a derived copy
+}
+
+export function convertSketch(engine: Engine, report: Report, id: Id, name: string, plane: PlaneRef, frame: SketchFrame, feature: any, geom: any, place: SketchPlace): Converted | undefined {
   const P = (s: string) => `${id}.${sane(s)}`; // entity IDs are unique in the whole document
   // Onshape gives every curve its own end points, held together by coincident constraints; points
   // at one position become one point (that is what trymesh needs to close a region).
@@ -106,23 +118,124 @@ export function convertSketch(engine: Engine, report: Report, id: Id, name: stri
     })),
   ];
   const conv: Converted = { id, frame, kind, rep };
-  const { commands: cons, skipped: notConverted, total } = constraints(conv, feature.constraints ?? [], pos, curves);
-  if (Object.keys(notConverted).length) report.note(`${name}: constraints without a counterpart: ${JSON.stringify(notConverted)}`);
+  const entityType = new Map<string, string>((geom.entities as any[]).map((e) => [e.sketchEntityId, onshapeKind(e)]));
+  const ctx: MapContext = { studio: place.studio, sketch: id, name, helper: place.helper, kind, rep, pos, curves, entityType, split: new Set(split.map((c) => c.src)), ops: place.ops };
+  const { records, commands: cons } = mapConstraints(ctx, feature.constraints ?? []);
+  report.records.push(...records);
   // The constraints are kept only when the solver leaves the geometry where Onshape had it; else
   // dimensions as numbers; else the bare geometry.
+  const strip = ({ measured, record, dupOf, ...c }: any) => c;
   const numeric = cons.map((c: any) => (typeof c.constraint.value === 'string' ? { ...c, constraint: { ...c.constraint, value: c.measured } } : c));
   for (const [label, set] of [['with expressions', cons], ['dimensions as numbers', numeric], ['without constraints', []]] as const) {
-    const commands = [...base, ...set.map(({ measured, ...c }: any) => c)];
+    const commands = [...base, ...set.map(strip)];
     const r = engine.preview({ type: 'batch', commands });
     if (!r.ok) { report.note(`${name}: constraints ${label} refused: ${r.error.message.slice(0, 200)}`); continue; }
     const res = r.state.evaluation.features[id];
     const moved = [...pos].filter(([pid, [x, y]]) => { const q = res.sketch?.points[pid]; return !q || Math.hypot(q.x - x, q.y - y) > 1e-4; }).length;
     if (res.status === 'error' || moved) { report.note(`${name}: constraints ${label}: ${res.status} ${res.error?.message ?? ''}, ${moved} point(s) moved`); continue; }
     exec(engine, report, { type: 'batch', commands }, name);
-    report.note(`${name}: ${pos.size} points, ${curves.length} curves, ${set.length} of ${total} constraints (${label}), ${res.sketch?.degreesOfFreedom} degrees of freedom`);
+    // the records: what was written, and how
+    for (const r of records) {
+      if (r.fate) continue;
+      if (label === 'without constraints') Object.assign(r, { fate: 'lost', cause: 'refused', detail: 'the sketch passes only without constraints' });
+      else {
+        r.fate = 'written';
+        r.ids = r.commands.map((c: any) => c.id);
+        r.written = label === 'with expressions' ? 'expressions' : 'number';
+        if (label !== 'with expressions') for (const c of r.commands as any[]) if (typeof c.constraint.value === 'string') (r.numbers ??= []).push(`${c.id}: every dimension of the sketch as a number`);
+      }
+    }
+    finishSketch(engine, report, conv, name, place, geom, feature, records, label, pos.size, curves.length);
     return conv;
   }
   return undefined;
+}
+
+// What a converted sketch reports and records: its line, the summary, the welds, the promises.
+function finishSketch(engine: Engine, report: Report, conv: Converted, name: string, place: SketchPlace, geom: any, feature: any, records: ConstraintRecord[], ladder: string, points: number, curves: number) {
+  const id = conv.id;
+  const res = engine.getState().evaluation.features[id];
+  const sk = res.sketch;
+  const all = new Map(report.records.map((r) => [r.key, r]));
+  for (const line of sketchLines(name, points, curves, records, all, sk?.degreesOfFreedom)) report.note(line);
+  let diagnosis: number | undefined;
+  try { diagnosis = engine.diagnoseSketch(id).redundant.length; } catch { diagnosis = undefined; }
+  const counts = Object.fromEntries(FATES.map((f) => [f, records.filter((r) => finalFate(r, all).fate === f).length])) as Record<Fate, number>;
+  const welds = weldsOf(conv, geom, feature);
+  for (const w of welds.listed) report.later('Welds', `${place.studio}, ${name}: ${w}`);
+  const key = `${place.studio}/${id}`;
+  report.sketches[key] = {
+    key, studio: place.studio, id, name, helper: place.helper, status: res.status, warnings: res.warnings.map((w) => w.code), freedom: sk?.degreesOfFreedom, redundant: sk?.redundant ?? [], diagnosisRedundant: diagnosis, valid: sk?.valid,
+    regions: sk?.regions.length ?? 0, onshapeRegions: place.onshapeRegions, areas: (sk?.regions ?? []).map((r) => regionArea(r.loops)).sort((a, b) => a - b), welds, ladder, entries: [], counts,
+  };
+  if (sk?.redundant.length) report.later('Redundant constraints', `${place.studio}, ${name}: the solver lists ${sk.redundant.join(', ')}; the diagnosis counts ${diagnosis ?? '?'}`);
+  // what the probe asserts: every Onshape pattern's instances are its seeds turned
+  const pr = report.promisesOf(place.studio);
+  if (place.helper) pr.helpers.push(id);
+  if (place.derivedFrom) pr.derived[id] = place.derivedFrom;
+  for (const [index, c] of (feature.constraints ?? []).entries()) {
+    if (c.constraintType !== 'CIRCULAR_PATTERN') continue;
+    const p = params(c);
+    const count = Number(expression(p.patternc1?.expression));
+    const pivot = conv.rep.get(p.localPivot?.value);
+    if (p.openPattern?.value || !pivot || !Number.isFinite(count)) continue;
+    const isPoint = (v: string) => (geom.entities as any[]).some((e) => e.sketchEntityId === v && e.sketchEntityType === 'skPoint');
+    const rows = instanceRows(c).filter((r) => r && isPoint(r[0])).map((r) => r.map((v) => conv.rep.get(v) ?? ''));
+    pr.patterns.push({ sketch: id, constraint: `${place.studio}/${id}#${index}`, pivot, count, rows });
+  }
+}
+
+// The rows of an Onshape pattern: rows[i][j] is entity i of instance j (0 the seed).
+export function instanceRows(c: any): string[][] {
+  const rows: string[][] = [];
+  for (const q of c.parameters) { const m = /^localInstance(\d+),(\d+)$/.exec(q.parameterId); if (m) (rows[+m[1]] ??= [])[+m[2]] = q.value; }
+  return rows.filter(Boolean);
+}
+
+// The places where the converter made one point of several Onshape points, and whether a constraint
+// ties them. A weld without a constraint is a relation the converter adds; it is classed by what it
+// joins: points of the instances of one pattern or mirror, an instance and an entity outside, two
+// plain entities. The last two classes are listed one by one.
+export function weldsOf(conv: Converted, geom: any, feature: any): SketchSummary['welds'] {
+  const E = new Map<string, any>((geom.entities as any[]).map((e) => [e.sketchEntityId, e]));
+  const parent = new Map<string, string>();
+  const find = (x: string): string => { while (parent.has(x) && parent.get(x) !== x) x = parent.get(x)!; return x; };
+  const join = (a: string, b: string) => { const [x, y] = [find(a), find(b)]; if (x !== y) parent.set(x, y); };
+  const pointsOf = (v: string): string[] => { const e = E.get(v); if (!e) return []; if (e.sketchEntityType === 'skPoint') return [v]; return ['startPointId', 'endPointId', 'centerId'].map((k) => e[k]).filter(Boolean); };
+  // groups of a pattern or mirror: its seeds and images, with the points of their curves
+  const groups: { members: Set<string>; images: Set<string> }[] = [];
+  for (const c of feature.constraints ?? []) {
+    const p = params(c);
+    if (c.constraintType === 'COINCIDENT' && E.get(p.localFirst?.value)?.sketchEntityType === 'skPoint' && E.get(p.localSecond?.value)?.sketchEntityType === 'skPoint') join(p.localFirst.value, p.localSecond.value);
+    // two points held on one external point (the origin) are tied too
+    if (c.constraintType === 'COINCIDENT') {
+      const local = [p.localFirst, p.localSecond].find((q) => E.get(q?.value)?.sketchEntityType === 'skPoint')?.value;
+      const ext = [p.externalFirst, p.externalSecond].flatMap((q) => (q?.queries ?? []).flatMap((x: any) => x.deterministicIds ?? []))[0];
+      if (local && ext && (ext === ORIGIN_ID || decode(ext)?.kind === 'vertex')) join(local, `external ${ext}`);
+    }
+    if (c.constraintType === 'CONCENTRIC') { const [a, b] = [E.get(p.localFirst?.value)?.centerId, E.get(p.localSecond?.value)?.centerId]; if (a && b) join(a, b); }
+    if (/PATTERN/.test(c.constraintType)) {
+      const rows = instanceRows(c);
+      const members = new Set<string>(), images = new Set<string>();
+      for (const r of rows) r.forEach((v, j) => { for (const q of pointsOf(v)) { members.add(q); if (j) images.add(q); } });
+      groups.push({ members, images });
+    } else if (c.constraintType === 'MIRROR' && p.localFirst && p.localSecond && E.get(p.localFirst.value)?.sketchEntityType !== 'skPoint') {
+      groups.push({ members: new Set([...pointsOf(p.localFirst.value), ...pointsOf(p.localSecond.value)]), images: new Set(pointsOf(p.localSecond.value)) });
+    }
+  }
+  const byPlace = new Map<Id, string[]>();
+  for (const e of geom.entities as any[]) if (e.sketchEntityType === 'skPoint') { const r = conv.rep.get(e.sketchEntityId); if (r) byPlace.set(r, [...(byPlace.get(r) ?? []), e.sketchEntityId]); }
+  const out: SketchSummary['welds'] = { places: 0, tied: 0, untied: {}, listed: [], wide: [] };
+  for (const [place, pts] of byPlace) {
+    if (pts.length < 2) continue;
+    out.places++;
+    if (pts.every((q) => find(q) === find(pts[0]))) { out.tied++; continue; }
+    const images = pts.filter((q) => groups.some((g) => g.images.has(q)));
+    const cls = !images.length ? 'two plain entities' : groups.some((g) => pts.every((q) => g.members.has(q))) ? 'among the instances of one pattern or mirror' : 'an instance and an entity outside';
+    out.untied[cls] = (out.untied[cls] ?? 0) + 1;
+    if (cls !== 'among the instances of one pattern or mirror') out.listed.push(`${cls}: ${place} (${pts.join(', ')})`);
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------- crossings
@@ -192,73 +305,6 @@ function splitAtCrossings(list: C[], pos: Map<Id, V2>, pointAt: (p: V2, want: Id
     const k = (c.construction ? 'k' : 's') + (c.line ? [...c.line].sort().join('|') : c.arc ? c.arc.join('|') : `${c.circle!.c}|${c.circle!.r.toFixed(6)}`);
     return !seen.has(k) && !!seen.add(k);
   });
-}
-
-// ---------------------------------------------------------------- constraints
-
-// The Onshape constraints that have a counterpart; a dimension carries the value measured on the
-// geometry (`measured`) for the fall-back without expressions. Constraints on external geometry
-// (the origin, an edge, another sketch), patterns and mirrors of curves in the sketch, and the
-// variants of a distance that are not point–point or point–line have none.
-function constraints(conv: Converted, list: any[], pos: Map<Id, V2>, curves: C[]): { commands: any[]; skipped: Record<string, number>; total: number } {
-  const out: any[] = [];
-  const skipped: Record<string, number> = {};
-  const curve = (id: string) => curves.find((c) => c.id === `${conv.id}.${sane(id)}`);
-  const ent = (v: string | undefined) => (v === undefined ? undefined : { k: conv.kind.get(v), id: `${conv.id}.${sane(v)}` });
-  const pt = (v: string) => conv.rep.get(v) ?? `${conv.id}.${sane(v)}`;
-  const value = (q: any) => { const e = expression(q?.expression); return e === undefined ? undefined : numberOr(e); };
-  const P = (i: Id) => pos.get(i)!;
-  let n = 0;
-  const add = (constraint: any, measured?: number) => out.push({ type: 'addConstraint', sketch: conv.id, id: `${conv.id}.c${n++}`, constraint, measured });
-  for (const c of list) {
-    const p = Object.fromEntries(c.parameters.map((q: any) => [q.parameterId, q]));
-    const t: string = c.constraintType;
-    const [f, s] = [p.localFirst?.value, p.localSecond?.value];
-    const [A, B] = [ent(f), ent(s)];
-    const skip = () => { skipped[t] = (skipped[t] ?? 0) + 1; };
-    const direction = p.direction?.value ?? 'MINIMUM';
-    if (p.externalFirst || p.externalSecond || p.externalMirror) { skip(); continue; }
-    if (t === 'COINCIDENT' && A?.k && B?.k) {
-      if (A.k === 'point' && B.k === 'point') continue; // one point already
-      if (A.k === 'point' && B.k !== 'point') add({ type: 'pointOnCurve', point: pt(f), curve: B.id });
-      else if (B.k === 'point' && A.k !== 'point') add({ type: 'pointOnCurve', point: pt(s), curve: A.id });
-      else skip();
-    } else if ((t === 'HORIZONTAL' || t === 'VERTICAL') && A?.k === 'line' && !B) add({ type: t.toLowerCase(), line: A.id });
-    else if ((t === 'PARALLEL' || t === 'PERPENDICULAR') && A?.k === 'line' && B?.k === 'line') add({ type: t.toLowerCase(), a: A.id, b: B.id });
-    else if (t === 'EQUAL' && A?.k === 'line' && B?.k === 'line') add({ type: 'equalLength', a: A.id, b: B.id });
-    else if (t === 'EQUAL' && A?.k === 'circle' && B?.k === 'circle') add({ type: 'equalRadius', a: A.id, b: B.id });
-    else if (t === 'TANGENT' && A?.k && B?.k && A.k !== 'point' && B.k !== 'point' && !(A.k === 'line' && B.k === 'line')) add({ type: 'tangent', a: A.id, b: B.id });
-    else if ((t === 'DIAMETER' || t === 'RADIUS') && A?.k === 'circle') { const r = curve(f)!.circle!.r; add({ type: t.toLowerCase(), curve: A.id, value: value(p.length) ?? 0, driving: true }, t === 'DIAMETER' ? 2 * r : r); }
-    else if (t === 'MIDPOINT') {
-      const [e1, e2] = [ent(p.localEntity1?.value), ent(p.localEntity2?.value)];
-      if (e1?.k === 'point' && e2?.k === 'line') add({ type: 'midpoint', point: pt(p.localEntity1.value), line: e2.id });
-      else if (e2?.k === 'point' && e1?.k === 'line') add({ type: 'midpoint', point: pt(p.localEntity2.value), line: e1.id });
-      else skip();
-    } else if (t === 'MIRROR' && A?.k === 'point' && B?.k === 'point' && ent(p.localMirror?.value)?.k === 'line') {
-      const axis = curve(p.localMirror.value)!.line!;
-      if (pt(f) !== pt(s) && !axis.includes(pt(f)) && !axis.includes(pt(s))) add({ type: 'symmetric', a: pt(f), b: pt(s), line: ent(p.localMirror.value)!.id });
-    } else if (t === 'DISTANCE' && A?.k === 'point' && B?.k === 'point' && direction === 'MINIMUM') {
-      const [a, b] = [P(pt(f)), P(pt(s))];
-      add({ type: 'distance', a: pt(f), b: pt(s), value: value(p.length), driving: true }, Math.hypot(a[0] - b[0], a[1] - b[1]));
-    } else if (t === 'DISTANCE' && direction === 'MINIMUM' && ((A?.k === 'point' && B?.k === 'line') || (A?.k === 'line' && B?.k === 'point'))) {
-      const [point, line] = A!.k === 'point' ? [pt(f), s] : [pt(s), f];
-      const [a, b] = curve(line)!.line!.map(P), q = P(point);
-      add({ type: 'distancePointLine', point, line: ent(line)!.id, value: value(p.length), driving: true }, Math.abs((b[0] - a[0]) * (q[1] - a[1]) - (b[1] - a[1]) * (q[0] - a[0])) / Math.hypot(b[0] - a[0], b[1] - a[1]));
-    } else if (t === 'LENGTH' && A?.k === 'line') {
-      const [a, b] = curve(f)!.line!;
-      add({ type: 'distance', a, b, value: value(p.length), driving: true }, Math.hypot(P(a)[0] - P(b)[0], P(a)[1] - P(b)[1]));
-    } else skip();
-  }
-  // A number that does not match the geometry (a sign, a direction measured otherwise) takes the
-  // measured value; the same constraint twice is kept once.
-  const seen = new Set<string>();
-  const commands = out.filter((c) => {
-    const k = c.constraint;
-    if ('driving' in k) { if (k.value === undefined) k.value = c.measured; if (typeof k.value === 'number' && Math.abs(k.value - c.measured) > 1e-6) k.value = c.measured; }
-    const sig = JSON.stringify({ ...k, value: undefined, a: [k.a, k.b].sort()[0], b: [k.a, k.b].sort()[1] });
-    return !seen.has(sig) && !!seen.add(sig);
-  });
-  return { commands, skipped, total: list.length };
 }
 
 // ---------------------------------------------------------------- regions

@@ -100,3 +100,6 @@ export { type SketchBase, type SketchWorld, cutInMemory, sketchWorld, stepBase, 
 export type { Deps } from './evaluate';
 export { AXIS_REACH, ORIGIN_AXES, type OriginAxis, isOriginAxis, underOrigin } from './util';
 export { AXIS_CURVES, type SketchCurve, type SketchGeometry, type SolvedCurves, lineExtent, solvedCurves } from './sketch';
+export { type ProjectedKind, type SketchMap, projectionEntities, sketchMap } from './references/projection';
+export { PROJECT_SKETCH_IDS, type ProjectSketchInput } from './sketch-project';
+export type { SketchSource, SketchSourcesResult, SourceEntity } from './query/sketch-sources';

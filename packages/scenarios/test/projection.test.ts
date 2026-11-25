@@ -549,3 +549,68 @@ describe('the sketch tool projectSketch (D69)', () => {
     expect(tool(engine, 't3', 'projectSketch', { sketch: 'over', as: 'regions' }, 'w')).toBe(`${own.ids.curves[0]} and ${own.ids.entries[0]} of over lie on each other: projected with regions both would bound the same regions; name the entities, or use as: "source"`);
   });
 });
+
+describe('the query sketchSources (D69)', () => {
+  it('without `from` the earlier sketches with their planes; with it every entity of one a projection may name, placed where a projection puts it', () => {
+    const engine = newEngine();
+    chain(engine);
+    run(engine, plane('tiltPl', 20, { axis: 'X', angle: 0.3 }), addSketch('tilted', onPlane('tiltPl')), addSketch('last', onPlane('framePl')));
+    const ask = (args: Record<string, unknown>) => {
+      const outcome = engine.query('sketchSources', args as never);
+      if (!outcome.ok) throw new Error(outcome.error.message);
+      return outcome.result;
+    };
+    const all = ask({ sketch: 'last' });
+    expect(all.entities).toBeUndefined();
+    expect(all.sources.map((s) => [s.sketch, s.status, s.flips])).toEqual([['board', 'parallel', false], ['frame', 'parallel', false], ['rimSk', 'parallel', false], ['tilted', 'tilted', false]]);
+    expect(all.sources[1]).toMatchObject({ curves: 12, points: 25 });
+    expect(all.sources[3].angle).toBeCloseTo(0.3, 12);
+    // the tilted one: no entities
+    expect(ask({ sketch: 'last', from: 'tilted' })).toEqual({ sources: [all.sources[3]] });
+    // what rimSk can project of frame: 37 entities, the twelve curves the tool takes whole first
+    const one = ask({ sketch: 'rimSk', from: 'frame' });
+    const entities = one.entities ?? [];
+    expect(one.total).toBe(37);
+    expect(entities.filter((e) => e.whole).map((e) => e.id)).toEqual(['fa0', 'fl0', 'fh0', 'fa1', 'fl1', 'fh1', 'fa2', 'fl2', 'fh2', 'fa3', 'fl3', 'fh3']);
+    expect(entities.slice(0, 12).every((e) => e.whole && e.kind !== 'point')).toBe(true);
+    expect(entities.find((e) => e.id === 'fa0')).toMatchObject({ kind: 'arc', entry: 'ra0', regions: false });
+    expect(entities.filter((e) => e.entry !== undefined)).toHaveLength(8);
+    const hole = entities.find((e) => e.id === 'fh0/center') as { kind: string; at: [number, number]; whole: boolean };
+    expect(hole).toMatchObject({ kind: 'point', whole: false });
+    expect(hole.at[0]).toBeCloseTo(26.5, 9);
+    expect(entities.some((e) => e.id === 'origin' && e.kind === 'point')).toBe(true);
+    expect(entities.some((e) => e.id.startsWith('origin/'))).toBe(false);
+    // the places are where the projections are
+    const state = engine.getState();
+    const arc = entities.find((e) => e.id === 'fa1') as { center: [number, number]; start: [number, number]; end: [number, number] };
+    near(arc.center, at(state, 'rimSk', 'ra1/center'));
+    near(arc.start, at(state, 'rimSk', 'ra1/start'));
+    near(arc.end, at(state, 'rimSk', 'ra1/end'));
+    // max and total
+    expect(ask({ sketch: 'rimSk', from: 'frame', max: 5 })).toMatchObject({ total: 37, entities: entities.slice(0, 5) });
+    // a point named from the answer projected
+    const named = run(engine, addSketch('pointSk', onPlane('framePl')), project('pointSk', 'hp', 'frame', 'fh0/center', 'point'));
+    near(at(named, 'pointSk', 'hp'), hole.at);
+    // a source suppressed, and an argument that is not earlier
+    run(engine, { type: 'setSuppressed', id: 'frame', suppressed: true });
+    expect(ask({ sketch: 'last' }).sources[1]).toMatchObject({ sketch: 'frame', status: 'notEvaluated' });
+    run(engine, { type: 'setSuppressed', id: 'frame', suppressed: false });
+    const later = engine.query('sketchSources', { sketch: 'frame', from: 'rimSk' });
+    expect(later.ok ? 'answered' : later.error.message).toBe('sketchSources: "rimSk" is not a sketch before "frame" on the timeline');
+  });
+
+  it('`whole` is what projectSketch takes without `entities`; on the other side the arcs are swapped', () => {
+    const engine = newEngine();
+    standInBoard(engine);
+    run(engine, addSketch('under', onFace('pcb', cap('pcb', 'startCap'))));
+    const outcome = engine.query('sketchSources', { sketch: 'under', from: 'board' });
+    if (!outcome.ok) throw new Error(outcome.error.message);
+    expect(outcome.result.sources[0].flips).toBe(true);
+    const whole = (outcome.result.entities ?? []).filter((e) => e.whole).map((e) => e.id);
+    const answer = made(tool(engine, 'under', 'projectSketch', { sketch: 'board' }, 'w'));
+    expect(answer.ids.sources).toEqual(whole);
+    const arc = (outcome.result.entities ?? []).find((e) => e.id === 'ba0') as { start: [number, number] };
+    const entry = answer.ids.entries[answer.ids.sources.indexOf('ba0')];
+    near(arc.start, at(answer.state, 'under', `${entry}/start`));
+  });
+});

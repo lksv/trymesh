@@ -86,7 +86,7 @@ describe('Engine.query', () => {
     expect(failure(engine.query('sketchDiagnosis', {} as never))).toEqual(['invalidArguments', ['sketch'], 'sketchDiagnosis: sketch: the argument is required']);
     expect(failure(engine.query('sketchDiagnosis', { sketch: 'LOW' }))).toEqual(['notAvailable', ['sketch'], expect.any(String)]);
     expect(failure(engine.query('constraintExplanation', { sketch: 'S2', constraint: 'nope' }))).toEqual(['notAvailable', ['constraint'], 'constraintExplanation: constraint: the sketch "S2" has no constraint "nope"']);
-    expect(failure(engine.query('nope' as never, {} as never))).toEqual(['invalidArguments', ['query'], expect.stringMatching(/there is no query "nope"; the queries are interference, sketchDiagnosis, constraintExplanation, sketchContacts, body, catalog/)]);
+    expect(failure(engine.query('nope' as never, {} as never))).toEqual(['invalidArguments', ['query'], expect.stringMatching(/there is no query "nope"; the queries are interference, sketchDiagnosis, constraintExplanation, sketchContacts, sketchSources, body, catalog/)]);
     expect(failure(engine.query('constructor' as never, {} as never))).toEqual(['invalidArguments', ['query'], expect.any(String)]);
     expect(failure(engine.query('interference', {}, { at: 'nope' }))).toEqual(['notAvailable', ['at'], 'interference: `at`: the feature "nope" is not in the document']);
     // a state the engine did not hand out: put together by a caller, or of another engine

@@ -47,7 +47,7 @@ interface Item {
 // construction curves; the curves of the entries in their order (of a reference entry every curve,
 // of a derived entry the copies that form regions); the lone points (an own point no own curve
 // names, a point entry). Nothing under `origin/`.
-function wholeSketch(source: SketchFeature, curves: ReadonlyMap<Id, SketchCurve>): Id[] {
+export function wholeSketch(source: SketchFeature, curves: ReadonlyMap<Id, SketchCurve>): Id[] {
   const out: Id[] = [];
   for (const [id, curve] of Object.entries(source.curves)) if (!curve.construction && curves.has(id)) out.push(id);
   const index = entityIndex(source);

@@ -46,7 +46,8 @@ import type { SketchCurve } from '../../../packages/engine/src/sketch';
 // - `line`: from `a` to `b`, at least the length tolerance long.
 // - `circle`: `radius` at least the length tolerance.
 // - `arc`: counter-clockwise from `start` to `end` about `center`; the two ends on one radius within
-//   `OUTLINE_LIMITS.arc`; `start` equal to `end` is no arc (a whole turn is a `circle`).
+//   `OUTLINE_LIMITS.arc` by the size of its coordinates, and never more than `.arcMost` mm; `start`
+//   equal to `end` is no arc (a whole turn is a `circle`).
 // - `spline`: the control points of a spline of the sketch (CurveShape `spline`, D70): 3 to 64, the
 //   first again as the last closes it (then at least 4). Control points may stand at one place (a
 //   node without a handle); the spline as a whole has an extent.
@@ -164,21 +165,25 @@ export type SketchFeatureAfter = Omit<SketchFeature, 'external' | 'solved'> & { 
 // - `splinePoints`: of one spline, the limit of a spline of the sketch (D70).
 // - `localId`: the most characters of a local ID.
 // - `note`: from this many curves on the report of an import says what a change in the sketch costs.
-// - `arc`: how far the two ends of a stored arc may lie off one radius, in mm per mm of the
-//   largest coordinate of the arc (at least 1): 1e-9 mm for a board, 1e-4 for coordinates of 1e5
-//   (6b's `ARC_STORED_TOLERANCE * scale`). The readers leave under 1e-12; the placement then puts
-//   the end on the circle of the start (6b's `exactArc`).
+// - `arc`, `arcMost`: how far the two ends of a stored arc may lie off one radius: `arc` mm per mm
+//   of the largest coordinate of the arc (at least 1), and never more than `arcMost` mm, a tenth of
+//   the tolerance of a join. The placement puts the end on the circle of the start (6b's
+//   `exactArc`), which moves it by that difference: bounded by the size of the coordinates alone
+//   (6b's `ARC_STORED_TOLERANCE * scale`, 1e-4 mm for coordinates of 1e5), an end of an outline far
+//   from the origin of its file left its join (the third review: L2). The readers leave under
+//   1e-12 near the origin and the last bit of a coordinate far from it (1.5e-8 mm at 100 km).
 // - `listed`, `listedPoints`: how many curves `get_sketch` lists of one outline (and above how many
 //   `get_document` leaves the curves out), and how many positions those curves may hold together:
 //   a spline of 64 control points is 64 positions, so curves alone do not bound an answer.
-// - `characters`, `read`, `readControl`, `readSpline`: what a reader takes before it refuses with
-//   `tooLarge`, checked while it reads and before the weld: the characters of the file (the bytes,
-//   before they are decoded); the curves read from the layers asked for (four outlines' worth: the
+// - `bytes`, `read`, `readControl`, `readSpline`: what a reader takes before it refuses with
+//   `tooLarge`, checked while it reads and before the weld: the bytes of the file (one number for
+//   the server's check of the size, for the base64 text of the bridge before it is decoded, and
+//   for the text a reader gets, which has no more characters than the file has bytes); the curves read from the layers asked for (four outlines' worth: the
 //   weld and the duplicates may bring a file under the limit); the control points of all the spline
 //   curves it has made so far (a spline kept whole counts its control points, a Bezier piece its
 //   three or four); the control points of one DXF `SPLINE` (its conversion is quadratic: 2000 take
 //   0.2 s, 8000 would take 4 s).
-export const OUTLINE_LIMITS = { curves: 2000, control: 2000, splinePoints: 64, localId: 32, note: 500, arc: 1e-9, listed: 50, listedPoints: 500, characters: 8_000_000, read: 8000, readControl: 8000, readSpline: 2000 } as const;
+export const OUTLINE_LIMITS = { curves: 2000, control: 2000, splinePoints: 64, localId: 32, note: 500, arc: 1e-9, arcMost: 1e-7, listed: 50, listedPoints: 500, bytes: 8_000_000, read: 8000, readControl: 8000, readSpline: 2000 } as const;
 export const OUTLINE_PLACE: NumberSpec = { title: 'Place', unit: 'mm', default: 0 };
 export const OUTLINE_TURN: NumberSpec = { title: 'Turn', unit: 'rad', min: { value: -2 * Math.PI }, max: { value: 2 * Math.PI }, default: 0 };
 
@@ -272,7 +277,8 @@ export declare const outline: ReferenceKindAfter<SketchOutline, PlacedOutline>;
 // naming the constraints and the entities. For every kind; only an outline can reach it (an edge
 // and a projection keep their entities, no constraint names a copy). Measured before the rule (B5):
 // the update is accepted, and the document it leaves does not load. It asks `entity` of the new
-// entry for each operand under `<id>/` of each constraint (driving or reference), and lists nothing.
+// entry for each operand of each constraint (driving or reference) that is the entry's ID or
+// under it (`operand === id || operand.startsWith(id + '/')`), and lists nothing.
 // Not covered, on purpose: an operand of a mirror or pattern of the sketch (its axis, direction or
 // centre). That entry loses its copies with the warning `brokenCopies` and the document loads (the
 // review, fable 6, measured there).
@@ -281,23 +287,31 @@ export const ENTITY_TAKEN = (entry: Id, gone: { entity: Id; constraints: Id[] }[
   `the update takes away ${gone.map((g) => `"${g.entity}" (named by ${g.constraints.join(', ')})`).join(', ')} of "${entry}": remove ${gone.length === 1 && gone[0].constraints.length === 1 ? 'that constraint' : 'those constraints'} in the same batch before it (the tool import_outline: \`remove\`), or keep the ${gone.length === 1 ? 'curve' : 'curves'}`;
 
 // The solver adapter (packages/solver-planegcs, `commonEnd`). Two ends are one end when they are
-// one ID, or two fixed points at one place: within `FIXED_JOIN` of the radius of the arc of the
-// tangency, and never more than `FIXED_JOIN` mm (`sameEnd`). A common end of a line and an arc is
-// then: an end of the line and an end of the arc that are one end, or one coincident whose two
-// operands are one end with an end of the line and one end with an end of the arc. So the rule
-// reads the same from either side: an own line held on the outline's point of the other curve, an
-// own arc held on it, an own line that starts at `origin` where a fixed arc starts. A chain of two
-// coincidents is not read, as today (D52).
+// one ID, or two fixed points at one place (`sameEnd`): at most `FIXED_JOIN` mm apart, and, when
+// the arc of the tangency is fixed too, within `FIXED_JOIN` of its radius. A common end of a line
+// and an arc is then: an end of the line and an end of the arc that are one end, or one coincident
+// whose two operands are one end with an end of the line and one end with an end of the arc. So
+// the rule reads the same from either side: an own line held on the outline's point of the other
+// curve, an own arc held on it, an own line that starts at `origin` where a fixed arc starts. A
+// chain of two coincidents is not read, as today (D52).
 // - Measured (J10, K12): without it the general form is solved at its double root (an own line
-//   3.7e-5 mm off the tangent, stiff under a drag; an own arc 1e-7 off; a fixed point 5e-7 inside
-//   the start of an arc of radius 3: not solved at all).
-// - By the radius, so that a point that is near in millimetres and far by the size of the arc is
-//   not taken (the review, codex 3: an arc of radius 1e-4 and a point 5e-7 inside its start; K12:
-//   as today). Whenever the adapter takes the common end, the analysis does too: the point is
-//   within `SHARED` (1e-6) of the size of the curves from the circle, and held on it.
-// - The function reads positions now, of fixed points only; it gets the points and the fixed set.
+//   3.7e-5 mm off the tangent, stiff under a drag; an own arc 1e-7 off, and 1e-3 from a rougher
+//   estimate; a fixed point 5e-7 inside the start of an arc of radius 3: not solved at all).
+// - By the radius when the arc is fixed, so that a point that is near in millimetres and far by
+//   the size of the arc is not taken (the review, codex 3: an arc of radius 1e-4 and a point 5e-7
+//   inside its start; K12: as today). Whenever the adapter takes the common end, the analysis
+//   does too: the point is within `SHARED` (1e-6) of the size of the curves from the circle, and
+//   held on it.
+// - By `FIXED_JOIN` mm alone when the arc is own: its radius is a variable, read from the estimate,
+//   and a rule that measured by it changed the form of the tangency while the arc was dragged
+//   through a radius of 0.8 (the third review, fable 7). The two fixed points are both held and at
+//   most 1e-6 mm apart, so the common-end form is off the exact tangent by no more than that,
+//   whatever the radius becomes.
+// - So the function reads positions, and a radius, of fixed entities only: numbers of the input,
+//   never a variable of the estimate. It gets the points, the radius of the arc when the arc is
+//   fixed, and the fixed set.
 export const FIXED_JOIN = 1e-6;
-export declare function sameEnd(p: Id, q: Id, radius: number, points: Record<Id, { x: number; y: number }>, fixed: ReadonlySet<Id>): boolean;
+export declare function sameEnd(p: Id, q: Id, arc: { fixed: true; radius: number } | { fixed: false }, points: Record<Id, { x: number; y: number }>, fixed: ReadonlySet<Id>): boolean;
 
 // The texts of the validator of the kind.
 export const OUTLINE_REFUSALS = {
@@ -322,7 +336,8 @@ export const OUTLINE_REFUSALS = {
 // as its own cannot be written into and sent back unchecked.
 export declare function curveProblem(curve: ImportedCurve, what: string): string | undefined;
 
-// The rule of an update for a kind that answers `entity` (an outline), parts 2 and 3 as one pass
+// The rule of an update when the kind of either entry, the one before or the one after, answers
+// `entity` (an outline; an edge updated into an outline, or back), parts 2 and 3 as one pass
 // over the constraints of the sketch, with no listing of either entry: for each operand that is
 // the entry's ID or under it (`operand === id || operand.startsWith(id + '/')`), the kind before
 // and the kind after. Gone: part 3 (`ENTITY_TAKEN`). Another kind: part 2, with this text. An
@@ -355,7 +370,7 @@ export interface ReadOutline {
 // An entry of the catalog: the shape of an import format of D55 (import/spec.ts) with another
 // result; `ImportFormatSpec<S, R = ReadTriangles>` gets the second parameter. `read` throws
 // `ImportFailure` (`unreadable`, `tooLarge`) as a mesh format does; `tooLarge` as soon as it has
-// read more than `OUTLINE_LIMITS.characters`, `.read` or `.readControl`, before any weld.
+// read more than `OUTLINE_LIMITS.bytes`, `.read` or `.readControl`, before any weld.
 export interface OutlineFormatSpec<S> {
   title: string;
   summary: string;
@@ -398,26 +413,36 @@ export declare const OUTLINE_FORMATS: { [F in OutlineFormat]: OutlineFormatSpec<
 // - `curves`, `byKind`, `control`: what the outline holds after the weld (by the `type` of each
 //   curve), and the control points of its splines.
 // - `ids`: the last number given of each kind, and the numbers not used (at most 20, and their
-//   count): `l1` to `l<lines>` but for `unused`. A count of curves does not say their IDs.
+//   count): `l1` to `l<lines>` but for `unused`. A count of curves does not say their IDs. When
+//   `unusedCount` is over the list, `ids.more` names the call that lists every ID (the query
+//   `entryCurves`, once the outline is in a sketch). `otherKind`: the IDs whose letter is not their
+//   type, at most 20: an arc of nearly a whole turn read as a circle keeps `a<n>`, so "the circles"
+//   are not `c1` to `c<circles>` alone.
 // - `welded`: ends moved onto another end; `moved`: the furthest any end was moved, mm, measured
-//   from where the file had it: never more than the weld.
-// - `reshaped`: arcs whose end was moved onto an end of another arc; `bent`: the furthest a quarter
-//   point of such an arc of the file lies off its new circle, mm: never more than the weld;
-//   `radius`: the largest change of a radius among them, mm (it can be large for a shallow arc,
-//   whose radius a file of few digits does not hold: K11).
+//   from where the file had it: never more than the weld (and its slack of 1e-9 mm).
+// - `reshaped`: arcs whose end was moved onto an end of another arc; `bent`: the furthest the arc
+//   of the file lies off the new circle of such an arc, mm, over the whole arc and not at sampled
+//   places: never more than the weld; `radius`: the largest change of a radius among them, mm. It
+//   has no bound: an arc whose sagitta is under the weld has no radius the digits of its file hold
+//   (L9). `reshapedArcs`: those arcs by their IDs with the radius before and after, at most 20, the
+//   largest change first: the centre of each (`<entry>/<id>/center`) moved with its radius.
 // - `closed`: arcs of nearly a whole turn read as circles, and splines closed onto their start.
-// - `dropped`: curves left out because they have no extent, in the file or after the weld;
-//   `duplicates`: curves left out because they lie on an earlier curve of the file.
+// - `dropped`: curves left out because they have no extent, in the file or after the weld (each
+//   counted once); `duplicates`: curves left out because they lie on an earlier curve of the file.
 // - `blocked`: open ends that have another end within the weld and could not be put on it (it
 //   would have gone further than the weld from its place in the file, or it is an end of an arc
-//   beside a line); `crowded`: open ends with more than eight other ends within the weld, which
-//   the weld leaves alone. Both are open and in `gaps`.
+//   beside a line, or of an arc that cannot give way); `crowded`: open ends that the weld leaves
+//   alone because it cannot tell their partner: more than eight other open ends within the weld,
+//   or more than 64 ends in the cells around (a search that is cut short proves nothing). Met ends
+//   around an end do not make a crowd. Both are open and in `gaps`.
 // - `open`: ends that are the end of no other curve; `gaps`: at most 20 of them that have another
-//   end within a hundred weld tolerances, the nearest first, with the distance.
+//   end within a hundred weld tolerances, the nearest first, with the distance to the nearest
+//   other end. `atMost`: the search around that end was cut short, so a nearer end may exist.
 // - `bounds`: mm, in the coordinates of the file.
 // - `notes`: in words, for the caller to read: the reader's (`about.notes`), then the gaps (with
 //   the weld that would close them only when the gap is beyond the weld), what was blocked or
-//   crowded, an arc whose radius changed by more than the weld, bounds under 1 mm or over 10 m ("is
+//   crowded, the arcs whose radius changed by more than the weld, by their IDs ("a3: 500 to 512;
+//   its centre moved with it"), bounds under 1 mm or over 10 m ("is
 //   the unit right?"), the cost of many curves or of many splines.
 export interface OutlineReport {
   format: OutlineFormat;
@@ -426,10 +451,11 @@ export interface OutlineReport {
   curves: number;
   byKind: Record<ImportedCurve['type'], number>;
   control: number;
-  ids: { lines: number; arcs: number; circles: number; splines: number; unused: Id[]; unusedCount: number };
+  ids: { lines: number; arcs: number; circles: number; splines: number; unused: Id[]; unusedCount: number; otherKind: { id: Id; type: ImportedCurve['type'] }[]; more?: string };
   welded: number;
   moved: number;
   reshaped: number;
+  reshapedArcs: { id: Id; was: number; radius: number }[];
   bent: number;
   radius: number;
   closed: number;
@@ -438,7 +464,7 @@ export interface OutlineReport {
   blocked: number;
   crowded: number;
   open: number;
-  gaps: { at: Vec2; distance: number }[];
+  gaps: { at: Vec2; distance: number; atMost?: true }[];
   bounds: { min: Vec2; max: Vec2 };
   notes: string[];
 }
@@ -447,7 +473,7 @@ export interface OutlineReport {
 //   malformed entity or path among them); the message has the place.
 // - `empty`: the file, or the layers asked for, hold no curve the format reads; the message lists
 //   the layers of the file and what was skipped.
-// - `tooLarge`: more characters, curves or control points than a reader takes, or after the weld
+// - `tooLarge`: more bytes, curves or control points than a reader takes, or after the weld
 //   more than an outline holds.
 export type OutlineOutcome =
   | { ok: true; curves: Record<Id, ImportedCurve>; report: OutlineReport }
@@ -470,39 +496,52 @@ export declare function importOutline<F extends OutlineFormat>(format: F, bytes:
 
 // The weld (design.md, "The weld"). Bounded in what it moves and in what it costs.
 // 0. Left out: a curve with no extent (a line or a control polygon under 1e-6 mm, a radius under
-//    it, a quadratic that returns to its start). Closed, whatever the tolerance: an arc of more than
-//    a half turn whose ends are within 1e-6 mm (a circle), a spline of four points or more
-//    likewise. Left out: a curve that lies on an earlier one (the same places within 1e-6 mm by
-//    distance, a line or a spline either way round), BEFORE the ends are looked at: a twin would
-//    make every end of its curve met.
+//    it whatever the sweep, a quadratic that returns to its start). Then closed, whatever the
+//    tolerance: an arc of more than a half turn whose ends are within 1e-6 mm (a circle), a spline
+//    of four points or more likewise. Until nothing changes, and a curve is counted once. Left out:
+//    a curve that lies on an earlier one (the same places within 1e-6 mm by distance, a line or a
+//    spline either way round), BEFORE the ends are looked at: a twin would make every end of its
+//    curve met.
 // 1. With a tolerance: an arc of more than a half turn, or a spline of four points or more, whose
-//    own two ends are within it, with no end of another curve near them, is closed. Otherwise the
-//    two ends of one curve are never welded to each other, and an end never goes to the place its
-//    own other end stands at.
+//    own two ends are within it, with no end of another curve near them, is closed. A search that
+//    was cut short has not shown that no end is near: the curve is then left as it is. Otherwise
+//    the two ends of one curve are never welded to each other, and an end never goes to the place
+//    its own other end stands at.
 // 2. An end is met when an end of another curve is within 1e-6 mm of it. Met ends never move.
 // 3. The pairs of an open end and an end of another curve within the tolerance, the nearest first
-//    (then by the order of the file). An end of a line or a spline goes onto the other end. **An
-//    end of an arc goes only onto an end of another arc** (of two, the later in the file first);
-//    beside a line or a spline the arc keeps the digits of its file, and when the other end cannot
-//    come to it the weld is not made. No end goes further than the tolerance from where the file
-//    had it.
+//    by their distance in units of 1e-9 mm, then by the order of the file. The partners of an open
+//    end are the open ends around it and the nearest met end. An end of a line or a spline goes
+//    onto the other end. **An end of an arc goes only onto an end of another arc** (of two open
+//    ends of arcs, the arc whose radius changes less in proportion gives way; then the later in the
+//    file); beside a line or a spline the arc keeps the digits of its file, and when the other end
+//    cannot come to it the weld is not made. No end goes further than the tolerance from where the
+//    file had it. "Within the tolerance" has a slack of 1e-9 mm everywhere, so a gap equal to the
+//    weld is closed wherever the file stands.
 // 4. An arc whose end went onto another arc's is the circle through its two ends and the middle
-//    of the arc of the file. The move is made only when that middle lies between the new ends the
-//    same way round and the quarter points of the arc of the file are within the tolerance of the
-//    new circle. The centre and the radius are not bounded: for a shallow arc they change much
-//    while the arc moves little, and the report says by how much. An arc whose ends stayed is the
-//    arc of the file, to the digit.
-// 5. Step 0 again.
-// The cost: every search is in cells around a place and looks at no more than 64 candidates; an
-// open end with more than 8 other ends within the tolerance is `crowded` and left alone, so the
-// pairs are at most 8 per end (the review, codex 7: 64 million pairs for 8000 lines between two
-// clusters). With a tolerance under 1e-6 only step 0 runs. The result is aligned with the input:
-// undefined where a curve was left out.
+//    of the arc of the file, computed relative to one of the three points. The move is made only
+//    when: the three points are not nearly in one line (the middle more than 1e-6 mm off the chord,
+//    the radius at most a million chords); the arc it gives is one the validator takes (its two
+//    ends on one radius); the middle lies between the new ends the same way round; and the whole
+//    arc of the file is within the tolerance of the new circle (the exact maximum: at its ends and
+//    where it is nearest to and furthest from the new centre). The centre and the radius are not
+//    bounded otherwise: for a shallow arc they change much while the arc moves little, and the
+//    report names the arcs. An arc whose ends stayed is the arc of the file, to the digit.
+// 5. Step 0 again; and, as the last thing, a curve the validator of the kind would refuse is left
+//    out (`dropped`): whatever the weld answers, the validator takes.
+// The cost: every search for ends is in the cells around a place and looks at no more than 64
+// candidates, whatever they are (`crowded` when cut short); an open end with more than 8 other
+// open ends within the tolerance is `crowded` and left alone, so the pairs are at most 9 per end
+// (the review, codex 7: 64 million pairs for 8000 lines between two clusters). A twin is looked for
+// among the curves that share all that places it (both ends; the centre and the radius; the ends
+// and the centre; the ends, the count and the mean of the control points), so curves that share
+// one point only are not compared (L7). With a tolerance under 1e-6 only steps 0 and 5 run. The
+// result is aligned with the input: undefined where a curve was left out.
 export interface Welded {
   curves: (ImportedCurve | undefined)[];
   welded: number;
   moved: number;
   reshaped: number;
+  reshapedArcs: { index: number; was: number; radius: number }[]; // every one, the largest change first
   bent: number;
   radius: number;
   closed: number;
@@ -515,8 +554,12 @@ export declare function weldOutline(curves: readonly ImportedCurve[], tolerance:
 // The IDs of the curves of a reader, in their order; before the weld, and not changed by it.
 export declare function outlineIds(curves: readonly ImportedCurve[]): Id[];
 // The ends that are the end of no other curve, and at most 20 of them with another end within a
-// hundred tolerances: cells of that size, the same bound on the candidates. After the limits of
-// an outline are checked (the review, fable 3: 3.5 ms per open end before; K6: 30 ms for 2000).
+// hundred tolerances, the nearest first. The nearest other end is looked for outward: in cells of
+// one tolerance, then of ten, then of a hundred, and the first size that has one gives it, so a
+// dense place a millimetre away does not hide the gap beside an end (the third review: L4). Every
+// search has the bound of 64 candidates; one that was cut short gives a distance that is an upper
+// bound (`atMost`). After the limits of an outline are checked (the review, fable 3: 3.5 ms per
+// open end before; K6).
 export declare function openEnds(curves: Iterable<ImportedCurve>, tolerance: number): { open: number; gaps: OutlineReport['gaps'] };
 
 // What a revised outline does to the entities of the one before it, for the answer of a tool and
@@ -634,25 +677,39 @@ export declare function listedCurve(curve: SketchCurve, geometry: { points: Reco
 // named through MCP at all (the second round of reviews, all three).
 // - `curve`: only the regions whose outer loop or one of whose holes holds this curve: the way from
 //   a curve of an outline (`board/l1`) to the region to extrude.
-// - `from`, `max`: the regions passed over, and the most listed. A page also ends when it has
-//   listed `REGION_PAGE_IDS` IDs, but never before its first region, however long its loop.
+// - `index`: only the region at this place among the regions of the sketch (`RegionRow.index`):
+//   what a capped row of `get_sketch` names, since the rows there are grouped and capped and their
+//   place is not this number.
+// - `holes`: list the loops of the holes too (`RegionRow.holeLoops`); without it a row has their
+//   count. No command needs them: a region is named by its outer loop.
+// - `from`, `max`: of the regions that match (`curve`, `index`), in their order in the sketch, how
+//   many are passed over and the most listed; `total` counts those that match. A page also ends
+//   when it has listed `REGION_PAGE_IDS` IDs (outer loops, and holes when listed), but never before
+//   its first region, however long its loop.
 export const SKETCH_REGIONS_ARGS = {
   sketch: { kind: 'sketch', title: 'Sketch' },
   curve: { kind: 'text', title: 'Curve', summary: 'Only the regions bounded by this curve, by its ID in the sketch (own, of an entry, or a copy).', optional: true },
-  from: { kind: 'number', title: 'From', summary: 'How many regions to pass over, for the next page.', optional: true, spec: { title: 'Regions to pass over', unit: 'count', integer: true, min: { value: 0 }, default: 0 } },
-  max: { kind: 'number', title: 'Most regions', summary: 'The most regions to list; `total` counts them all.', optional: true, spec: { title: 'Most regions to list', unit: 'count', integer: true, min: { value: 1 }, max: { value: 100 }, default: 20 } },
+  index: { kind: 'number', title: 'Region', summary: 'Only the region at this place among the regions of the sketch, as a row of get_sketch gives it.', optional: true, spec: { title: 'Place of the region', unit: 'count', integer: true, min: { value: 0 }, default: 0 } },
+  holes: { kind: 'flag', title: 'Holes', summary: 'List the curves of the holes of each region too; without it only their count.', optional: true },
+  from: { kind: 'number', title: 'From', summary: 'How many of the regions that match to pass over, for the next page.', optional: true, spec: { title: 'Regions to pass over', unit: 'count', integer: true, min: { value: 0 }, default: 0 } },
+  max: { kind: 'number', title: 'Most regions', summary: 'The most regions to list; `total` counts all that match.', optional: true, spec: { title: 'Most regions to list', unit: 'count', integer: true, min: { value: 1 }, max: { value: 100 }, default: 20 } },
 } as const satisfies ArgSpecs;
 export const REGION_PAGE_IDS = 2000;
 // - `ref`: the reference of the region as a command takes it, whole: `{ outerLoop: [...] }`.
-// - `index`: the place of the region among the regions of the sketch, which `from` counts.
-// - `holes`: the loops inside it, each by the IDs of its curves; `area`: mm², less the holes;
-//   `box`: of the outer loop, in the sketch.
+// - `index`: the place of the region among `SketchResult.regions`, whatever the filter and the page.
+// - `holes`: how many loops lie inside it; `holeLoops`, when asked for: each by the IDs of its
+//   curves. `area`: mm², less the holes; `box`: of the outer loop, in the sketch.
+// The IDs of the holes, and the filter by a curve of a hole, come from the kept profile of the
+// sketch (`context.sketch(sketch).profile.regions[i].holes[j].curves`, one ID per edge, made
+// unique), which the query `sketchContacts` reads already: `SketchResult.regions` holds the loops
+// as polylines, without IDs. No type of the result changes.
 export interface RegionRow {
   index: number;
   ref: { outerLoop: Id[] };
   area: number;
   box: [number, number, number, number];
-  holes: Id[][];
+  holes: number;
+  holeLoops?: Id[][];
 }
 // - `status`: `unavailable` when the sketch did not evaluate; `invalid` when its profile is (then
 //   it has no regions; the query `sketchContacts` says why).
@@ -722,14 +779,42 @@ export interface ImportOutlineAnswer {
   problems?: unknown;
   next: string;
 }
-// What runs where the engine is: the file as the server read it, and the arguments of the tool but
-// the path. In the bridge it is the internal tool `OUTLINE_BRIDGE_TOOL`, listed in `MUTATING` (the
-// app ends a draft before it runs); `changesDocument` answers for it by the call and its result:
-// a sketch was named and the answer has no `refused`. The app says it in its status line as it
-// says `_load`.
+// What runs where the engine is, in two steps (the third review: the app asks whether a call
+// changes the document BEFORE the call, so the question cannot read the answer).
+// - `prepareOutline` changes nothing: it resolves the options (for a replacement from `readWith`
+//   of the entry in the document of this engine), reads the file with `importOutline` and makes
+//   the command. It throws `ToolError` for what is refused before any command (a file that cannot
+//   be read, `replace` of an entry the sketch does not have).
+// - `outlineInto` is `prepareOutline`, then `execute` of that command when a sketch was named.
+// In the bridge it is the internal tool `OUTLINE_BRIDGE_TOOL` (as `_load` carries a document),
+// listed in `MUTATING`. Its arguments are JSON: the file travels as base64 (`FileEnvelope` of
+// tools.ts, which export uses the other way), since a `Uint8Array` does not survive
+// `JSON.stringify`. `outlineBytes` refuses a text of more than `4 * ceil(OUTLINE_LIMITS.bytes / 3)`
+// characters before it decodes anything (`tooLarge`), and decodes with what both Node and a
+// browser have (`atob`, as `base64` of tools.ts uses `btoa`).
+// - `changesDocument` answers for it as it does for `sketch_tool`: false without `sketch`;
+//   otherwise it prepares the command and asks its own `changes(command)` (a preview), false when
+//   the preparation throws. So a look, a file that cannot be read and a replacement the engine
+//   would refuse do not end a draft of the user. The file is then read twice, and only while a
+//   draft is open (the app asks `isDraft` first).
+// - A refused command comes back inside an answer that is `ok` (it carries the report), so the
+//   status line of the app reads the answer, not the outcome alone (`outlineSaid`): nothing for a
+//   look (as for a query), "AI: imported the outline <id> into <sketch>" when `entry` is there, and
+//   the refusal as an error when `refused` is.
 export const OUTLINE_BRIDGE_TOOL = '_outline';
-export declare function outlineInto(engine: { execute(command: CommandAfter): unknown }, file: { name: string; bytes: Uint8Array }, args: Omit<ImportOutlineArgs, 'path'>): ImportOutlineAnswer;
-export const outlineChangesDocument = (args: Omit<ImportOutlineArgs, 'path'>, answer: ImportOutlineAnswer): boolean => args.sketch !== undefined && answer.entry !== undefined && answer.refused === undefined;
+export type OutlineBridgeArgs = Omit<ImportOutlineArgs, 'path'> & { file: { name: string; base64: string } };
+export interface PreparedOutline {
+  report: OutlineReport;
+  id?: Id; // the entry, when a sketch was named
+  command?: CommandAfter; // `addExternal`, `updateExternal`, or the batch with the constraints of `remove`
+  revision?: OutlineRevision;
+}
+export declare function outlineBytes(base64: string): Uint8Array;
+export declare function prepareOutline(engine: { getState(): unknown }, file: { name: string; bytes: Uint8Array }, args: Omit<ImportOutlineArgs, 'path'>): PreparedOutline;
+export declare function outlineInto(engine: { getState(): unknown; execute(command: CommandAfter): unknown }, file: { name: string; bytes: Uint8Array }, args: Omit<ImportOutlineArgs, 'path'>): ImportOutlineAnswer;
+// The branch of `changesDocument` (tools.ts) for the internal tool; `changes` is that function's own.
+export declare function outlineChangesDocument(engine: { getState(): unknown }, args: OutlineBridgeArgs, changes: (command: CommandAfter) => boolean): boolean;
+export declare function outlineSaid(answer: ImportOutlineAnswer): { text: string; error: boolean } | undefined;
 
 // What `get_sketch` says of an outline, in the place of the generic row of an entry (which would
 // spread the stored curves and list every entity): the fields with their expressions, without
@@ -764,11 +849,11 @@ export const OUTLINE_OMITTED = (count: number): string => `${count} curves; get_
 
 // The rows `regions` of `get_sketch` (`regionRows`), capped: at most `regions` rows and a count of
 // the rest; an outer loop of more than `loop` IDs is printed as its count, its first `loop` IDs,
-// the entries its IDs are under, and the call that gives it whole (`query sketchRegions` with
-// `from` at its index and `max` 1). Measured before the cap (the review, fable 4): 33,841
+// the entries its IDs are under, its `index` among the regions of the sketch, and the call that
+// gives it whole (`query sketchRegions` with that `index`). Measured before the cap (the review, fable 4): 33,841
 // characters of `regions` for an outline of 1000 curves.
 export const SKETCH_SHOWN = { regions: 50, loop: 20 } as const;
-export type ShownLoop = { outerLoop: Id[] } | { count: number; first: Id[]; entries: Id[]; whole: string };
+export type ShownLoop = { outerLoop: Id[] } | { count: number; first: Id[]; entries: Id[]; index: number; whole: string };
 
 // ================================================================ 8. the app
 

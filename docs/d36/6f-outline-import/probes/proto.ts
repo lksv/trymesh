@@ -185,7 +185,7 @@ function vec2(v: unknown, what: string): Vec2 {
   return [finite(v[0], what), finite(v[1], what)];
 }
 
-export const OUTLINE_LIMITS = { curves: 2000, control: 2000, splinePoints: 64, localId: 32, arc: 1e-9 } as const;
+export const OUTLINE_LIMITS = { curves: 2000, control: 2000, splinePoints: 64, localId: 32, arc: 1e-9, arcMost: 1e-7 } as const;
 const OWN = new WeakSet<object>();
 const polygon = (points: Vec2[]): number => points.slice(1).reduce((sum, p, i) => sum + dist(points[i], p), 0);
 // What the validator refuses of one curve, or undefined. The rule the readers and the weld are held
@@ -202,7 +202,10 @@ export function curveProblem(curve: ImportedCurve): string | undefined {
       if (rs < 1e-6) return 'the radius is under the length tolerance';
       if (curve.start[0] === curve.end[0] && curve.start[1] === curve.end[1]) return 'the start and the end of the arc are one place; a whole turn is a circle';
       const scale = Math.max(1, ...[curve.center, curve.start, curve.end].flatMap((p) => [Math.abs(p[0]), Math.abs(p[1])]));
-      return Math.abs(rs - re) > OUTLINE_LIMITS.arc * scale ? `the start and the end of the arc are ${Math.abs(rs - re)} mm off one radius (at most ${OUTLINE_LIMITS.arc * scale})` : undefined;
+      // by the size of the coordinates, and never more than a tenth of the join: far from the origin the
+      // placement would otherwise move the end past it
+      const most = Math.min(OUTLINE_LIMITS.arc * scale, OUTLINE_LIMITS.arcMost);
+      return Math.abs(rs - re) > most ? `the start and the end of the arc are ${Math.abs(rs - re)} mm off one radius (at most ${most})` : undefined;
     }
     case 'spline': {
       const n = curve.points.length;
@@ -292,17 +295,19 @@ export interface OutlineReport {
   curves: number;
   byKind: Record<string, number>;
   control: number; // the control points of the splines kept
+  otherKind: { id: string; type: string }[]; // IDs whose letter is not their type: an arc read as a circle (at most 20)
   welded: number; // ends moved onto another end
   moved: number; // the furthest an end was moved, mm: never more than the weld
   reshaped: number; // arcs whose end moved onto an end of another arc: their circle is through the new ends and the old middle
-  bent: number; // the furthest a quarter point of the arc of the file lies off such a circle, mm: never more than the weld
-  radius: number; // the largest change of a radius of such an arc, mm (large for a shallow arc)
+  reshapedArcs: { id: string; was: number; radius: number }[]; // those arcs with their radius before and after (at most 20, the largest change first)
+  bent: number; // the furthest the arc of the file lies off such a circle, mm: never more than the weld
+  radius: number; // the largest change of a radius of such an arc, mm (without a bound for a shallow arc)
   closed: number; // arcs of nearly a whole turn read as circles, splines closed onto their start
   dropped: number; // curves with no extent, in the file or after the weld
   duplicates: number; // curves that lay on an earlier curve of the file, left out
   blocked: number; // open ends with another end within the weld that could not be put on it
-  crowded: number; // open ends with more than CROWD other ends within the weld: not welded
-  gaps: { at: Vec2; distance: number }[]; // open ends with another end near, the nearest first
+  crowded: number; // open ends in a crowd (more than CROWD open ends within the weld, or more than SEARCH ends around): not welded
+  gaps: { at: Vec2; distance: number; atMost?: true }[]; // open ends with another end near, the nearest first
   open: number; // ends that are the end of no other curve
   bounds?: { min: Vec2; max: Vec2 };
   about: ReadOutline['about'];
@@ -310,23 +315,42 @@ export interface OutlineReport {
 
 // The tolerance of a join of the sketch: ends this close are one place to the profile.
 export const JOIN = 1e-6;
-// An open end with more other ends than this within the weld is in a cluster the weld does not
-// resolve; and a search around an end looks at no more candidates than SEARCH.
+// An open end with more open ends than this within the weld is in a crowd the weld does not
+// resolve; and a search around a place looks at no more than SEARCH candidates, whatever they are.
 export const CROWD = 8;
 const SEARCH = 64;
+// The weld reaches this much further than its number, in mm, and pairs are ordered by their
+// distance in this unit: a gap equal to the weld, or two equal gaps, are then not decided by the
+// last bit of a difference of two coordinates (a thousandth of the join; the last bit of a
+// coordinate is under it up to some kilometres from the origin of the file).
+const SLACK = 1e-9;
 const angleOf = (center: Vec2, p: Vec2): number => Math.atan2(p[1] - center[1], p[0] - center[0]);
 const sweepOf = (center: Vec2, start: Vec2, end: Vec2): number => positive(angleOf(center, end) - angleOf(center, start)) || TAU;
 const onArc = (center: Vec2, start: Vec2, sweep: number, part: number): Vec2 => {
   const [r, a] = [dist(start, center), angleOf(center, start) + sweep * part];
   return [center[0] + r * Math.cos(a), center[1] + r * Math.sin(a)];
 };
-// The centre of the circle through three points; undefined when they are in one line.
+// The centre of the circle through three points, computed from the first of them (so that it does
+// not lose its digits far from the origin of the file); undefined when they are nearly in one
+// line: the middle less than JOIN off the chord, or a radius of more than FLAT chords.
+const FLAT = 1e6;
 const circleThrough = (a: Vec2, b: Vec2, c: Vec2): Vec2 | undefined => {
-  const d = 2 * (a[0] * (b[1] - c[1]) + b[0] * (c[1] - a[1]) + c[0] * (a[1] - b[1]));
-  const size = Math.max(dist(a, b), dist(b, c), dist(a, c));
-  if (!(Math.abs(d) > 1e-12 * size * size)) return undefined;
-  const [a2, b2, c2] = [a[0] * a[0] + a[1] * a[1], b[0] * b[0] + b[1] * b[1], c[0] * c[0] + c[1] * c[1]];
-  return [(a2 * (b[1] - c[1]) + b2 * (c[1] - a[1]) + c2 * (a[1] - b[1])) / d, (a2 * (c[0] - b[0]) + b2 * (a[0] - c[0]) + c2 * (b[0] - a[0])) / d];
+  const [bx, by, cx, cy] = [b[0] - a[0], b[1] - a[1], c[0] - a[0], c[1] - a[1]];
+  const d = 2 * (bx * cy - by * cx);
+  const chord = Math.hypot(cx, cy);
+  if (!(chord > 0) || !(Math.abs(d) / (2 * chord) > JOIN)) return undefined; // |d| / (2 chord) is how far b is off the line a c
+  const [b2, c2] = [bx * bx + by * by, cx * cx + cy * cy];
+  const [ux, uy] = [(cy * b2 - by * c2) / d, (bx * c2 - cx * b2) / d];
+  if (Math.hypot(ux, uy) > FLAT * chord) return undefined;
+  return [a[0] + ux, a[1] + uy];
+};
+// How far the arc of the file lies off a circle, exactly: at its ends, and where it is furthest
+// from and nearest to the centre of that circle when it passes there.
+const offCircle = (arc: { center: Vec2; start: Vec2; sweep: number }, center: Vec2, radius: number): number => {
+  const from = angleOf(arc.center, arc.start);
+  const towards = Math.atan2(arc.center[1] - center[1], arc.center[0] - center[0]);
+  const parts = [0, 1, ...[towards, towards + Math.PI].map((angle) => positive(angle - from) / arc.sweep).filter((part) => part < 1)];
+  return Math.max(...parts.map((part) => Math.abs(dist(onArc(arc.center, arc.start, arc.sweep, part), center) - radius)));
 };
 const polygonOf = (points: Vec2[]): number => points.slice(1).reduce((sum, p, i) => sum + dist(points[i], p), 0);
 // A curve with no extent: what the validator of the kind would refuse for it.
@@ -353,32 +377,31 @@ const closedOnto = (curve: ImportedCurve, reach: number): ImportedCurve | undefi
   }
   return undefined;
 };
-// Points in cells, for "what is within a distance of here" with a bound on the work.
+// Points in cells, for "what is within a distance of here" with a bound on the work: a search
+// stops when it has looked at SEARCH items, whatever they are, and says so (`full`). A search that
+// is full has proved nothing about what it did not reach.
+export const work = { looked: 0 };
 class Cells<T> {
   private readonly cells = new Map<string, { at: Vec2; item: T }[]>();
   constructor(private readonly size: number) {}
-  private key(x: number, y: number): string {
-    return `${x},${y}`;
-  }
   add(at: Vec2, item: T): void {
-    const key = this.key(Math.floor(at[0] / this.size), Math.floor(at[1] / this.size));
+    const key = `${Math.floor(at[0] / this.size)},${Math.floor(at[1] / this.size)}`;
     const list = this.cells.get(key);
     if (list) list.push({ at, item });
     else this.cells.set(key, [{ at, item }]);
   }
-  // the items within `reach` (at most the size of a cell) of a place that `take` accepts; the
-  // search stops after `most` of them or after SEARCH candidates were looked at (`full`)
+  // the items within `reach` (at most the size of a cell) of a place that `take` accepts
   near(p: Vec2, reach: number, take: (item: T) => boolean, most = Infinity): { found: { item: T; d: number }[]; full: boolean } {
     const found: { item: T; d: number }[] = [];
-    let seen = 0;
+    let looked = 0;
     const [cx, cy] = [Math.floor(p[0] / this.size), Math.floor(p[1] / this.size)];
     for (let dx = -1; dx <= 1; dx++)
       for (let dy = -1; dy <= 1; dy++)
-        for (const { at, item } of this.cells.get(this.key(cx + dx, cy + dy)) ?? []) {
-          if (!take(item)) continue;
-          if (++seen > SEARCH) return { found, full: true };
+        for (const { at, item } of this.cells.get(`${cx + dx},${cy + dy}`) ?? []) {
+          if (++looked > SEARCH) return { found, full: true };
+          work.looked++;
           const d = dist(at, p);
-          if (d <= reach && found.push({ item, d }) >= most) return { found, full: false };
+          if (d <= reach && take(item) && found.push({ item, d }) >= most) return { found, full: false };
         }
     return { found, full: false };
   }
@@ -392,40 +415,99 @@ export const sameCurve = (a: ImportedCurve, b: ImportedCurve): boolean => {
   if (a.type === 'spline' && b.type === 'spline' && a.points.length === b.points.length) return a.points.every((p, i) => samePlace(p, b.points[i])) || a.points.every((p, i) => samePlace(p, b.points[b.points.length - 1 - i]));
   return false;
 };
-// the places a curve is found under: by distance in the cells around them, never by one rounding
-const anchors = (curve: ImportedCurve): Vec2[] => (curve.type === 'line' ? [curve.a, curve.b] : curve.type === 'circle' ? [curve.center] : curve.type === 'arc' ? [curve.start] : [curve.points[0], curve.points[curve.points.length - 1]]);
+// Curves found by all that places them, not by one of their points, a step at a time: a line by
+// one end, then the other (either way round); a circle by its centre, then its radius; an arc by
+// its start, its end, then its centre; a spline by the count of its points and one end, the other
+// end (either way round), then the mean of its points. Each step looks into the nine cells around
+// (three for a radius), so a twin is found wherever the cells fall, a curve with nothing at its
+// first place costs nine looks, and curves that share one point, one centre or two ends only are
+// not compared: 2000 lines from one point, 2000 circles about one centre or 2000 arcs between two
+// points cost as 2000 curves apart.
+type TwinEntry<T> = { curve: ImportedCurve; item: T; order: number };
+class Twins<T> {
+  private readonly root = new Map<string, unknown>();
+  private count = 0;
+  private static keys(curve: ImportedCurve): string[][][] {
+    const of = (...values: number[]): number[] => values.map((v) => Math.floor(v / JOIN));
+    const named = (name: string, ...steps: number[][]): string[][] => steps.map((step, level) => [-1, 0, 1].flatMap((dx) => (step.length === 1 ? [`${level === 0 ? name : ''}${step[0] + dx}`] : [-1, 0, 1].map((dy) => `${level === 0 ? name : ''}${step[0] + dx},${step[1] + dy}`))));
+    if (curve.type === 'line') return [named('l', of(...curve.a), of(...curve.b)), named('l', of(...curve.b), of(...curve.a))];
+    if (curve.type === 'circle') return [named('c', of(...curve.center), of(curve.radius))];
+    if (curve.type === 'arc') return [named('a', of(...curve.start), of(...curve.end), of(...curve.center))];
+    const n = curve.points.length;
+    const [first, last] = [curve.points[0], curve.points[n - 1]];
+    const mean = of(curve.points.reduce((sum, p) => sum + p[0], 0) / n, curve.points.reduce((sum, p) => sum + p[1], 0) / n);
+    return [named(`s${n}|`, of(...first), of(...last), mean), named(`s${n}|`, of(...last), of(...first), mean)];
+  }
+  // each step of a key lists its cell and those around it; the cell itself is the middle one
+  private static own = (step: string[]): string => step[(step.length - 1) / 2];
+  add(curve: ImportedCurve, item: T): void {
+    const order = this.count++;
+    for (const steps of Twins.keys(curve)) {
+      let node = this.root;
+      steps.forEach((step, level) => {
+        const [key, last] = [Twins.own(step), level === steps.length - 1];
+        let next = node.get(key);
+        if (!next) node.set(key, (next = last ? [] : new Map<string, unknown>()));
+        if (last) (next as TwinEntry<T>[]).push({ curve, item, order });
+        else node = next as Map<string, unknown>;
+      });
+    }
+  }
+  // the earliest curve added that lies on this one and that `take` accepts
+  find(curve: ImportedCurve, take: (item: T) => boolean = () => true): T | undefined {
+    const [steps] = Twins.keys(curve);
+    let best: TwinEntry<T> | undefined;
+    const walk = (node: Map<string, unknown>, level: number): void => {
+      for (const key of steps[level]) {
+        const next = node.get(key);
+        if (!next) continue;
+        if (level < steps.length - 1) walk(next as Map<string, unknown>, level + 1);
+        else
+          for (const entry of next as TwinEntry<T>[]) {
+            work.looked++;
+            if ((!best || entry.order < best.order) && take(entry.item) && sameCurve(curve, entry.curve)) best = entry;
+          }
+      }
+    };
+    walk(this.root, 0);
+    return (best as TwinEntry<T> | undefined)?.item;
+  }
+}
 // The curves of a list that lie on an earlier one, by their index.
 function duplicatesOf(curves: (ImportedCurve | undefined)[]): number[] {
-  const cells = new Cells<number>(JOIN);
+  const kept = new Twins<number>();
   const out: number[] = [];
   curves.forEach((curve, index) => {
     if (!curve) return;
-    const twin = cells.near(anchors(curve)[0], JOIN, (other) => sameCurve(curve, curves[other] as ImportedCurve), 1).found.length > 0;
-    if (twin) out.push(index);
-    else for (const at of anchors(curve)) cells.add(at, index);
+    if (kept.find(curve) !== undefined) out.push(index);
+    else kept.add(curve, index);
   });
   return out;
 }
 
 // The weld (design.md, "The weld"). In this order:
-// 0. What has no extent is left out; a curve whose own ends are within JOIN is closed (an arc of
-//    more than a half turn a circle), whatever the tolerance; a curve that lies on an earlier one
-//    is left out, before the ends are looked at (a twin would make every end of its curve met).
+// 0. What has no extent is left out; then a curve whose own ends are within JOIN is closed (an arc
+//    of more than a half turn a circle), whatever the tolerance; until nothing changes. A curve
+//    that lies on an earlier one is left out, before the ends are looked at.
 // 1. With a tolerance: an arc of more than a half turn, or a spline, whose own two ends are within
-//    it, with no end of another curve near them, is closed.
+//    it, with no end of another curve near them, is closed. A search that was cut short proves
+//    nothing: the curve is then left as it is.
 // 2. An end is met when an end of another curve is within JOIN of it. Met ends never move.
 // 3. The pairs of an open end and an end of another curve within the tolerance, the nearest first.
 //    An end of a line or a spline goes onto the other end; an end of an arc only onto an end of
-//    another arc, and only when the arc of the file stays within the tolerance of the new one. An
-//    end never goes further than the tolerance from where the file had it, nor to the place its
-//    own other end stands at. An end with more than CROWD ends around it is left alone.
-// 4. What has no extent then is left out, and what lies on an earlier curve.
+//    another arc. An end never goes further than the tolerance from where the file had it, nor to
+//    the place its own other end stands at. An open end with more than CROWD open ends around it,
+//    or whose search was cut short, is left alone; of the met ends around it only the nearest is
+//    a partner.
+// 4. What has no extent then is left out, and what lies on an earlier curve; and, as the last
+//    thing, whatever the validator of the kind would refuse.
 // The result is aligned with the input: undefined where a curve was left out.
 export interface Welded {
   curves: (ImportedCurve | undefined)[];
   welded: number;
   moved: number;
   reshaped: number;
+  reshapedArcs: { index: number; was: number; radius: number }[];
   bent: number;
   radius: number;
   closed: number;
@@ -438,17 +520,40 @@ export function weld(read: ReadCurve[], tolerance: number): Welded {
   const w = tolerance >= JOIN ? tolerance : 0;
   const curves: (ImportedCurve | undefined)[] = read.map(({ curve }) => curve);
   const count = { welded: 0, moved: 0, reshaped: 0, bent: 0, radius: 0, closed: 0, dropped: 0, duplicates: 0, blocked: 0, crowded: 0 };
+  const reshapedArcs: Welded['reshapedArcs'] = [];
+  // what has no extent goes first, whatever its ends; then what closes onto itself; again, since a
+  // curve that was closed is another curve (a circle with no radius). A curve is counted once.
   const tidy = (): void => {
     curves.forEach((curve, index) => {
-      if (!curve) return;
-      const closed = closedOnto(curve, JOIN);
-      if (closed) (curves[index] = closed), count.closed++;
-      else if (noExtent(curve)) (curves[index] = undefined), count.dropped++;
+      let now = curve;
+      let closed = false;
+      for (let round = 0; now && round < 3; round++) {
+        if (noExtent(now)) {
+          now = undefined;
+          break;
+        }
+        const next = closedOnto(now, JOIN);
+        if (!next) break;
+        now = next;
+        closed = true;
+      }
+      if (now === curve) return;
+      curves[index] = now;
+      if (!now) count.dropped++;
+      else if (closed) count.closed++;
     });
     for (const index of duplicatesOf(curves)) (curves[index] = undefined), count.duplicates++;
   };
+  // the last thing: nothing leaves the weld that the validator of the kind would refuse
+  const done = (): Welded => {
+    curves.forEach((curve, index) => {
+      if (curve && curveProblem(curve)) (curves[index] = undefined), count.dropped++;
+    });
+    reshapedArcs.sort((p, q) => Math.abs(q.radius - q.was) - Math.abs(p.radius - p.was));
+    return { curves, ...count, reshapedArcs };
+  };
   tidy();
-  if (w === 0) return { curves, ...count };
+  if (w === 0) return done();
   interface End {
     curve: number;
     which: 0 | 1;
@@ -460,8 +565,10 @@ export function weld(read: ReadCurve[], tolerance: number): Welded {
   }
   const endsOf = (curve: ImportedCurve): Vec2[] => (curve.type === 'line' ? [curve.a, curve.b] : curve.type === 'arc' ? [curve.start, curve.end] : curve.type === 'spline' && dist(curve.points[0], curve.points[curve.points.length - 1]) > 0 ? [curve.points[0], curve.points[curve.points.length - 1]] : []);
   const collect = (): End[] => curves.flatMap((curve, index) => (curve ? endsOf(curve).map((p, which): End => ({ curve: index, which: which as 0 | 1, was: p, at: p, settled: false, crowded: false, wanted: false })) : []));
-  const cellsOf = (ends: End[]): Cells<End> => {
-    const cells = new Cells<End>(w);
+  // within the weld: its number and the slack
+  const reach = w + SLACK;
+  const cellsOf = (ends: End[], size = reach): Cells<End> => {
+    const cells = new Cells<End>(size);
     for (const e of ends) cells.add(e.at, e);
     return cells;
   };
@@ -470,17 +577,19 @@ export function weld(read: ReadCurve[], tolerance: number): Welded {
     const all = cellsOf(collect());
     curves.forEach((curve, index) => {
       if (!curve || (curve.type !== 'arc' && curve.type !== 'spline')) return;
-      const closed = closedOnto(curve, w);
-      if (!closed) return;
-      if (endsOf(curve).some((p) => all.near(p, w, (e) => e.curve !== index, 1).found.length > 0)) return;
+      const closed = closedOnto(curve, reach);
+      if (!closed || noExtent(closed)) return;
+      // another end near, or a search that could not say: the curve stays as it is
+      if (endsOf(curve).some((p) => ((near) => near.full || near.found.length > 0)(all.near(p, reach, (e) => e.curve !== index, 1)))) return;
       if (curve.type === 'spline') (count.welded++, (count.moved = Math.max(count.moved, dist(curve.points[0], curve.points[curve.points.length - 1]))));
       curves[index] = closed;
       count.closed++;
     });
   }
-  // 2. the ends: met, crowded, open
+  // 2. the ends: met, in a crowd, open
   const ends = collect();
   const cells = cellsOf(ends);
+  const fine = cellsOf(ends, JOIN); // "met" is asked in cells of the join: a dense place does not cut that search short
   const order = new Map(ends.map((e, i) => [e, i]));
   const partner = new Map<End, End>();
   for (let i = 0; i + 1 < ends.length; i++) if (ends[i].curve === ends[i + 1].curve) (partner.set(ends[i], ends[i + 1]), partner.set(ends[i + 1], ends[i]));
@@ -488,29 +597,40 @@ export function weld(read: ReadCurve[], tolerance: number): Welded {
   curves.forEach((curve, index) => {
     if (curve?.type === 'arc') arcs.set(index, { center: curve.center, radius: dist(curve.start, curve.center), sweep: sweepOf(curve.center, curve.start, curve.end), start: curve.start, now: curve.center, moved: false });
   });
-  const pairs: { a: End; b: End; d: number }[] = [];
+  const unknown = new Set<End>();
   for (const e of ends) {
-    const met = cells.near(e.at, JOIN, (f) => f.curve !== e.curve, 1);
+    const met = fine.near(e.at, JOIN, (f) => f.curve !== e.curve, 1);
     e.settled = met.found.length > 0;
+    if (!e.settled && met.full) unknown.add(e);
+  }
+  const pairs: { a: End; b: End; d: number }[] = [];
+  const candidates = new Map<End, { item: End; d: number }[]>();
+  for (const e of ends) {
     if (e.settled) continue;
-    const around = cells.near(e.at, w, (f) => f.curve !== e.curve, CROWD + 1);
-    e.crowded = met.full || around.full || around.found.length > CROWD;
+    const around = cells.near(e.at, reach, (f) => f.curve !== e.curve);
     e.wanted = around.found.length > 0;
+    const open = around.found.filter(({ item }) => !item.settled);
+    // a crowd is of open ends: the met ends around (the vertices of a polyline of short segments) are not it
+    e.crowded = unknown.has(e) || around.full || open.length > CROWD;
+    const nearestMet = around.found.filter(({ item }) => item.settled).sort((p, q) => p.d - q.d)[0];
+    candidates.set(e, [...open, ...(nearestMet ? [nearestMet] : [])]);
   }
   for (const a of ends) {
     if (a.settled || a.crowded) continue;
-    for (const { item: b, d } of cells.near(a.at, w, (f) => f.curve !== a.curve && !f.crowded).found) {
+    for (const { item: b, d } of candidates.get(a) ?? []) {
+      if (b.crowded) continue;
       if (!b.settled && (order.get(b) as number) < (order.get(a) as number)) continue; // two open ends: once
       pairs.push({ a, b, d });
     }
   }
-  pairs.sort((p, q) => p.d - q.d || (order.get(p.a) as number) - (order.get(q.a) as number) || (order.get(p.b) as number) - (order.get(q.b) as number));
+  const unit = (d: number): number => Math.round(d / SLACK);
+  pairs.sort((p, q) => unit(p.d) - unit(q.d) || (order.get(p.a) as number) - (order.get(q.a) as number) || (order.get(p.b) as number) - (order.get(q.b) as number));
   const isArc = (e: End): boolean => curves[e.curve]?.type === 'arc';
   // 3. whether an end may go onto the end `stay`, and for an arc the centre it then has
-  const mayGo = (e: End, stay: End): { center?: Vec2 } | undefined => {
+  const mayGo = (e: End, stay: End): { center?: Vec2; change?: number } | undefined => {
     const to = stay.at;
     const mate = partner.get(e) as End;
-    if (dist(e.was, to) > w || dist(mate.at, to) <= JOIN) return undefined;
+    if (dist(e.was, to) > reach || dist(mate.at, to) <= JOIN) return undefined;
     const curve = curves[e.curve] as ImportedCurve;
     if (curve.type !== 'arc') return {};
     // an arc gives way to another arc only: beside a line or a spline it keeps the digits of its file
@@ -522,17 +642,25 @@ export function weld(read: ReadCurve[], tolerance: number): Welded {
     const center = circleThrough(start, middle, end);
     if (!center) return undefined;
     const r = dist(start, center);
-    const sweep = sweepOf(center, start, end);
-    // the middle is between the ends the same way round, and the quarter points of the arc of the file are on the new circle within the weld
-    if (!(positive(angleOf(center, middle) - angleOf(center, start)) < sweep)) return undefined;
-    if ([0.25, 0.75].some((part) => Math.abs(dist(onArc(arc.center, arc.start, arc.sweep, part), center) - r) > w)) return undefined;
-    return { center };
+    // the arc it makes is one the validator takes (its two ends on one radius), the middle is
+    // between the ends the same way round, and the arc of the file is nowhere further than the
+    // weld from the new circle
+    if (curveProblem({ type: 'arc', center, start, end })) return undefined;
+    if (!(positive(angleOf(center, middle) - angleOf(center, start)) < sweepOf(center, start, end))) return undefined;
+    if (offCircle(arc, center, r) > reach) return undefined;
+    return { center, change: Math.abs(r - arc.radius) / arc.radius };
   };
   for (const { a, b } of pairs) {
     if (a.settled && b.settled) continue;
     const free = [a, b].filter((e) => !e.settled);
-    // who moves: of two open ends a line or a spline before an arc, then the later of the file
-    const movers = free.length === 2 ? (isArc(a) !== isArc(b) ? (isArc(a) ? [b, a] : [a, b]) : [a, b].sort((p, q) => (order.get(q) as number) - (order.get(p) as number))) : free;
+    // who moves: of two open ends a line or a spline before an arc; of two arcs the one whose
+    // radius changes less in proportion, then the later of the file
+    const later = [a, b].sort((p, q) => (order.get(q) as number) - (order.get(p) as number));
+    let movers = free.length === 2 ? (isArc(a) !== isArc(b) ? (isArc(a) ? [b, a] : [a, b]) : later) : free;
+    if (free.length === 2 && isArc(a) && isArc(b)) {
+      const change = (e: End): number => mayGo(e, e === a ? b : a)?.change ?? Infinity;
+      movers = [...later].sort((p, q) => unit(change(p)) - unit(change(q)));
+    }
     for (const mover of movers) {
       const stay = mover === a ? b : a;
       const how = mayGo(mover, stay);
@@ -546,8 +674,9 @@ export function weld(read: ReadCurve[], tolerance: number): Welded {
   for (const e of ends) {
     const d = dist(e.was, e.at);
     if (d > 0) (count.welded++, (count.moved = Math.max(count.moved, d)));
+    if (e.settled) continue;
     if (e.crowded) count.crowded++;
-    else if (e.wanted && !e.settled) count.blocked++;
+    else if (e.wanted) count.blocked++;
   }
   // the curves again
   const at = new Map<number, [Vec2, Vec2]>();
@@ -564,37 +693,48 @@ export function weld(read: ReadCurve[], tolerance: number): Welded {
       if (!arc.moved) return;
       const r = dist(first, arc.now);
       count.reshaped++;
+      reshapedArcs.push({ index, was: arc.radius, radius: r });
       count.radius = Math.max(count.radius, Math.abs(r - arc.radius));
-      count.bent = Math.max(count.bent, ...[0.25, 0.75].map((part) => Math.abs(dist(onArc(arc.center, arc.start, arc.sweep, part), arc.now) - r)));
+      count.bent = Math.max(count.bent, offCircle(arc, arc.now, r));
       curves[index] = { type: 'arc', center: arc.now, start: first, end: last };
     }
   });
   tidy();
-  return { curves, ...count };
+  return done();
 }
 
 // The ends of an outline that are the end of no other curve, and of them at most 20 with another
-// end within a hundred tolerances, the nearest first. Cells of a hundred tolerances and a bound on
-// the candidates looked at, so that curves that do not meet at all cost nothing more (the review:
-// 3.5 ms per open end with cells of one tolerance).
+// end within a hundred tolerances, the nearest first. The nearest other end is looked for outward:
+// in cells of one tolerance, then of ten, then of a hundred, and the first size that has one gives
+// it, so a dense place a millimetre away does not hide a gap beside the end (the third review).
+// Every search is bounded; one that was cut short gives a distance that is an upper bound
+// (`atMost`), and an end whose search for a met end was cut short is counted as open.
 export function openEnds(curves: Iterable<ImportedCurve>, tolerance: number): { open: number; gaps: OutlineReport['gaps'] } {
-  const reach = 100 * Math.max(tolerance, JOIN);
-  const ends: { curve: number; at: Vec2 }[] = [];
+  const step = Math.max(tolerance, JOIN);
+  type E = { curve: number; at: Vec2 };
+  const ends: E[] = [];
   let index = 0;
   for (const curve of curves) {
     const own = curve.type === 'line' ? [curve.a, curve.b] : curve.type === 'arc' ? [curve.start, curve.end] : curve.type === 'spline' && dist(curve.points[0], curve.points[curve.points.length - 1]) > 0 ? [curve.points[0], curve.points[curve.points.length - 1]] : [];
     for (const at of own) ends.push({ curve: index, at });
     index++;
   }
-  const [fine, coarse] = [new Cells<{ curve: number; at: Vec2 }>(JOIN), new Cells<{ curve: number; at: Vec2 }>(reach)];
-  for (const e of ends) (fine.add(e.at, e), coarse.add(e.at, e));
+  const fine = new Cells<E>(JOIN);
+  const rings = [1, 10, 100].map((times) => ({ reach: times * step, cells: new Cells<E>(times * step) }));
+  for (const e of ends) (fine.add(e.at, e), rings.forEach((ring) => ring.cells.add(e.at, e)));
   const gaps: OutlineReport['gaps'] = [];
   let open = 0;
   for (const e of ends) {
     if (fine.near(e.at, JOIN, (f) => f.curve !== e.curve, 1).found.length > 0) continue;
     open++;
-    const others = coarse.near(e.at, reach, (f) => f.curve !== e.curve).found;
-    if (others.length > 0) gaps.push({ at: e.at, distance: Math.min(...others.map(({ d }) => d)) });
+    let cut = false;
+    for (const ring of rings) {
+      const { found, full } = ring.cells.near(e.at, ring.reach, (f) => f.curve !== e.curve);
+      cut ||= full;
+      if (found.length === 0) continue;
+      gaps.push({ at: e.at, distance: Math.min(...found.map(({ d }) => d)), ...(cut ? { atMost: true as const } : {}) });
+      break;
+    }
   }
   gaps.sort((p, q) => p.distance - q.distance);
   return { open, gaps: gaps.slice(0, 20) };
@@ -610,11 +750,13 @@ export function assemble(read: ReadOutline, tolerance = 1e-2): { curves: Record<
   const made = weld(read.curves, tolerance);
   const byKind: Record<string, number> = { line: 0, arc: 0, circle: 0, spline: 0 };
   const curves: Record<string, ImportedCurve> = {};
+  const otherKind: OutlineReport['otherKind'] = [];
   let control = 0;
   made.curves.forEach((curve, index) => {
     if (!curve) return;
     curves[ids[index]] = curve;
     byKind[curve.type]++;
+    if (curve.type[0] !== ids[index][0] && otherKind.length < 20) otherKind.push({ id: ids[index], type: curve.type });
     if (curve.type === 'spline') control += curve.points.length;
   });
   const kept = Object.values(curves);
@@ -622,8 +764,8 @@ export function assemble(read: ReadOutline, tolerance = 1e-2): { curves: Record<
   if (kept.length > OUTLINE_LIMITS.curves) throw new Error(`tooLarge: ${kept.length} curves, more than the ${OUTLINE_LIMITS.curves} an outline holds`);
   if (control > OUTLINE_LIMITS.control) throw new Error(`tooLarge: ${control} control points of splines, more than the ${OUTLINE_LIMITS.control} an outline holds`);
   const bounds = outlineBox(kept);
-  const { curves: _, ...numbers } = made;
-  return { curves, report: { curves: kept.length, byKind, control, ...numbers, ...openEnds(kept, tolerance), ...(bounds ? { bounds } : {}), about: read.about } };
+  const { curves: _, reshapedArcs, ...numbers } = made;
+  return { curves, report: { curves: kept.length, byKind, control, otherKind, ...numbers, reshapedArcs: reshapedArcs.slice(0, 20).map(({ index, was, radius }) => ({ id: ids[index], was, radius })), ...openEnds(kept, tolerance), ...(bounds ? { bounds } : {}), about: read.about } };
 }
 export const importOutline = (text: string, options: { layers?: string[]; unit?: string; weld?: number } = {}): { curves: Record<string, ImportedCurve>; report: OutlineReport } => assemble(readDxf(text, options), options.weld);
 
@@ -635,8 +777,8 @@ export const importOutline = (text: string, options: { layers?: string[]; unit?:
 //   (a swap in the order of the file, a curve put in before it). Places are compared by distance
 //   (within JOIN), a line or a spline either way round.
 export function outlineRevision(before: Record<string, ImportedCurve>, after: Record<string, ImportedCurve>): { kept: number; changed: number; added: string[]; removed: string[]; renamed: { id: string; was: string }[] } {
-  const cells = new Cells<string>(JOIN);
-  for (const [id, curve] of Object.entries(before)) for (const at of anchors(curve)) cells.add(at, id);
+  const old = new Twins<string>();
+  for (const [id, curve] of Object.entries(before)) old.add(curve, id);
   const has = (o: object, key: string): boolean => Object.prototype.hasOwnProperty.call(o, key);
   const renamed: { id: string; was: string }[] = [];
   let [kept, changed] = [0, 0];
@@ -644,8 +786,8 @@ export function outlineRevision(before: Record<string, ImportedCurve>, after: Re
     const here = has(before, id);
     if (here) kept++;
     if (here && sameCurve(before[id], curve)) continue;
-    const old = cells.near(anchors(curve)[0], JOIN, (other) => other !== id && sameCurve(before[other], curve), 1).found[0]?.item;
-    if (old !== undefined) renamed.push({ id, was: old });
+    const was = old.find(curve, (other) => other !== id);
+    if (was !== undefined) renamed.push({ id, was });
     else if (here) changed++;
   }
   return { kept, changed, added: Object.keys(after).filter((id) => !has(before, id)), removed: Object.keys(before).filter((id) => !has(after, id)), renamed };

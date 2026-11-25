@@ -82,13 +82,15 @@ describe('J: the reviews', () => {
     expect(Math.abs(dist(q.start, q.center) - 30)).toBeLessThanOrEqual(0.01);
   });
 
-  it('J5: two arcs that meet with a gap: the later is re-centred within the weld', () => {
+  it('J5: two arcs that meet with a gap: one of them gives way within the weld', () => {
     for (const gap of [0.0007, 0.005, 0.02]) {
       const first = arc([1.2345, 2.3456], 10, 0, 90);
       const second = arc([1.2345 + gap, 2.3456 - gap / 2], 10, 90, 180);
       const made = assemble(read(first, second));
-      const q = made.curves.a2 as { center: Vec2; start: Vec2; end: Vec2 };
-      console.log(`J5 gap ${gap}:`, brief(made.report), '|rs − re|', Math.abs(dist(q.start, q.center) - dist(q.end, q.center)).toExponential(2), 'radius', dist(q.start, q.center).toFixed(6), 'centre moved', dist(q.center, (second as { center: Vec2 }).center).toExponential(2));
+      // the arc that gave way: of the two, the one whose radius changes less in proportion
+      const [id, was] = made.report.reshapedArcs[0]?.id === 'a1' ? ['a1', first] : ['a2', second];
+      const q = made.curves[id] as { center: Vec2; start: Vec2; end: Vec2 };
+      console.log(`J5 gap ${gap}:`, brief(made.report), JSON.stringify(made.report.reshapedArcs), '|rs − re|', Math.abs(dist(q.start, q.center) - dist(q.end, q.center)).toExponential(2), 'radius', dist(q.start, q.center).toFixed(6), 'centre moved', dist(q.center, (was as { center: Vec2 }).center).toExponential(2));
       expect(made.report.moved).toBeLessThanOrEqual(0.01);
       expect(made.report.bent).toBeLessThanOrEqual(0.01);
     }

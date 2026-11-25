@@ -100,8 +100,11 @@ function transformOf(text: string | undefined, what: string): Matrix {
   return m;
 }
 
+// A table that is looked up by text of the file or of the caller has no prototype: `constructor`
+// and `__proto__` are then names like any other, found in no table.
+const table = <T>(rows: Record<string, T>): Record<string, T> => Object.assign(Object.create(null) as Record<string, T>, rows);
 // the root's `width` and `height`, in millimetres
-const UNIT_MM: Record<string, number> = { mm: 1, cm: 10, in: 25.4, pt: 25.4 / 72, pc: 25.4 / 6, px: 25.4 / 96, '': 25.4 / 96 };
+const UNIT_MM: Record<string, number> = table({ mm: 1, cm: 10, in: 25.4, pt: 25.4 / 72, pc: 25.4 / 6, px: 25.4 / 96, '': 25.4 / 96 });
 const LENGTH = new RegExp(`^(${NUMBER})\\s*([A-Za-z%]*)$`);
 function length(text: string | undefined, what: string): number | undefined {
   const found = text?.trim().match(LENGTH);
@@ -109,7 +112,7 @@ function length(text: string | undefined, what: string): number | undefined {
   return finiteNumber(found[1], what) * UNIT_MM[found[2]];
 }
 // a length of a basic shape in user units: 96 of them an inch (SVG 1.1, 7.10)
-const USER: Record<string, number> = { '': 1, px: 1, in: 96, mm: 96 / 25.4, cm: 960 / 25.4, pt: 96 / 72, pc: 16 };
+const USER: Record<string, number> = table({ '': 1, px: 1, in: 96, mm: 96 / 25.4, cm: 960 / 25.4, pt: 96 / 72, pc: 16 });
 
 // ---------------------------------------------------------------- XML
 
@@ -120,7 +123,7 @@ interface Tag {
   close: boolean;
   at: number;
 }
-const ENTITIES: Record<string, string> = { lt: '<', gt: '>', amp: '&', quot: '"', apos: "'" };
+const ENTITIES: Record<string, string> = table({ lt: '<', gt: '>', amp: '&', quot: '"', apos: "'" });
 function decoded(value: string, at: number): string {
   return value.replace(/&([^;&\s]*);?/g, (whole, name: string) => {
     if (!whole.endsWith(';')) throw unreadable(`an "&" that starts no entity (in the tag at character ${at})`);
@@ -177,7 +180,7 @@ function* tags(text: string): Generator<Tag> {
       if (name === undefined) throw unreadable(`a "<" that starts no tag (at character ${lt})`);
       if (open.length === 0 && rooted) throw unreadable(`a second root element <${name}> (at character ${lt}): a document has one`);
       rooted = true;
-      const attributes: Record<string, string> = {};
+      const attributes: Record<string, string> = Object.create(null);
       const seen = new Set<string>();
       let j = lt + 1 + name.length;
       let selfClosing = false;
@@ -225,7 +228,7 @@ interface Segment {
   relative: boolean;
   args: number[];
 }
-const ARITY: Record<string, number> = { M: 2, L: 2, H: 1, V: 1, Z: 0, C: 6, S: 4, Q: 4, T: 2, A: 7 };
+const ARITY: Record<string, number> = table({ M: 2, L: 2, H: 1, V: 1, Z: 0, C: 6, S: 4, Q: 4, T: 2, A: 7 });
 // The segments of path data (SVG 1.1, 8.3.9). Groups of arguments after the first are the command
 // again; after M they are L. The two flags of an arc are one character each.
 // A generator: a segment is handed on as it is read, so that the limits of the reader stop a huge
@@ -299,11 +302,12 @@ export function readSvg(text: string, options: { layers?: string[]; unit?: strin
   if (text.length > SVG_MAX_CHARACTERS) throw new Error(`tooLarge: the file has ${text.length} characters, more than the ${SVG_MAX_CHARACTERS} an outline is read from`);
   const curves: ReadCurve[] = [];
   // per layer, its elements by tag (shapes and what is listed), read or not
-  const layers: Record<string, Record<string, number>> = {};
+  // dictionaries without a prototype: the name of a group or of a tag comes from the file (`__proto__`, `constructor`)
+  const layers: Record<string, Record<string, number>> = Object.create(null);
   const notes: string[] = [];
   let unitFrom: 'option' | 'file' | 'default' = 'default';
   let control = 0; // the control points of the splines taken
-  const skipped: Record<string, number> = {};
+  const skipped: Record<string, number> = Object.create(null);
   const skip = (what: string): void => void (skipped[what] = (skipped[what] ?? 0) + 1);
   // the stack of open elements: the transform into millimetres with y up, the layers, whether its content is skipped
   const stack: { matrix: Matrix; layers: string[]; skipped: boolean }[] = [];
@@ -328,14 +332,17 @@ export function readSvg(text: string, options: { layers?: string[]; unit?: strin
         scale = UNIT_MM[options.unit];
         unitFrom = 'option';
       } else if (box && w !== undefined && h !== undefined) {
-        // The two scales of the root. A viewer fits the box into the size (`meet`): the smaller.
-        // Equal within 1e-6: one scale. Otherwise the smaller with a note; stretched on purpose
-        // (`preserveAspectRatio="none"`) by more than a thousandth, the drawing has no one scale.
+        // The two scales of the root. A viewer fits the box into the size (`meet`): the smaller;
+        // with `slice` it fills the size: the larger. Equal within 1e-6: one scale. Otherwise the
+        // one a viewer takes, with a note; stretched on purpose (`preserveAspectRatio="none"`) by
+        // more than a thousandth, the drawing has no one scale.
         const [sx, sy] = [w / box[2], h / box[3]];
         const apart = Math.abs(sx - sy) / Math.max(sx, sy);
-        if (apart > 1e-3 && (a.preserveAspectRatio ?? '').trim() === 'none') throw unreadable('width, height and viewBox give an uneven scale with preserveAspectRatio="none"; give the option unit');
-        scale = Math.min(sx, sy);
-        if (apart > 1e-6) notes.push(`width over the viewBox gives ${Number(sx.toPrecision(9))} mm per unit and height ${Number(sy.toPrecision(9))}; the smaller is taken, as a viewer fits the drawing${apart > 1e-3 ? ' (they differ by more than a thousandth: give the option unit if the size is wrong)' : ''}`);
+        const fit = (a.preserveAspectRatio ?? '').trim().split(/\s+/);
+        const slice = fit.includes('slice');
+        if (apart > 1e-3 && fit[0] === 'none') throw unreadable('width, height and viewBox give an uneven scale with preserveAspectRatio="none"; give the option unit');
+        scale = slice ? Math.max(sx, sy) : Math.min(sx, sy);
+        if (apart > 1e-6) notes.push(`width over the viewBox gives ${Number(sx.toPrecision(9))} mm per unit and height ${Number(sy.toPrecision(9))}; the ${slice ? 'larger is taken, as a viewer fills the size with the drawing (slice)' : 'smaller is taken, as a viewer fits the drawing'}${apart > 1e-3 ? ' (they differ by more than a thousandth: give the option unit if the size is wrong)' : ''}`);
         unitFrom = 'file';
       } else notes.push('the root gives no size (width, height and viewBox): read at 96 units per inch; give the option unit if the drawing is in another unit');
       unit = options.unit ?? (unitFrom === 'file' ? `${Number(scale.toPrecision(9))} mm per unit` : 'px');
@@ -362,7 +369,7 @@ export function readSvg(text: string, options: { layers?: string[]; unit?: strin
     const shape = SHAPES.has(tagName);
     const listed = LISTED.has(tagName) || nested;
     if (shape || listed) {
-      layers[layer] ??= {};
+      layers[layer] ??= Object.create(null) as Record<string, number>;
       layers[layer][tagName] = (layers[layer][tagName] ?? 0) + 1;
     }
     if (options.layers !== undefined && !on.some((l) => options.layers?.includes(l))) continue;
@@ -500,7 +507,7 @@ export function readSvg(text: string, options: { layers?: string[]; unit?: strin
           nextCubic = c2;
           here = next;
         } else {
-          const c = command === 'Q' ? to(p[0], p[1]) : mirror(quad);
+          const c: Vec2 = command === 'Q' ? to(p[0], p[1]) : mirror(quad);
           const next = command === 'Q' ? to(p[2], p[3]) : to(p[0], p[1]);
           take({ type: 'spline', points: [here, c, next].map(at) });
           nextQuad = c;

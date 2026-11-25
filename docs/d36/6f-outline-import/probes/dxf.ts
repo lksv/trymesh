@@ -52,7 +52,10 @@ const INSUNITS: Record<number, [string, number]> = {
   13: ['um', 0.001],
   14: ['dm', 100],
 };
-const UNITS: Record<string, number> = { mm: 1, cm: 10, m: 1000, in: 25.4, ft: 304.8, mil: 0.0254, um: 0.001, dm: 100 };
+// A table that is looked up by text of the file or of the caller has no prototype: `constructor`
+// and `__proto__` are then names like any other, found in no table.
+const table = <T>(rows: Record<string, T>): Record<string, T> => Object.assign(Object.create(null) as Record<string, T>, rows);
+const UNITS: Record<string, number> = table({ mm: 1, cm: 10, m: 1000, in: 25.4, ft: 304.8, mil: 0.0254, um: 0.001, dm: 100 });
 
 // A group: its code, its value (trimmed) and the line of its code in the file, from 1.
 type Group = [number, string, number];
@@ -181,8 +184,10 @@ export function readDxf(text: string, options: { layers?: string[]; unit?: strin
   if (unitFrom === 'default') notes.push(measurement === 0 ? 'The header states no unit ($INSUNITS) and says imperial ($MEASUREMENT 0): the file is read in millimetres; give the option unit "in" if it is drawn in inches.' : 'The file states no unit ($INSUNITS): it is read in millimetres.');
   const mm = (v: number): number => v * scale;
   const curves: ReadCurve[] = [];
-  const layers: Record<string, Record<string, number>> = {};
-  const skipped: Record<string, number> = {};
+  // counted in dictionaries without a prototype: a layer of the file may be named `__proto__` or
+  // `constructor`, and a name of the file is never looked up on `Object.prototype` nor written to it
+  const layers: Record<string, Record<string, number>> = Object.create(null);
+  const skipped: Record<string, number> = Object.create(null);
   const skip = (what: string, times = 1): void => void (skipped[what] = (skipped[what] ?? 0) + times);
   const number = (entity: Group[], code: number, fallback?: number): number => {
     const found = entity.find(([c]) => c === code);
@@ -240,7 +245,7 @@ export function readDxf(text: string, options: { layers?: string[]; unit?: strin
       continue;
     }
     if (polyline) throw new Error(`unreadable: line ${at}: ${type} inside the POLYLINE that starts at line ${polyline.line} (no SEQEND)`);
-    layers[layer] ??= {};
+    layers[layer] ??= Object.create(null) as Record<string, number>;
     layers[layer][type] = (layers[layer][type] ?? 0) + 1;
     const wanted = options.layers === undefined || options.layers.includes(layer);
     // An entity of paper space (a layout) is no part of the model: left out and listed, before

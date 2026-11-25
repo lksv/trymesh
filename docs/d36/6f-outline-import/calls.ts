@@ -37,7 +37,7 @@ export declare function entryCurves(args: { sketch: Id; entry: Id; kind?: Import
 export declare function importOutlineTool(args: ImportOutlineArgs): ImportOutlineAnswer;
 export declare function getSketch(sketch: Id): { external: (OutlineDetail | { id: Id })[]; regions: { ref: ShownLoop; area: number; holes: number }[]; advice: string[] };
 // the MCP tools `query` and `execute`, as an AI calls them: what it has is their answers alone
-export declare function mcpQuery(query: 'sketchRegions', args: { sketch: Id; curve?: Id; from?: number; max?: number }): SketchRegionsResult;
+export declare function mcpQuery(query: 'sketchRegions', args: { sketch: Id; curve?: Id; index?: number; holes?: boolean; from?: number; max?: number }): SketchRegionsResult;
 export declare function mcpExecute(command: CommandAfter): { ok: boolean; features?: Record<Id, { status: string }> };
 
 export const done = (result: CommandResult): EngineState => (result.ok ? result.state : fail(`${result.error.code}: ${result.error.message}`));
@@ -667,8 +667,8 @@ export function welded(): boolean {
   return exact.regions === 4 && exact.open === 16 && four.regions === 5 && four.open === 0 && four.welded === 8 && four.moved < 1e-4 && two.regions === 5 && two.moved < 0.01 && gaps.length === 16 && near(gaps[0].distance, 0.0031, 1e-3);
 }
 
-// The bounds of the weld (the reviews of both rounds), on curves given to `weldOutline` directly.
-// Measured, J1 to J6 and K2 to K5.
+// The bounds of the weld (the reviews of all three rounds), on curves given to `weldOutline`
+// directly. Measured, J1 to J6, K2 to K5 and L3 to L8.
 export function weldBounds(): boolean {
   const line = (a: Vec2, b: Vec2): ImportedCurve => ({ type: 'line', a, b });
   const polar = (c: Vec2, r: number, deg: number): Vec2 => [c[0] + r * Math.cos((deg * Math.PI) / 180), c[1] + r * Math.sin((deg * Math.PI) / 180)];
@@ -688,9 +688,10 @@ export function weldBounds(): boolean {
   const hole = weldOutline([...square, arc([10, 10], 1.6, 0, 359.9)], 0.01);
   const notHole = weldOutline([...square, arc([10, 10], 1.6, 0, 359)], 0.01);
   const tiny = weldOutline([...square, arc([10, 10], 1.6, 0, 359.99999)], 0);
-  // two quarter arcs of radius 10 that miss each other by 0.005: the later is the circle through
-  // its new ends and its old middle (measured: its quarter points 0.0010 off, its radius 10.0043);
-  // by 0.02 they stay apart
+  // two quarter arcs of radius 10 that miss each other by 0.005: one of them (the one whose radius
+  // changes less in proportion) is the circle through its new ends and its old middle (measured:
+  // the arc of the file at most 0.0025 off it, its radius changed by 0.0043, named in
+  // `reshapedArcs`); by 0.02 they stay apart
   const pair = weldOutline([arc([1.2345, 2.3456], 10, 0, 90), arc([1.2395, 2.3431], 10, 90, 180)], 0.01);
   const apart = weldOutline([arc([1.2345, 2.3456], 10, 0, 90), arc([1.2545, 2.3356], 10, 90, 180)], 0.01);
   // an arc gives way to another arc only: two lines that meet 0.005 from the start of an arc
@@ -701,6 +702,20 @@ export function weldBounds(): boolean {
   const twins = weldOutline([...side(0.005), ...side(0.005)], 0.01);
   // a line shorter than the gaps around it is not collapsed onto a third end
   const short = weldOutline([line([-5, 0], [0, 0]), line([0.003, 0], [0.006, 0]), line([0.0135, 0], [5, 0])], 0.01);
+  // the third round of reviews: a line that should start at the end of a polyline of short
+  // segments goes onto that end, not onto the vertex before it (the met ends around are no crowd)
+  const bend = Array.from({ length: 61 }, (_, i) => polar([0, 0], 0.0764, (90 * i) / 60));
+  const poly = weldOutline([...bend.slice(1).map((p, i) => line(bend[i], p)), line([bend[60][0] - 0.006, bend[60][1]], [-5, bend[60][1]])], 0.01);
+  // a gap equal to the weld closes wherever the file stands (4.86 - 4.85 is more than 0.01 in doubles)
+  const equal = weldOutline([line([-5, 0], [4.85, 0]), line([4.86, 0], [9, 3])], 0.01);
+  // with no weld: an arc of three quarters of a turn and a radius of 4e-7 has no extent, as its
+  // circle would have none; nothing leaves the weld that the validator refuses
+  const under = weldOutline([...square, arc([5, 5], 4e-7, 90, 0)], 0);
+  // an arc of nearly a whole turn with a line starting between its ends stays an arc, also with 65
+  // other lines starting 0.014 away (a search that is cut short proves nothing)
+  const nearly: ImportedCurve = { type: 'arc', center: [-1, 0], start: [0, 0], end: polar([-1, 0], 1, -0.0573) };
+  const others = Array.from({ length: 65 }, (_, i) => line([-0.0099, -0.0099], polar([-0.0099, -0.0099], 5, 181 + i)));
+  const cutShort = weldOutline([...others, nearly, line([0.001, 0], [3, 0])], 0.01);
   // the bottom side a second time, the other way round, and a hole twice
   const twice = weldOutline([...square, line([20, 0], [0, 0]), { type: 'circle', center: [5, 5], radius: 1 }, { type: 'circle', center: [5, 5], radius: 1 }], 0.01);
   return (
@@ -717,7 +732,15 @@ export function weldBounds(): boolean {
     tiny.curves[4]?.type === 'circle' &&
     pair.welded === 1 &&
     pair.reshaped === 1 &&
+    pair.reshapedArcs.length === 1 &&
     pair.bent <= 0.01 &&
+    same(poly.curves[60], line(bend[60], [-5, bend[60][1]])) &&
+    poly.crowded === 0 &&
+    equal.welded === 1 &&
+    under.curves[4] === undefined &&
+    under.dropped === 1 &&
+    under.closed === 0 &&
+    cutShort.curves[65]?.type === 'arc' &&
     apart.welded === 0 &&
     same(beside.curves[0], unit) &&
     beside.reshaped === 0 &&
@@ -960,11 +983,13 @@ export function regionThroughMcp(): boolean {
   const shown = getSketch('bigSk').regions;
   const long = shown.map((row) => row.ref).find((ref): ref is Extract<ShownLoop, { count: number }> => 'count' in ref);
   const answer = mcpQuery('sketchRegions', { sketch: 'bigSk', curve: 'o/l1' });
+  // the capped row names its region by its place among the regions of the sketch
+  const byIndex = mcpQuery('sketchRegions', { sketch: 'bigSk', index: long?.index ?? 0, holes: true });
   const region = answer.regions[0];
   const made = mcpExecute({ type: 'addFeature', feature: { id: 'bigBody', name: 'bigBody', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 'bigSk', regions: [region.ref] }, extent: { type: 'distance', start: 0, distance: 2 }, operation: 'new' } } as Command);
   // the pages: 501 regions, twenty at a time, and a page never cut inside a loop
   const second = mcpQuery('sketchRegions', { sketch: 'bigSk', from: 20, max: 20 });
-  return shown.length === SKETCH_SHOWN.regions && long !== undefined && long.count === 500 && long.first.length === SKETCH_SHOWN.loop && long.whole.includes('sketchRegions') && answer.status === 'ok' && answer.total === 1 && region.ref.outerLoop.length === 500 && region.holes.length === 500 && made.ok && made.features?.bigBody.status === 'ok' && second.total === 501 && second.from === 20 && second.regions.length === 20;
+  return shown.length === SKETCH_SHOWN.regions && long !== undefined && long.count === 500 && long.first.length === SKETCH_SHOWN.loop && long.whole.includes('sketchRegions') && answer.status === 'ok' && answer.total === 1 && region.ref.outerLoop.length === 500 && region.holes === 500 && region.holeLoops === undefined && byIndex.total === 1 && same(byIndex.regions[0].ref, region.ref) && byIndex.regions[0].holeLoops?.length === 500 && made.ok && made.features?.bigBody.status === 'ok' && second.total === 501 && second.from === 20 && second.regions.length === 20;
 }
 
 // ================================================================ the tool of MCP
@@ -986,7 +1011,7 @@ export function throughMcp(): boolean {
     look.entry === undefined &&
     Object.keys(look.report.about.layers).length === 3 &&
     same(placed.entry, { sketch: 'mcpSk', id: 'pcbo' }) &&
-    same(placed.report.ids, { lines: 4, arcs: 4, circles: 4, splines: 0, unused: [], unusedCount: 0 }) &&
+    same(placed.report.ids, { lines: 4, arcs: 4, circles: 4, splines: 0, unused: [], unusedCount: 0, otherKind: [] }) &&
     again.revision?.kept === 12 &&
     again.report.curves === 12 &&
     same(again.report.readWith, { format: 'dxf', layers: ['Edge.Cuts'] }) &&

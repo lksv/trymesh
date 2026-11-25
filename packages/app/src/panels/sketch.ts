@@ -243,8 +243,9 @@ export function sketchPanel(host: SketchHost, m: SketchMode): HTMLElement[] {
   out.push(h('h2', {}, `Vazby a kóty (${Object.keys(feature.constraints).length})`));
   out.push(...(rows.length > 0 ? rows : [h('p', { className: 'hint' }, 'Vyberte entity a přidejte vazbu tlačítky výše.')]));
 
-  // Promítnutá geometrie: i ta, kterou přepočet nedokázal promítnout a v pohledu proto není vidět.
-  // A row by the kind of the entry (REFERENCE_UI); "bez geometrie" when no entity of it has a position.
+  // The entries of `external`: projections, also those the recompute could not project and the view
+  // therefore does not show, and mirrors and patterns. A row by the kind of the entry (REFERENCE_UI);
+  // "no geometry" when no entity of it has a position.
   // A derived entry (a mirror or pattern, D68): "no copies" when its count makes none, "n open ends"
   // when the result lists open ends of its copies; a click on its name opens its form.
   const warnings = host.view().evaluation.features[m.id]?.warnings ?? [];
@@ -257,13 +258,14 @@ export function sketchPanel(host: SketchHost, m: SketchMode): HTMLElement[] {
     const shown = entities.some((entity) => view.points.has(entity) || view.curves.has(entity));
     const derived = kindOf(ref).source === 'derived';
     const open = derived ? (openEnds?.ends ?? []).filter((end) => end.end.startsWith(`${id}/`)) : [];
-    const state = derived ? (entities.length === 0 ? ' · no copies' : !shown ? ' · bez geometrie' : '') : shown ? '' : ' · bez geometrie';
+    const state = derived ? (entities.length === 0 ? ' · no copies' : !shown ? ' · no geometry' : '') : shown ? '' : ' · no geometry';
     const repair = ui.repair?.(ref);
     const form = ui.form;
     const row = h(
       'div',
       {
-        className: `constraint ${problem ? 'conflict' : ''} ${m.repair === id ? 'repair' : ''} ${m.entry === id ? 'focus' : ''}`,
+        // a row whose entity is selected (a copy picked by the select tool, D68) is marked
+        className: `constraint ${problem ? 'conflict' : ''} ${m.repair === id ? 'repair' : ''} ${m.entry === id ? 'focus' : ''} ${m.selection.some((selected) => index.entities.get(selected)?.entry === id) ? 'selected' : ''}`,
         title: problem?.message ?? (open.length > 0 ? `${open[0].end}: ${open[0].reason === 'apart' ? `${Math.round(open[0].distance * 1e6) / 1e6} mm from ${open[0].near.join(', ') || 'every other end'}` : `lands where ${open[0].near.join(' and ')} lie without being joined`}` : ''),
         onmouseenter: () => ((m.hover = id), host.renderScene()),
         onmouseleave: () => ((m.hover = undefined), host.renderScene()),
@@ -291,14 +293,14 @@ export function sketchPanel(host: SketchHost, m: SketchMode): HTMLElement[] {
     );
     return form && m.entry === id ? [row, entryForm(host, m, feature, id, form)] : [row];
   });
-  if (projections.length > 0) out.push(h('h2', {}, `Promítnutá geometrie (${projections.length})`), ...projections);
+  if (projections.length > 0) out.push(h('h2', {}, `Projections, mirrors and patterns (${projections.length})`), ...projections);
   return out;
 }
 
 // The form of an entry (D68): the controls of its kind, each over the path of its field in the
 // input form (`entryInput`); a change sends `updateExternal` with the whole input form, and an
 // invalid one is said with the engine's message.
-function entryForm(host: SketchHost, m: SketchMode, feature: SketchFeature, id: Id, form: (input: ExternalRef) => EntryControl[]): HTMLElement {
+function entryForm(host: SketchHost, m: SketchMode, feature: SketchFeature, id: Id, form: (input: Input<ExternalRef>) => EntryControl[]): HTMLElement {
   const input = entryInput(feature, id) as Input<ExternalRef>;
   const send = (next: unknown, done: string): void => {
     if (!host.run({ type: 'updateExternal', sketch: m.id, id, ref: next as Input<ExternalRef> }, done)) host.renderPanel();
@@ -383,5 +385,5 @@ function entryForm(host: SketchHost, m: SketchMode, feature: SketchFeature, id: 
         return c satisfies never;
     }
   };
-  return h('div', { className: 'entry-form' }, ...form(input as ExternalRef).map(control));
+  return h('div', { className: 'entry-form' }, ...form(input).map(control));
 }

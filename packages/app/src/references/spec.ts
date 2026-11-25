@@ -1,7 +1,7 @@
 // What the app says of one kind of entry of `external` of a sketch (D64, part 5). The rest of the
 // row of an entry, the pickers and the view read the entities of the entry (`referenceEntities`
 // of the engine), not its fields.
-import type { Id, NumberSpec } from '@trymesh/engine';
+import type { Id, Input, NumberSpec } from '@trymesh/engine';
 import type { SketchToolName } from '../sketch-tools';
 
 // What picking the source of an entry again does: the tool that picks it, with the entry to repair
@@ -34,12 +34,12 @@ export type EntryControl =
 // - `repair`: the button that replaces the source of the entry and keeps its ID, by the entry
 //   (one row serves three transforms); absent, or undefined for an entry, where there is nothing to
 //   pick again.
-// - `form`: the controls of the entry, by its input form; absent where the entry has no fields to
+// - `form`: the controls of the entry, by its input form (a numeric field may hold an expression); absent where the entry has no fields to
 //   change in the panel.
 export interface ReferenceUi<R> {
   title(ref: R): string;
   detail(ref: R, host: { bodyName(id: Id): string }): string;
   tag: string;
   repair?(ref: R): EntryRepair | undefined;
-  form?(input: R): EntryControl[];
+  form?(input: Input<R>): EntryControl[];
 }

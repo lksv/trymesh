@@ -1,13 +1,15 @@
 // Regressions from reviews of the app that no driven form of `app.test.ts` reaches.
 import { afterEach, describe, expect, it } from 'vitest';
 import { FIRST_DIRECTION, SECOND_DIRECTION, axisRows } from '../src/axis-picker';
+import { entryEntities, unlistedLabel } from '../src/references';
+import { fullTurn } from '../src/sketch-tools/pattern';
 import { selected } from '../src/panels/args';
 import { axisText } from '../src/sketch-commands';
 import { jointPicksFace, takeMechanismSelection, type MechanismPanel } from '../src/panels/mechanism';
 import { CONTROLS, type Form } from '../src/queries/controls';
 import { FEATURE_UI } from '../src/features/index';
 import type { DraftMode } from '../src/features/draft';
-import type { PatternFeature } from '@trymesh/engine';
+import type { Command, PatternFeature, SketchFeature } from '@trymesh/engine';
 import type { PanelHost } from '../src/host';
 import { emptyDocument, emptySketch } from '@trymesh/engine';
 import { SKETCH_TOOL_UI, type SketchPlaceTool } from '../src/sketch-tools';
@@ -244,5 +246,125 @@ describe('the sketch mode: the review of the implementation of 6a (D64)', () => 
     } finally {
       delete table.collect;
     }
+  });
+});
+
+describe('mirror and pattern in the app: the review of the implementation of 6c (D68)', () => {
+  const at = (x: number, y: number) => client([x, y, 0]);
+  const run = (h: Harness, ...commands: Command[]): void => {
+    const result = h.engine.execute({ type: 'batch', commands });
+    if (!result.ok) throw new Error(result.error.message);
+  };
+  const pt = (id: string, x: number, y: number): Command => ({ type: 'addPoint', sketch: 's', id, x, y });
+  const ln = (id: string, a: string, b: string, construction = false): Command => ({ type: 'addCurve', sketch: 's', id, curve: { ...(construction ? { construction: true } : {}), type: 'line', a, b } });
+  const fixed = (id: string, x: number, y: number): Command[] => [pt(id, x, y), { type: 'addConstraint', sketch: 's', id: `${id}f`, constraint: { type: 'fixed', point: id, x, y } }];
+  const status = (h: Harness): string => h.document.getElementById('status')?.textContent ?? '';
+  const sketchOf = (h: Harness): SketchFeature => h.engine.getState().document.features.find((f) => f.id === 's') as SketchFeature;
+  const open = (h: Harness): void => void h.row('Skica 1').dispatchEvent(new (h.document.defaultView as unknown as typeof globalThis).MouseEvent('dblclick'));
+  const sketch = (): Command => ({ type: 'addFeature', feature: emptySketch('s', 'Skica 1', { kind: 'base', plane: 'XY' }) });
+  const line = (h: Harness, x: number, y: number): Command[] => [...fixed(`${x}a`, x, y), ...fixed(`${x}b`, x + 20, y), ln(`l${x}`, `${x}a`, `${x}b`)];
+  const rowOf = (h: Harness, title: string): HTMLElement | undefined => Array.from(h.document.querySelectorAll<HTMLElement>('#panel .constraint')).find((row) => row.textContent?.startsWith(title));
+
+  // M1: the copy of a construction line was drawn as an outline outside the sketch mode
+  it('the copy of a construction curve is dashed outside the sketch mode, and thinner inside it', async () => {
+    const h = (harness = await startApp());
+    run(h, sketch(), pt('k1', 5, 0), pt('k2', 5, 30), ln('cl', 'k1', 'k2', true));
+    const solid = () => (h.view.scene?.lines ?? []).filter((set) => !set.dashed).reduce((sum, set) => sum + set.segments.length, 0);
+    const before = solid();
+    run(h, { type: 'addExternal', sketch: 's', id: 'm', ref: { type: 'pattern', sources: ['cl'], transform: { type: 'mirror', axis: 'origin/y' } } });
+    expect(solid()).toBe(before);
+    open(h);
+    expect(h.view.scene?.lines.some((set) => set.dashed && set.width === 1 && set.segments.length === 6)).toBe(true);
+  });
+
+  // M2, M7: Delete on a copy said the text of projections; the row of the copy's entry was not marked
+  it('a selected copy marks the row of its entry; Delete says that a copy goes with its entry; with an own line selected too, the line goes', async () => {
+    const h = (harness = await startApp());
+    run(h, sketch(), ...line(h, 5, 5));
+    run(h, { type: 'addExternal', sketch: 's', id: 'm', ref: { type: 'pattern', sources: ['l5'], transform: { type: 'mirror', axis: 'origin/y' } } });
+    open(h);
+    h.press('toolbar', 'Výběr');
+    h.click(at(-15, 5));
+    expect(rowOf(h, 'Mirror')?.classList.contains('selected')).toBe(true);
+    h.key('Delete');
+    expect(status(h)).toBe('"m/1/l5" is a copy of the mirror or pattern "m" and is not deleted by itself: remove "m" by ✕ in its row, or change its sources in its form.');
+    expect(sketchOf(h).curves.l5).toBeDefined();
+    // a mixed selection: no dimension or constraint is offered; Delete removes the own line only
+    h.click(at(15, 5), { shiftKey: true });
+    expect(h.button('panel', 'Kóta').disabled).toBe(true);
+    expect(h.button('panel', 'Vodorovně').disabled).toBe(true);
+    h.key('Delete');
+    expect(sketchOf(h).curves.l5).toBeUndefined();
+    expect(status(h)).toMatch(/^Deleted the own entities of the selection; "m\/1\/l5" is a copy/);
+  });
+
+  // M3: the row said "bez geometrie", and the heading named projections alone
+  it('the list of entries has an English heading and an English state', async () => {
+    const h = (harness = await startApp());
+    run(h, sketch(), ...line(h, 5, 5), pt('k1', -20, -50), pt('k2', -20, 50), ln('ax', 'k1', 'k2', true));
+    run(h, { type: 'addExternal', sketch: 's', id: 'm', ref: { type: 'pattern', sources: ['l5'], transform: { type: 'mirror', axis: 'ax' } } });
+    open(h);
+    run(h, { type: 'removeEntity', sketch: 's', id: 'ax' });
+    expect(Array.from(h.document.querySelectorAll('#panel h2')).map((e) => e.textContent)).toContain('Projections, mirrors and patterns (1)');
+    expect(rowOf(h, 'Mirror')?.textContent).toContain('· no geometry');
+  });
+
+  // M4: a copy beyond the 100 a picker lists was labelled missing, and a direction offered a false repair
+  it('a picker names a copy it does not list as a copy, says how many it left out, and offers no repair', () => {
+    const s = emptySketch('s', 's', { kind: 'base', plane: 'XY' });
+    const feature: SketchFeature = { ...s, points: { a: { x: 0, y: 0 }, b: { x: 1, y: 0 } }, curves: { l: { type: 'line', a: 'a', b: 'b' } }, external: { r: { type: 'pattern', sources: ['l'], transform: { type: 'linear', direction: 'origin/y', count: 60, span: { type: 'spacing', spacing: 3 } } } } };
+    expect(entryEntities(feature).some((e) => e.id === 'r/40/l')).toBe(false);
+    expect(unlistedLabel(feature, 'r/40/l')).toBe('r/40/l (copy)');
+    expect(unlistedLabel(feature, 'r/70/l')).toBe('r/70/l (missing)');
+    const host = { feature: (id: string) => (id === 's' ? feature : undefined), nameOf: (id: string) => id } as unknown as PanelHost;
+    const texts = (rows: HTMLElement[]): string[] => rows.flatMap((row) => Array.from(row.querySelectorAll('option')).map((o) => `${o.textContent}${o.disabled ? ' [disabled]' : ''}`));
+    const lineRows = texts(axisRows(host, { kind: 'sketchLine', sketch: 's', line: 'r/40/l' }, ['s'], () => undefined, ''));
+    expect(lineRows).toContain('r/40/l (copy)');
+    expect(lineRows).toContain('… 25 more copies of r, not listed [disabled]');
+    const direction = axisRows(host, { kind: 'sketchPoint', sketch: 's', point: 'r/40/a' }, ['s'], () => undefined, '', FIRST_DIRECTION);
+    expect(direction.some((row) => row.textContent?.includes('is no longer in the sketch'))).toBe(false);
+    const gone = axisRows(host, { kind: 'sketchPoint', sketch: 's', point: 'r/70/a' }, ['s'], () => undefined, '', FIRST_DIRECTION);
+    expect(gone.some((row) => row.textContent?.includes('is no longer in the sketch'))).toBe(true);
+  });
+
+  // M6: a full turn given as an expression was sent as an angle, the last copy on the source
+  it('the circular tool takes 2 * pi and deg(360) as a full turn, and another angle as an angle; undo removes the entry', async () => {
+    const h = (harness = await startApp());
+    run(h, sketch(), ...line(h, 5, 5));
+    open(h);
+    const added = (): unknown[] => Object.values(sketchOf(h).external).map((ref) => (ref.type === 'pattern' ? ref.transform : undefined));
+    for (const [angle, span] of [
+      ['2 * pi', { type: 'full' }],
+      ['deg(360)', { type: 'full' }],
+      ['90', { type: 'angle', angle: Math.PI / 2 }],
+    ] as const) {
+      h.press('toolbar', 'Výběr');
+      h.click(at(15, 5));
+      h.press('toolbar', 'Circular pattern');
+      h.type(h.field('Angle'), angle, true);
+      h.click(at(0.2, 0.1));
+      const transform = added().at(-1) as { span: unknown };
+      expect(transform.span).toEqual(span);
+    }
+    expect(fullTurn('2 * pi', [])).toBe(true);
+    expect(fullTurn('deg(-360)', [])).toBe(true);
+    expect(fullTurn('turn', [{ name: 'turn', expr: '2 * pi' }])).toBe(true);
+    expect(fullTurn('deg(359)', [])).toBe(false);
+    // undo after the tool: the last entry goes
+    const count = added().length;
+    h.key('z', { ctrlKey: true });
+    expect(added()).toHaveLength(count - 1);
+  });
+
+  // a form change the engine refuses is said with the engine's message
+  it('a refused change of the form says the message of the engine', async () => {
+    const h = (harness = await startApp());
+    run(h, sketch(), ...line(h, 5, 5));
+    run(h, { type: 'addExternal', sketch: 's', id: 'p', ref: { type: 'pattern', sources: ['l5'], transform: { type: 'linear', direction: 'origin/x', count: 3, span: { type: 'spacing', spacing: 30 } } } });
+    open(h);
+    rowOf(h, 'Linear pattern')?.querySelector<HTMLElement>('.name')?.click();
+    h.type(h.field('Count'), '201', true);
+    expect(status(h)).toMatch(/count/);
+    expect((sketchOf(h).external.p as { transform: { count: number } }).transform.count).toBe(3);
   });
 });

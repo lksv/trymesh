@@ -5,7 +5,7 @@ import { type ExtrudeFeature, GENERATORS, type GeneratorName, type Id, type Plan
 import { fmt, h } from '../dom';
 import type { PanelHost } from '../host';
 import { OPERATIONS, SIDES, factsText, lengthText, shownValue, startText } from '../labels';
-import { entryEntities } from '../references';
+import { entryEntities, omittedNotes, unlistedLabel } from '../references';
 import { type ExtentKind, type ExtentSide, type ExtrudeChange, type ExtrudeDraft, type ProfileKind, type RememberedProfiles, type UpToDraft, changeExtrude, draftCommand, noPlane, profileKind, rememberedProfile } from '../sketch-commands';
 import { type DraftMode, type FeatureForm, type FeatureUi, draftButtons, draftChanged, draftField, editDraft, startDraft } from './draft';
 import { planeText } from './plane';
@@ -59,6 +59,15 @@ function operandChoices(host: PanelHost, sketch: Id, kinds: readonly string[]): 
     ...entryEntities(f).filter((entity) => entity.kind !== 'point' && kinds.includes(entity.kind)).map(({ id, tag }) => ({ id, label: `${id}${size(id)} (${tag})` })),
   ];
 }
+const sketchFeature = (host: PanelHost, id: Id): SketchFeature | undefined => {
+  const f = host.feature(id);
+  return f?.type === 'sketch' ? f : undefined;
+};
+// the copies of a mirror or pattern of the kinds that `operandChoices` leaves out (D68)
+const omittedOf = (host: PanelHost, sketch: Id, kinds: readonly string[]): HTMLElement[] => {
+  const f = sketchFeature(host, sketch);
+  return f ? omittedNotes(f, (kind) => kinds.includes(kind)).map((text) => h('option', { value: '', textContent: text, disabled: true })) : [];
+};
 // The first entity of each operand of a generator in a sketch; an operand without one is left out
 // and the engine says what is missing.
 function defaultOperands(host: PanelHost, generator: GeneratorName, sketch: Id): Record<string, Id> {
@@ -270,7 +279,8 @@ function generatorFields(host: PanelHost, m: ExtrudeMode, profile: Extract<Extru
           'select',
           { onchange: (event: Event) => set({ operands: { [operand.field]: (event.target as HTMLSelectElement).value } }) },
           ...choices.map((choice) => option(choice.id, choice.label, choice.id === chosen)),
-          choices.some((choice) => choice.id === chosen) ? null : option(chosen ?? '', chosen === undefined ? '(none in the sketch)' : `${chosen} (missing)`, true),
+          choices.some((choice) => choice.id === chosen) ? null : option(chosen ?? '', chosen === undefined ? '(none in the sketch)' : unlistedLabel(sketchFeature(host, profile.sketch), chosen), true),
+          ...omittedOf(host, profile.sketch, operand.kinds),
         ),
       );
     }),

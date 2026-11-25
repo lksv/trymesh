@@ -11,8 +11,8 @@ import { evaluateNumber } from './expression';
 import { namedBySections } from './sections/index';
 import { toolBase } from './references/world';
 import { type SolvedCurves, lineExtent, pointJoins, solvedCurves } from './sketch';
-import { CUT_IDS, type CurveChanges, type ExtendInput, type SplitInput, type TrimInput, copiesByNames, copyAsSnap, copyInTool, copyParts, cutTool, entryCommands, entryPatches, profileSourceOf, readersOf } from './sketch-cut';
-import type { Command, Constraint, Curve, CurvePointName, Document, Expr, FeaturePatch, Id, ParameterResult, Point2, RegionRef, SketchFeature, SketchResult, Vec2 } from './types';
+import { CUT_IDS, type CurveChanges, type ExtendInput, type SplitInput, type TrimInput, copiesByNames, copyAsSnap, copyInTool, copyParts, cutTool, entryCommands, entryPatches, namedOutside, profileSourceOf, readersOf } from './sketch-cut';
+import type { Command, Constraint, Curve, CurvePointName, Document, Expr, FeaturePatch, Id, ParameterResult, Point2, RegionRef, SketchFeature, SketchPattern, SketchResult, Vec2 } from './types';
 import { ANGLE_TOLERANCE, LENGTH_TOLERANCE, ORIGIN, cross2, dist2, dot2, has, sub2, unreachable } from './util';
 
 // A place in a sketch and what it should snap to. The app passes a click after snapping, an AI
@@ -602,6 +602,8 @@ function fillet(context: SketchToolCall, input: SketchToolInputs['fillet'], newI
   // updateExternal of its input form, after the sketch commands and before the features
   let joined: ReturnType<typeof entryPatches>['joined'] = [];
   const entries: Id[] = [];
+  // the sketch after the batch, its entries patched, which the rewrite by names reads (as the cuts do)
+  let patchedSketch: SketchFeature = sketch;
   if (Object.values(sketch.external).some((ref) => ref.type === 'pattern')) {
     let afterSketch: SketchFeature;
     try {
@@ -611,10 +613,13 @@ function fillet(context: SketchToolCall, input: SketchToolInputs['fillet'], newI
     }
     const points: Record<Id, Point2> = Object.fromEntries([...endIds.map((point, i): [Id, Point2] => [point, { x: ends[i][0], y: ends[i][1] }]), [centre, { x: center[0], y: center[1] }]]);
     const result: SketchResult = context.result ?? { points: {}, radii: {}, curves: {}, degreesOfFreedom: 0, conflicting: [], redundant: [], measurements: {}, valid: true, regions: [] };
-    const found = entryPatches(sketch, toolBase(afterSketch, result, { points }), changes, 'fillet');
+    const found = entryPatches(sketch, toolBase(afterSketch, result, { points }), changes, 'fillet', namedOutside(document, id));
     commands.push(...entryCommands(sketch, found.patches));
     joined = found.joined;
     entries.push(...found.patches.map((patch) => patch.entry));
+    const external = { ...afterSketch.external };
+    for (const patch of found.patches) external[patch.entry] = { ...(external[patch.entry] as SketchPattern), sources: patch.sources };
+    patchedSketch = { ...afterSketch, external };
   }
 
   // the features of the document: a region that passes the corner gets the arc, a stored region of
@@ -624,7 +629,7 @@ function fillet(context: SketchToolCall, input: SketchToolInputs['fillet'], newI
   const walls: Id[] = [];
   const withArc = (region: RegionRef): RegionRef => {
     const own = both(region.outerLoop) ? { ...region, outerLoop: [...region.outerLoop, arc].sort() } : region;
-    return copiesByNames(own, changes, sketch, joined) ?? own;
+    return copiesByNames(own, changes, patchedSketch, joined) ?? own;
   };
   for (const feature of document.features) {
     const source = profileSourceOf(feature);
@@ -639,7 +644,7 @@ function fillet(context: SketchToolCall, input: SketchToolInputs['fillet'], newI
   }
   // what reads the lines directly: one function with the cuts of D65 (`readersOf`), given the plan
   // of the fillet as data
-  const readers = readersOf(document, id, changes);
+  const readers = readersOf(document, id, changes, sketch);
   const shortened = document.features.map((f) => f.id).filter((feature) => walls.includes(feature) || readers.shortened.includes(feature));
   return { ok: true, commands, ids: { arc: [arc], center: [centre], lines: [...lines], ends: endIds, constraints, radius: [radiusId], patched, moved: readers.moved, shortened, entries } };
 }

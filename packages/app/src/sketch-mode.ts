@@ -1,7 +1,7 @@
 // The sketch mode: its tools, what a press, a move and a click in the view mean, the drag of
 // a point, and what the mode draws. The app keeps the pointer and key handlers and hands the events
 // over; the panel of the mode is panels/sketch.ts.
-import { type Command, type CommandResult, type Constraint, type ConstraintExplanation, type EngineState, type Frame, type Id, type SketchDiagnosis, type SketchFeature, type SketchResult, type QueryResult, type SketchToolCall, constraintKey, duplicateOf, isDimension, isOriginAxis } from '@trymesh/engine';
+import { type Command, type CommandResult, type Constraint, type ConstraintExplanation, type EngineState, type Frame, type Id, type SketchDiagnosis, type SketchFeature, type SketchResult, type QueryResult, type SketchToolCall, constraintKey, derivedOrigin, duplicateOf, isDimension, isOriginAxis } from '@trymesh/engine';
 import { fmt } from './dom';
 import { COLOR, pushPolyline, toWorld } from './draw';
 import { PICK_REACH, type PanelHost, type ViewPick, pickKey } from './host';
@@ -263,9 +263,13 @@ export function deleteSelection(host: SketchHost, m: SketchMode): void {
   const context = host.sketchContext();
   if (!context || m.selection.length === 0) return;
   const commands = deleteCommands(m.id, context.feature, context.view, m.selection);
-  if (commands.length === 0) return host.say('Počátek a body promítnuté geometrie smazat nejdou; promítnutí se maže výběrem jeho křivky.', true);
+  // a copy of a mirror or pattern (D68) is not deleted: it goes with its entry or its source
+  const copy = m.selection.find((id) => context.view.points.get(id)?.derived === true || context.view.curves.get(id)?.derived === true);
+  const entry = copy === undefined ? undefined : derivedOrigin(context.feature, copy)?.entry;
+  const copyHint = entry === undefined ? '' : `"${copy}" is a copy of the mirror or pattern "${entry}" and is not deleted by itself: remove "${entry}" by ✕ in its row, or change its sources in its form.`;
+  if (commands.length === 0) return host.say(copyHint || 'Počátek a body promítnuté geometrie smazat nejdou; promítnutí se maže výběrem jeho křivky.', true);
   m.selection = [];
-  host.run({ type: 'batch', commands }, 'Smazáno.');
+  host.run({ type: 'batch', commands }, copyHint ? `Deleted the own entities of the selection; ${copyHint}` : 'Smazáno.');
 }
 
 // Vysvětlení označené vazby. Pamatuje se podle diagnostiky, aby se při každém překreslení
@@ -302,7 +306,7 @@ export function sketchScene(host: SketchHost, m: SketchMode, model: SceneModel):
   else model.points.push({ positions: (contactsOf(host, m.id)?.contacts ?? []).flatMap((contact) => toWorld(frame, contact.at[0], contact.at[1])), color: COLOR.clash, size: 9 });
 
   // `unknown`: skica není vyřešená a o volnosti se nedá nic říct
-  const lines: Record<'own' | 'determined' | 'unknown' | 'construction' | 'external' | 'derived' | 'selected' | 'hover' | 'focus' | 'implying', number[]> = { own: [], determined: [], unknown: [], construction: [], external: [], derived: [], selected: [], hover: [], focus: [], implying: [] };
+  const lines: Record<'own' | 'determined' | 'unknown' | 'construction' | 'external' | 'derived' | 'derivedConstruction' | 'selected' | 'hover' | 'focus' | 'implying', number[]> = { own: [], determined: [], unknown: [], construction: [], external: [], derived: [], derivedConstruction: [], selected: [], hover: [], focus: [], implying: [] };
   // The axes of the origin (D71) in a bucket of their own: thin lines in the colour of a plane,
   // drawn by the view as their stretch inside what it shows.
   const axes: NonNullable<SceneModel['axes']> = [];
@@ -321,7 +325,9 @@ export function sketchScene(host: SketchHost, m: SketchMode, model: SceneModel):
           : implying.has(curve.id)
             ? 'implying'
             : curve.derived
-              ? 'derived'
+              ? curve.construction
+                ? 'derivedConstruction'
+                : 'derived'
               : !curve.own
               ? 'external'
               : curve.construction
@@ -342,6 +348,8 @@ export function sketchScene(host: SketchHost, m: SketchMode, model: SceneModel):
     { segments: lines.external, color: COLOR.external, width: 2, onTop: true },
     // copies of mirrors and patterns (D68): derived geometry, dashed in the colour of projections
     ...(lines.derived.length > 0 ? [{ segments: lines.derived, color: COLOR.external, width: 1.5, dashed: true, onTop: true }] : []),
+    // copies of construction curves: thinner, as construction curves are thinner than outlines
+    ...(lines.derivedConstruction.length > 0 ? [{ segments: lines.derivedConstruction, color: COLOR.external, width: 1, dashed: true, onTop: true }] : []),
     { segments: lines.implying, color: COLOR.implied, width: 3, onTop: true },
     { segments: lines.focus, color: COLOR.hover, width: 4, onTop: true },
     { segments: lines.hover, color: COLOR.hover, width: 3, onTop: true },

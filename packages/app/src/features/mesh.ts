@@ -5,7 +5,7 @@
 import { type BodyPlacement, type Command, type Expr, type FrameRef, IMPORT_FORMATS, type Id, type Input, type InsertFeature, type MeshFeature, type PlaneRef, type SketchFeature, featureInput, idFromFile, importAccept, importFormatOf, importMesh, meshNameOf } from '@trymesh/engine';
 import { h } from '../dom';
 import { valueText } from '../fields';
-import { entryEntities } from '../references';
+import { entryEntities, omittedNotes, unlistedLabel } from '../references';
 import type { PanelHost, ViewPick } from '../host';
 import { type DraftMode, type FeatureForm, type FeatureUi, draftButtons, draftChanged, draftField, startDraft } from './draft';
 import { planeText } from './plane';
@@ -134,7 +134,8 @@ export function frameRows(m: PlacedMode, host: PanelHost, what = 'mesh'): HTMLEl
           'select',
           { onchange: (event: Event) => set({ ...frame, point: (event.target as HTMLSelectElement).value }) },
           ...points.map((id) => option(id, id === 'origin' ? 'origin of the sketch' : id, id === frame.point)),
-          points.includes(frame.point) ? null : option(frame.point, `${frame.point} (missing)`, true),
+          points.includes(frame.point) ? null : option(frame.point, unlistedLabel(sketch?.type === 'sketch' ? sketch : undefined, frame.point), true),
+          ...(sketch?.type === 'sketch' ? omittedNotes(sketch, (kind) => kind === 'point').map((text) => h('option', { value: '', textContent: text, disabled: true })) : []),
         ),
       ),
       h('p', { className: 'hint' }, 'The frame of the sketch moved to the point: the centre of a bolt pattern drawn from the data sheet.'),

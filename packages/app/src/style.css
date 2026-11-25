@@ -377,6 +377,10 @@ input.invalid {
 .constraint.focus {
   outline: 2px solid #0ea5e9;
 }
+/* the row of an entry an entity of which is selected (a copy of a mirror or pattern, D68) */
+.constraint.selected {
+  background: #e0f2fe;
+}
 .explain {
   margin: 4px 0 6px;
   padding: 5px 8px;

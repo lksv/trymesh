@@ -1,6 +1,6 @@
 // Geometrie skici pro vykreslení a test zásahu: polohy z výsledku přepočtu, tvar křivek, měření.
 // Čisté funkce bez závislosti na prohlížeči.
-import { type Constraint, type DimensionShape, type Id, type SketchCurve, type SketchFeature, type SketchResult, type SketchToolContext, type Vec2, constraintOperands, curvePoints, isOriginAxis, kindOf as kindOfEntry, lineExtent, referenceEntities, solvedCurves } from '@trymesh/engine';
+import { type Constraint, type DimensionShape, type Id, type SketchCurve, type SketchFeature, type SketchResult, type SketchToolContext, type Vec2, constraintOperands, curvePoints, derivedOrigin, isOriginAxis, kindOf as kindOfEntry, lineExtent, referenceEntities, solvedCurves } from '@trymesh/engine';
 
 export const ORIGIN = 'origin';
 const TAU = 2 * Math.PI;
@@ -20,7 +20,7 @@ export interface CurveView {
   id: Id;
   own: boolean; // false = promítnutá hrana
   derived?: true; // a copy of a mirror or pattern (D68): drawn as derived geometry, not snapped to
-  construction: boolean;
+  construction: boolean; // of a copy, the flag of its source
   shape: Shape;
   points: Id[]; // určující body: konce úsečky; střed kružnice; střed, začátek a konec oblouku
 }
@@ -94,7 +94,8 @@ export function sketchView(feature: SketchFeature, result: SketchResult): Sketch
       id: curve.id,
       own,
       ...(curve.source === 'derived' ? { derived: true as const } : {}),
-      construction: own && feature.curves[curve.id].construction === true,
+      // a copy has the flag of its source (D68)
+      construction: own ? feature.curves[curve.id].construction === true : curve.source === 'derived' && feature.curves[derivedOrigin(feature, curve.id)?.source ?? '']?.construction === true,
       points: isOriginAxis(curve.id) ? [ORIGIN] : curvePoints(curve.shape),
       shape: shapeOf(curve, solved.geometry.radii[curve.id]),
     });

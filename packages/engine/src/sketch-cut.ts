@@ -23,7 +23,7 @@ import { applyCommand, entryInput } from './document';
 import { evaluateNumber } from './expression';
 import { inside } from './recompute/outline';
 import { entryOrder } from './references/derive';
-import { kindOf } from './references/index';
+import { derivedOrigin, entityOf, kindOf } from './references/index';
 import { type SketchBase, type SketchWorld, cutInMemory, sketchWorld, toolBase } from './references/world';
 import { DOCUMENT_SECTIONS, namedBySections } from './sections/index';
 import { type ContactKind, type CurveContacts, type Profile, type Region, type SketchCurve, type SketchGeometry, type TightPlace, curveContacts, curvesTouch, joinsOf, lineExtent, profileOf, profileProblem, sameRegion } from './sketch';
@@ -264,6 +264,9 @@ export const sameTransform = (sketch: SketchFeature, a: Id, b: Id): boolean => J
 //    a listed curve with the curve's flag. A span line of the batch and a circle never join. A curve
 //    no entry takes so, whose ends are open ends of two entries with the same transform, joins the
 //    first of them in the order of the entries.
+// 4. A point a copy of which something outside the sketch names (`named`: a generator's operand
+//    `m/1/b`, an axis on a copied point) stays copied: when the batch takes it off every curve the
+//    entry lists, it joins the list (the rule of old ends keeps the point itself).
 // `after` is the base of the sketch after the batch, before its entries are patched. Answers the
 // entries whose list changes, the curves that joined (with the listed curves at their two ends,
 // which the rewrite of a stored region by names reads), and the entries left without their axis
@@ -277,7 +280,7 @@ export interface JoinedCurve {
   entry: Id;
   between: [{ entry: Id; curve: Id }, { entry: Id; curve: Id }];
 }
-export function entryPatches(before: SketchFeature, after: SketchBase, changes: CurveChanges, tool: 'fillet' | 'trim' | 'extend' | 'split'): { patches: EntryPatch[]; joined: JoinedCurve[]; orphaned: Id[] } {
+export function entryPatches(before: SketchFeature, after: SketchBase, changes: CurveChanges, tool: 'fillet' | 'trim' | 'extend' | 'split', named: ReadonlySet<string> = new Set()): { patches: EntryPatch[]; joined: JoinedCurve[]; orphaned: Id[] } {
   const own = after.sketch.curves;
   const entries = entryOrder(before).filter((id) => before.external[id].type === 'pattern');
   const lists = new Map<Id, Id[]>();
@@ -381,6 +384,14 @@ export function entryPatches(before: SketchFeature, after: SketchBase, changes: 
       }
     }
     for (const entry of entries) lists.set(entry, [...(lists.get(entry) as Id[]), ...(additions.get(entry) as Id[])]);
+  }
+  for (const text of named) {
+    if (!text.includes('/') || entityOf(before, text)?.kind !== 'point') continue;
+    const origin = derivedOrigin(before, text);
+    if (!origin || !lists.has(origin.entry) || !has(after.sketch.points, origin.source)) continue;
+    const list = lists.get(origin.entry) as Id[];
+    if (list.includes(origin.source) || list.some((id) => has(own, id) && curvePoints(own[id]).includes(origin.source))) continue;
+    lists.set(origin.entry, [...list, origin.source]);
   }
   const patches = entries.filter((entry) => JSON.stringify(lists.get(entry)) !== JSON.stringify((before.external[entry] as SketchPattern).sources)).map((entry) => ({ entry, sources: lists.get(entry) as Id[] }));
   return { patches, joined, orphaned };
@@ -1064,12 +1075,20 @@ class Model {
 
 // What names a point besides the curves and constraints of the sketch: a feature of the document
 // (other than the sketch) or a section.
-function namedOutside(doc: Document, sketch: Id): Set<Id> {
+export function namedOutside(doc: Document, sketch: Id): Set<Id> {
   const texts = new Set<string>(namedBySections(doc));
   for (const feature of doc.features) if (feature.id !== sketch) textsIn(feature, texts);
   // an entry of the sketch names its points too: a listed point, the centre of a circular pattern (D68)
   const own = doc.features.find((f) => f.id === sketch);
-  if (own?.type === 'sketch') textsIn(own.external, texts);
+  if (own?.type === 'sketch') {
+    textsIn(own.external, texts);
+    // a copy named anywhere names its source: the copy of a point is an entity only while the point
+    // is (a generator's operand `m/1/b` keeps `b`)
+    for (const text of [...texts]) {
+      const source = text.includes('/') ? derivedOrigin(own, text)?.source : undefined;
+      if (source !== undefined) texts.add(source);
+    }
+  }
   return texts;
 }
 
@@ -1956,6 +1975,18 @@ function reachOf(world: World, X: Id, end: ExtendInput['end'], withId: Id | unde
   found.sort((p, q) => p.d - q.d);
   const stop = found[0];
   if (!stop) {
+    // a copy on the way is no stop: it is never cut, and no point can be held on it (D68)
+    if (withId === undefined) {
+      const copies = [...world.curves.keys()].flatMap((C) => {
+        const copy = C === X ? undefined : copyParts(world.sketch, C);
+        return copy ? contactsWith(C).map((contact) => ({ ...contact, C, copy })) : [];
+      });
+      copies.sort((p, q) => p.d - q.d);
+      if (copies.length > 0) {
+        const { C, copy, at } = copies[0];
+        return `the extension of "${X}" beyond "${E}" meets no curve it can stop at, only "${C}" at ${fmt(at)}: ${copyInTool(C, copy.entry, copy.source)}; an extension stops only at a curve that is cut there or holds its new end, and a copy does neither`;
+      }
+    }
     if (carrier.type === 'arc') return `the extension of the arc "${X}" comes round to the arc itself before it meets ${withId ? `"${withId}"` : 'another curve'}`;
     return `the extension of "${X}" beyond "${E}" meets ${withId ? `no "${withId}"` : 'nothing'}`;
   }
@@ -2014,7 +2045,12 @@ function extendSpec(world: World, input: ExtendInput, repairOfSketch = true): Cu
   // in a profile that was valid, an extension that would leave a contact no tool can cut is refused
   // (owner, answer 10)
   if (bothCut && world.result.valid) {
-    if (reach.stuck.length > 0) return `the extension of "${X}" would meet "${reach.stuck[0].with}" at ${fmt(reach.stuck[0].at)}, a curve that forms regions and is not own, which no tool cuts: the profile would become invalid; draw an own curve over it or change its source`;
+    if (reach.stuck.length > 0) {
+      const { with: C, at } = reach.stuck[0];
+      const copy = copyParts(world.sketch, C);
+      if (copy) return `the extension of "${X}" would meet "${C}" at ${fmt(at)}, where no cut can be made: the profile would become invalid; ${copyInTool(C, copy.entry, copy.source)}`;
+      return `the extension of "${X}" would meet "${C}" at ${fmt(at)}, a curve that forms regions and is not own, which no tool cuts: the profile would become invalid; draw an own curve over it or change its source`;
+    }
     if (reach.passed.length > 0) return `the extension of "${X}" would pass ${fmt(reach.passed[0].at)}, where it only touches "${reach.passed[0].with}", which no tool can cut: the profile would become invalid`;
     if (target.shape.type === 'circle' && cuttable(world, reach.target) && circlePlaces(world, reach.target) + 1 < 2) return `the extension of "${X}" would end on the circle "${reach.target}", which would then have that one point and cannot be cut: the profile would become invalid; draw across the circle and trim instead`;
   }
@@ -2543,19 +2579,39 @@ function patchBlends(world: World, plan: Plan, changes: CurveChanges, afterDoc: 
       if (plan.cuts.get(X)?.lostPiece) lost = true;
       const make = (piece: Id, other: FaceName): EdgeName => (flip ? { a: other, b: { ...s, curve: piece } } : { a: { ...s, curve: piece }, b: other });
       let list: EdgeName[];
+      // a copy the count does not make (D68): no world has it, so its edges are rewritten by names
+      // through its source, the copy of a piece having the copy of a point exactly when the piece has
+      // the point
+      const unmadeX = before.curves.has(X) ? undefined : copyParts(afterSketch, X);
       if (o.feature === s.feature && (o.role === 'side' || o.role === 'wallSide')) {
         // a vertical edge at a vertex of the profile: the pieces of X and of Y that have it after
         const Y = o.curve;
-        const shared = vertices(before, X).filter((v) => vertices(before, Y).includes(v));
         list = [];
-        for (const v of shared) {
-          if (!has(after.geometry.points, v)) continue;
-          const at = (curve: Id): Id | undefined => (piecesOf(changes, afterSketch, curve) ?? [curve]).find((piece) => vertices(after, piece).includes(after.joins(v)));
-          const [px, py] = [at(X), at(Y)];
-          if (px && py) list.push(make(px, { ...o, curve: py }));
+        if (unmadeX) {
+          const unmadeY = before.curves.has(Y) ? undefined : copyParts(afterSketch, Y);
+          if (unmadeY && unmadeY.entry === unmadeX.entry && unmadeY.copy === unmadeX.copy) {
+            const listed = (afterSketch.external[unmadeX.entry] as SketchPattern).sources;
+            const copyOf = (piece: Id): Id => `${unmadeX.entry}/${unmadeX.copy}/${piece}`;
+            for (const v of vertices(before, unmadeX.source).filter((p) => vertices(before, unmadeY.source).includes(p))) {
+              if (!has(after.geometry.points, v)) continue;
+              const at = (source: Id): Id | undefined => (has(changes.pieces, source) ? changes.pieces[source] : [source]).filter((piece) => listed.includes(piece)).find((piece) => vertices(after, piece).includes(after.joins(v)));
+              const [px, py] = [at(unmadeX.source), at(unmadeY.source)];
+              if (px && py) list.push(make(copyOf(px), { ...o, curve: copyOf(py) }));
+            }
+          }
+        } else {
+          const shared = vertices(before, X).filter((v) => vertices(before, Y).includes(v));
+          for (const v of shared) {
+            if (!has(after.geometry.points, v)) continue;
+            const at = (curve: Id): Id | undefined => (piecesOf(changes, afterSketch, curve) ?? [curve]).find((piece) => vertices(after, piece).includes(after.joins(v)));
+            const [px, py] = [at(X), at(Y)];
+            if (px && py) list.push(make(px, { ...o, curve: py }));
+          }
         }
       } else if (o.feature === s.feature && (o.role === 'startCap' || o.role === 'endCap')) {
-        list = (piecesOf(changes, afterSketch, X) ?? [X]).filter((piece) => bounds(s.feature, piece)).map((piece) => make(piece, o));
+        // of a copy the count does not make, every listed piece: its region is rewritten by names
+        // to hold them all
+        list = (piecesOf(changes, afterSketch, X) ?? [X]).filter((piece) => unmadeX !== undefined || bounds(s.feature, piece)).map((piece) => make(piece, o));
       } else if (o.feature === s.feature && o.role === 'wallEnd') {
         // the edge at the straight end of a wall: the piece of X that ends at that point
         const end = has(after.geometry.points, o.point) ? after.joins(o.point) : undefined;
@@ -2616,16 +2672,19 @@ function patchBlends(world: World, plan: Plan, changes: CurveChanges, afterDoc: 
 // - `broken`: features and sections that name a removed curve or a face of it, an axis on it, a
 //   removed point (a section), or the straight end of a wall whose chain no longer ends there.
 // Features in the order of the timeline; `broken` then the IDs of section entries.
-export function readersOf(document: Document, sketch: Id, changes: CurveChanges): { moved: Id[]; shortened: Id[]; broken: Id[] } {
+// `before` is the sketch before the batch (the sketch of `document` when left out): a copy reads as
+// its source only when an entry of it lists the source, as it was before the batch (D68).
+export function readersOf(document: Document, sketch: Id, changes: CurveChanges, before?: SketchFeature): { moved: Id[]; shortened: Id[]; broken: Id[] } {
   const changed = [...new Set([...changes.changed, ...changes.rekinded, ...Object.keys(changes.pieces)])];
   const removed = new Set(changes.removed);
   const moved: Id[] = [];
   const shortened: Id[] = [];
   const broken: Id[] = [];
   const after = document.features.find((f) => f.id === sketch);
+  const listing = before ?? (after?.type === 'sketch' ? after : undefined);
   // a copy of a mirror or pattern reads as its source (D68): a face on the side of a copy of
-  // a changed line, an axis on a copy of a removed one
-  const sourceOf = (id: Id): Id => (after?.type === 'sketch' ? (copyParts(after, id)?.source ?? id) : id);
+  // a changed line, an axis on a copy of a removed one, a point of a copy of a removed point
+  const sourceOf = (id: Id): Id => (listing && id.includes('/') ? (derivedOrigin(listing, id)?.source ?? id) : id);
   const onSide = (face: FaceName, curves: readonly Id[]): boolean => (face.role === 'side' || face.role === 'wallSide') && curves.includes(sourceOf(face.curve));
   const planeOnSide = (plane: PlaneRef, curves: readonly Id[]): boolean => plane.kind === 'face' && onSide(plane.face, curves);
   for (const feature of document.features) {
@@ -2637,7 +2696,11 @@ export function readersOf(document: Document, sketch: Id, changes: CurveChanges)
     // says which blend stays broken: patchBlends)
     const read = feature.type === 'sketch' ? Object.values(feature.external).flatMap((ref) => kindOf(ref).faces(ref)) : feature.type === 'chamfer' || feature.type === 'fillet' ? [] : facesIn(feature);
     const faces = feature.type === 'sketch' ? [...facesIn(feature.plane), ...read] : read;
-    if (faces.some((face) => onSide(face, [...removed])) || sketchLinesIn(feature, sketch).some((line) => removed.has(sourceOf(line))) || (after?.type === 'sketch' && wallEndBroken(document, after, changes, faces))) {
+    // the points it names: an axis `sketchPoint`, an operand of a generated profile (the rule of old
+    // ends keeps a point named so, its copies' sources too; this is what is left if it did not)
+    const source = profileSourceOf(feature);
+    const points = [...sketchPointsIn(feature, sketch), ...(source?.type === 'generated' && source.sketch === sketch ? Object.values(source.operands) : [])];
+    if (faces.some((face) => onSide(face, [...removed])) || sketchLinesIn(feature, sketch).some((line) => removed.has(sourceOf(line))) || points.some((p) => changes.removedPoints.includes(sourceOf(p))) || (after?.type === 'sketch' && wallEndBroken(document, after, changes, faces))) {
       broken.push(feature.id);
       continue;
     }
@@ -2684,7 +2747,7 @@ function lists(world: World, plan: Plan, changes: CurveChanges, patches: Patches
   const constraints = model.newConstraints.filter((id) => model.constraints.has(id));
   const reattached = [...model.constraints.keys()].filter((id) => has(sketch.constraints, id) && (model.moved.has(id) || constraintOperands(sketch.constraints[id]).some((operand) => changes.rekinded.includes(operand)))).sort();
   const removedConstraints = Object.keys(sketch.constraints).filter((id) => !model.constraints.has(id)).sort();
-  const readers = readersOf(afterDoc, sketch.id, changes);
+  const readers = readersOf(afterDoc, sketch.id, changes, sketch);
   const order = (ids: Id[]): Id[] => doc.features.map((f) => f.id).filter((id) => ids.includes(id));
   const featureIds = new Set(doc.features.map((f) => f.id));
   const moved = order(readers.moved);
@@ -2761,7 +2824,7 @@ export function cutTool(context: SketchToolCall, request: CutRequest, newId: New
     const afterSketch = sketchOnly.features.find((f) => f.id === world.sketch.id) as SketchFeature;
     const newPoints: Record<Id, Point2> = {};
     for (const [id, at] of plan.model.newPoints) newPoints[id] = { x: at[0], y: at[1] };
-    const found = entryPatches(world.sketch, toolBase(afterSketch, world.result, { points: newPoints }), changes, request.tool);
+    const found = entryPatches(world.sketch, toolBase(afterSketch, world.result, { points: newPoints }), changes, request.tool, namedOutside(context.document, world.sketch.id));
     const commands = entryCommands(world.sketch, found.patches);
     afterDoc = commands.length ? applyCommand(sketchOnly, { type: 'batch', commands }) : sketchOnly;
     entries = { commands, patched: found.patches.map((patch) => patch.entry), orphaned: found.orphaned, joined: found.joined };

@@ -16,11 +16,12 @@ export const fillet: SketchPlaceTool<FilletOptions> = {
     if (corner?.kind !== 'point') return host.say('Click a point where two lines meet.', true);
     const made = filletCommands(context.tool, corner.id, options, host.newId);
     if (!made.ok) return host.say(`Fillet: ${made.message}`, true);
-    const { patched, moved, shortened } = made.ids;
+    const { patched, moved, shortened, entries } = made.ids;
     const notes = [
       patched.length === 0 ? 'no feature needed the arc' : `the arc was added to ${patched.length === 1 ? 'the profile of 1 feature' : `the profiles of ${patched.length} features`}`,
       ...(moved.length > 0 ? [`moved with the start of a line: ${moved.map((id) => host.nameOf(id)).join(', ')}`] : []),
       ...(shortened.length > 0 ? [`reading one line, check: ${shortened.map((id) => host.nameOf(id)).join(', ')}`] : []),
+      ...(entries.length > 0 ? [`mirrors and patterns changed with their sources: ${entries.join(', ')}`] : []),
     ];
     host.run({ type: 'batch', commands: made.commands }, `Corner rounded; ${notes.join('; ')}.`);
   },

@@ -1119,7 +1119,7 @@
     +   button disabled title="Delete": "Smazat"
     + h2: "Vazby a kóty (0)"
     + p.hint: "Vyberte entity a přidejte vazbu tlačítky výše."
-    + h2: "Promítnutá geometrie (4)"
+    + h2: "Projections, mirrors and patterns (4)"
     + div.constraint
     +   span.name
     +     "Úsečka"
@@ -1253,8 +1253,8 @@
   feature s2:
     + external x5: {"type":"edge","body":"e2","edge":{"a":{"feature":"e2","role":"endCap"},"b":{"feature":"e2","role":"side","curve":"c5"}},"kind":"circle"}
   panel:
-    + h2: "Promítnutá geometrie (5)"
-    - h2: "Promítnutá geometrie (4)"
+    + h2: "Projections, mirrors and patterns (5)"
+    - h2: "Projections, mirrors and patterns (4)"
     + div.constraint
     +   span.name
     +     "Kružnice"
@@ -1306,8 +1306,8 @@
   feature s2:
     - external x5: {"type":"edge","body":"e2","edge":{"a":{"feature":"e2","role":"side","curve":"c5"},"b":{"feature":"e2","role":"startCap"}},"kind":"circle"}
   panel:
-    + h2: "Promítnutá geometrie (4)"
-    - h2: "Promítnutá geometrie (5)"
+    + h2: "Projections, mirrors and patterns (4)"
+    - h2: "Projections, mirrors and patterns (5)"
     - div.constraint.repair
     -   span.name
     -     "Kružnice"
@@ -1438,7 +1438,7 @@
     -   button disabled title="Delete": "Smazat"
     - h2: "Vazby a kóty (0)"
     - p.hint: "Vyberte entity a přidejte vazbu tlačítky výše."
-    - h2: "Promítnutá geometrie (4)"
+    - h2: "Projections, mirrors and patterns (4)"
     - div.constraint
     -   span.name
     -     "Úsečka"
@@ -5752,7 +5752,7 @@
     +   button disabled title="Delete": "Smazat"
     + h2: "Vazby a kóty (0)"
     + p.hint: "Vyberte entity a přidejte vazbu tlačítky výše."
-    + h2: "Promítnutá geometrie (4)"
+    + h2: "Projections, mirrors and patterns (4)"
     + div.constraint
     +   span.name
     +     "Úsečka"
@@ -5995,7 +5995,7 @@
     -   button disabled title="Delete": "Smazat"
     - h2: "Vazby a kóty (0)"
     - p.hint: "Vyberte entity a přidejte vazbu tlačítky výše."
-    - h2: "Promítnutá geometrie (4)"
+    - h2: "Projections, mirrors and patterns (4)"
     +   input.pname value="" placeholder="name"
     +   input.expr value="" placeholder="expression, e.g. 2 * a"
     +   button: "Add"
@@ -6312,7 +6312,7 @@
     +   button disabled title="Delete": "Smazat"
     + h2: "Vazby a kóty (0)"
     + p.hint: "Vyberte entity a přidejte vazbu tlačítky výše."
-    + h2: "Promítnutá geometrie (1)"
+    + h2: "Projections, mirrors and patterns (1)"
     + div.constraint
     +   span.name
     +     "Kružnice"

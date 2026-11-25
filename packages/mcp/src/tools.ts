@@ -521,6 +521,17 @@ function derivedDetail(feature: SketchFeature, entry: Id, solved: SketchResult |
     }
     return null;
   };
+  // the shift of one step along a direction line, from the transform (a direction of one place
+  // makes no copy to read it from): from `a` to `b` of the line, the spacing or length / (count − 1)
+  const stepAlong = (line: Id, count: number, span: { type: 'spacing'; spacing: number } | { type: 'length'; length: number }): Json => {
+    const curve = world.curves.get(line);
+    if (curve?.shape.type !== 'line') return null;
+    const [a, b] = [world.geometry.points[curve.shape.a], world.geometry.points[curve.shape.b]];
+    const length = a && b ? Math.hypot(b.x - a.x, b.y - a.y) : 0;
+    if (!a || !b || !(length > 0)) return null;
+    const along = span.type === 'spacing' ? span.spacing : count > 1 ? span.length / (count - 1) : 0;
+    return [round(((b.x - a.x) / length) * along), round(((b.y - a.y) / length) * along)];
+  };
   const t = ref.transform;
   let step: Json;
   switch (t.type) {
@@ -528,7 +539,7 @@ function derivedDetail(feature: SketchFeature, entry: Id, solved: SketchResult |
       step = { axis: ends(t.axis) };
       break;
     case 'linear':
-      step = { shift: shift(1), ...(t.second ? { second: shift(1000) } : {}) };
+      step = { shift: shift(1) ?? stepAlong(t.direction, t.count, t.span), ...(t.second ? { second: shift(1000) ?? stepAlong(t.second.direction, t.second.count, t.second.span) } : {}) };
       break;
     case 'circular': {
       const c = world.geometry.points[t.center];
@@ -563,7 +574,7 @@ function regionRows(feature: SketchFeature, solved: SketchResult | undefined): J
     const row: { [key: string]: Json } = { ref: region.ref as unknown as Json, area, holes: region.loops.length - 1 };
     const loop = region.ref.outerLoop;
     const entry = loop[0]?.split('/')[0];
-    const n = entry !== undefined && feature.external[entry]?.type === 'pattern' ? copyNumber(entry, loop[0]) : undefined;
+    const n = entry !== undefined && Object.prototype.hasOwnProperty.call(feature.external, entry) && kindOf(feature.external[entry]).source === 'derived' ? copyNumber(entry, loop[0]) : undefined;
     if (entry === undefined || n === undefined || !loop.every((id) => copyNumber(entry, id) === n)) {
       rows.push(row);
       continue;
@@ -584,17 +595,30 @@ function regionRows(feature: SketchFeature, solved: SketchResult | undefined): J
   return rows;
 }
 
-// The advice of the open ends of copies (D68).
-function openEndAdvice(solved: SketchResult | undefined): string | undefined {
+// The advice of the open ends of copies (D68): the entries the listed ends belong to, and the cure
+// by the transform of the entry of the first (a row of marks is open on purpose).
+function openEndAdvice(feature: SketchFeature, solved: SketchResult | undefined): string | undefined {
   const open = solved?.openEnds;
   if (!open || open.count === 0 || open.ends.length === 0) return undefined;
+  const entries = [...new Set(open.ends.map((end) => end.end.split('/')[0]))];
   const first = open.ends[0];
-  const entry = first.end.split('/')[0];
+  const ref = Object.prototype.hasOwnProperty.call(feature.external, entries[0]) ? feature.external[entries[0]] : undefined;
+  const transform = ref?.type === 'pattern' ? ref.transform.type : undefined;
+  const cure =
+    transform === 'mirror'
+      ? "hold the source's end on the axis by a constraint (`pointOnCurve` with the axis)"
+      : transform === 'circular'
+        ? 'choose a count or an angle that brings the copies together, or leave the ring open if that is meant'
+        : transform === 'linear'
+          ? 'choose a spacing, a length or a count that brings the copies together, or leave them open if that is meant (a row of marks or of open shapes is open on purpose)'
+          : 'move the source so that its end lies on what it should meet';
   const where =
     first.reason === 'twoVertices'
       ? `\`${first.end}\` lands where ${first.near.map((id) => `\`${id}\``).join(' and ')} lie without being joined: join them by \`coincident\`.`
-      : `\`${first.end}\` is ${round(first.distance)} mm from ${first.near.length ? `\`${first.near[0]}\`` : 'every other end'}. Copies close with what lies at their ends within 1e-6 mm: hold the source's end on the axis by a constraint (\`pointOnCurve\` with the axis).`;
-  return `${open.count} ${open.count === 1 ? 'end' : 'ends'} of copies of \`${entry}\` ${open.count === 1 ? 'is' : 'are'} open (\`openEnds\` of the result): ${where}`;
+      : `\`${first.end}\` is ${round(first.distance)} mm from ${first.near.length ? `\`${first.near[0]}\`` : 'every other end'}. Copies close with what lies at their ends within 1e-6 mm: ${cure}.`;
+  const whose = entries.map((entry) => `\`${entry}\``).join(', ');
+  const listed = open.ends.length < open.count ? ` (the first ${open.ends.length} are listed)` : '';
+  return `${open.count} ${open.count === 1 ? 'end' : 'ends'} of copies of ${whose} ${open.count === 1 ? 'is' : 'are'} open (\`openEnds\` of the result${listed}): ${where}`;
 }
 
 function sketchDetail(engine: Engine, id: string): unknown {
@@ -630,7 +654,7 @@ function sketchDetail(engine: Engine, id: string): unknown {
     if (diagnosis.removable.length > 0) advice.push(`Vazby navíc: ${diagnosis.removable.join(', ')}. Jdou odebrat naráz beze změny geometrie; z čeho která plyne, řekne explain_constraint.`);
   }
   if (solved && !solved.valid) advice.push('Profil je neplatný: křivky se kříží nebo dotýkají mimo spojené body. Vysunout takovou skicu nejde.');
-  const open = openEndAdvice(solved);
+  const open = openEndAdvice(feature, solved);
   if (open) advice.push(open);
 
   return {

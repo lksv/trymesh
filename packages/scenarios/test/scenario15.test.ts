@@ -597,9 +597,28 @@ describe('scenario 15, steps 4, 5 and 7: the lid mirrored, the vents as patterns
     expect(loopsOf(field, 'lidSketch')).toHaveLength(7);
     const renamed = run(engine, { type: 'renameParameter', name: 'vents', to: 'ventCount' });
     expect(sketchOf(renamed, 'lidSketch').expressions?.['external/va/transform/count']).toBe('ventCount + 1');
-    // a 200 slots recompute (the broad phase of the profile): 804 curves of copies in the lid
+    // the count as a number in the field: 9 slots across the lid
     const many = previewOf(engine, { type: 'setField', feature: 'lidSketch', path: 'external/va/transform/count', value: 9 });
     expect(many.evaluation.features.lidSketch.status).toBe('ok');
+    expect(loopsOf(many, 'lidSketch')).toHaveLength(10);
+  });
+
+  it('200 slots recomputed: a grid of 14 × 14 slots in a plate, 784 curves of copies, end to end within a bound', () => {
+    const engine = newEngine();
+    const s = 'plate';
+    run(engine, { type: 'addFeature', feature: emptySketch(s, 'Plate', XY) }, pt(s, 'b1', -10, -10), pt(s, 'b2', 150, -10), pt(s, 'b3', 150, 250), pt(s, 'b4', -10, 250), ln(s, 'ba', 'b1', 'b2'), ln(s, 'bb', 'b2', 'b3'), ln(s, 'bc', 'b3', 'b4'), ln(s, 'bd', 'b4', 'b1'));
+    run(engine, ...slot(s, 'v', 0, 0), extrudeLoops('P', s, [['ba', 'bb', 'bc', 'bd']], '2'), { type: 'setParameter', name: 'n', expr: '2' });
+    run(engine, addPattern(s, 'g', { type: 'pattern', sources: ['vg1', 've1', 'vg2', 've2'], transform: { type: 'linear', direction: 'origin/x', count: 'n', span: { type: 'spacing', spacing: 10 }, second: { direction: 'origin/y', count: 'n', span: { type: 'spacing', spacing: 17 } } } }));
+    const start = performance.now();
+    const grid = set(engine, 'n', '14');
+    const elapsed = performance.now() - start;
+    expect(Object.keys(resultOf(grid, s).curves).filter((id) => id.startsWith('g/'))).toHaveLength(14 * 14 * 4 - 4);
+    expect(loopsOf(grid, s)).toHaveLength(1 + 14 * 14);
+    expect(allOk(grid)).toBe(true);
+    expect(Math.abs(volumeOf(grid, 'P') - (160 * 260 - 14 * 14 * SLOT) * 2)).toBeLessThan(0.06 * 14 * 14 * 2);
+    // measured about 0.2 s (the solver's time is the same with one slot); the bound leaves room for
+    // a loaded machine
+    expect(elapsed).toBeLessThan(10_000);
   });
 });
 

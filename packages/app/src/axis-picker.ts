@@ -8,9 +8,9 @@
 // uses it for a direction: only the direction of the axis counts, so it has no row of the point
 // (the reference keeps the point it has, `origin` for a new one). A grid has two directions, so the
 // picker of a direction takes the labels of its controls: no two controls of a form share a label.
-import type { AxisRef, FaceName, Id } from '@trymesh/engine';
+import type { AxisRef, FaceName, Id, SketchFeature } from '@trymesh/engine';
 import { h } from './dom';
-import { entryEntities, entryTag } from './references';
+import { entryEntities, entryHas, entryTag, omittedNotes, unlistedLabel } from './references';
 import type { PanelHost, ViewPick } from './host';
 import { faceLabel } from './issue-text';
 import { type AxisChange, type AxisKind, axisKind, axisText, lineIds, lineLabel } from './sketch-commands';
@@ -55,6 +55,12 @@ export const SECOND_DIRECTION: DirectionLabels = { direction: 'Second direction'
 export function axisRows(host: PanelHost, axis: AxisRef, sketches: Id[], set: (change: AxisChange) => void, noSketch: string, direction?: DirectionLabels, face?: FacePick): HTMLElement[] {
   const labels = direction ? DIRECTIONS : AXES;
   const option = (value: string, label: string, selected: boolean) => h('option', { value, textContent: label, selected });
+  // the copies of a mirror or pattern a select leaves out (D68), said as options that cannot be chosen
+  const notes = (sketch: SketchFeature | undefined, kind: 'line' | 'point'): HTMLElement[] => (sketch ? omittedNotes(sketch, (k) => k === kind).map((text) => h('option', { value: '', textContent: text, disabled: true })) : []);
+  const asSketch = (id: Id): SketchFeature | undefined => {
+    const f = host.feature(id);
+    return f?.type === 'sketch' ? f : undefined;
+  };
   const select = (label: string, change: (value: string) => void, ...options: (HTMLElement | null)[]) => h('label', {}, label, h('select', { onchange: (event: Event) => change((event.target as HTMLSelectElement).value) }, ...options));
   const linesOf = (id: Id): Id[] => {
     const f = host.feature(id);
@@ -86,7 +92,13 @@ export function axisRows(host: PanelHost, axis: AxisRef, sketches: Id[], set: (c
     const label = (id: Id): string => (own?.type === 'sketch' && own.curves[id]?.construction ? `${id} (construction)` : own?.type === 'sketch' && entryTag(own, id) ? `${id} (${entryTag(own, id)})` : lineLabel(id));
     out.push(
       select(direction ? direction.sketch : 'Sketch', (value) => set({ sketch: value }), ...withLines.map((id) => option(id, host.nameOf(id), id === axis.sketch)), withLines.includes(axis.sketch) ? null : option(axis.sketch, `${host.nameOf(axis.sketch)}${sketches.includes(axis.sketch) ? '' : ' (missing)'}`, true)),
-      select(direction ? `Line of the ${direction.direction.toLowerCase()}` : 'Line', (value) => set({ line: value }), ...lines.map((id) => option(id, label(id), id === axis.line)), lines.includes(axis.line) ? null : option(axis.line, `${axis.line} (missing)`, true)),
+      select(
+        direction ? `Line of the ${direction.direction.toLowerCase()}` : 'Line',
+        (value) => set({ line: value }),
+        ...lines.map((id) => option(id, label(id), id === axis.line)),
+        lines.includes(axis.line) ? null : option(axis.line, unlistedLabel(asSketch(axis.sketch), axis.line), true),
+        ...notes(asSketch(axis.sketch), 'line'),
+      ),
       h('p', { className: 'hint' }, direction ? 'The direction runs along the line, from its point a to its point b.' : 'The axis runs along the line, from its point a to its point b; a positive angle turns by the right-hand rule about it.'),
     );
     return out;
@@ -96,7 +108,7 @@ export function axisRows(host: PanelHost, axis: AxisRef, sketches: Id[], set: (c
   if (axis.kind === 'sketchPoint' && direction) {
     // The point does not matter for a direction, but the engine checks it: a point that is gone
     // (removed, or given through MCP) is offered to be replaced by the origin of the sketch.
-    const gone = points.length > 0 && !points.includes(axis.point);
+    const gone = points.length > 0 && !points.includes(axis.point) && !(sketch?.type === 'sketch' && entryHas(sketch, axis.point));
     out.push(
       select(direction.sketch, (value) => set({ sketch: value }), ...sketches.map((id) => option(id, host.nameOf(id), id === axis.sketch)), sketches.includes(axis.sketch) ? null : option(axis.sketch, `${host.nameOf(axis.sketch)} (missing)`, true)),
       ...(gone
@@ -107,7 +119,13 @@ export function axisRows(host: PanelHost, axis: AxisRef, sketches: Id[], set: (c
   } else if (axis.kind === 'sketchPoint') {
     out.push(
       select('Sketch', (value) => set({ sketch: value }), ...sketches.map((id) => option(id, host.nameOf(id), id === axis.sketch)), sketches.includes(axis.sketch) ? null : option(axis.sketch, `${host.nameOf(axis.sketch)} (missing)`, true)),
-      select('Point', (value) => set({ point: value }), ...points.map((id) => option(id, id === 'origin' ? 'origin of the sketch' : id, id === axis.point)), points.includes(axis.point) ? null : option(axis.point, `${axis.point} (missing)`, true)),
+      select(
+        'Point',
+        (value) => set({ point: value }),
+        ...points.map((id) => option(id, id === 'origin' ? 'origin of the sketch' : id, id === axis.point)),
+        points.includes(axis.point) ? null : option(axis.point, unlistedLabel(sketch?.type === 'sketch' ? sketch : undefined, axis.point), true),
+        ...notes(sketch?.type === 'sketch' ? sketch : undefined, 'point'),
+      ),
       h('p', { className: 'hint' }, 'The axis is the normal of the sketch plane through the point.'),
     );
   } else if (sketches.length === 0 && noSketch) out.push(h('p', { className: 'hint' }, noSketch));

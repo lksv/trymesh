@@ -2,20 +2,28 @@
 // before the tool (and `origin`) are the sources; a click on a line (the axis, the direction) or on
 // a point (the centre) adds the entry with a fresh ID and opens its form in the panel. With an entry
 // to repair (its row's button), the click replaces its axis, direction or centre instead.
-import { type Expr, type Id, type Input, type SketchPattern, type SketchTransform, entryInput, entityOf } from '@trymesh/engine';
+import { type Expr, type Id, type Input, type SketchPattern, type SketchTransform, entryInput, entityOf, expressionValue } from '@trymesh/engine';
 import { h, markProblem } from '../dom';
 import { expressionProblem, fieldText, parseField } from '../fields';
 import type { SketchHost, SketchMode, SketchContext } from '../sketch-mode';
 import { type SketchPlaceTool, anchor } from './spec';
 
 // What the pattern tools remember: the count and the spacing or the angle, a number or an
-// expression (`2 * pi` and 360° are a full turn).
+// expression. An angle whose value is ±360° (`360`, `2 * pi`, `deg(360)`) is a full turn: the
+// copies spread over the circle, the last one not on the source (`fullTurn`).
 export interface PatternToolOptions {
   count: number | Expr;
   spacing: number | Expr;
   angle: number | Expr;
 }
 export const DEFAULT_PATTERN_TOOL: PatternToolOptions = { count: 3, spacing: 10, angle: 2 * Math.PI };
+
+// Whether an angle of the options is a full turn, by its value (an expression over the parameters
+// of the document) within 1e-9 rad.
+export const fullTurn = (angle: number | Expr, parameters: SketchHost['doc']['parameters']): boolean => {
+  const value = typeof angle === 'number' ? angle : expressionValue(angle, parameters);
+  return value !== undefined && Math.abs(Math.abs(value) - 2 * Math.PI) < 1e-9;
+};
 
 // The sources of the selection: own curves and points, and `origin`.
 export const selectedSources = (m: SketchMode, context: SketchContext): Id[] =>
@@ -132,7 +140,7 @@ export const circularPattern: SketchPlaceTool<PatternToolOptions> = {
     const at = anchor(places[places.length - 1]);
     const center = at.snap?.kind === 'point' && entityOf(context.feature, at.snap.id)?.derived !== true ? at.snap.id : undefined;
     if (center === undefined) return host.say('Click a point of the sketch (not a copy).', true);
-    const full = typeof options.angle === 'number' && Math.abs(Math.abs(options.angle) - 2 * Math.PI) < 1e-9;
+    const full = fullTurn(options.angle, host.doc.parameters);
     const span = full ? { type: 'full' as const } : { type: 'angle' as const, angle: options.angle };
     place(
       host,

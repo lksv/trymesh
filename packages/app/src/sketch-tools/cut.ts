@@ -36,6 +36,7 @@ function notes(host: SketchHost, ids: Record<string, Id[]>): string {
   if (list('shortened').length > 0) out.push(`reading a changed curve, check: ${named(host, list('shortened'))}`);
   if (list('broken').length > 0) out.push(`naming what is gone: ${named(host, list('broken'))}`);
   if (list('uncut').length > 0) out.push(`left whole where they cannot be cut: ${list('uncut').join(', ')}`);
+  if (list('entries').length > 0) out.push(`mirrors and patterns changed with their sources: ${list('entries').join(', ')}`);
   return out.join('; ');
 }
 

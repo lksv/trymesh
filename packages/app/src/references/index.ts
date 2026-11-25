@@ -13,7 +13,9 @@ export const REFERENCE_UI: { readonly [T in ExternalRef['type']]: ReferenceUi<Ex
 // The row of an entry (one cast, as the registries of the engine have).
 export const referenceUi = (ref: ExternalRef): ReferenceUi<ExternalRef> => REFERENCE_UI[ref.type] as ReferenceUi<ExternalRef>;
 
-// The most entities of one derived entry a picker lists (D68): the rest are picked in the view.
+// The most entities of one derived entry a picker lists (D68): the rest are not offered (a known
+// limit), but a value that names one is shown as what it is (`unlistedLabel`), and the picker says
+// how many it left out (`omittedNotes`).
 export const PICKER_LIMIT = 100;
 
 // Every entity of every entry, in the order of `external` and within an entry in the order of its
@@ -46,4 +48,25 @@ export function hoverMarks(sketch: SketchFeature, id: Id): Id[] {
   const index = entityIndex(sketch);
   const curves = (index.byEntry.get(id) ?? []).filter((entity) => index.entities.get(entity)?.kind !== 'point');
   return curves.length > 0 ? curves : [id];
+}
+
+// What a picker of a sketch says of a value it does not list: an entity of an entry beyond the first
+// `PICKER_LIMIT` of a mirror or pattern (D68) is there, tagged as the listed ones are; anything else
+// is missing.
+export function unlistedLabel(sketch: SketchFeature | undefined, id: Id): string {
+  const tag = sketch ? entryTag(sketch, id) : undefined;
+  return tag === undefined ? `${id} (missing)` : `${id} (${tag})`;
+}
+// Whether an ID is an entity of an entry of the sketch, listed by a picker or not.
+export const entryHas = (sketch: SketchFeature, id: Id): boolean => entryOf(sketch, id) !== undefined;
+
+// The notes a picker adds (as disabled options) for the entities of the kinds it lists that it left
+// out of each derived entry: "… 1880 more copies of p1".
+export function omittedNotes(sketch: SketchFeature, kind: (kind: EntityKind) => boolean): string[] {
+  const index = entityIndex(sketch);
+  return [...index.byEntry].flatMap(([entry, ids]) => {
+    if (kindOf(sketch.external[entry]).source !== 'derived' || ids.length <= PICKER_LIMIT) return [];
+    const left = ids.slice(PICKER_LIMIT).filter((id) => kind((index.entities.get(id) as { kind: EntityKind }).kind)).length;
+    return left > 0 ? [`… ${left} more ${left === 1 ? 'copy' : 'copies'} of ${entry}, not listed`] : [];
+  });
 }

@@ -25,6 +25,11 @@ export class ImportFailure extends Error {
   }
 }
 
+// A text of the file as a message, a note or the report echoes it: at most `most` characters, cut
+// with `…`, so that one long value of a file (an attribute of 4 MB) does not make the answer as large
+// (the second review of 6f's implementation).
+export const shown = (text: string, most = 40): string => (text.length > most ? `${text.slice(0, most)}…` : text);
+
 // `R`: what `read` gives, the corners of triangles for a mesh format, curves for an outline format
 // (`ReadOutline`, D72).
 export interface ImportFormatSpec<S, R = ReadTriangles> {

@@ -12,7 +12,7 @@ import type { ArgPath, Document, Evaluation, Id, ImportedCurve, OutlineReadWith,
 import { has } from '../util';
 import { dxf } from './dxf';
 import { fileStemOf, importFormatOf } from './index';
-import { type AnyImportFormat, type AnyOutlineFormat, ImportFailure, type OutlineCatalog, type OutlineFormat, type OutlineOptions, type ReadOutline } from './spec';
+import { type AnyImportFormat, type AnyOutlineFormat, ImportFailure, type OutlineCatalog, type OutlineFormat, type OutlineOptions, type ReadOutline, shown } from './spec';
 import { svg } from './svg';
 
 export const OUTLINE_FORMATS: OutlineCatalog = { dxf, svg };
@@ -286,7 +286,8 @@ export interface Welded {
 
 // The weld (design.md, "The weld"), bounded in what it moves and in what it costs:
 // 0. What has no extent is left out; then a curve whose own ends are within JOIN is closed (an arc of
-//    more than a half turn a circle), whatever the tolerance; until nothing changes, and a curve is
+//    more than a half turn a circle, within JOIN + `arcMost`, the gap under which the validator
+//    refuses an arc as nearly whole), whatever the tolerance; until nothing changes, and a curve is
 //    counted once. A curve that lies on an earlier one is left out, before the ends are looked at.
 // 1. With a tolerance: an arc of more than a half turn, or a spline of four points or more, whose
 //    own two ends are within it, with no end of another curve near them, is closed. A search that
@@ -320,7 +321,9 @@ export function weldOutline(input: readonly ImportedCurve[], tolerance: number):
           now = undefined;
           break;
         }
-        const next = closedOnto(now, JOIN);
+        // an arc as far as `curveProblem` calls it nearly whole: with weld 0, an arc of nearly a whole
+        // turn with a gap between JOIN and that bound would otherwise be left out by the last step
+        const next = closedOnto(now, now.type === 'arc' ? JOIN + OUTLINE_LIMITS.arcMost : JOIN);
         if (!next) break;
         now = next;
         closed = true;
@@ -587,6 +590,24 @@ export function outlineRevision(before: Record<Id, ImportedCurve>, after: Record
 
 // ---------------------------------------------------------------- the import
 
+// What the report and a refusal echo of the names of the file (layers, the types counted on them,
+// what was left out): a name of at most `OUTLINE_LIMITS.text` characters as it is, a longer one,
+// which no option `layers` can name anyway, cut (`shown`) and counted with any other cut to the
+// same text, so one name of 4 MB does not make the report as large (the second review of 6f's
+// implementation). Unchanged when no name is longer.
+function boundedAbout(about: ReadOutline['about']): ReadOutline['about'] {
+  const long = (key: string): boolean => key.length > OUTLINE_LIMITS.text;
+  if (!Object.entries(about.layers).some(([layer, types]) => long(layer) || Object.keys(types).some(long)) && !Object.keys(about.skipped).some(long)) return about;
+  const cut = (key: string): string => (long(key) ? shown(key) : key);
+  const into = (target: Record<string, number>, rows: Record<string, number>): Record<string, number> => {
+    for (const [key, n] of Object.entries(rows)) target[cut(key)] = (target[cut(key)] ?? 0) + n;
+    return target;
+  };
+  const layers: Record<string, Record<string, number>> = Object.create(null);
+  for (const [layer, types] of Object.entries(about.layers)) into((layers[cut(layer)] ??= Object.create(null) as Record<string, number>), types);
+  return { ...about, layers, skipped: into(Object.create(null) as Record<string, number>, about.skipped) };
+}
+
 // The options of an import name nothing of a model, so they are checked against an empty one.
 const NO_STATE = { document: emptyDocument(), evaluation: { features: {}, bodies: {}, faceNames: [] } as unknown as Evaluation };
 const KINDS: ImportedCurve['type'][] = ['line', 'arc', 'circle', 'spline'];
@@ -622,6 +643,7 @@ export function importOutline<F extends OutlineFormat>(format: F, bytes: Uint8Ar
     if (error instanceof ImportFailure) return refused(error.code, `${format}: ${error.message}`);
     throw error;
   }
+  read = { ...read, about: boundedAbout(read.about) };
   const tolerance = given.weld ?? WELD_DEFAULT;
   const source = read.curves.map(({ curve }) => curve);
   const ids = outlineIds(source);

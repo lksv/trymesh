@@ -84,6 +84,35 @@ describe('modules of the engine', () => {
     expect(runtimeImports(join(SRC, 'spline.ts'), MODULES, (file) => readFileSync(file, 'utf8')).map(name)).toEqual(['util.ts']);
   });
 
+  // The adapters know the public types of the engine and no code of it (docs/architecture.md), with
+  // one exception (D72): the solver adapter imports `commonEnd`, the rule of a tangency at a common
+  // end, which the analysis of the sketch reads too, so the two read one rule. It lives in a leaf
+  // that loads nothing at run time.
+  it('common-end.ts is a leaf: it imports nothing at run time', () => {
+    expect(runtimeImports(join(SRC, 'common-end.ts'), MODULES, (file) => readFileSync(file, 'utf8'))).toEqual([]);
+  });
+
+  it('the adapters import no value of the engine but commonEnd, in the solver adapter', () => {
+    const PACKAGES = resolve(SRC, '../..');
+    const found: Record<string, string[]> = {};
+    for (const adapter of ['solver-planegcs', 'kernel-manifold', 'deflate-pako']) {
+      for (const file of files(join(PACKAGES, adapter, 'src'))) {
+        const source = ts.createSourceFile(file, readFileSync(file, 'utf8'), ts.ScriptTarget.ES2022, true);
+        const values: string[] = [];
+        for (const node of source.statements) {
+          const clause = ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier) && node.moduleSpecifier.text === '@trymesh/engine' && !node.importClause?.isTypeOnly ? node.importClause : undefined;
+          if (!clause) continue;
+          if (clause.name) values.push('default');
+          const bindings = clause.namedBindings;
+          if (bindings && ts.isNamespaceImport(bindings)) values.push('*');
+          else if (bindings) values.push(...bindings.elements.filter((element) => !element.isTypeOnly).map((element) => element.name.text));
+        }
+        if (values.length > 0) found[relative(PACKAGES, file)] = values;
+      }
+    }
+    expect(found).toEqual({ 'solver-planegcs/src/index.ts': ['commonEnd'] });
+  });
+
   // The intersection as computed is a mesh nobody verified (D50): it is measured by the collisions
   // and never becomes a body, the input of another boolean or a file. One module calls it.
   it('the intersection as computed is asked in interference.ts alone', () => {

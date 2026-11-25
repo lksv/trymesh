@@ -24,7 +24,7 @@ import { OUTLINE_LIMITS } from '../imported-curve';
 import type { ArgSpecs, RunArgsOf } from '../query/args';
 import type { ImportedCurve, Vec2 } from '../types';
 import { LENGTH_TOLERANCE } from '../util';
-import { ImportFailure, OUTLINE_SHARED_OPTIONS, type OutlineFormatSpec, type ReadOutline } from './spec';
+import { ImportFailure, OUTLINE_SHARED_OPTIONS, type OutlineFormatSpec, type ReadOutline, shown } from './spec';
 
 export const SVG_OPTIONS = {
   ...OUTLINE_SHARED_OPTIONS,
@@ -48,7 +48,7 @@ const unreadable = (why: string): Error => new ImportFailure('unreadable', why);
 // a number as written; one that is not finite (`1e999`) is no number of a drawing
 const finiteNumber = (text: string, what: string): number => {
   const value = Number(text);
-  if (!Number.isFinite(value)) throw unreadable(`${what}: the number "${text}" is not finite`);
+  if (!Number.isFinite(value)) throw unreadable(`${what}: the number "${shown(text)}" is not finite`);
   return value;
 };
 
@@ -98,9 +98,9 @@ function transformOf(text: string | undefined, what: string): Matrix {
     if (!found) break;
     i = TRANSFORM.lastIndex;
     const [, name, args] = found;
-    const v = numberList(args, `${what}, the transform ${name}`);
+    const v = numberList(args, `${what}, the transform ${shown(name)}`);
     const count = (...allowed: number[]): void => {
-      if (!allowed.includes(v.length)) throw unreadable(`${what}: the transform ${name} takes ${allowed.join(' or ')} numbers, not ${v.length}`);
+      if (!allowed.includes(v.length)) throw unreadable(`${what}: the transform ${shown(name)} takes ${allowed.join(' or ')} numbers, not ${v.length}`);
     };
     if (name === 'translate') {
       count(1, 2);
@@ -122,7 +122,7 @@ function transformOf(text: string | undefined, what: string): Matrix {
     } else if (name === 'matrix') {
       count(6);
       m = times(m, v as Matrix);
-    } else throw unreadable(`${what}: the transform ${name} is not one of SVG`);
+    } else throw unreadable(`${what}: the transform ${shown(name)} is not one of SVG`);
   }
   // what the last transform left: white space and commas only
   if (/[^\s,]/.test(list.slice(i))) throw unreadable(`${what}: the transform "${list.slice(0, 80)}" is not a list of transforms`);
@@ -158,7 +158,7 @@ function decoded(value: string, at: number): string {
     if (!whole.endsWith(';')) throw unreadable(`an "&" that starts no entity (in the tag at character ${at})`);
     if (name in ENTITIES) return ENTITIES[name];
     const code = /^#x[0-9a-fA-F]+$/.test(name) ? Number.parseInt(name.slice(2), 16) : /^#\d+$/.test(name) ? Number(name.slice(1)) : Number.NaN;
-    if (!(code >= 0 && code <= 0x10ffff)) throw unreadable(`the entity &${name}; is not one of the five of XML (in the tag at character ${at})`);
+    if (!(code >= 0 && code <= 0x10ffff)) throw unreadable(`the entity &${shown(name)}; is not one of the five of XML (in the tag at character ${at})`);
     return String.fromCodePoint(code);
   });
 }
@@ -204,14 +204,14 @@ function* tags(text: string): Generator<Tag> {
       while (j < n && /\s/.test(text[j])) j++;
       if (name === undefined || text[j] !== '>') throw unreadable(`a closing tag is cut short or is no tag (at character ${lt})`);
       const expected = open.pop();
-      if (expected !== name) throw unreadable(expected === undefined ? `</${name}> closes nothing (at character ${lt})` : `</${name}> where </${expected}> is expected (at character ${lt})`);
+      if (expected !== name) throw unreadable(expected === undefined ? `</${shown(name)}> closes nothing (at character ${lt})` : `</${shown(name)}> where </${shown(expected)}> is expected (at character ${lt})`);
       yield { name, attributes: {}, open: false, close: true, at: lt };
       i = j + 1;
     } else {
       NAME.lastIndex = lt + 1;
       const name = NAME.exec(text)?.[0];
       if (name === undefined) throw unreadable(`a "<" that starts no tag (at character ${lt})`);
-      if (open.length === 0 && rooted) throw unreadable(`a second root element <${name}> (at character ${lt}): a document has one`);
+      if (open.length === 0 && rooted) throw unreadable(`a second root element <${shown(name)}> (at character ${lt}): a document has one`);
       rooted = true;
       const attributes: Record<string, string> = Object.create(null);
       const seen = new Set<string>();
@@ -220,7 +220,7 @@ function* tags(text: string): Generator<Tag> {
       for (;;) {
         const before = j;
         while (j < n && /\s/.test(text[j])) j++;
-        if (j >= n) throw unreadable(`the tag <${name} that starts at character ${lt} is not closed: the file is cut short`);
+        if (j >= n) throw unreadable(`the tag <${shown(name)} that starts at character ${lt} is not closed: the file is cut short`);
         if (text[j] === '>') break;
         if (text[j] === '/' && text[j + 1] === '>') {
           selfClosing = true;
@@ -229,19 +229,19 @@ function* tags(text: string): Generator<Tag> {
         }
         NAME.lastIndex = j;
         const key = NAME.exec(text)?.[0];
-        if (key === undefined || j === before) throw unreadable(`the tag <${name}: an attribute is expected at character ${j}`);
+        if (key === undefined || j === before) throw unreadable(`the tag <${shown(name)}: an attribute is expected at character ${j}`);
         j += key.length;
         while (j < n && /\s/.test(text[j])) j++;
-        if (text[j] !== '=') throw unreadable(`the tag <${name}: the attribute ${key} has no value (at character ${j})`);
+        if (text[j] !== '=') throw unreadable(`the tag <${shown(name)}: the attribute ${shown(key)} has no value (at character ${j})`);
         j++;
         while (j < n && /\s/.test(text[j])) j++;
         const quote = text[j];
-        if (quote !== '"' && quote !== "'") throw unreadable(`the tag <${name}: the value of ${key} is not quoted (at character ${j})`);
+        if (quote !== '"' && quote !== "'") throw unreadable(`the tag <${shown(name)}: the value of ${shown(key)} is not quoted (at character ${j})`);
         const end = text.indexOf(quote, j + 1);
-        if (end < 0) throw unreadable(`the tag <${name}: the value of ${key} that starts at character ${j} is not closed: the file is cut short`);
+        if (end < 0) throw unreadable(`the tag <${shown(name)}: the value of ${shown(key)} that starts at character ${j} is not closed: the file is cut short`);
         const value = text.slice(j + 1, end);
-        if (value.includes('<')) throw unreadable(`the tag <${name}: a "<" in the value of ${key} (at character ${j})`);
-        if (seen.has(key)) throw unreadable(`the tag <${name}: the attribute ${key} is given twice (at character ${j})`);
+        if (value.includes('<')) throw unreadable(`the tag <${shown(name)}: a "<" in the value of ${shown(key)} (at character ${j})`);
+        if (seen.has(key)) throw unreadable(`the tag <${shown(name)}: the attribute ${shown(key)} is given twice (at character ${j})`);
         seen.add(key);
         attributes[key] = decoded(value, lt);
         j = end + 1;
@@ -279,7 +279,7 @@ function* scanPath(d: string, what: string): Generator<Segment> {
     const found = one.exec(d);
     if (!found) throw bad(i >= d.length ? 'the data ends where a number is expected' : 'a number is expected');
     const value = Number(found[0]);
-    if (!Number.isFinite(value)) throw bad(`the number "${found[0]}" is not finite`);
+    if (!Number.isFinite(value)) throw bad(`the number "${shown(found[0])}" is not finite`);
     i += found[0].length;
     return value;
   };
@@ -368,7 +368,7 @@ export function readSvg(bytes: Uint8Array, options: RunArgsOf<typeof SVG_OPTIONS
       const box = a.viewBox ? numberList(a.viewBox, 'the viewBox of the root') : undefined;
       if (box && (box.length !== 4 || !(box[2] > 0) || !(box[3] > 0))) throw unreadable('the viewBox of the root is four numbers with a width and a height above 0');
       const [w, h] = [length(a.width, 'the width of the root'), length(a.height, 'the height of the root')];
-      if ((w !== undefined && !(w > 0)) || (h !== undefined && !(h > 0))) throw unreadable(`the root has no size: width="${a.width ?? ''}" height="${a.height ?? ''}" (both above 0 when given)`);
+      if ((w !== undefined && !(w > 0)) || (h !== undefined && !(h > 0))) throw unreadable(`the root has no size: width="${shown(a.width ?? '')}" height="${shown(a.height ?? '')}" (both above 0 when given)`);
       let scale = UNIT_MM.px;
       if (options.unit !== undefined) {
         scale = UNIT_MM[options.unit];
@@ -389,7 +389,7 @@ export function readSvg(bytes: Uint8Array, options: RunArgsOf<typeof SVG_OPTIONS
       } else if (a.width === undefined && a.height === undefined && !box) notes.push('the root gives no size (width, height and viewBox): read at 96 units per inch; give the option unit if the drawing is in another unit');
       else {
         // what the root gives is not enough for millimetres: say what is missing, not "no size"
-        const given = [a.width !== undefined ? `width="${a.width}"` : '', a.height !== undefined ? `height="${a.height}"` : '', box ? 'a viewBox' : ''].filter((part) => part !== '').join(', ');
+        const given = [a.width !== undefined ? `width="${shown(a.width)}"` : '', a.height !== undefined ? `height="${shown(a.height)}"` : '', box ? 'a viewBox' : ''].filter((part) => part !== '').join(', ');
         const percent = [a.width, a.height].some((v) => v !== undefined && v.trim().endsWith('%'));
         const why = percent ? 'a width or height in % is a share of the page, not a size, so the viewBox alone gives no millimetres' : !box ? 'without a viewBox a user unit is a px' : 'millimetres need a width and a height in a unit beside the viewBox';
         notes.push(`the root gives ${given}: ${why}; read at 96 units per inch; give the option unit if the drawing is in another unit`);
@@ -400,9 +400,9 @@ export function readSvg(bytes: Uint8Array, options: RunArgsOf<typeof SVG_OPTIONS
       if (tag.open) stack.push({ matrix: root, layer: '', selected: asked === undefined, skipped: false });
       continue;
     }
-    if (!root) throw unreadable(`not an SVG file: the first element is <${tag.name}>, not <svg> (at character ${tag.at})`);
+    if (!root) throw unreadable(`not an SVG file: the first element is <${shown(tag.name)}>, not <svg> (at character ${tag.at})`);
     if (!top) continue;
-    const label = a.id !== undefined ? `<${tagName} id="${a.id}">` : `the <${tagName}> at character ${tag.at}`;
+    const label = a.id !== undefined ? `<${shown(tagName)} id="${shown(a.id)}">` : `the <${shown(tagName)}> at character ${tag.at}`;
     const hidden = top.skipped || SKIPPED_CONTENT.has(tagName);
     if (hidden) {
       if (tag.open) stack.push({ ...top, skipped: true });
@@ -459,7 +459,7 @@ export function readSvg(bytes: Uint8Array, options: RunArgsOf<typeof SVG_OPTIONS
     const flat = !(Math.abs(det(matrix)) > 1e-12 * Math.max(Math.hypot(matrix[0], matrix[1]), Math.hypot(matrix[2], matrix[3])) ** 2);
     if (flat) {
       // the data of a path is still read: one that does not parse is a broken file
-      if (tagName === 'path') for (const _ of scanPath(a.d ?? '', a.id !== undefined ? `the path "${a.id}"` : `the path at character ${tag.at}`));
+      if (tagName === 'path') for (const _ of scanPath(a.d ?? '', a.id !== undefined ? `the path "${shown(a.id)}"` : `the path at character ${tag.at}`));
       skip(`${tagName} (flat transform)`);
       continue;
     }
@@ -473,7 +473,7 @@ export function readSvg(bytes: Uint8Array, options: RunArgsOf<typeof SVG_OPTIONS
     const n = (key: string): number => {
       if (a[key] === undefined) return 0;
       const found = a[key].trim().match(LENGTH);
-      if (!found) throw unreadable(`${label}: ${key}="${a[key]}" is no length`);
+      if (!found) throw unreadable(`${label}: ${key}="${shown(a[key])}" is no length`);
       if (!(found[2] in USER)) {
         odd ??= found[2];
         return 0;
@@ -484,7 +484,7 @@ export function readSvg(bytes: Uint8Array, options: RunArgsOf<typeof SVG_OPTIONS
     if (tagName === 'circle' || tagName === 'ellipse') {
       const [cx, cy] = [n('cx'), n('cy')];
       const [rx, ry] = tagName === 'circle' ? [n('r'), n('r')] : [n('rx'), n('ry')];
-      if (odd !== undefined) leaveOut(`length in ${odd}`);
+      if (odd !== undefined) leaveOut(`length in ${shown(odd)}`);
       else if (rx < 0 || ry < 0) throw unreadable(`${label}: a radius under 0`);
       else if (rx === 0 || ry === 0) skip(`${tagName} (no radius)`);
       else if (!same(rx, ry)) leaveOut('two radii');
@@ -492,7 +492,7 @@ export function readSvg(bytes: Uint8Array, options: RunArgsOf<typeof SVG_OPTIONS
       else take({ type: 'circle', center: at([cx, cy]), radius: rx * scale });
     } else if (tagName === 'line') {
       const [p, q]: [Vec2, Vec2] = [[n('x1'), n('y1')], [n('x2'), n('y2')]];
-      if (odd !== undefined) leaveOut(`length in ${odd}`);
+      if (odd !== undefined) leaveOut(`length in ${shown(odd)}`);
       else line(p, q);
     } else if (tagName === 'polyline' || tagName === 'polygon') {
       const v = numberList(a.points ?? '', `${label}, points`);
@@ -504,7 +504,7 @@ export function readSvg(bytes: Uint8Array, options: RunArgsOf<typeof SVG_OPTIONS
     } else if (tagName === 'rect') {
       const [x, y, w, h] = [n('x'), n('y'), n('width'), n('height')];
       const [rx, ry] = [a.rx === undefined ? n('ry') : n('rx'), a.ry === undefined ? n('rx') : n('ry')];
-      if (odd !== undefined) leaveOut(`length in ${odd}`);
+      if (odd !== undefined) leaveOut(`length in ${shown(odd)}`);
       else if (w < 0 || h < 0 || rx < 0 || ry < 0) throw unreadable(`${label}: a size under 0`);
       else if (w === 0 || h === 0) skip('rect (no size)');
       // SVG clamps each radius to its half of the side (1.1, 9.2): rx="10" on a rect 10 wide and 40
@@ -526,7 +526,7 @@ export function readSvg(bytes: Uint8Array, options: RunArgsOf<typeof SVG_OPTIONS
       }
     } else if (tagName === 'path') {
       paths++;
-      const segments = scanPath(a.d ?? '', a.id !== undefined ? `the path "${a.id}"` : `the path ${paths} (at character ${tag.at})`);
+      const segments = scanPath(a.d ?? '', a.id !== undefined ? `the path "${shown(a.id)}"` : `the path ${paths} (at character ${tag.at})`);
       let unsupported = '';
       let [here, start]: [Vec2, Vec2] = [[0, 0], [0, 0]];
       // the control point before `here` of the last C or S, and of the last Q or T

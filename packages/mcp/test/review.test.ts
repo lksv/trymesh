@@ -121,6 +121,14 @@ describe('import_outline and get_sketch of an outline: the review of 6f', () => 
     expect(placed.next).not.toContain('h/l1');
   });
 
+  // the second round, nit 7: the example of the points of each kind was the last curve of the kind
+  it('the advice after a placement gives the first curve of each kind as the example of its points', () => {
+    const engine = engineWithSketch();
+    const placed = ok(engine, '_outline', { file: file('two.dxf', dxf(line([0, 0], [10, 0]), line([10, 0], [10, 10]), circle([20, 0], 1), circle([30, 0], 1))), sketch: 's', id: 't' });
+    expect(placed.next).toContain('`t/l1/a`, `t/c1/center`');
+    expect(placed.next).not.toMatch(/t\/l2\/a|t\/c2\/center/);
+  });
+
   // M5: the `more` of the row starts where the query's next page does
   it('M5: the row of a large outline points entryCurves at the next page', () => {
     const engine = engineWithSketch();

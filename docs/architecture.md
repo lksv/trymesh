@@ -31,7 +31,7 @@ Poslední úprava: 2026-11-15
      adaptéry (WASM)                               adapter (JS, D54; optional)
 ```
 
-Pravidlo závislostí: engine nezná adaptéry ani renderer. Adaptéry a renderer znají jen veřejné typy enginu. Adaptéry se enginu předají při vytvoření.
+The rule of dependencies: the engine knows neither the adapters nor the renderer. The adapters and the renderer know only the public types of the engine, with one exception (D72): the solver adapter imports `commonEnd`, the rule of a tangency of a line and an arc at a common end, from the leaf module `common-end.ts`, which imports nothing at run time; the analysis of the sketch reads the same function, so the adapter and the analysis read one rule ([ports.md](architecture/ports.md), [repository.md](architecture/repository.md); `packages/engine/test/modules.test.ts` guards both). The adapters are given to the engine when it is created.
 
 ## Where it is written
 

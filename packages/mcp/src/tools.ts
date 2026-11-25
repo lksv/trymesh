@@ -1122,7 +1122,10 @@ function outlinePlacedNext(id: Id, document: Document, sketch: Id): string {
   const curves = ref?.type === 'outline' ? Object.entries(ref.curves) : [];
   const first = curves[0]?.[0] ?? 'l1';
   const point: Record<ImportedCurve['type'], string> = { line: 'a', circle: 'center', arc: 'center', spline: '0' };
-  const examples = [...new Map(curves.map(([local, curve]) => [curve.type, `\`${id}/${local}/${point[curve.type]}\``])).values()].join(', ');
+  // the first curve of each kind the file gave, as the example of its points
+  const firstOfKind = new Map<ImportedCurve['type'], string>();
+  for (const [local, curve] of curves) if (!firstOfKind.has(curve.type)) firstOfKind.set(curve.type, `\`${id}/${local}/${point[curve.type]}\``);
+  const examples = [...firstOfKind.values()].join(', ');
   return `The curves are \`${id}/${first}\` … as \`report.ids\` counts them (their points ${examples} …); the query entryCurves lists them with their places. The query sketchRegions with \`curve: "${id}/${first}"\` gives the region a curve bounds, whole, to extrude. Constrain own geometry to the entities, or move the outline by \`updateExternal\` (\`x\`, \`y\`, \`turn\`, \`anchor\`).`;
 }
 

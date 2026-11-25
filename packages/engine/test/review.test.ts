@@ -1487,12 +1487,28 @@ describe('the review of the implementation of 6f (D72): the import and the kind'
     expect(curveProblem({ type: 'spline', points: [[0, 0], [1, 1], [2, 1e10]] }, 'c')).toBe(OUTLINE_REFUSALS.range('c'));
   });
 
-  it('S2: groups nested 16,000 deep, each with an id, are read in linear memory', () => {
-    const n = 16000;
-    const started = performance.now();
-    const outcome = importOutline('svg', svgOf(`${'<g id="g">'.repeat(n)}<circle r="1"/>${'</g>'.repeat(n)}`));
-    expect(outcome.ok && outcome.report.curves).toBe(1);
-    expect(performance.now() - started).toBeLessThan(2000);
+  // A bound near the cost of the fix, far under that of the code before it (the second review: the
+  // bound of 2000 ms passed on that code). Measured alone, the best of three runs at 16,000 levels:
+  // 600 to 700 ms with the copied path of names of each level, 10 to 15 ms with the layer carried
+  // down the stack. A ratio of n against 2n was tried and is not used: under the load of the whole
+  // suite the few milliseconds of the fix vary by more than the ratio tells apart. A depth the code
+  // before the fix still finishes (its memory grows with the square: 32,000 levels run it out), so
+  // that it fails on the bound and not by crashing the worker.
+  it('S2: groups nested 16,000 deep, each with an id, are read in linear time', () => {
+    const nested = (n: number): Uint8Array => svgOf(`${'<g id="g">'.repeat(n)}<circle r="1"/>${'</g>'.repeat(n)}`);
+    const best = (n: number): number => {
+      const bytes = nested(n);
+      let fastest = Number.POSITIVE_INFINITY;
+      for (let run = 0; run < 3; run++) {
+        const started = performance.now();
+        const outcome = importOutline('svg', bytes);
+        fastest = Math.min(fastest, performance.now() - started);
+        expect(outcome.ok && outcome.report.curves).toBe(1);
+      }
+      return fastest;
+    };
+    best(2000);
+    expect(best(16000)).toBeLessThan(250);
   });
 
   it('S3: a length and a transform of 40,000 characters are refused in linear time', () => {
@@ -1567,5 +1583,73 @@ describe('the review of the implementation of 6f (D72): the import and the kind'
     // the import refuses what the validator would
     expect(code(importOutline('svg', svgOf('<circle r="1"/>'), { layers: ['x'.repeat(201)] }))).toMatch(/^invalidArguments/);
     expect(code(importOutline('svg', svgOf('<circle r="1"/>'), { layers: Array.from({ length: 101 }, (_, i) => `L${i}`) }))).toMatch(/^invalidArguments/);
+  });
+});
+
+describe('the second review of the implementation of 6f (D72): the import', () => {
+  const enc = (text: string): Uint8Array => new TextEncoder().encode(text);
+  const dxfOf = (...groups: (string | number)[]): Uint8Array => enc(`${['0', 'SECTION', '2', 'ENTITIES', ...groups.map(String), '0', 'ENDSEC', '0', 'EOF'].join('\n')}\n`);
+  const svgOf = (body: string, root = 'width="100mm" height="100mm" viewBox="0 0 100 100"'): Uint8Array => enc(`<svg xmlns="http://www.w3.org/2000/svg" ${root}>${body}</svg>`);
+  const code = (outcome: OutlineOutcome): string => (outcome.ok ? 'ok' : `${outcome.error.code}: ${outcome.error.message}`);
+  // the length of what the import answers, as it goes to the AI
+  const size = (outcome: OutlineOutcome): number => JSON.stringify(outcome.ok ? outcome.report : outcome.error).length;
+
+  // 2: a sagitta just above the join on a long segment put the centre beyond the range, and the whole
+  // file was unreadable
+  it('a bulge whose centre would lie beyond the range of the engine is a line; a nearer one stays an arc', () => {
+    const rect = (w: number, bulge: number | string): Uint8Array => dxfOf(0, 'LWPOLYLINE', 8, '0', 90, 4, 70, 1, 10, 0, 20, 0, 42, bulge, 10, w, 20, 0, 10, w, 20, 100, 10, 0, 20, 100);
+    for (const [w, bulge] of [[1000, '1e-8'], [1000, '2.1e-9'], [500, '1e-8'], [1000, '-1e-8']] as const) {
+      const outcome = importOutline('dxf', rect(w, bulge));
+      if (!outcome.ok) throw new Error(code(outcome));
+      expect(Object.keys(outcome.curves)).toEqual(['l1', 'l2', 'l3', 'l4']);
+      expect(outcome.report.bounds).toEqual({ min: [0, 0], max: [w, 100] });
+      expect(() => storedCurves(outcome.curves, 'o')).not.toThrow();
+    }
+    // the centre 2.5e8 mm away, within the range: an arc as the file says
+    const near = importOutline('dxf', rect(100, '1e-7'));
+    expect(near.ok && Object.keys(near.curves)).toEqual(['a1', 'l1', 'l2', 'l3']);
+    // a centre out of range only because the chord is far out: still unreadable
+    expect(code(importOutline('dxf', dxfOf(0, 'LWPOLYLINE', 8, '0', 90, 2, 70, 0, 10, 999999999, 20, 0, 42, -0.5, 10, 999999999, 20, 1000)))).toMatch(/^unreadable: .*within ±1000000000/);
+  });
+
+  // 3: one long value of a file was echoed whole into the report, a note or an error
+  it('a value of 4 MB is echoed cut: the root size, a number, a layer, a type of entity, a name of a tag', () => {
+    const big = 4_000_000;
+    const cases: [string, OutlineOutcome][] = [
+      ['svg root width', importOutline('svg', svgOf('<circle r="1"/>', `width="${'x'.repeat(big)}" viewBox="0 0 1 1"`))],
+      ['svg root width %', importOutline('svg', svgOf('<circle r="1"/>', `width="${' '.repeat(big)}%" height="1%" viewBox="0 0 1 1"`))],
+      ['svg root no size', importOutline('svg', svgOf('<circle r="1"/>', `width="-${'1'.repeat(big)}"`))],
+      ['svg number', importOutline('svg', svgOf(`<path d="M${'1'.repeat(big)} 0"/>`))],
+      ['svg length', importOutline('svg', svgOf(`<circle r="1${'x'.repeat(big)}"/>`))],
+      ['svg layer', importOutline('svg', svgOf(`<g id="${'L'.repeat(big)}"><circle r="1"/></g>`))],
+      ['svg tag', importOutline('svg', svgOf(`<g></${'t'.repeat(big)}><circle r="1"/>`))],
+      ['dxf value', importOutline('dxf', dxfOf(0, 'LINE', 8, '0', 10, `${'1'.repeat(big)}x`, 20, 0, 11, 1, 21, 1))],
+      ['dxf layer', importOutline('dxf', dxfOf(0, 'LINE', 8, 'L'.repeat(big), 10, 0, 20, 0, 11, 1, 21, 1))],
+      ['dxf type', importOutline('dxf', dxfOf(0, 'T'.repeat(big), 8, '0', 0, 'LINE', 8, '0', 10, 0, 20, 0, 11, 1, 21, 1))],
+    ];
+    for (const [what, outcome] of cases) expect([what, size(outcome) < 3000]).toEqual([what, true]);
+    // a cut layer name is listed with what it holds; a name within the bound of an option is whole
+    const layer = importOutline('dxf', dxfOf(0, 'LINE', 8, 'L'.repeat(big), 10, 0, 20, 0, 11, 1, 21, 1, 0, 'LINE', 8, 'M'.repeat(200), 10, 0, 20, 1, 11, 1, 21, 2));
+    expect(layer.ok && layer.report.about.layers).toEqual({ [`${'L'.repeat(40)}…`]: { LINE: 1 }, ['M'.repeat(200)]: { LINE: 1 } });
+  });
+
+  // 5: with weld 0, step 0 closed an arc at JOIN and the validator refused one under JOIN + arcMost
+  it('with weld 0 an arc of nearly a whole turn with a gap just over the join is a circle, not left out', () => {
+    for (const gap of ['0.00000099', '0.00000105', '0.000001099']) {
+      const outcome = importOutline('svg', svgOf(`<path d="M10 0 A10 10 0 1 1 10 ${gap}"/>`), { weld: 0 });
+      if (!outcome.ok) throw new Error(`${gap}: ${code(outcome)}`);
+      expect(Object.values(outcome.curves).map((curve) => curve.type)).toEqual(['circle']);
+      expect(outcome.report.closed).toBe(1);
+    }
+  });
+
+  // 6: the code page was found by its first appearance in the text, so a comment before the header hid it
+  it('the code page of a DXF is the value of its header group, not the first text $DWGCODEPAGE', () => {
+    const latin = (text: string): number[] => Array.from(text, (c) => c.charCodeAt(0));
+    const bytes = new Uint8Array([...latin('999\nsee $DWGCODEPAGE\n0\nSECTION\n2\nHEADER\n9\n$DWGCODEPAGE\n3\nANSI_1250\n0\nENDSEC\n0\nSECTION\n2\nENTITIES\n0\nCIRCLE\n8\nVrstva_'), 0xe8, ...latin('\n10\n0\n20\n0\n40\n1\n0\nENDSEC\n0\nEOF\n')]);
+    const outcome = importOutline('dxf', bytes);
+    if (!outcome.ok) throw new Error(code(outcome));
+    expect(Object.keys(outcome.report.about.layers)).toEqual(['Vrstva_č']);
+    expect(outcome.report.notes.join(' ')).toContain('ANSI_1250 of its header');
   });
 });

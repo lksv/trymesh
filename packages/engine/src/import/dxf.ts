@@ -11,7 +11,7 @@ import type { ArgSpecs, RunArgsOf } from '../query/args';
 import { bsplineBeziers } from '../spline';
 import type { ImportedCurve, Vec2 } from '../types';
 import { LENGTH_TOLERANCE } from '../util';
-import { ImportFailure, OUTLINE_SHARED_OPTIONS, type OutlineFormatSpec, type ReadOutline } from './spec';
+import { ImportFailure, OUTLINE_SHARED_OPTIONS, type OutlineFormatSpec, type ReadOutline, shown } from './spec';
 
 export const DXF_OPTIONS = {
   ...OUTLINE_SHARED_OPTIONS,
@@ -63,7 +63,9 @@ const dist = (a: Vec2, b: Vec2): number => Math.hypot(a[0] - b[0], a[1] - b[1]);
 // header names (`$DWGCODEPAGE`, `ANSI_1250` for Central Europe), which UTF-8 cannot read: the bytes
 // are then decoded in that code page (the header itself is ASCII), and in windows-1252 when it names
 // none the platform knows, with a note. Without this, `Vrstva_č` and `Vrstva_ř` would both be
-// `Vrstva_�`, one layer.
+// `Vrstva_�`, one layer. The code page is the value of the group 3 after the group pair
+// (9, `$DWGCODEPAGE`), read by `groups` like the rest of the file, so a comment or a layer name that
+// holds the text `$DWGCODEPAGE` does not hide it.
 const CODE_PAGES: Record<string, string> = table({ ANSI_874: 'windows-874', ANSI_932: 'shift_jis', ANSI_936: 'gbk', ANSI_949: 'euc-kr', ANSI_950: 'big5', ANSI_1250: 'windows-1250', ANSI_1251: 'windows-1251', ANSI_1252: 'windows-1252', ANSI_1253: 'windows-1253', ANSI_1254: 'windows-1254', ANSI_1255: 'windows-1255', ANSI_1256: 'windows-1256', ANSI_1257: 'windows-1257', ANSI_1258: 'windows-1258' });
 function decodeDxf(bytes: Uint8Array): { text: string; note?: string } {
   try {
@@ -71,9 +73,9 @@ function decodeDxf(bytes: Uint8Array): { text: string; note?: string } {
   } catch {
     // not UTF-8: the code page of the header, read from the ASCII of the file
     const ascii = new TextDecoder('windows-1252').decode(bytes);
-    const at = ascii.indexOf('$DWGCODEPAGE');
-    const [code, value] = at < 0 ? [] : ascii.slice(at, at + 200).split(/\r\n|\r|\n/).slice(1, 3).map((line) => line.trim());
-    const named = code === '3' && value ? value : undefined;
+    const all = groups(ascii);
+    const at = all.findIndex(([code, value]) => code === 9 && value === '$DWGCODEPAGE');
+    const named = at >= 0 && all[at + 1]?.[0] === 3 && all[at + 1][1] !== '' ? all[at + 1][1] : undefined;
     const label = named !== undefined ? CODE_PAGES[named.toUpperCase()] : undefined;
     if (label !== undefined) {
       try {
@@ -82,7 +84,7 @@ function decodeDxf(bytes: Uint8Array): { text: string; note?: string } {
         // a code page this platform does not decode: windows-1252 below
       }
     }
-    return { text: ascii, note: `The file is not UTF-8 and its header names ${named !== undefined ? `the code page ${named}, which is not read` : 'no code page ($DWGCODEPAGE)'}: its texts (layer names) are read in windows-1252, so a letter outside it may be another letter.` };
+    return { text: ascii, note: `The file is not UTF-8 and its header names ${named !== undefined ? `the code page ${shown(named)}, which is not read` : 'no code page ($DWGCODEPAGE)'}: its texts (layer names) are read in windows-1252, so a letter outside it may be another letter.` };
   }
 }
 
@@ -118,19 +120,27 @@ const DECIMAL = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/;
 // The number of a group, never an empty value read as 0.
 function numberOf([code, value, line]: Group, of: string): number {
   const number = DECIMAL.test(value) ? Number(value) : Number.NaN;
-  if (!Number.isFinite(number)) unreadable(`line ${line + 1}: the group ${code} of ${of} is "${value}", not a number`);
+  if (!Number.isFinite(number)) unreadable(`line ${line + 1}: the group ${code} of ${shown(of)} is "${shown(value)}", not a number`);
   return number;
 }
 
 // An arc from `p` to `q` with the bulge `b` (the tangent of a quarter of the angle it turns by,
 // positive counter-clockwise), as a counter-clockwise arc: its centre is
-// `(p + q) / 2 + ((1 − b²) / (4b)) · perp(q − p)`. A bulge whose arc lies within the tolerance of a
-// join of its chord (the sagitta |b| · chord / 2) is a line: a bulge of numerical noise (1e-16) would
-// put the centre of a 10 mm segment 1e16 mm away.
+// `(p + q) / 2 + ((1 − b²) / (4b)) · perp(q − p)`. A bulge is read as a line
+// - when its arc lies within the tolerance of a join of its chord (the sagitta |b| · chord / 2): a
+//   bulge of numerical noise (1e-16) would put the centre of a 10 mm segment 1e16 mm away;
+// - and when it turns by less than a half (|b| < 1) and its centre would lie further than the
+//   engine's range (`MAX_NUMBER`, 1e9 mm) from the middle of the chord: the arc is then within
+//   chord² / (8 · 1e9) mm of its chord (1.25e-4 mm for a chord of 1000 mm), and a centre out of
+//   range would make the whole file `unreadable` (a bulge of 1e-8 on a 1000 mm edge, the second
+//   review of 6f's implementation). A centre that is out of range only because the chord is far
+//   from the origin is not this case: that file stays `unreadable`.
 function bulgeArc(p: Vec2, q: Vec2, b: number): ImportedCurve {
   const [dx, dy] = [q[0] - p[0], q[1] - p[1]];
-  if ((Math.abs(b) * Math.hypot(dx, dy)) / 2 <= LENGTH_TOLERANCE) return { type: 'line', a: p, b: q };
+  const chord = Math.hypot(dx, dy);
+  if ((Math.abs(b) * chord) / 2 <= LENGTH_TOLERANCE) return { type: 'line', a: p, b: q };
   const k = (1 - b * b) / (4 * b);
+  if (Math.abs(b) < 1 && Math.abs(k) * chord > MAX_NUMBER) return { type: 'line', a: p, b: q };
   const center: Vec2 = [(p[0] + q[0]) / 2 - k * dy, (p[1] + q[1]) / 2 + k * dx];
   return b > 0 ? { type: 'arc', center, start: p, end: q } : { type: 'arc', center, start: q, end: p };
 }

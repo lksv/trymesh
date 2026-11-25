@@ -1,9 +1,9 @@
-// Nástroje pro AI nad enginem. Čisté funkce bez závislosti na Node i na prohlížeči: stejný kód
-// obsluhuje engine uvnitř MCP serveru i engine běžící aplikace (přes most).
+// Tools for the AI over the engine. Pure functions with no dependency on Node or on the browser: the same code
+// serves the engine inside the MCP server and the engine of the running app (through the bridge).
 //
-// Nástrojů je málo a jsou obecné. Co engine umí (příkazy, vazby, tvary dokumentu), se do popisu
-// dostává ze zdrojů enginu: z katalogu vazeb a z typů. Nová vazba nebo příkaz v enginu se tak
-// v nástrojích objeví bez zásahu sem.
+// The tools are few and general. What the engine can do (commands, constraints, shapes of the document)
+// gets into the description from the engine's sources: from the catalog of constraints and from the types.
+// A new constraint or command in the engine thus shows up in the tools with no change here.
 import {
   type BodyEdge,
   type BodyResult,
@@ -78,7 +78,7 @@ export interface Tool {
   name: string;
   description: string;
   inputSchema: JsonSchema;
-  hidden?: boolean; // vnitřní nástroj mostu a serveru, v seznamu pro AI není
+  hidden?: boolean; // an internal tool of the bridge and the server, not in the list for the AI
   run(engine: Engine, args: Record<string, unknown>): unknown;
 }
 
@@ -116,7 +116,7 @@ export interface FileEnvelope {
 }
 export type ToolAnswer = { kind: 'data'; data: Json } | { kind: 'files'; layout: 'file' | 'directory'; files: FileEnvelope[] } | { kind: 'image'; mediaType: 'image/png'; base64: string; about?: { [key: string]: Json } };
 
-// Chyba volání: špatný argument, neznámá skica. Vrací se volajícímu jako text.
+// An error of a call: a wrong argument, an unknown sketch. It goes back to the caller as text.
 export class ToolError extends Error {}
 
 const round = (value: number): number => Math.round(value * 1e6) / 1e6 + 0;
@@ -131,22 +131,22 @@ function roundedResult(value: unknown, significant: { readonly [key: string]: nu
 }
 const text = (args: Record<string, unknown>, name: string): string => {
   const value = args[name];
-  if (typeof value !== 'string' || value === '') throw new ToolError(`argument "${name}": a text that is not empty is expected`);
+  if (typeof value !== 'string' || value === '') throw new ToolError(`argument "${name}": a non-empty string is expected`);
   return value;
 };
 const optionalText = (args: Record<string, unknown>, name: string): string | undefined => (args[name] === undefined || args[name] === null ? undefined : text(args, name));
 
 function stateAt(engine: Engine, at: string | undefined): EngineState {
-  if (at !== undefined && !engine.getState().document.features.some((feature) => feature.id === at)) throw new ToolError(`the document has no feature "${at}"`);
+  if (at !== undefined && !engine.getState().document.features.some((feature) => feature.id === at)) throw new ToolError(`the feature "${at}" is not in the document`);
   return engine.getState(at);
 }
 function sketchOf(engine: Engine, id: string): SketchFeature {
   const feature = engine.getState().document.features.find((f) => f.id === id);
-  if (feature?.type !== 'sketch') throw new ToolError(`the document has no sketch "${id}"`);
+  if (feature?.type !== 'sketch') throw new ToolError(`the sketch "${id}" is not in the document`);
   return feature;
 }
 
-// ---------------------------------------------------------------- popis modelu
+// ---------------------------------------------------------------- description of the model
 
 // A short text for a face name; a face of a copy made by a pattern has `@<pattern>:<number>` appended.
 const faceLabel = (name: FaceName): string => [name.feature, name.role, ...faceParts(name)].join('/') + (name.copy ?? []).map((tag) => `@${tag.pattern}:${tag.index}`).join('');
@@ -290,8 +290,8 @@ function propertiesInfo(state: EngineState, id: string): Record<string, unknown>
   };
 }
 
-// Stav skici v přehledech. U nevyřešené skici (konflikt, neúspěch solveru) stupně volnosti nic
-// neříkají, proto se neuvádějí.
+// The state of a sketch in overviews. For an unsolved sketch (a conflict, a failure of the solver) the
+// degrees of freedom say nothing, so they are not given.
 function sketchBrief(result: FeatureResult | undefined): Record<string, unknown> {
   const sketch = result?.sketch;
   if (!sketch) return {};
@@ -774,23 +774,23 @@ function sketchDetail(engine: Engine, id: string): unknown {
 
   const advice: string[] = [];
   if (diagnosis.status === 'conflict') advice.push('The constraints are in conflict; remove or change one of the constraints in `conflicting`.');
-  if (diagnosis.status === 'failed') advice.push('The sketch could not be solved; the points are far from a solution or the constraints cannot be met.');
-  if (diagnosis.status === 'unavailable') advice.push('The sketch was not evaluated (it is suppressed or its plane does not exist); there is no diagnosis.');
+  if (diagnosis.status === 'failed') advice.push('The sketch could not be solved; the positions of the points are far from a solution or the constraints cannot be satisfied.');
+  if (diagnosis.status === 'unavailable') advice.push('The sketch was not evaluated (it is suppressed or its plane does not exist); no diagnosis is available.');
   if (diagnosis.status === 'solved') {
-    if (diagnosis.degreesOfFreedom === 0) advice.push('The sketch is fully determined.');
+    if (diagnosis.degreesOfFreedom === 0) advice.push('The sketch is fully constrained.');
     else {
       const anchors = diagnosis.free.filter((entity) => entity.kind === 'point' && entity.freedom === diagnosis.degreesOfFreedom).map((entity) => entity.id);
       advice.push(`The sketch has ${plural(diagnosis.degreesOfFreedom)}; the free entities are in \`diagnosis.free\`.`);
-      // Bod, jehož volnost se rovná volnosti skici: jeho určením je určená celá skica. Při volnosti
-      // 2 dvěma kótami, při volnosti 1 jednou kótou nebo vazbou ve směru, kterým se může hýbat.
-      // Totožnost s pevným bodem se neradí: geometrii, která z toho bodu vychází, stáhne do bodu,
-      // a při volnosti 1 by byla v konfliktu.
+      // A point whose freedom equals the freedom of the sketch: fixing it fixes the whole sketch. With
+      // freedom 2 by two dimensions, with freedom 1 by one dimension or a constraint in the direction it
+      // can move in. Coincidence with a fixed point is not advised: it pulls the geometry that starts at
+      // that point into a point, and with freedom 1 it would be in conflict.
       if (anchors.length > 0) {
-        const how = diagnosis.degreesOfFreedom === 2 ? 'for example by a horizontal and a vertical dimension from the origin' : 'by one dimension or constraint that sets its position in the direction it can move in; coincidence with a fixed point would be a conflict here';
-        advice.push(`Setting the position of one of the points ${anchors.join(', ')} determines the sketch (${how}).`);
+        const how = diagnosis.degreesOfFreedom === 2 ? 'for example by a horizontal and a vertical dimension from the origin' : 'by one dimension or constraint that sets its position in the direction it can move in; coincidence with a fixed point would be in conflict here';
+        advice.push(`The sketch becomes fully constrained when the position of one of the points ${anchors.join(', ')} is set (${how}).`);
       }
     }
-    if (diagnosis.removable.length > 0) advice.push(`Redundant constraints: ${diagnosis.removable.join(', ')}. They can be removed together without a change of the geometry; explain_constraint says what each follows from.`);
+    if (diagnosis.removable.length > 0) advice.push(`Surplus constraints: ${diagnosis.removable.join(', ')}. They can be removed at once without a change of the geometry; what each follows from, explain_constraint says.`);
   }
   if (solved && !solved.valid) advice.push('The profile is invalid: curves cross or touch away from joined points. Such a sketch cannot be extruded.');
   const open = openEndAdvice(feature, solved);
@@ -839,7 +839,7 @@ function sketchDetail(engine: Engine, id: string): unknown {
   };
 }
 
-// ---------------------------------------------------------------- příkazy
+// ---------------------------------------------------------------- commands
 
 // What changed after a command enough for the caller to know: feature states that are not ok,
 // checks that fail and parameters in error.
@@ -873,7 +873,7 @@ function base64(bytes: Uint8Array): string {
 function commandProblem(result: Extract<CommandResult, { ok: false }>): string {
   const { code, message, commandIndex, expression } = result.error;
   const where = expression?.error.position === undefined ? '' : ` (character ${expression.error.position + 1} of the expression)`;
-  return `${code}: ${message}${where}${commandIndex === undefined ? '' : ` (the command of the batch at the index ${commandIndex})`}`;
+  return `${code}: ${message}${where}${commandIndex === undefined ? '' : ` (the command of the batch with the index ${commandIndex})`}`;
 }
 
 // The facts of the features a command added or changed (D73): a feature of the document after it
@@ -891,7 +891,7 @@ function touchedFacts(before: Document, state: EngineState): { facts?: Json; fac
 
 // `before`: the document the command was applied to, for the facts of what it touched.
 function outcome(result: CommandResult, before?: Document): unknown {
-  // Neplatný příkaz dokument nezměnil: je to chyba volání, ne výsledek.
+  // An invalid command did not change the document: it is an error of the call, not a result.
   if (!result.ok) throw new ToolError(commandProblem(result));
   const { document, evaluation } = result.state;
   const problems = document.features
@@ -1232,11 +1232,11 @@ const COMMAND: JsonSchema = {
   additionalProperties: false,
 };
 
-// Nástroje, které mění dokument (včetně vnitřního načtení).
+// Tools that change the document (including the internal loading).
 // (`_export` and `query` preview a command of their caller; they write nothing.)
 export const MUTATING: readonly string[] = ['execute', 'sketch_tool', 'undo', 'redo', 'new_document', '_load', '_outline'];
 
-// Seznam nástrojů. Sestavuje se při každém dotazu, protože popisy vycházejí z katalogu enginu.
+// The list of tools. It is built on every query, because the descriptions come from the engine's catalog.
 export function tools(): Tool[] {
   const constraintTypes = Object.keys(CONSTRAINTS).join(', ');
   return [
@@ -1269,7 +1269,7 @@ export function tools(): Tool[] {
       inputSchema: {
         type: 'object',
         properties: {
-          at: { type: 'string', description: 'Feature ID; the model is evaluated up to it' },
+          at: { type: 'string', description: 'feature ID; the model is evaluated only up to it' },
           features: { type: 'array', items: { type: 'string' }, description: 'Feature IDs: only these features, with the bodies they create, instead of the whole model' },
         },
         additionalProperties: false,
@@ -1284,24 +1284,24 @@ export function tools(): Tool[] {
     {
       name: 'get_document',
       description:
-        'The document as it is saved (the log of operations). `feature` returns one feature only. A stored mesh (the section `meshes`) is shown without its data: its name and how long its two texts are; a stored document (the section `documents`) shortened: its name, its parameters, the numbers of its features and of its own stored documents. ' +
+        'The document as it is saved (a log of operations). `feature` returns only one feature. A stored mesh (the section `meshes`) is shown without its data: its name and how long its two texts are; a stored document (the section `documents`) shortened: its name, its parameters, the numbers of its features and of its own stored documents. ' +
         '`stored` prints one stored document with its timeline (its own stored meshes and documents shortened the same way): its ID, or `kit/bearing` for the stored document `bearing` of the stored document `kit`; with `feature`, that feature of it. save_document writes the whole document.',
-      inputSchema: { type: 'object', properties: { feature: { type: 'string', description: 'Feature ID' }, stored: { type: 'string', description: 'the ID of a stored document (`kit/bearing` inside another one)' } }, additionalProperties: false },
+      inputSchema: { type: 'object', properties: { feature: { type: 'string', description: 'feature ID' }, stored: { type: 'string', description: 'the ID of a stored document (`kit/bearing` inside another one)' } }, additionalProperties: false },
       run: (engine, args) => {
         const stored = optionalText(args, 'stored');
         const document = stored === undefined ? engine.getState().document : storedDocument(engine.getState().document, stored);
         const id = optionalText(args, 'feature');
         if (id === undefined) return documentShown(document);
         const feature = document.features.find((f) => f.id === id);
-        if (!feature) throw new ToolError(`the document has no feature "${id}"`);
+        if (!feature) throw new ToolError(`the feature "${id}" is not in the document`);
         return featureShown(feature);
       },
     },
     {
       name: 'get_sketch',
       description:
-        'A sketch in detail: points with their positions, curves, constraints and dimensions, projected geometry, the regions to extrude and the diagnosis (degrees of freedom, what is free, which constraints are redundant or in conflict). The field `advice` sums up what is the matter with the sketch. This is where questions such as "why does the sketch have two degrees of freedom" belong.',
-      inputSchema: { type: 'object', properties: { sketch: { type: 'string', description: 'Sketch ID' } }, required: ['sketch'], additionalProperties: false },
+        'A sketch in detail: points with positions, curves, constraints and dimensions, projected geometry, regions to extrude and a diagnosis (degrees of freedom, what is free, which constraints are redundant or in conflict). The field `advice` sums up what is the matter with the sketch. Questions such as "why does the sketch have two degrees of freedom" belong here.',
+      inputSchema: { type: 'object', properties: { sketch: { type: 'string', description: 'sketch ID' } }, required: ['sketch'], additionalProperties: false },
       run: (engine, args) => sketchDetail(engine, text(args, 'sketch')),
     },
     {
@@ -1312,16 +1312,16 @@ export function tools(): Tool[] {
     },
     {
       name: 'explain_constraint',
-      description: 'Says whether a constraint follows from the other constraints of the sketch, and returns a set of constraints it follows from (none of which can be left out).',
-      inputSchema: { type: 'object', properties: { sketch: { type: 'string' }, constraint: { type: 'string', description: 'Constraint ID' } }, required: ['sketch', 'constraint'], additionalProperties: false },
+      description: 'Says whether a constraint follows from the other constraints of the sketch, and returns the set of constraints it follows from (nothing can be removed from the set).',
+      inputSchema: { type: 'object', properties: { sketch: { type: 'string' }, constraint: { type: 'string', description: 'constraint ID' } }, required: ['sketch', 'constraint'], additionalProperties: false },
       run: (engine, args) => {
         const feature = sketchOf(engine, text(args, 'sketch'));
         const id = text(args, 'constraint');
-        if (!Object.prototype.hasOwnProperty.call(feature.constraints, id)) throw new ToolError(`the sketch "${feature.id}" has no constraint "${id}"`);
+        if (!Object.prototype.hasOwnProperty.call(feature.constraints, id)) throw new ToolError(`the constraint "${id}" is not in the sketch "${feature.id}"`);
         const explanation = engine.explainConstraint(feature.id, id);
-        // Místo vazby samé jde odebrat jen ta z vazeb, ze kterých plyne, která je sama celá navíc.
-        // Vazba se dvěma rovnicemi (střed úsečky, totožnost) může téhle stačit jen jednou z nich
-        // a po jejím odebrání by se skica uvolnila.
+        // Instead of the constraint itself, only those of the constraints it follows from that are wholly
+        // redundant themselves can be removed. A constraint with two equations (midpoint of a line,
+        // coincidence) may need only one of them for this one, and removing it would free the sketch.
         const redundant = new Set(explanation.impliedBy.length > 0 ? engine.diagnoseSketch(feature.id).redundant : []);
         const others = explanation.impliedBy.filter((other) => redundant.has(other));
         return {
@@ -1331,19 +1331,19 @@ export function tools(): Tool[] {
           note: !explanation.redundant
             ? 'The constraint does not follow from the others (or it is a reference dimension, or the sketch is not solved).'
             : explanation.impliedBy.length === 0
-              ? 'The constraint follows from the definition of the curve already.'
+              ? 'The constraint follows from the definition of the curve itself.'
               : others.length === explanation.impliedBy.length
                 ? 'The constraint itself or any of the constraints in impliedBy can be removed; the geometry does not change.'
                 : others.length === 0
-                  ? 'Only the constraint itself can be removed; the geometry does not change. The constraints in impliedBy cannot be removed: they set more than this constraint and the sketch would come loose.'
-                  : `The constraint itself can be removed, or ${others.join(', ')} instead (removableInstead); the geometry does not change. The other constraints in impliedBy cannot be removed: the sketch would come loose.`,
+                  ? 'Only the constraint itself can be removed; the geometry does not change. The constraints in impliedBy cannot be removed: they determine more than this constraint and the sketch would come loose.'
+                  : `The constraint itself can be removed, or ${others.join(', ')} in its place (removableInstead); the geometry does not change. The other constraints in impliedBy cannot be removed: the sketch would come loose.`,
         };
       },
     },
     {
       name: 'get_body',
       description: 'A body in detail: faces (name, planarity, area, normal) and edges (name, kind, ends). The names of faces and edges are used in references: the plane of a sketch on a face, the projection of an edge.',
-      inputSchema: { type: 'object', properties: { body: { type: 'string', description: 'Body ID: the ID of an extrusion with the operation new or of a split, or `<pattern>/<number>` for a copy made by a pattern (get_model lists them)' }, at: { type: 'string', description: 'Feature ID; the state after it' } }, required: ['body'], additionalProperties: false },
+      inputSchema: { type: 'object', properties: { body: { type: 'string', description: 'Body ID: the ID of an extrusion with the operation new or of a split, or `<pattern>/<number>` for a copy made by a pattern (get_model lists them)' }, at: { type: 'string', description: 'feature ID; the state after it' } }, required: ['body'], additionalProperties: false },
       run: (engine, args) => bodyDetail(engine, optionalText(args, 'at'), text(args, 'body')),
     },
     {
@@ -1427,7 +1427,7 @@ export function tools(): Tool[] {
     },
     {
       name: 'execute',
-      description: `Runs a command of the engine and writes it into the document (one undo step). Several commands at once are composed by the command batch. An invalid command leaves the document as it was and returns the reason. The answer sums up what is not in order, says for every sketch whether it is solved, and gives in \`facts\` the facts of the features the command added or changed (the module and diameters of a gear; at most ${FACTS_LISTED}, the rest counted in \`factsNotListed\`). The constraint types: ${constraintTypes}. The shape of a command: describe_api { command: "<type>" }.`,
+      description: `Carries out a command of the engine and writes it to the document (one undo step). Several commands at once can be composed by the command batch. An invalid command does not change the document and returns the reason. The answer sums up what is not in order, says for every sketch whether it is solved, and gives in \`facts\` the facts of the features the command added or changed (the module and diameters of a gear; at most ${FACTS_LISTED}, the rest counted in \`factsNotListed\`). Constraint types: ${constraintTypes}. The shape of a command: describe_api { command: "<type>" }.`,
       inputSchema: COMMAND,
       // `takenOver`: the IDs of features and sketch entities the command added while a section of
       // the document (body properties) still named them; a body made under such an ID takes the
@@ -1442,7 +1442,7 @@ export function tools(): Tool[] {
     },
     {
       name: 'preview',
-      description: 'Computes the result of a command without writing it into the document. Good for trying a change out.',
+      description: 'Computes the result of a command but does not write it to the document. Useful for trying out a change.',
       inputSchema: COMMAND,
       run: (engine, args) => outcome(engine.preview(command(args)), engine.getState().document),
     },
@@ -1481,7 +1481,7 @@ export function tools(): Tool[] {
     },
     {
       name: 'undo',
-      description: 'Takes back the last command written.',
+      description: 'Undoes the last written command.',
       inputSchema: NONE,
       run: (engine) => {
         if (!engine.getState().canUndo) throw new ToolError('there is nothing to undo');
@@ -1491,7 +1491,7 @@ export function tools(): Tool[] {
     },
     {
       name: 'redo',
-      description: 'Runs the command taken back again.',
+      description: 'Carries out an undone command again.',
       inputSchema: NONE,
       run: (engine) => {
         if (!engine.getState().canRedo) throw new ToolError('there is nothing to redo');
@@ -1499,11 +1499,11 @@ export function tools(): Tool[] {
         return modelSummary(engine.getState());
       },
     },
-    // Vnitřní nástroje: soubory čte a zapisuje server, engine může běžet v aplikaci.
+    // Internal tools: the server reads and writes the files, the engine may run in the app.
     { name: '_save', description: '', inputSchema: NONE, hidden: true, run: (engine) => engine.save() },
     // what an insertion would bring (D62), for the answer of insert_document
     { name: '_insertion', description: '', inputSchema: NONE, hidden: true, run: (engine, args) => insertionPreview(engine, args) },
-    // Dotaz bez účinku: s odpovědí přijde serveru i pořadové číslo dokumentu v aplikaci.
+    // A query without effect: the answer brings the server the sequence number of the document in the app too.
     { name: '_ping', description: '', inputSchema: NONE, hidden: true, run: () => null },
     // the import of an outline where the engine is (D72): the file as base64, see outlineInto
     { name: OUTLINE_BRIDGE_TOOL, description: '', inputSchema: NONE, hidden: true, run: (engine, args) => {
@@ -1588,13 +1588,13 @@ export function callProblem(name: string, args: Record<string, unknown> = {}): s
   return tool.hidden ? undefined : argumentProblem(tool.inputSchema, args);
 }
 
-// Zavolá nástroj. Chyby volání se vracejí jako text, ostatní výjimky jsou chyba programu a propadnou.
+// Calls a tool. Errors of a call come back as text, other exceptions are a bug of the program and propagate.
 export function callTool(engine: Engine, name: string, args: Record<string, unknown> = {}): ToolOutcome {
   const problem = callProblem(name, args);
   if (problem) return { ok: false, error: problem };
   const tool = tools().find((candidate) => candidate.name === name) as Tool;
   try {
-    // přes JSON: typovaná pole (Float64Array) se nepřenášejí a výsledek musí projít mostem beze změny
+    // through JSON: typed arrays (Float64Array) are not carried, and the result must pass the bridge unchanged
     const value = tool.run(engine, args);
     const json = (item: unknown): Json => JSON.parse(JSON.stringify(item ?? null)) as Json;
     // a note beside the result (the pose it was answered for) travels apart from it

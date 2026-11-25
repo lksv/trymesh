@@ -1,44 +1,44 @@
-# Podklady pro další funkce
+# Groundwork for further features
 
-Pracovní dokument. Sbírá funkce, které se zatím nedělají, a u každé říká, na co navazuje a proč ji současný návrh neznemožňuje. Není to plán ani rozhodnutí: co se rozhodne, přesune se do [requirements.md](requirements.md) a [decisions.md](decisions.md). Stručný výčet budoucích funkcí je v requirements.md; tady je rozbor.
+A working document. It collects features that are not being done yet, and for each one says what it builds on and why the current design does not prevent it. It is neither a plan nor a decision: what gets decided moves to [requirements.md](requirements.md) and [decisions.md](decisions.md). A short list of future functions is in requirements.md; here is the analysis.
 
-Poslední úprava: 2026-11-25
+Last change: 2026-11-25
 
-## Jak se sem věci dostaly
+## How things got here
 
-Při přípravě rozšíření pro robotický kloub (D35) se každá zvažovaná funkce třídila podle jedné otázky: změnila by později tvar dokumentu nebo příkazů?
+While the extensions for the robotic joint (D35) were prepared, every feature considered was sorted by one question: would it later change the shape of the document or of the commands?
 
-- **Ano:** udělala se hned, i když ji kloub sám nepotřebuje. Je jich sedm a jsou v D35 (katalog generátorů profilu, posun začátku vysunutí, recept nástroje jako rozhraní, obecná ID těles, registr typů features s příkazem `updateFeature`, kontroly parametrů, výřez do více těles).
-- **Ne:** jde přidat dodatečně jako nová položka, nový typ nebo nová varianta. Ty jsou tady.
+- **Yes:** it was done at once, even when the joint itself does not need it. There are seven and they are in D35 (the catalog of profile generators, the offset of the start of an extrusion, the recipe of the tool as an interface, general body IDs, the registry of feature types with the command `updateFeature`, checks of parameters, a cut into several bodies).
+- **No:** it can be added later as a new entry, a new type or a new variant. Those are here.
 
-## Kandidáti
+## Candidates
 
-Pořadí je odhad užitku pro obecné použití, ne závazek.
+The order is an estimate of the benefit for general use, not a commitment.
 
-| Funkce | K čemu je | Na co navazuje, proč nic nezamyká |
+| Feature | What it is for | What it builds on, why it locks nothing in |
 |---|---|---|
 | A region with its islands, and a region named by one curve (from building a flange and a planetary gearbox through MCP, 2026-11-25) | **Why we want it:** the most common solid is an outline with everything drawn inside it filled: a plate with a boss circle, a carrier with pin and shaft circles. Today a region whose outer loop holds other closed curves is extruded with them as holes, so the user or the AI has to list every inner region too (three regions for the carrier), and after a sketch fillet the outer loop is a sorted list of eight curve IDs that has to be read back with the query `sketchRegions`. **How it helps:** one profile entry says "this outline, filled"; fewer tool calls and fewer silent mistakes (a forgotten island is a hole nobody asked for, not an error); a region named by one curve of its outline is what a person means when they click it, and it survives a fillet or a split of the outline | A new option of a profile of regions (islands included), with its validation, face names (the island curves make no side face), the app's form and the description for the AI: a decision of its own. Naming a region by one curve touches stable names and how regions survive edits of the sketch, so it needs a design and a full review |
 | Joints for the copies of a pattern, and couplings suggested from gears in mesh (from the same session) | **Why we want it:** a mechanism of patterned parts (the planets of a gearbox, the fingers of a gripper, the wheels of a vehicle) is the normal case of a moving model. Today every copy needs its own link and joint, and each joint its own axis: the gearbox needed a helper sketch with points placed by `cos`/`sin`, so it is fixed at three planets although their count `NP` is a parameter; the coupled values (`q · ZS / (ZS + ZR)` for the carrier, a signed ratio for each planet) were worked out by hand and their signs checked by collisions. **How it helps:** the count of copies stays a real parameter of the moving model, a joint is written once for all copies, and the ratios come from the tooth counts the gears already know (`meshWith`), so a change of a tooth count keeps the mechanism right; fewer calls and no hand arithmetic for the AI | A joint as a template over the copies of a pattern changes the stored mechanism (its links and joints follow a count that is an expression), so it is a schema change with a step of `UPGRADES` and touches validation, the export of a robot (URDF, MJCF) and the queries: the hardest of the items from that session. Before designing it, check whether the axis of a round face of a copy (`face` with a `copy` tag) already serves as the axis of a copy. Coupling from `meshWith` is simple for a pair of gears; in a planetary train it depends on which link is the frame and which the carrier, so it fits first as a query that suggests the couplings rather than as automation |
-| Promítnutí geometrie z jiné skici | Společná kostra pro víc dílů: jedna skica s osami, roztečnými kružnicemi a obrysy, na kterou se ostatní skici odkazují. Dnes jde promítnout jen hrana tělesa, takže konstrukční geometrii jiné skici je potřeba překreslit a svázat stejnými výrazy | Done (D69, [d36/6b-sketch-projection/design.md](d36/6b-sketch-projection/design.md)): the reference kind `sketch` of `external` on a parallel plane, the sketch tool `projectSketch` and the query `sketchSources`. Not done: a tilted plane (an ellipse, as for an edge) and the rest of "Projection from another sketch" below |
-| Řez nebo obrázek modelu pro AI | AI model nevidí, ověřuje ho čísly (objem, obálka, kolize). Řez rovinou jako seznam smyček nebo obrázek pohledu by jí dal zpětnou vazbu na tvar | Nový dotaz enginu nad tělesy, vedle kolizí a objemu z D35. Řez poslouží i pro „řez modelem v pohledu" v aplikaci |
-| Spojení, rozdělení, zrcadlení a přesun těles | Odečíst jeden díl od druhého (dutina podle vloženého dílu, drážkovaný otvor podle kola), rozříznout díl pro tisk, zrcadlový díl, rozložení dílů | Nové typy features v registru. Stojí na obecném pravidlu, že feature může vytvořit víc těles s ID `<feature>/<místní jméno>`. Nové je jen to, že těleso může zaniknout; odkaz na zaniklé těleso je rozbitá reference jako každá jiná. The boolean of bodies (with a clearance) and the split are implemented as 3d (D56, [d36/3d-body-boolean/design.md](d36/3d-body-boolean/design.md)), the mirror as a kind of pattern (D53); a move of bodies is left |
+| Projection of geometry from another sketch | A shared skeleton for several parts: one sketch with axes, pitch circles and outlines that the other sketches refer to. Today only an edge of a body can be projected, so the construction geometry of another sketch has to be redrawn and tied by the same expressions | Done (D69, [d36/6b-sketch-projection/design.md](d36/6b-sketch-projection/design.md)): the reference kind `sketch` of `external` on a parallel plane, the sketch tool `projectSketch` and the query `sketchSources`. Not done: a tilted plane (an ellipse, as for an edge) and the rest of "Projection from another sketch" below |
+| A section or a picture of the model for the AI | The AI does not see the model, it verifies it by numbers (volume, bounding box, collisions). A section by a plane as a list of loops, or a picture of the view, would give it feedback on the shape | A new query of the engine over bodies, beside the collisions and the volume of D35. The section also serves the "section through the model in the view" in the app |
+| Union, split, mirror and move of bodies | Subtracting one part from another (a cavity shaped by an inserted part, a splined hole shaped by a gear), cutting a part apart for printing, a mirrored part, a layout of parts | New feature types in the registry. It rests on the general rule that a feature may create several bodies with the ID `<feature>/<local name>`. The only new thing is that a body can cease to exist; a reference to a body that no longer exists is a broken reference like any other. The boolean of bodies (with a clearance) and the split are implemented as 3d (D56, [d36/3d-body-boolean/design.md](d36/3d-body-boolean/design.md)), the mirror as a kind of pattern (D53); a move of bodies is left |
 | A clearance by the sum of Minkowski | A pocket for a tool the clearance by faces refuses (a hole or a gap narrower than twice the clearance, a change of topology) or cannot describe (a bought part imported as a mesh, 3b) | A second way beside `movedOutwards` (D56, "Open", 1): the library has the sum; it takes seconds for a motor and leaves one face without a description, so it fits as an option of the combine, memoised by the solid of the tool |
 | A repair of the near-flush union of the kernel adapter | Parts cut apart and joined again (a split and a union) are refused in a few per cent of the cases, or keep a remnant of the cut face; a union within the band of guarantee 3 may leave the shift of the adapter as material | Inside the adapter (D56, "Open", 2, and the pinned band in `packages/kernel-manifold/test/precondition.test.ts`); the checks of `booleanOfBodies` already turn the wrong volume into a refusal |
-| Revolve | Řemenice s klínovou drážkou, knoflíky, kužely, drážky pro O-kroužky, zahloubení pro zápustnou hlavu | Jiná stavba nástroje nad stejným profilem; recept nástroje je rozhraní. Osa je `AxisRef` z pole. Popis stěny má obecný druh vedle roviny a válce (kvůli ozubení) |
-| Zkosení a zkrut při vysunutí | Úkos stěn, zápustná hlava, šikmé ozubení, přibližný závit | Další stavby nástroje; parametry jsou číselná pole rozsahu |
-| Posuvné pole a zrcadlení features | Větrací otvory v řadě, mřížky, souměrné díly | Další druhy transformace v poli; pole je seznam tuhých transformací a zbytek feature se nemění. Zrcadlení navíc obrací orientaci trojúhelníků |
-| Další generátory profilu | Řetězové kolo, ozubený hřeben, drážkování, text; other belts and pulleys (GT2 of 3 and 5 mm, GT3, HTD, T). The cycloidal disc and the GT2 pulley of 2 mm are done (D61) | Položky katalogu generátorů; tvar dokumentu se nemění |
-| Další nástroje skici | Drážka, obdélník středem, odsazení obrysu (lem víka), rozteč děr | Funkce sdíleného modulu nástrojů; engine se nemění. Odsazení obrysu může chtít novou vazbu |
-| Nejmenší vzdálenost těles | Ověření vůle (motor v pouzdře má mít 1 mm), ne jen toho, že se díly neprolínají | Další dotaz nad tělesy |
-| Vlastnosti těles | Jméno, barva, příznak referenčního dílu (motor se netiskne a nemá se exportovat) | Nepovinný údaj v dokumentu klíčovaný ID tělesa |
-| Jména referenčních kót ve výrazech | Parametr odvozený z naměřené hodnoty | Výrazy se vyhodnocují uvnitř přepočtu; jména jdou rozšířit o hodnoty vzniklé přepočtem a tečka je pro ně ve výrazu vyhrazená. Ověření výrazu při příkazu se pro taková jména musí přesunout do fasády enginu, která stav přepočtu má. This is more than a wider name environment (review of 2026-11-14): a parameter derived from a measured dimension can, through another parameter, drive the very sketch it is measured in, and the cycle check between parameters does not see a cycle that goes through geometry. The rules have to be set first: a measured value is available only to features after its sketch, so the value of a parameter that uses it depends on the position on the timeline (undefined before the sketch), and `Evaluation.parameters` and checks need a defined meaning for that |
-| Potlačení feature výrazem, konfigurace | Varianty jednoho dílu (s přírubou a bez) | `suppressed` jako další pole s výrazem; kontroly už zavádějí porovnání |
-| Komentáře a skupiny parametrů | Čitelnost větší tabulky parametrů | Nepovinné údaje u parametru |
-| Export do 3MF | Víc těles se jmény v jednom souboru | Další formát vedle STL; export po tělesech už je. Implemented as 2g (D54), [d36/2g-export/design.md](d36/2g-export/design.md), with the outline as DXF and SVG |
-| Knihovna dílů, vložení jiného dokumentu | Motor, ložisko nebo šroub jako hotový díl místo ručního modelování | Nový typ feature, který vytvoří tělesa z jiného dokumentu; ID features vloženého dokumentu je potřeba odlišit předponou; validace odkazu na stěnu pak potřebuje stejný rozklad ID jako u těles. Import cizí sítě zůstává mimo (nemá pojmenované stěny) |
-| Graf závislostí při přepočtu | Rychlost u větších modelů: dnes se přepočítá vše od první změněné feature | Vnitřní věc přepočtu, dokument se nemění |
-| Sloučení nástrojů pole před booleanem, prostorové vyhledávání v adaptéru jádra | Rychlost u stovek kopií | Vnitřní věc pole a adaptéru jádra |
-| Pootočení kopií v poli kolem vlastní osy | Satelity v záběru i tehdy, když počty zubů nejsou dělitelné počtem satelitů | Další údaj transformace kopie |
+| Revolve | Pulleys with a V-groove, knobs, cones, O-ring grooves, countersinks for a flat head | Another build of the tool over the same profile; the recipe of the tool is the interface. The axis is the `AxisRef` of the pattern. The description of a face has a general kind beside the plane and the cylinder (because of gear teeth) |
+| Taper and twist on extrusion | Draft of faces, a countersunk head, helical teeth, an approximate thread | Further builds of the tool; the parameters are numeric fields of the extent |
+| Linear pattern and mirror of features | Vent slots in a row, grids, symmetric parts | Further kinds of transform in the pattern; a pattern is a list of rigid transforms and the rest of the feature does not change. A mirror also reverses the orientation of the triangles |
+| More profile generators | A sprocket, a gear rack, spline shafts, text; other belts and pulleys (GT2 of 3 and 5 mm, GT3, HTD, T). The cycloidal disc and the GT2 pulley of 2 mm are done (D61) | Entries of the catalog of generators; the shape of the document does not change |
+| More sketch tools | A slot, a rectangle from the centre, an offset of an outline (the lip of a lid), a hole pitch | Functions of the shared module of tools; the engine does not change. The offset of an outline may want a new constraint |
+| Smallest distance of bodies | Verifying a clearance (the motor in the housing is to have 1 mm), not only that the parts do not overlap | Another query over bodies |
+| Body properties | Name, colour, a flag of a reference part (the motor is not printed and is not to be exported) | An optional entry in the document keyed by the body ID |
+| Names of reference dimensions in expressions | A parameter derived from a measured value | Expressions are evaluated inside the recompute; the names can be extended by values produced by the recompute, and the dot is reserved for them in an expression. The validation of an expression at a command has to move for such names into the facade of the engine, which has the state of the recompute. This is more than a wider name environment (review of 2026-11-14): a parameter derived from a measured dimension can, through another parameter, drive the very sketch it is measured in, and the cycle check between parameters does not see a cycle that goes through geometry. The rules have to be set first: a measured value is available only to features after its sketch, so the value of a parameter that uses it depends on the position on the timeline (undefined before the sketch), and `Evaluation.parameters` and checks need a defined meaning for that |
+| Suppressing a feature by an expression, configurations | Variants of one part (with a flange and without) | `suppressed` as another field with an expression; the checks already introduce comparisons |
+| Comments and groups of parameters | Readability of a larger table of parameters | Optional entries of a parameter |
+| Export to 3MF | Several bodies with names in one file | Another format beside STL; export per body is already there. Implemented as 2g (D54), [d36/2g-export/design.md](d36/2g-export/design.md), with the outline as DXF and SVG |
+| A library of parts, inserting another document | A motor, a bearing or a screw as a finished part instead of modelling it by hand | A new feature type that creates bodies from another document; the feature IDs of the inserted document have to be told apart by a prefix; the validation of a reference to a face then needs the same split of the ID as for bodies. Import of a foreign mesh stays out (it has no named faces) |
+| A dependency graph in the recompute | Speed on larger models: today everything from the first changed feature is recomputed | An internal matter of the recompute, the document does not change |
+| Merging the tools of a pattern before the boolean, spatial search in the kernel adapter | Speed with hundreds of copies | An internal matter of the pattern and the kernel adapter |
+| Rotating the copies of a pattern about their own axis | Planets in mesh even when the tooth counts are not divisible by the number of planets | Another entry of the transform of a copy |
 | Shifted centre distance of gears | The profile shift is done (D61) with balanced shifts at the reference centre distance; a pair whose shifts do not balance needs the working centre distance `a cos α / cos αw` (no closed form) and the tip shortening | Two expression functions (`inv` and its inverse) or a fact `centerDistance` of a gear in mesh; [d36/5d-generators/design.md](d36/5d-generators/design.md), "Deferred" |
 | Splines: the full variant | A point held on a spline, a tangency in its middle, a dimension of the curve. With it a crossing of a spline can be cut by trim and split, and a spline is a target of extend | The curve of D70 and its fields stay ([d36/6d-sketch-spline/design.md](d36/6d-sketch-spline/design.md), "The cheap variant"). planegcs 1.3.0 has `bspline` and `point_on_bspline` (run by the review of D70: a `bspline` with the knots 0, 1, 2 and the multiplicities 4, 1, 4 is D70's curve). A point on the curve adds an unknown that is neither a position nor a radius, so the solver port and the analysis of freedom change |
 | A spline through given points | The natural way to draw a free-form curve by hand or for an AI: the curve passes the points given | A sketch tool that computes control points and sends the curve of D70; the document does not change. The end tangents need conditions of their own |
@@ -66,30 +66,30 @@ Pořadí je odhad užitku pro obecné použití, ne závazek.
 | A profile of every copy of an entry (6h) | A profile names the regions of a pattern's copies one by one, so a count that goes down leaves a broken reference (`noProfile`) and one that goes up leaves the new copy out with no error | A region reference that names an entry and a source region, expanded over the copies at recompute |
 | Two failures of the kernel beside today's values (6h) | Chamfer 1 of the actuator's Housing at `HOUSING_DIAMETER` − 1 % and Extrude 8 of Motor Shell at − 4 % give `kernelFailure`; both pass at 3 % and 6 % (measured by the design of 6h, not looked into) | The kernel adapter |
 
-## Co tahle architektura levně nedá
+## What this architecture does not give cheaply
 
-- **Zaoblení a zkosení hran těles.** Těleso je síť, ne přesné plochy. Zaoblení ve skice pokryje svislé hrany, ostatní ne.
-- **Sestava s vazbami a pohybem.** Vyžadovala by druhý, prostorový constraint solver. Místo ní je víc těles v jednom dokumentu.
-- **STEP a import přesné geometrie.** Vyžadovaly by výměnu geometrického jádra.
-- **Jemný detail u velkého modelu.** Adaptér jádra spolehlivě nerozliší detail menší než asi desetitisícinu rozměru modelu těsně u lícujících stěn (u modelu 110 mm kolem 0,01 mm).
+- **Fillets and chamfers of the edges of bodies.** A body is a mesh, not exact surfaces. A fillet in a sketch covers the vertical edges, not the others.
+- **An assembly with mates and motion.** It would need a second, spatial constraint solver. Instead there are several bodies in one document.
+- **STEP and import of exact geometry.** They would need a replacement of the geometric kernel.
+- **Fine detail in a large model.** The kernel adapter does not reliably resolve detail smaller than about a ten-thousandth of the size of the model right at flush faces (around 0.01 mm for a model of 110 mm).
 
-## Srovnání s jinými konstrukcemi
+## Comparison with other designs
 
-Myšlenková zkouška: co by jiný díl potřeboval navíc proti kloubu a jestli to návrh unese.
+A thought experiment: what another part would need beyond the joint, and whether the design can carry it.
 
-| Konstrukce | Co potřebuje navíc | Kam to patří |
+| Design | What it needs beyond the joint | Where it belongs |
 |---|---|---|
-| Krabička na elektroniku s víkem | Díry skrz víko i krabičku; větrací otvory v řadě; lem víka; zaoblené hrany | Výřez do více těles (D35). Posuvné pole a odsazení obrysu později. Zaoblení hran ne |
-| Cykloidní převodovka | The disc is done (D61, `cycloidalDisc`); its bore and output holes for other input angles, and the pins, stay sketch geometry and patterns | Katalog generátorů (D35) |
-| Řemenice, knoflík | Klínová drážka; rýhování. The GT2 pulley of 2 mm is done (D61, `gt2Pulley`) | Generátor a pole (D35). Klínová drážka je revolve, později |
-| Konzole s žebrem | Žebro vysunuté na obě strany roviny | Posun začátku vysunutí (D35) |
-| Držák z více dílů podle společné kostry | Odkaz na geometrii jiné skici | Done (D69): a skeleton sketch projected into the sketches of the parts, on parallel planes |
-| Šroubovací víčko, šikmé ozubení | Zkrut při vysunutí | Později |
-| Zahloubení pro zápustnou hlavu | Kuželový výřez | Revolve nebo zkosení, později |
-| Děrovaný panel se stovkami děr | Výkon: jeden boolean na desce se 192 otvory trval v adaptéru jádra 7,6 s | Riziko; sloučení nástrojů pole a prostorové vyhledávání později |
-| Díl kolem kupovaných součástek (motor, ložisko) | Hotové modely součástek; ověření vůle | Ruční zjednodušené těleso dnes; knihovna dílů a nejmenší vzdálenost později |
+| An electronics box with a lid | Holes through the lid and the box; vent slots in a row; the lip of the lid; rounded edges | A cut into several bodies (D35). A linear pattern and an offset of an outline later. Fillets of edges not |
+| A cycloidal gearbox | The disc is done (D61, `cycloidalDisc`); its bore and output holes for other input angles, and the pins, stay sketch geometry and patterns | The catalog of generators (D35) |
+| A pulley, a knob | A V-groove; knurling. The GT2 pulley of 2 mm is done (D61, `gt2Pulley`) | A generator and a pattern (D35). The V-groove is a revolve, later |
+| A bracket with a rib | A rib extruded to both sides of the plane | The offset of the start of an extrusion (D35) |
+| A holder of several parts from a shared skeleton | A reference to the geometry of another sketch | Done (D69): a skeleton sketch projected into the sketches of the parts, on parallel planes |
+| A screw cap, helical teeth | Twist on extrusion | Later |
+| A countersink for a flat head | A conical cut | Revolve or a chamfer, later |
+| A perforated panel with hundreds of holes | Performance: one boolean on a plate with 192 openings took 7.6 s in the kernel adapter | A risk; merging the tools of a pattern and spatial search later |
+| A part around bought components (a motor, a bearing) | Finished models of the components; verifying a clearance | A simplified body by hand today; a library of parts and the smallest distance later |
 
-Závěr zkoušky: žádná z konstrukcí nevyžaduje jiný tvar dokumentu, než jaký zavádí D35. Opakovaně se vracejí tři věci: odkaz mezi skicami, revolve a zpětná vazba na tvar pro AI.
+Conclusion of the experiment: none of the designs needs another shape of the document than the one D35 introduces. Three things keep coming back: a reference between sketches, revolve and feedback on the shape for the AI.
 
 ## Direction after D35 (discussion of 2026-11-14)
 
@@ -110,10 +110,10 @@ From a discussion with the owner. The owner confirmed the intended use and, on 2
 | Print queries | Overhang area against a given print direction, bounds against the bed size, contact area with the bed. Numbers an AI can judge by itself | Queries over bodies; overhang is a pass over triangle normals. Wall thickness is more expensive and can wait. Detail below |
 | Mass properties | Mass (volume, density, fill factor), centre of mass, moments of inertia. For an arm: the torque a joint has to hold is the mass beyond it times the lever | Same kind of integral over the mesh as the volume, which D35 point 5 adds |
 | Profile offset | Print clearance of a fit (a hole larger by `clearance` than the peg from the same sketch), wall of a box, lip of a lid, pocket for lightening a link | Cheap variant: a modifier of the profile source of an extrusion, not a new sketch constraint; computed per curve in the engine. Detail below |
-| Taper on extrusion | Countersinks, chamfered hole edges, chamfer of the bottom edge against elephant foot, dovetails, 45° faces that print without support. In the table above as "Zkosení a zkrut při vysunutí" | Done (D45): the field `extent/taper`, a stack of rings, tilted planes and cones. Not done: chamfered ends as fields of one extrusion, a taper with "through all" or up to a face, a generated profile, angles per curve |
+| Taper on extrusion | Countersinks, chamfered hole edges, chamfer of the bottom edge against elephant foot, dovetails, 45° faces that print without support. In the table above as "Taper and twist on extrusion" | Done (D45): the field `extent/taper`, a stack of rings, tilted planes and cones. Not done: chamfered ends as fields of one extrusion, a taper with "through all" or up to a face, a generated profile, angles per curve |
 | Hole feature with a hardware catalog | Clearance hole, counterbore, countersink, nut pocket, hole for a heat-set insert; bearing seats from a bearing catalog. Dimensions recalled by an AI are a source of silent errors, a catalog in the engine removes them | A feature type in the registry; the tool is a stack of cylinders and cones, so the countersink needs the tapered tool. Positions come from sketch points. Detail below |
 | Fillet of a sketch corner | Rounded vertical edges; by hand it is an arc, two tangencies and two trimmed lines | Done (D52, [d36/2d-sketch-fillet/design.md](d36/2d-sketch-fillet/design.md)): the command `setCurvePoint`, the sketch tool `fillet` with the patches of regions and walls, and the solver adapter's rule for a tangency at a common end. Not done: a fillet between a line and an arc or two arcs, a chamfer of a corner, removing a fillet as a tool, lines with `equalLength` or `midpoint`; see the detail below |
-| Pose of bodies driven by a parameter | Range of motion of an arm without an assembly solver: a move feature at the end of the timeline rotates a group of bodies about an axis by an expression (`q1`); the AI steps the parameter and asks for interference and the smallest gap at each pose | The row "Spojení, rozdělení, zrcadlení a přesun těles" (move is a feature type). With `setParameter`, `check_interference` and undo it works without anything else; a sweep query that does this in one call without touching the history is a convenience. If export for simulation is wanted, the pose should not be a move feature but a value of a joint in a mechanism description; see "Export for simulation" below |
+| Pose of bodies driven by a parameter | Range of motion of an arm without an assembly solver: a move feature at the end of the timeline rotates a group of bodies about an axis by an expression (`q1`); the AI steps the parameter and asks for interference and the smallest gap at each pose | The row "Union, split, mirror and move of bodies" (move is a feature type). With `setParameter`, `check_interference` and undo it works without anything else; a sweep query that does this in one call without touching the history is a convenience. If export for simulation is wanted, the pose should not be a move feature but a value of a joint in a mechanism description; see "Export for simulation" below |
 | Subtracting a body with a clearance | Pocket for a motor or a board shaped by the part itself | Body boolean from the same row; the clearance needs a 3D offset (`minkowskiSum` in Manifold), speed not measured |
 
 ### Print queries and the features of step 2 in detail
@@ -139,7 +139,7 @@ Sketches of a cheap variant for each, in the manner of D35: what the cheap varia
 - Correction to the first idea of using `CrossSection.offset` from Manifold: it works on polylines, so curve identity is lost (face names, cylinders) and convex corners get new arcs that have no source curve. It stays an option for the full variant (round joins, topology changes), which then needs a name for a corner face.
 - Uses: clearance of a fit (`profile/offset: "clearance"` on the cut), a box (cavity is the outline offset by `-wall`, with `start` at the floor), a lid lip, a lightening pocket.
 - For a generated profile (`swept` side) the per-curve rule does not apply; the cheap variant allows the offset only for `regions`.
-- Deferred: a wall as one feature (the band between a loop and its offset), and the offset as geometry inside the sketch that can be dimensioned against (needs the solver; the row "Další nástroje skici").
+- Deferred: a wall as one feature (the band between a loop and its offset), and the offset as geometry inside the sketch that can be dimensioned against (needs the solver; the row "More sketch tools").
 
 **Taper on extrusion. Done (D45, 2026-11-16; [architecture/extrude.md](architecture/extrude.md), "Taper"); what stays open is the "Later" below.** An optional numeric field of the distance extent (`extent/taper`, an angle in radians, open range −π/2 to π/2, default 0).
 
@@ -312,7 +312,7 @@ Dimensioned drawings, CAM and slicing, strength analysis, sheet metal, surfacing
 **Small things noticed**
 
 - Concentric and collinear exist in all three as named constraints. Here concentric is a coincidence of the centre points; whether collinear can be composed from the existing constraints was not checked.
-- Rectangle from the centre and a slot are in the table of candidates ("Další nástroje skici"); text is there as a generator.
+- Rectangle from the centre and a slot are in the table of candidates ("More sketch tools"); text is there as a generator.
 - Copying a sketch or a feature. An AI replays the commands; a person would miss it.
 
 **Where this project is ahead for the intended use**
@@ -323,7 +323,7 @@ Not a gap, but worth keeping while extending: a broken reference never silently 
 
 The owner asked for them to be added if they are realistic. They are, and without a sweep along a helix. Nothing was tried in code; the kernel needs a spike before anything is promised.
 
-**Why it is realistic.** A body with a helical shape has the same cross-section at every height, only rotated: at the height `z` it is the section at zero turned by `2π · z / pitch`. A threaded rod, a threaded hole and a spring are therefore an extrusion of one planar profile with a twist. Both halves have a place in the design already: the profile comes from the generator catalog (D35 point 3) and the twist is another build of the tool (the row "Zkosení a zkrut při vysunutí").
+**Why it is realistic.** A body with a helical shape has the same cross-section at every height, only rotated: at the height `z` it is the section at zero turned by `2π · z / pitch`. A threaded rod, a threaded hole and a spring are therefore an extrusion of one planar profile with a twist. Both halves have a place in the design already: the profile comes from the generator catalog (D35 point 3) and the twist is another build of the tool (the row "Taper and twist on extrusion").
 
 **Twist on extrusion.** The tool is built in layers along the normal, each layer turned about an axis that goes through a point of the sketch.
 
@@ -347,7 +347,7 @@ The owner asked for them to be added if they are realistic. They are, and withou
 - No tapered threads. The profile has to fit into one pitch, otherwise neighbouring turns intersect; that is an `invalidProfile`.
 - Printing sets its own limit: a thread finer than what the printer resolves (small metric sizes) is modelled correctly and prints as a rough cylinder. For those the hole feature with an insert or a nut pocket stays the answer; modelled threads are for larger diameters and for custom ones (lids, fittings).
 
-**To verify by a spike.** The triangle count: one thread of ten turns is tens of thousands of triangles. The kernel adapter was slow on a tool with many faces (192 holes in one boolean took 7.6 s, table "Srovnání s jinými konstrukcemi"), so the time of a boolean with a threaded tool and of a pattern of such tools has to be measured first.
+**To verify by a spike.** The triangle count: one thread of ten turns is tens of thousands of triangles. The kernel adapter was slow on a tool with many faces (192 holes in one boolean took 7.6 s, table "Comparison with other designs"), so the time of a boolean with a threaded tool and of a pattern of such tools has to be measured first.
 
 ### To verify first
 

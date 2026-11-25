@@ -217,7 +217,7 @@ select {
   color: var(--error);
 }
 
-/* časová osa */
+/* timeline */
 .row {
   display: flex;
   align-items: center;
@@ -277,7 +277,7 @@ select {
   text-align: right;
 }
 
-/* vazby */
+/* constraints */
 .constraint {
   display: flex;
   align-items: center;
@@ -388,7 +388,7 @@ input.invalid {
   background: #f0f9ff;
 }
 
-/* popisky kót v pohledu */
+/* labels of dimensions in the view */
 .labels {
   position: absolute;
   inset: 0;

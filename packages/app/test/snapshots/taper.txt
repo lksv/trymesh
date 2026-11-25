@@ -1,6 +1,6 @@
 
 === 1. a new extrusion: the only region is selected, the taper is empty, the draft has none
-  engine: execute({"type":"batch","commands":[{"type":"addFeature","feature":{"id":"s1","name":"Skica 1","suppressed":false,"type":"sketch","plane":{"kind":"base","plane":"XY"},"points":{},"radii":{},"curves":{},"constraints":{},"external":{},"solved":{"inputs":"","external":{}}},"index":0}]}) -> ok
+  engine: execute({"type":"batch","commands":[{"type":"addFeature","feature":{"id":"s1","name":"Sketch 1","suppressed":false,"type":"sketch","plane":{"kind":"base","plane":"XY"},"points":{},"radii":{},"curves":{},"constraints":{},"external":{},"solved":{"inputs":"","external":{}}},"index":0}]}) -> ok
   engine: getState("s1")
   engine: diagnoseSketch("s1")  (x2)
   engine: getState("s1")
@@ -10,11 +10,11 @@
   engine: execute({"type":"batch","commands":[{"type":"addPoint","sketch":"s1","id":"p1","x":40,"y":0},{"type":"addPoint","sketch":"s1","id":"p2","x":40,"y":30},{"type":"addPoint","sketch":"s1","id":"p3","x":0,"y":30},{"type":"addCurve","sketch":"s1","id":"c1","curve":{"type":"line","a":"origin","b":"p1"}},{"type":"addConstraint","sketch":"s1","id":"k1","constraint":{"type":"horizontal","line":"c1"}},{"type":"addCurve","sketch":"s1","id":"c2","curve":{"type":"line","a":"p1","b":"p2"}},{"type":"addConstraint","sketch":"s1","id":"k2","constraint":{"type":"vertical","line":"c2"}},{"type":"addCurve","sketch":"s1","id":"c3","curve":{"type":"line","a":"p2","b":"p3"}},{"type":"addConstraint","sketch":"s1","id":"k3","constraint":{"type":"horizontal","line":"c3"}},{"type":"addCurve","sketch":"s1","id":"c4","curve":{"type":"line","a":"p3","b":"origin"}},{"type":"addConstraint","sketch":"s1","id":"k4","constraint":{"type":"vertical","line":"c4"}}]}) -> ok
   engine: diagnoseSketch("s1")
   engine: getState("s1")  (x2)
-  engine: preview({"type":"addFeature","feature":{"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"operation":"new"},"index":1}, "e1") -> ok
+  engine: preview({"type":"addFeature","feature":{"id":"e1","name":"Extrude 1","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"operation":"new"},"index":1}, "e1") -> ok
   engine: getState("s1")  (x3)
   features: s1
   feature s1:
-      {"id":"s1","name":"Skica 1","suppressed":false,"type":"sketch","plane":{"kind":"base","plane":"XY"}}
+      {"id":"s1","name":"Sketch 1","suppressed":false,"type":"sketch","plane":{"kind":"base","plane":"XY"}}
       point p1: {"x":40,"y":0}
       point p2: {"x":40,"y":30}
       point p3: {"x":0,"y":30}
@@ -29,31 +29,31 @@
   document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":10}
   toolbar:
       div.group
-        button title="Prázdný dokument": "Nový"
-        button: "Otevřít"
-        button: "Uložit"
+        button title="Empty document": "New"
+        button: "Open"
+        button: "Save"
         button disabled: "Export STL"
         input type=file hidden
       div.group
-        button title="Propojit s MCP serverem (packages/mcp): AI pak čte a mění dokument otevřený v aplikaci": "AI"
+        button title="Connect to the MCP server (packages/mcp): the AI then reads and changes the document open in the app": "AI"
       div.group
-        button disabled title="Ctrl+Z": "↶ Zpět"
-        button disabled title="Ctrl+Shift+Z": "↷ Znovu"
+        button disabled title="Ctrl+Z": "↶ Undo"
+        button disabled title="Ctrl+Shift+Z": "↷ Redo"
       div.group
-        button: "Zobrazit vše"
+        button: "Fit all"
         button title="Save a picture of the model as PNG: the bodies that are shown, from the camera of the view and cut as the view is; without the selection, sketches, planes and dimensions": "Save picture"
-        button.active title="Zobrazit nebo skrýt roviny XY, XZ, YZ": "Základní roviny"
+        button.active title="Show or hide the planes XY, XZ, YZ": "Base planes"
   timeline:
-      h2: "Časová osa"
+      h2: "Timeline"
       div.row.ok.selected
         span.dot: "●"
-        span.name: "Skica 1"
+        span.name: "Sketch 1"
         button.icon disabled title="Hide or show": "👁"
-        button.icon disabled title="Posunout dřív": "↑"
-        button.icon disabled title="Posunout později": "↓"
-        button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+        button.icon disabled title="Move earlier": "↑"
+        button.icon disabled title="Move later": "↓"
+        button.icon disabled title="Roll the model back to here: further features are inserted after this one": "⇤"
   panel:
-      h2: "Nové vysunutí"
+      h2: "New extrude"
       label
         "Profile"
         select value="regions"
@@ -63,23 +63,23 @@
           option value="cycloidalDisc": "Cycloidal disc"
           option value="gt2Pulley": "GT2 pulley"
       label
-        "Skica"
+        "Sketch"
         select value="s1"
-          option selected value="s1": "Skica 1"
-      p.hint: "Vybraných oblastí: 1. Oblasti se vybírají kliknutím v pohledu."
+          option selected value="s1": "Sketch 1"
+      p.hint: "Picked regions: 1. Regions are picked by a click in the view."
       div.buttons
-        button: "Zrušit výběr oblastí"
+        button: "Clear picked regions"
       label
         "Offset (mm or an expression; positive grows the profile; empty = none)"
         span.field
           input value=""
           small.computed data-field="profile/offset" data-unit="mm"
       label
-        "Operace"
+        "Operation"
         select value="new"
-          option selected value="new": "Nové těleso"
-          option value="add": "Přidat k tělesu"
-          option value="cut": "Odebrat z tělesa"
+          option selected value="new": "New body"
+          option value="add": "Join to body"
+          option value="cut": "Cut from body"
       label
         "Extent"
         select value="distance"
@@ -107,8 +107,8 @@
       p#draft-problem.issue.warning
       div.buttons
         button.primary: "OK"
-        button: "Zrušit"
-  status: Klikáním v pohledu vyberte oblasti skici.
+        button: "Cancel"
+  status: Click regions of the sketch in the view to pick them.
   view: 12 scene(s) set
   scene:
       bodies: e1
@@ -126,7 +126,7 @@
   view: fit [-20, -20, -20] .. [20, 20, 20]
 
 === 2. a taper typed in degrees: the draft has it in radians and the preview narrows
-  engine: preview({"type":"addFeature","feature":{"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10,"taper":-0.17453292519943295},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"operation":"new"},"index":1}, "e1") -> ok
+  engine: preview({"type":"addFeature","feature":{"id":"e1","name":"Extrude 1","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10,"taper":-0.17453292519943295},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"operation":"new"},"index":1}, "e1") -> ok
   engine: getState("s1")
   panel:
     +     input value="-10"
@@ -137,7 +137,7 @@
     - line #26303c width 1.5: 72 numbers, sum 4060
 
 === 3. a taper the far end does not survive: the preview says it is the far end and names the curves
-  engine: preview({"type":"addFeature","feature":{"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10,"taper":-1.3962634015954636},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"operation":"new"},"index":1}, "e1") -> ok
+  engine: preview({"type":"addFeature","feature":{"id":"e1","name":"Extrude 1","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10,"taper":-1.3962634015954636},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"operation":"new"},"index":1}, "e1") -> ok
   engine: getState("s1")
   panel:
     +     input value="-80"
@@ -163,24 +163,24 @@
     - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 17.847
 
 === 4. OK: the extrusion with its taper is in the document
-  engine: preview({"type":"addFeature","feature":{"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10,"taper":"deg(-5)"},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"operation":"new"},"index":1}, "e1") -> ok
+  engine: preview({"type":"addFeature","feature":{"id":"e1","name":"Extrude 1","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10,"taper":"deg(-5)"},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"operation":"new"},"index":1}, "e1") -> ok
   engine: getState("s1")  (x4)
-  engine: execute({"type":"addFeature","feature":{"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10,"taper":"deg(-5)"},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"operation":"new"},"index":1}) -> ok
+  engine: execute({"type":"addFeature","feature":{"id":"e1","name":"Extrude 1","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10,"taper":"deg(-5)"},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"operation":"new"},"index":1}) -> ok
   features: s1, e1
   feature e1:
-      {"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"extent":{"type":"distance","start":0,"distance":10,"taper":-0.08726646259971647},"operation":"new","expressions":{"extent/taper":"deg(-5)"}}
+      {"id":"e1","name":"Extrude 1","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"extent":{"type":"distance","start":0,"distance":10,"taper":-0.08726646259971647},"operation":"new","expressions":{"extent/taper":"deg(-5)"}}
   toolbar:
     +   button: "Export STL"
     -   button disabled: "Export STL"
-    +   button title="Ctrl+Z": "↶ Zpět"
-    -   button disabled title="Ctrl+Z": "↶ Zpět"
-    +   button title="Nová skica na rovině nebo rovinné stěně": "Skica"
-    +   button title="Vysunout oblasti skici": "Vysunutí"
+    +   button title="Ctrl+Z": "↶ Undo"
+    -   button disabled title="Ctrl+Z": "↶ Undo"
+    +   button title="A new sketch on a plane or a planar face": "Sketch"
+    +   button title="Extrude regions of a sketch": "Extrude"
     +   button title="Turn regions of a sketch about an axis in its plane": "Revolve"
     +   button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
     +   button title="Chamfer edges of a body by a distance": "Chamfer"
     +   button title="Round edges of a body by a radius": "Fillet"
-    +   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
+    +   button title="A plane offset from a plane or a planar face": "Plane"
     +   button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
     +   button title="Place a stored mesh (a bought part read from an STL file) as a body": "Mesh"
     +   button title="Insert another document (a part saved as a document file) as a part of this one": "Insert"
@@ -222,18 +222,18 @@
     - div.row.ok.selected
     +   button.icon title="Hide or show": "👁"
     -   button.icon disabled title="Hide or show": "👁"
-    +   button.icon title="Posunout později": "↓"
-    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon title="Move later": "↓"
+    +   button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
     + div.row.ok
     +   span.dot: "●"
-    +   span.name: "Vysunutí 1"
+    +   span.name: "Extrude 1"
     +   button.icon title="Hide or show": "👁"
-    +   button.icon title="Posunout dřív": "↑"
-    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
-    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon title="Move earlier": "↑"
+    +   button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
+    -   button.icon disabled title="Roll the model back to here: further features are inserted after this one": "⇤"
   panel:
     + h2: "Model"
-    + p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
+    + p.hint: "The right mouse button orbits, the wheel zooms, the middle button (or Shift + right) pans. On a touchpad: Alt/Option + drag orbits, Alt + Shift + drag pans, two fingers zoom. A feature on the timeline is edited by a double click."
     + h2: "Parameters (0)"
     + div.constraint
     +   input.pname value="" placeholder="name"
@@ -247,7 +247,7 @@
     +   button: "Add"
     + h2: "Mechanism"
     + p.hint: "Links are bodies that move as one piece; a joint moves its child link against its parent. The model as modelled is the zero of every joint."
-    - h2: "Nové vysunutí"
+    - h2: "New extrude"
     - label
     -   "Profile"
     -   select value="regions"
@@ -257,25 +257,25 @@
     -     option value="cycloidalDisc": "Cycloidal disc"
     -     option value="gt2Pulley": "GT2 pulley"
     - label
-    -   "Skica"
+    -   "Sketch"
     -   select value="s1"
-    -     option selected value="s1": "Skica 1"
-    - p.hint: "Vybraných oblastí: 1. Oblasti se vybírají kliknutím v pohledu."
+    -     option selected value="s1": "Sketch 1"
+    - p.hint: "Picked regions: 1. Regions are picked by a click in the view."
     +   button title="Bodies that move as one piece": "New link"
     +   button disabled title="A joint moves its child link against its parent link": "New joint"
     +   button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
-    -   button: "Zrušit výběr oblastí"
+    -   button: "Clear picked regions"
     - label
     -   "Offset (mm or an expression; positive grows the profile; empty = none)"
     -   span.field
     -     input value=""
     -     small.computed data-field="profile/offset" data-unit="mm"
     - label
-    -   "Operace"
+    -   "Operation"
     -   select value="new"
-    -     option selected value="new": "Nové těleso"
-    -     option value="add": "Přidat k tělesu"
-    -     option value="cut": "Odebrat z tělesa"
+    -     option selected value="new": "New body"
+    -     option value="add": "Join to body"
+    -     option value="cut": "Cut from body"
     - label
     -   "Extent"
     -   select value="distance"
@@ -303,8 +303,8 @@
     - p#draft-problem.issue.error: "At the far end of the extrusion, the taper of -80° leaves no length for the curves "c1", "c2", "c3", "c4": their neighbours meet before them, so they vanish. Use a smaller taper or a shorter distance, or make the profile wider and its corner radii larger than 56.7128 mm (the move of the outline at the far end), or draw the far outline in a sketch."
     - div.buttons
     -   button.primary: "OK"
-    -   button: "Zrušit"
-  status: Vysunutí přidáno.
+    -   button: "Cancel"
+  status: Extrude added.
   view: 3 scene(s) set
   scene:
     + bodies: e1
@@ -331,22 +331,22 @@
     + div.row.ok.selected
     - div.row.ok
   panel:
-    + h2: "Vysunutí"
+    + h2: "Extrude"
     + label
-    +   "Název"
-    +   input value="Vysunutí 1"
+    +   "Feature name"
+    +   input value="Extrude 1"
     + div.buttons
-    +   button.primary: "Upravit"
-    +   button: "Potlačit"
-    +   button: "Smazat"
-    + p.hint: "Nové těleso, distance 10 mm, taper deg(-5) = -5°, regions: 1."
+    +   button.primary: "Edit feature"
+    +   button: "Suppress"
+    +   button: "Delete"
+    + p.hint: "New body, distance 10 mm, taper deg(-5) = -5°, regions: 1."
     + p.hint.body
-    +   "Vysunutí 1: 11397.785 mm³, 40 × 30 × 10 mm"
+    +   "Extrude 1: 11397.785 mm³, 40 × 30 × 10 mm"
     +   button.link title="This body alone, whatever its use, as it is at the end of the timeline": "Export STL"
-    + h2: "Properties of Vysunutí 1"
+    + h2: "Properties of Extrude 1"
     + label
     +   "Name"
-    +   input value="" placeholder="Vysunutí 1"
+    +   input value="" placeholder="Extrude 1"
     + label
     +   "Use"
     +   select value=""
@@ -380,7 +380,7 @@
     +   span.field
     +     input type=color value="#aab7c6"
     - h2: "Model"
-    - p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
+    - p.hint: "The right mouse button orbits, the wheel zooms, the middle button (or Shift + right) pans. On a touchpad: Alt/Option + drag orbits, Alt + Shift + drag pans, two fingers zoom. A feature on the timeline is edited by a double click."
   view: 1 scene(s) set
   scene:
     + face e1 #0 #f97316 opacity 0.3
@@ -394,15 +394,15 @@
   engine: preview({"type":"updateFeature","id":"e1","patch":{"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}],"offset":null},"extent":{"type":"distance","start":0,"distance":10,"taper":"deg(-5)","from":null},"operation":"new"}}, "e1") -> ok
   engine: getState("s1")  (x3)
   toolbar:
-    +   button disabled title="Ctrl+Z": "↶ Zpět"
-    -   button title="Ctrl+Z": "↶ Zpět"
-    -   button title="Nová skica na rovině nebo rovinné stěně": "Skica"
-    -   button title="Vysunout oblasti skici": "Vysunutí"
+    +   button disabled title="Ctrl+Z": "↶ Undo"
+    -   button title="Ctrl+Z": "↶ Undo"
+    -   button title="A new sketch on a plane or a planar face": "Sketch"
+    -   button title="Extrude regions of a sketch": "Extrude"
     -   button title="Turn regions of a sketch about an axis in its plane": "Revolve"
     -   button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
     -   button title="Chamfer edges of a body by a distance": "Chamfer"
     -   button title="Round edges of a body by a radius": "Fillet"
-    -   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
+    -   button title="A plane offset from a plane or a planar face": "Plane"
     -   button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
     -   button title="Place a stored mesh (a bought part read from an STL file) as a body": "Mesh"
     -   button title="Insert another document (a part saved as a document file) as a part of this one": "Insert"
@@ -442,20 +442,20 @@
   timeline:
     +   button.icon disabled title="Hide or show": "👁"
     -   button.icon title="Hide or show": "👁"
-    +   button.icon disabled title="Posunout později": "↓"
-    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon disabled title="Move later": "↓"
+    +   button.icon disabled title="Roll the model back to here: further features are inserted after this one": "⇤"
     + div.row.ok.selected.editing
-    -   button.icon title="Posunout později": "↓"
-    -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon title="Move later": "↓"
+    -   button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
     - div.row.ok.selected
     +   button.icon disabled title="Hide or show": "👁"
-    +   button.icon disabled title="Posunout dřív": "↑"
+    +   button.icon disabled title="Move earlier": "↑"
     -   button.icon title="Hide or show": "👁"
-    -   button.icon title="Posunout dřív": "↑"
-    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
-    -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon title="Move earlier": "↑"
+    +   button.icon disabled title="Roll the model back to here: further features are inserted after this one": "⇤"
+    -   button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
   panel:
-    + h2: "Úprava: Vysunutí 1"
+    + h2: "Edit: Extrude 1"
     + label
     +   "Profile"
     +   select value="regions"
@@ -464,33 +464,33 @@
     +     option value="involuteGear": "Involute gear"
     +     option value="cycloidalDisc": "Cycloidal disc"
     +     option value="gt2Pulley": "GT2 pulley"
-    - h2: "Vysunutí"
-    +   "Skica"
+    - h2: "Extrude"
+    +   "Sketch"
     +   select value="s1"
-    +     option selected value="s1": "Skica 1"
-    + p.hint: "Vybraných oblastí: 1. Oblasti se vybírají kliknutím v pohledu."
-    -   "Název"
-    -   input value="Vysunutí 1"
-    +   button: "Zrušit výběr oblastí"
-    -   button.primary: "Upravit"
-    -   button: "Potlačit"
-    -   button: "Smazat"
-    - p.hint: "Nové těleso, distance 10 mm, taper deg(-5) = -5°, regions: 1."
+    +     option selected value="s1": "Sketch 1"
+    + p.hint: "Picked regions: 1. Regions are picked by a click in the view."
+    -   "Feature name"
+    -   input value="Extrude 1"
+    +   button: "Clear picked regions"
+    -   button.primary: "Edit feature"
+    -   button: "Suppress"
+    -   button: "Delete"
+    - p.hint: "New body, distance 10 mm, taper deg(-5) = -5°, regions: 1."
     - p.hint.body
-    -   "Vysunutí 1: 11397.785 mm³, 40 × 30 × 10 mm"
+    -   "Extrude 1: 11397.785 mm³, 40 × 30 × 10 mm"
     -   button.link title="This body alone, whatever its use, as it is at the end of the timeline": "Export STL"
-    - h2: "Properties of Vysunutí 1"
+    - h2: "Properties of Extrude 1"
     +   "Offset (mm or an expression; positive grows the profile; empty = none)"
     +   span.field
     +     input value=""
     +     small.computed data-field="profile/offset" data-unit="mm"
     -   "Name"
-    -   input value="" placeholder="Vysunutí 1"
-    +   "Operace"
+    -   input value="" placeholder="Extrude 1"
+    +   "Operation"
     +   select value="new"
-    +     option selected value="new": "Nové těleso"
-    +     option value="add": "Přidat k tělesu"
-    +     option value="cut": "Odebrat z tělesa"
+    +     option selected value="new": "New body"
+    +     option value="add": "Join to body"
+    +     option value="cut": "Cut from body"
     -   "Use"
     -   select value=""
     -     option selected value="": "Default: Printed part"
@@ -547,7 +547,7 @@
     - h2: "Mechanism"
     - p.hint: "Links are bodies that move as one piece; a joint moves its child link against its parent. The model as modelled is the zero of every joint."
     +   button.primary: "OK"
-    +   button: "Zrušit"
+    +   button: "Cancel"
     -   button title="Bodies that move as one piece": "New link"
     -   button disabled title="A joint moves its child link against its parent link": "New joint"
     -   button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
@@ -578,18 +578,18 @@
   engine: getState("s1")  (x3)
   engine: execute({"type":"updateFeature","id":"e1","patch":{"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}],"offset":null},"extent":{"type":"distance","start":0,"distance":10,"taper":null,"from":null},"operation":"new"}}) -> ok
   feature e1:
-    + {"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"extent":{"type":"distance","start":0,"distance":10},"operation":"new"}
-    - {"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"extent":{"type":"distance","start":0,"distance":10,"taper":-0.08726646259971647},"operation":"new","expressions":{"extent/taper":"deg(-5)"}}
+    + {"id":"e1","name":"Extrude 1","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"extent":{"type":"distance","start":0,"distance":10},"operation":"new"}
+    - {"id":"e1","name":"Extrude 1","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"extent":{"type":"distance","start":0,"distance":10,"taper":-0.08726646259971647},"operation":"new","expressions":{"extent/taper":"deg(-5)"}}
   toolbar:
-    +   button title="Ctrl+Z": "↶ Zpět"
-    -   button disabled title="Ctrl+Z": "↶ Zpět"
-    +   button title="Nová skica na rovině nebo rovinné stěně": "Skica"
-    +   button title="Vysunout oblasti skici": "Vysunutí"
+    +   button title="Ctrl+Z": "↶ Undo"
+    -   button disabled title="Ctrl+Z": "↶ Undo"
+    +   button title="A new sketch on a plane or a planar face": "Sketch"
+    +   button title="Extrude regions of a sketch": "Extrude"
     +   button title="Turn regions of a sketch about an axis in its plane": "Revolve"
     +   button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
     +   button title="Chamfer edges of a body by a distance": "Chamfer"
     +   button title="Round edges of a body by a radius": "Fillet"
-    +   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
+    +   button title="A plane offset from a plane or a planar face": "Plane"
     +   button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
     +   button title="Place a stored mesh (a bought part read from an STL file) as a body": "Mesh"
     +   button title="Insert another document (a part saved as a document file) as a part of this one": "Insert"
@@ -629,21 +629,21 @@
   timeline:
     +   button.icon title="Hide or show": "👁"
     -   button.icon disabled title="Hide or show": "👁"
-    +   button.icon title="Posunout později": "↓"
-    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon title="Move later": "↓"
+    +   button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
     + div.row.ok
-    -   button.icon disabled title="Posunout později": "↓"
-    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon disabled title="Move later": "↓"
+    -   button.icon disabled title="Roll the model back to here: further features are inserted after this one": "⇤"
     - div.row.ok.selected.editing
     +   button.icon title="Hide or show": "👁"
-    +   button.icon title="Posunout dřív": "↑"
+    +   button.icon title="Move earlier": "↑"
     -   button.icon disabled title="Hide or show": "👁"
-    -   button.icon disabled title="Posunout dřív": "↑"
-    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
-    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon disabled title="Move earlier": "↑"
+    +   button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
+    -   button.icon disabled title="Roll the model back to here: further features are inserted after this one": "⇤"
   panel:
     + h2: "Model"
-    + p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
+    + p.hint: "The right mouse button orbits, the wheel zooms, the middle button (or Shift + right) pans. On a touchpad: Alt/Option + drag orbits, Alt + Shift + drag pans, two fingers zoom. A feature on the timeline is edited by a double click."
     + h2: "Parameters (0)"
     + div.constraint
     +   input.pname value="" placeholder="name"
@@ -657,7 +657,7 @@
     +   button: "Add"
     + h2: "Mechanism"
     + p.hint: "Links are bodies that move as one piece; a joint moves its child link against its parent. The model as modelled is the zero of every joint."
-    - h2: "Úprava: Vysunutí 1"
+    - h2: "Edit: Extrude 1"
     - label
     -   "Profile"
     -   select value="regions"
@@ -667,25 +667,25 @@
     -     option value="cycloidalDisc": "Cycloidal disc"
     -     option value="gt2Pulley": "GT2 pulley"
     - label
-    -   "Skica"
+    -   "Sketch"
     -   select value="s1"
-    -     option selected value="s1": "Skica 1"
-    - p.hint: "Vybraných oblastí: 1. Oblasti se vybírají kliknutím v pohledu."
+    -     option selected value="s1": "Sketch 1"
+    - p.hint: "Picked regions: 1. Regions are picked by a click in the view."
     +   button title="Bodies that move as one piece": "New link"
     +   button disabled title="A joint moves its child link against its parent link": "New joint"
     +   button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
-    -   button: "Zrušit výběr oblastí"
+    -   button: "Clear picked regions"
     - label
     -   "Offset (mm or an expression; positive grows the profile; empty = none)"
     -   span.field
     -     input value=""
     -     small.computed data-field="profile/offset" data-unit="mm"
     - label
-    -   "Operace"
+    -   "Operation"
     -   select value="new"
-    -     option selected value="new": "Nové těleso"
-    -     option value="add": "Přidat k tělesu"
-    -     option value="cut": "Odebrat z tělesa"
+    -     option selected value="new": "New body"
+    -     option value="add": "Join to body"
+    -     option value="cut": "Cut from body"
     - label
     -   "Extent"
     -   select value="distance"
@@ -713,8 +713,8 @@
     - p#draft-problem.issue.warning
     - div.buttons
     -   button.primary: "OK"
-    -   button: "Zrušit"
-  status: Změna uložena.
+    -   button: "Cancel"
+  status: Change saved.
   view: 2 scene(s) set
   scene:
     - fill #2563eb opacity 0.45 onTop at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 530

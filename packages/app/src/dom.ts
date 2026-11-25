@@ -1,4 +1,4 @@
-// Drobné pomůcky pro stavbu DOM bez knihovny.
+// Small helpers for building the DOM without a library.
 type Child = Node | string | number | null | undefined | false;
 
 export function h<K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLElementTagNameMap[K]> = {}, ...children: Child[]): HTMLElementTagNameMap[K] {
@@ -20,7 +20,7 @@ export function download(name: string, data: BlobPart, type: string): void {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-// Číslo pro zobrazení: nejvýš tři desetinná místa, bez koncových nul.
+// A number for display: at most three decimal places, without trailing zeros.
 export const fmt = (value: number): string => String(Math.round(value * 1000) / 1000);
 
 // Marks a field whose content is not valid, with the reason as its title.

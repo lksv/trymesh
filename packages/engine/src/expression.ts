@@ -1,5 +1,5 @@
 // Expressions over parameters: parsing, evaluation, the parameter table and checks.
-// The rules are in docs/architecture.md, section "Parameters and expressions".
+// The rules are in docs/architecture/document.md, section "Parameters and expressions".
 import type { CheckResult, Expr, ExpressionError, Parameter, ParameterResult } from './types';
 import { has } from './util';
 

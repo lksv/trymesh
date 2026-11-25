@@ -1,5 +1,5 @@
-// Případy z revize adaptéru (2026-11-14). Každý běží v mnoha náhodných polohách: vady se
-// projevovaly jen v některých natočeních.
+// Cases from the review of the adapter (2026-11-14). Each runs in many random positions: the defects
+// showed only in some rotations.
 import { describe as suite, expect, it } from 'vitest';
 import type { BooleanOp, Solid } from '@trymesh/engine';
 import { cleanBySubdivision, isClosed } from '../src/clean';
@@ -19,8 +19,8 @@ function build(frame: TestFrame, steps: Step[]): Solid {
   return body;
 }
 
-// Spočítá, v kolika polohách případ selže (výjimka, neuzavřená nebo přeložená síť, špatný objem
-// nebo povrch, jádro síť načte jinak).
+// Counts in how many positions the case fails (an exception, a mesh not closed or folded, a wrong
+// volume or surface area, the kernel loads the mesh differently).
 function failures(steps: Step[], volume: number, area: number | null, frames: TestFrame[], rejected?: { count: number }): string[] {
   const found: string[] = [];
   frames.forEach((frame, i) => {
@@ -29,16 +29,16 @@ function failures(steps: Step[], volume: number, area: number | null, frames: Te
       const d = describe(out, frame);
       const loaded = inspect(out);
       const problems = [
-        !d.closed && 'neuzavřená síť',
-        !d.sound && 'přeložený trojúhelník',
-        Math.abs(d.volume - volume) > 0.05 && `objem ${d.volume.toFixed(3)} místo ${volume}`,
-        area !== null && Math.abs(d.area - area) > 0.1 && `povrch ${d.area.toFixed(3)} místo ${area}`,
-        Math.abs(loaded.volume - d.volume) > 0.05 && `jádro načte objem ${loaded.volume.toFixed(3)}`,
+        !d.closed && 'a mesh not closed',
+        !d.sound && 'a folded triangle',
+        Math.abs(d.volume - volume) > 0.05 && `volume ${d.volume.toFixed(3)} instead of ${volume}`,
+        area !== null && Math.abs(d.area - area) > 0.1 && `surface area ${d.area.toFixed(3)} instead of ${area}`,
+        Math.abs(loaded.volume - d.volume) > 0.05 && `the kernel loads the volume ${loaded.volume.toFixed(3)}`,
       ].filter(Boolean);
-      if (problems.length) found.push(`poloha ${i}: ${problems.join(', ')}`);
+      if (problems.length) found.push(`position ${i}:  ${problems.join(', ')}`);
     } catch (error) {
       if (rejected) rejected.count++;
-      else found.push(`poloha ${i}: ${error instanceof Error ? error.message : String(error)}`);
+      else found.push(`position ${i}:  ${error instanceof Error ? error.message : String(error)}`);
     }
   });
   return found;
@@ -49,29 +49,31 @@ const frames = (count: number, seed: number, far = 0): TestFrame[] => {
   return [IDENTITY, ...Array.from({ length: count }, () => randomFrame(r))].map((f) => ({ ...f, o: [f.o[0] + far, f.o[1] - far, f.o[2] + far] }));
 };
 
-suite('nálezy z revize adaptéru', () => {
-  // Nástroj se kvůli dotyku hranou s nálitkem B zmenší; stěna nálitku A leží o g za jeho stěnou.
-  // Zmenšení nesmí stěnu A přeskočit, jinak po A zůstane blána (dřív potichu: povrch 4400 místo 4200).
+suite('findings of the review of the adapter', () => {
+  // The tool shrinks because of its edge contact with the boss B; the face of the boss A lies g
+  // behind its face. The shrinking must not skip over the face A, otherwise a membrane stays after
+  // A (silently before: area 4400 instead of 4200).
   const gapSteps = (g: number): Step[] => [
     ['union', rect(20, 0, 30 - g, 10), 10, 20],
     ['union', rect(30, 10, 40, 20), 10, 20],
     ['difference', rect(0, 0, 30, 10), 10, 20],
   ];
-  it.each([0.05, 0.1, 0.5])('zmenšení nástroje nepřeskočí blízkou stěnu tělesa (mezera %f)', (g) => {
+  it.each([0.05, 0.1, 0.5])('the shrinking of the tool does not skip over a near face of the body (gap %f)', (g) => {
     expect(failures(gapSteps(g), 13000, 4200, frames(60, 11))).toEqual([]);
   });
-  // Mezera pod rozlišením adaptéru (asi 1e-4 rozměru modelu): správně, nebo chybou, ne potichu špatně.
+  // A gap below the resolution of the adapter (about 1e-4 of the size of the model): right, or an
+  // error, not silently wrong.
   // A union and a difference never reach the second cleaning of D51 (test 3 of its design): the
   // count of refusals could not tell, the second cleaning answers none of these.
-  it.each([0.001, 0.002, 0.004, 0.02])('mezera %f pod rozlišením adaptéru skončí správně nebo chybou', (g) => {
+  it.each([0.001, 0.002, 0.004, 0.02])('a gap %f below the resolution of the adapter ends right or in an error', (g) => {
     const before = kernel.secondCleanings;
     expect(failures(gapSteps(g), 13000, 4200, frames(60, 11), { count: 0 })).toEqual([]);
     expect(kernel.secondCleanings).toBe(before);
   });
 
-  // Blok proniká bokem tělesa o malé e (stěny nejsou v jedné rovině). Vznikají zdravé tenké
-  // trojúhelníky, které čištění nesmí brát jako nulové.
-  it.each([0.02, 0.05])('průnik o malou hloubku %f', (e) => {
+  // A block enters the side of the body by a small e (the faces are not in one plane). Sound thin
+  // triangles arise, which the cleaning must not take as zero.
+  it.each([0.02, 0.05])('an intersection of a small depth %f', (e) => {
     const steps: Step[] = [
       ['union', rect(-10, 0, 20, 30), 10, 15],
       ['union', rect(-10, 0, e, 20), 5, 15],
@@ -79,9 +81,9 @@ suite('nálezy z revize adaptéru', () => {
     expect(failures(steps, 17500, null, frames(100, 6))).toEqual([]);
   });
 
-  // Hloubka srovnatelná s přesahem (asi 1e-4 rozměru modelu) je pod rozlišením adaptéru. Výsledek
-  // smí být odmítnut chybou, ale nesmí být potichu vadný.
-  it('průnik o hloubku pod rozlišením adaptéru skončí správně nebo chybou', () => {
+  // A depth comparable to the overlap (about 1e-4 of the size of the model) is below the resolution
+  // of the adapter. The result may be refused by an error, but must not be silently defective.
+  it('an intersection of a depth below the resolution of the adapter ends right or in an error', () => {
     const steps: Step[] = [
       ['union', rect(-10, 0, 20, 30), 10, 15],
       ['union', rect(-10, 0, 0.005, 20), 5, 15],
@@ -93,8 +95,8 @@ suite('nálezy z revize adaptéru', () => {
     expect(kernel.secondCleanings).toBe(before);
   });
 
-  // Těleso, které se samo sebe dotýká hranou, nesmí při dalších operacích zdvojovat trojúhelníky.
-  it('dotyk hranou nezvětšuje síť při dalších operacích', () => {
+  // A body that touches itself at an edge must not duplicate triangles in further operations.
+  it('an edge contact does not grow the mesh in further operations', () => {
     for (const frame of frames(5, 1)) {
       let body = build(frame, [['union', rect(40, 30, 60, 50), 0, 10]]);
       const before = triangleCount(body);
@@ -108,8 +110,8 @@ suite('nálezy z revize adaptéru', () => {
     }
   });
 
-  // Model daleko od počátku: přesnost float32 klesá se vzdáleností, tolerance s ní musí růst.
-  it.each([450, 1300])('model %i mm od počátku', (far) => {
+  // A model far from the origin: the precision of float32 falls with the distance, the tolerance must grow with it.
+  it.each([450, 1300])('a model %i mm from the origin', (far) => {
     const cases: [Step[], number][] = [
       [[['union', rect(10, 10, 20, 20), 10, 15]], 12500],
       [[['difference', rect(30, 10, 40, 20), 5, 10]], 11500],
@@ -122,8 +124,8 @@ suite('nálezy z revize adaptéru', () => {
         try {
           const out = build(frame, steps);
           const d = describe(out, frame);
-          // objem se u vzdáleného modelu počítá z velkých čísel; tolerance úměrná chybě float32
-          if (!d.closed || !d.sound || Math.abs(d.volume - volume) > far * 0.02) found.push(`objem ${d.volume.toFixed(2)} místo ${volume}, uzavřená ${d.closed}, nepřeložená ${d.sound}`);
+          // the volume of a distant model is computed from large numbers; a tolerance proportional to the error of float32
+          if (!d.closed || !d.sound || Math.abs(d.volume - volume) > far * 0.02) found.push(`volume ${d.volume.toFixed(2)} instead of ${volume}, closed ${d.closed}, not folded ${d.sound}`);
         } catch (error) {
           found.push(String(error));
         }
@@ -148,8 +150,8 @@ const thrown = (call: () => unknown): string | undefined => {
   return undefined;
 };
 const arrays = (s: Solid) => [[...s.positions], [...s.triangles], [...s.faceIds]];
-const NOT_CLOSED = /není uzavřená plocha/;
-const FOLDED = /přeložený trojúhelník/;
+const NOT_CLOSED = /not a closed surface/;
+const FOLDED = /folded triangle/;
 const SLIVERS: [number, number, number, number, RegExp, number | null][] = [
   // n, r, δ, phase, how the first cleaning alone refuses, the exact volume (null: still refused)
   [24, 1.5, 0, 0.0618, NOT_CLOSED, 0.1734],

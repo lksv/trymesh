@@ -1,5 +1,5 @@
-// D35 krok 0: dokument verze 1 po převodu dává stejný model a rozsah vysunutí může začínat mimo
-// rovinu skici. Proti skutečným adaptérům.
+// D35 step 0: a document of version 1 gives the same model after the upgrade, and the extent of an
+// extrusion can start off the plane of the sketch. Against the real adapters.
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
@@ -8,13 +8,14 @@ import { XY, addExtrude, addSketch, batch, cap, circle, expectAllOk, extrude, fa
 
 const FIXTURE = readFileSync(new URL('./fixtures/v1-plate.json', import.meta.url), 'utf8');
 const stl = (engine: Engine) => Array.from(engine.exportMesh('stl'));
-// Otisk exportu STL téhož souboru z enginu před změnou schématu (commit bf51cd3).
+// The fingerprint of the STL export of the same file from the engine before the change of the schema (commit bf51cd3).
 const FIXTURE_STL = { bytes: 28384, sha256: '58c340068c782b14df2d97a9980e3529b1313aeef7f1d7f60e4a45507711087b' };
 
-describe('krok 0: dokument verze 1', () => {
-  // Soubor uložil engine před změnou schématu: deska s kapsou, nálitkem na vlastní rovině a druhým
-  // tělesem. Objemy, jména stěn a otisk exportu spočítal tentýž engine.
-  it('načte se, přepočte se na stejný model a uloží se v současné verzi', () => {
+describe('step 0: a document of version 1', () => {
+  // The file was saved by the engine before the change of the schema: a plate with a pocket, a boss
+  // on a custom plane and a second body. The volumes, the face names and the fingerprint of the export
+  // were computed by the same engine.
+  it('it loads, recomputes to the same model and saves in the current version', () => {
     const engine = newEngine();
     expect(JSON.parse(FIXTURE).schemaVersion).toBe(1);
     expect(engine.load(FIXTURE).ok).toBe(true);
@@ -35,7 +36,7 @@ describe('krok 0: dokument verze 1', () => {
     expect(saved.schemaSteps).toEqual(SCHEMA_PENDING ? UPGRADES.slice(-SCHEMA_PENDING).map((step) => step.name) : undefined);
     saved.features.forEach((f, i) => {
       const before = old.features[i];
-      if (f.type !== 'extrude') return expect(f).toEqual(before); // skici se neřešily znovu
+      if (f.type !== 'extrude') return expect(f).toEqual(before); // the sketches were not solved again
       expect(f).toEqual({
         id: before.id,
         name: before.name,
@@ -48,7 +49,7 @@ describe('krok 0: dokument verze 1', () => {
       });
     });
 
-    // uložený dokument verze 2 dává bitově stejný model
+    // the saved document of version 2 gives a bit for bit identical model
     const other = newEngine();
     expect(other.load(engine.save()).ok).toBe(true);
     expect(other.save()).toBe(engine.save());
@@ -57,7 +58,7 @@ describe('krok 0: dokument verze 1', () => {
     expect(other.getState()).toMatchObject({ canUndo: false, canRedo: false });
   });
 
-  it('dokument s parametry nebo kontrolami engine zatím odmítne a původní dokument nechá být', () => {
+  it('the engine refuses a document with parameters or checks for now and leaves the original document alone', () => {
     const engine = newEngine();
     run(engine, addSketch('S1', XY));
     const doc = JSON.parse(engine.save());
@@ -69,7 +70,7 @@ describe('krok 0: dokument verze 1', () => {
   });
 });
 
-describe('krok 0: začátek rozsahu vysunutí', () => {
+describe('step 0: the start of the extent of an extrusion', () => {
   const plate = (start: number, distance: number): Engine => {
     const engine = newEngine();
     const feature: ExtrudeFeature = { ...extrude('E1', 'S1', [rectLoop('r')], distance), extent: { type: 'distance', start, distance } };
@@ -81,7 +82,7 @@ describe('krok 0: začátek rozsahu vysunutí', () => {
     return [box.min[2], box.max[2]];
   };
 
-  it('těleso začíná v posunu od roviny skici; víka se jmenují podle začátku a konce rozsahu', () => {
+  it('the body starts at an offset from the plane of the sketch; the caps are named by the start and the end of the extent', () => {
     for (const [start, distance] of [[5, 10], [5, -8], [-5, 3], [-5, -3], [2, -2]]) {
       const engine = plate(start, distance);
       expectAllOk(engine.getState());
@@ -91,7 +92,7 @@ describe('krok 0: začátek rozsahu vysunutí', () => {
     }
   });
 
-  it('změna začátku těleso posune, undo ho vrátí; prázdná změna a neplatná dávka krok undo nevytvoří', () => {
+  it('a change of the start moves the body, undo moves it back; an empty change and an invalid batch create no undo step', () => {
     const engine = plate(0, 10);
     const before = stl(engine);
     const moved = run(engine, { type: 'updateFeature', id: 'E1', patch: { extent: { start: 4 } } });
@@ -100,22 +101,22 @@ describe('krok 0: začátek rozsahu vysunutí', () => {
     engine.undo();
     expect(stl(engine)).toEqual(before);
     expect(engine.getState()).toMatchObject({ canUndo: true, canRedo: true });
-    // prázdná změna dokument nemění: historie zůstane, jak byla
+    // an empty change does not change the document: the history stays as it was
     const document = engine.save();
     expect(engine.execute({ type: 'updateFeature', id: 'E1', patch: {} }).ok).toBe(true);
     expect(engine.save()).toBe(document);
     expect(engine.getState().canRedo).toBe(true);
-    // dávka je atomická a hlásí, který příkaz neprošel
+    // a batch is atomic and reports which command failed
     const failed = engine.execute(batch({ type: 'updateFeature', id: 'E1', patch: { extent: { start: 2 } } }, { type: 'updateFeature', id: 'E1', patch: { extent: { distance: 0 } } }));
     expect(failed).toMatchObject({ ok: false, error: { code: 'invalidCommand', commandIndex: 1 } });
     expect(engine.save()).toBe(document);
     expect(engine.getState().canRedo).toBe(true);
-    // potlačená feature se mění stejně a po obnovení se změna projeví
+    // a suppressed feature is changed the same way and the change shows after it is restored
     run(engine, { type: 'setSuppressed', id: 'E1', suppressed: true }, { type: 'updateFeature', id: 'E1', patch: { extent: { start: -3, distance: -2 } } }, { type: 'setSuppressed', id: 'E1', suppressed: false });
     expect([z(engine, 'E1', 'startCap'), z(engine, 'E1', 'endCap')]).toEqual([[-3, -3], [-5, -5]]);
   });
 
-  it('skica na kterémkoli víku míří ven z tělesa při každé kombinaci začátku a směru', () => {
+  it('a sketch on either cap points out of the body for every combination of the start and the direction', () => {
     for (const [start, distance] of [[5, 10], [5, -8], [-5, -3], [0, -4]]) {
       for (const role of ['startCap', 'endCap'] as const) {
         const engine = plate(start, distance);
@@ -129,11 +130,11 @@ describe('krok 0: začátek rozsahu vysunutí', () => {
     }
   });
 
-  it('kruhová hrana posunutého tělesa má střed na víku a jde promítnout do skici', () => {
+  it('a circular edge of a shifted body has its centre on the cap and can be projected into a sketch', () => {
     const engine = newEngine();
     const feature: ExtrudeFeature = { ...extrude('E1', 'S1', [['k']], -6), extent: { type: 'distance', start: 4, distance: -6 } };
     run(engine, addSketch('S1', XY), circle('S1', 'k', 10, 20, 5), { type: 'addFeature', feature });
-    // střed hrany jako průměr vrcholů jejích segmentů (každý vrchol je v seznamu dvakrát)
+    // the centre of the edge as the mean of the vertices of its segments (each vertex is in the list twice)
     const centre = (segments: Float64Array) => [0, 1, 2].map((axis) => segments.reduce((sum, value, i) => (i % 3 === axis ? sum + value : sum), 0) / (segments.length / 3));
     const rims = engine.getState().evaluation.bodies.E1.edges.filter((edge) => edge.kind === 'circle');
     expect(rims.map((edge) => centre(edge.segments)[2]).sort((a, b) => a - b)).toEqual([expect.closeTo(-2, 9), expect.closeTo(4, 9)]);
@@ -141,7 +142,7 @@ describe('krok 0: začátek rozsahu vysunutí', () => {
     const rim = rims.find((edge) => Math.abs(centre(edge.segments)[2] + 2) < 1e-9)!;
     const state = run(engine, addSketch('S2', onFace('E1', cap('E1'))), { type: 'addExternal', sketch: 'S2', id: 'x', ref: { type: 'edge', body: 'E1', edge: rim.name, kind: 'circle' } });
     expectAllOk(state);
-    // promítnutá kružnice má analytický poloměr a střed, v prostoru na ose válce
+    // the projected circle has an analytic radius and centre, in space on the axis of the cylinder
     const { plane, sketch } = state.evaluation.features.S2;
     expect(sketch!.radii.x).toBeCloseTo(5, 6);
     const c = sketch!.points['x/center'];
@@ -149,17 +150,17 @@ describe('krok 0: začátek rozsahu vysunutí', () => {
     expect(state.evaluation.features.S2.plane!.origin[2]).toBeCloseTo(-2, 9);
   });
 
-  it('skica na víku posunutého tělesa leží na víku, i když víko míří proti normále skici', () => {
+  it('a sketch on a cap of a shifted body lies on the cap even when the cap points against the normal of the sketch', () => {
     const engine = plate(5, 10);
     run(engine, addSketch('S2', onFace('E1', cap('E1', 'startCap'))), rectangle('S2', 'q', 2, 2, 6, 6, null), addExtrude('E2', 'S2', [rectLoop('q')], 3, 'add', 'E1'));
     expectAllOk(engine.getState());
-    // nálitek ze spodního víka roste ven z tělesa, tedy dolů
+    // a boss from the bottom cap grows out of the body, so down
     expect(z(engine, 'E1', 'startCap', 'E2')).toEqual([5, 5]);
     expect(z(engine, 'E1', 'endCap', 'E2')).toEqual([2, 2]);
     expect(volume(engine.getState().evaluation.bodies.E1.solid)).toBeCloseTo(12000 + 108, 6);
   });
 
-  it('výřez s posunutým začátkem vyřízne dutinu uvnitř tělesa a obě jeho víka jsou stěny tělesa', () => {
+  it('a cut with a shifted start cuts a cavity inside the body and both its caps are faces of the body', () => {
     const engine = plate(0, 10);
     const pocket: ExtrudeFeature = { ...extrude('E2', 'S2', [rectLoop('q')], 4, 'cut', 'E1'), extent: { type: 'distance', start: 3, distance: 4 } };
     run(engine, addSketch('S2', XY), rectangle('S2', 'q', 10, 10, 10, 10, null), { type: 'addFeature', feature: pocket });
@@ -167,11 +168,11 @@ describe('krok 0: začátek rozsahu vysunutí', () => {
     expect(volume(engine.getState().evaluation.bodies.E1.solid)).toBeCloseTo(12000 - 400, 6);
     expect(faceNames(engine.getState(), 'E1')).toEqual(expect.arrayContaining(['E2/startCap', 'E2/endCap', 'E2/side/qa']));
     expect([z(engine, 'E1', 'startCap', 'E2'), z(engine, 'E1', 'endCap', 'E2')]).toEqual([[3, 3], [7, 7]]);
-    // výřez posunutý celý mimo těleso nemá účinek
+    // a cut shifted entirely outside the body has no effect
     const outside = run(engine, { type: 'updateFeature', id: 'E2', patch: { extent: { start: 12 } } });
     expect(status(outside).E2).toMatch(/noEffect/);
     expect(volume(outside.evaluation.bodies.E1.solid)).toBeCloseTo(12000, 6);
-    // a výřez začínající přesně na stěně se od ní odečte čistě
+    // and a cut that starts exactly on a face is subtracted from it cleanly
     const flush = run(engine, { type: 'updateFeature', id: 'E2', patch: { extent: { start: 10, distance: -4 } } });
     expectAllOk(flush);
     expect(volume(flush.evaluation.bodies.E1.solid)).toBeCloseTo(12000 - 400, 6);

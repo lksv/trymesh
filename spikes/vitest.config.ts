@@ -1,5 +1,5 @@
-// Spiky psané v TypeScriptu nad zdroji balíčků (skutečné adaptéry jádra a solveru).
-// Spuštění z kořene repozitáře: npx vitest run --config spikes/vitest.config.ts
+// Spikes written in TypeScript over the packages' sources (the real adapters of the kernel and the solver).
+// Run from the repository root: npx vitest run --config spikes/vitest.config.ts
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 

@@ -40,11 +40,11 @@ describe('extent of an extrusion', () => {
     const hole = run(doc, add(extrude('H', { extent: through('both'), operation: 'cut', targets: ['A'] })));
     expect(feature(hole, 'H')).toEqual({ ...extrude('H'), extent: { type: 'throughAll', side: 'both' }, operation: 'cut', targets: ['A'] });
     for (const side of ['forward', 'backward', 'both'] as const) expect(feature(run(doc, add(extrude('H', { extent: through(side), operation: 'cut', targets: ['A'] }))), 'H').extent).toEqual({ type: 'throughAll', side });
-    invalid(doc, add(extrude('H', { extent: { type: 'throughAll' } as never, operation: 'cut', targets: ['A'] })), /extent\.side: čeká se jedna z hodnot forward, backward, both/);
+    invalid(doc, add(extrude('H', { extent: { type: 'throughAll' } as never, operation: 'cut', targets: ['A'] })), /extent\.side: one of the values forward, backward, both/);
     invalid(doc, add(extrude('H', { extent: { type: 'throughAll', side: 'up' } as never, operation: 'cut', targets: ['A'] })), /extent\.side/);
     invalid(doc, add(extrude('H', { extent: through('both') })), /throughAll is only for the operation cut/);
     invalid(doc, add(extrude('H', { extent: through('both'), operation: 'add', targets: ['A'] })), /throughAll is only for the operation cut/);
-    invalid(doc, add(extrude('H', { extent: { type: 'upToFace' } as never, operation: 'cut', targets: ['A'] })), /extent\.type: čeká se jedna z hodnot distance, throughAll/);
+    invalid(doc, add(extrude('H', { extent: { type: 'upToFace' } as never, operation: 'cut', targets: ['A'] })), /extent\.type: one of the values distance, throughAll/);
   });
 
   it('through all has no numeric fields: no expression, no setField', () => {
@@ -78,9 +78,9 @@ describe('extent of an extrusion', () => {
     invalid(all, update('H', { extent: { type: 'distance', distance: 5 } }), /extent\.start/);
     invalid(doc, update('H', { extent: { type: 'throughAll' } } as FeaturePatch), /extent\.side/);
     // a field of the other variant is a mistake, not a silent success
-    invalid(all, update('H', { extent: { distance: 5 } } as FeaturePatch), /extent\.distance: vysunutí takové pole nemá/);
-    invalid(doc, update('H', { extent: { side: 'both' } } as FeaturePatch), /extent\.side: vysunutí takové pole nemá/);
-    invalid(doc, update('H', { extent: { type: 'throughAll', side: 'both', distance: 5 } } as unknown as FeaturePatch), /extent\.distance: vysunutí takové pole nemá/);
+    invalid(all, update('H', { extent: { distance: 5 } } as FeaturePatch), /extent\.distance: this extrude has no such field/);
+    invalid(doc, update('H', { extent: { side: 'both' } } as FeaturePatch), /extent\.side: this extrude has no such field/);
+    invalid(doc, update('H', { extent: { type: 'throughAll', side: 'both', distance: 5 } } as unknown as FeaturePatch), /extent\.distance: this extrude has no such field/);
   });
 
   it('updateFeature: through all follows the operation', () => {
@@ -118,10 +118,10 @@ describe('target bodies', () => {
     invalid(doc, add(extrude('H', { operation: 'cut' })), /operation cut needs at least one target body/);
     invalid(doc, add(extrude('H', { operation: 'cut', targets: 'A' as never })), /operation cut needs at least one target body/);
     invalid(doc, add(extrude('H', { operation: 'cut', targets: ['A', 'A'] })), /a target body is listed twice/);
-    invalid(doc, add(extrude('H', { operation: 'cut', targets: ['A', 5 as never] })), /targets\[1\]: čeká se řetězec/);
-    invalid(doc, add(extrude('H', { operation: 'cut', targets: ['A', 'S1'] })), /není těleso/);
-    invalid(doc, add(extrude('H', { operation: 'cut', targets: ['A', 'X'] })), /feature "X" neexistuje/);
-    invalid(doc, add(extrude('H', { targets: ['A'] })), /nové těleso nemá cíl/);
+    invalid(doc, add(extrude('H', { operation: 'cut', targets: ['A', 5 as never] })), /targets\[1\]: a string is expected/);
+    invalid(doc, add(extrude('H', { operation: 'cut', targets: ['A', 'S1'] })), /is not a body/);
+    invalid(doc, add(extrude('H', { operation: 'cut', targets: ['A', 'X'] })), /feature "X" does not exist/);
+    invalid(doc, add(extrude('H', { targets: ['A'] })), /a new body has no target/);
   });
 
   it('updateFeature: the list is replaced as a whole and follows the operation', () => {
@@ -141,7 +141,7 @@ describe('target bodies', () => {
     expect(feature(run(doc, update('H', { extent: { distance: 3 } })), 'H').targets).toEqual(['A', 'B']);
     expect(feature(run(doc, update('H', { targets: ['B', 'A', 'C'] })), 'H').targets).toEqual(['B', 'A', 'C']);
     // a new target is verified
-    invalid(doc, update('H', { targets: ['A', 'B', 'X'] }), /updateFeature\.patch\.targets: feature "X" neexistuje/);
+    invalid(doc, update('H', { targets: ['A', 'B', 'X'] }), /updateFeature\.patch\.targets: the feature "X" does not exist/);
     // the fix: the broken target is replaced
     expect(feature(run(doc, update('H', { targets: ['A', 'C'] })), 'H').targets).toEqual(['A', 'C']);
   });

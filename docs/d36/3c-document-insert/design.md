@@ -6,7 +6,7 @@ Files: [contract.ts](contract.ts) (the section, the feature type with its patch 
 
 ## What the backlog says, checked against the code
 
-[backlog.md](../../backlog.md), the row "Knihovna dílů, vložení jiného dokumentu": a motor, a bearing or a screw as a finished part instead of modelling it by hand; a new feature type that creates bodies from another document; the feature IDs of the inserted document need a prefix, and the validation of a reference to a face then needs the same decomposition of the ID as bodies have. An imported foreign mesh stays outside (it has no named faces; that is 3b). [D36](../../decisions/D36-order-after-d35.md), step 3: "the data cannot travel inside a command through MCP … the tool has to take a path that the server or the app reads".
+[backlog.md](../../backlog.md), the row "A library of parts, inserting another document": a motor, a bearing or a screw as a finished part instead of modelling it by hand; a new feature type that creates bodies from another document; the feature IDs of the inserted document need a prefix, and the validation of a reference to a face then needs the same decomposition of the ID as bodies have. An imported foreign mesh stays outside (it has no named faces; that is 3b). [D36](../../decisions/D36-order-after-d35.md), step 3: "the data cannot travel inside a command through MCP … the tool has to take a path that the server or the app reads".
 
 | Statement | What the code says |
 |---|---|
@@ -270,7 +270,7 @@ A stored document is one to three orders of magnitude smaller than a mesh of a p
 | 17° | ok | no pair; the pin in the bore a fit (0.19 mm³, 0.004 mm deep); the seat and the ring cleared by the second opinion of D50 as a fit (1.02 mm³, 0.010 mm) | 0, a fit |
 | 45° | ok | no pair; two fits (0.77 mm³ and 0.40 mm³, under 0.01 mm deep) | 0, a fit |
 
-Round faces of a part turned against the sketch that draws its seat are divided at other angles, so they meet as a fit within the chord tolerance, as the collisions are designed to report it. A sketch on the end cap of the turned copy has the normal +Z and its origin at the image of the origin of the ring's sketch (5.24, −35.08, 7.5 at 17°), as the rule of a sketch on a face says. The projected circle needed a circle of the sketch held on it: a projected curve makes no region (`naming.md`, "Profily a oblasti").
+Round faces of a part turned against the sketch that draws its seat are divided at other angles, so they meet as a fit within the chord tolerance, as the collisions are designed to report it. A sketch on the end cap of the turned copy has the normal +Z and its origin at the image of the origin of the ring's sketch (5.24, −35.08, 7.5 at 17°), as the rule of a sketch on a face says. The projected circle needed a circle of the sketch held on it: a projected curve makes no region (`naming.md`, "Profiles and regions").
 
 ## Rejected
 

@@ -1,12 +1,14 @@
-// Skica: vstup solveru a razítko, referenční kóty, detekce profilů a oblastí.
-// Pravidla jsou v docs/architecture.md, sekce Skica, Řešení skici a Profily a oblasti.
+// Sketch: the input of the solver and the stamp, reference dimensions, detection of profiles and
+// regions. The rules are in docs/architecture/sketch.md, sections "Sketch" and "Solving the
+// sketch", and docs/architecture/naming.md, section "Profiles and regions".
 import type { GeometrySource, ResolvedReference } from './references/spec';
 import { AXES_GEOMETRY, constraintOperands, isDimension } from './sketch-content';
 import { bezierStartCurvature, splineBeziers, splinePolyline } from './spline';
 import type { Constraint, Curve, CurveShape, Id, Point2, RegionRef, SketchFeature, SketchResult, SolveInput, StoredValue, Vec2 } from './types';
 import { AXIS_REACH, LENGTH_TOLERANCE, ORIGIN, ORIGIN_AXES, cross2, dist2, dot2, fingerprint, has, isOriginAxis, len2, stableStringify, sub2, unreachable } from './util';
 
-// Použité polohy: vlastní body, počátek a body promítnuté geometrie; poloměry kružnic včetně promítnutých.
+// The positions used: own points, the origin and the points of projected geometry; the radii of
+// circles including projected ones.
 export interface SketchGeometry {
   points: Record<Id, Point2>;
   radii: Record<Id, number>;
@@ -96,10 +98,10 @@ export function joinPairs(feature: SketchFeature, _references: Record<Id, Resolv
   return Object.values(feature.constraints).flatMap((c): [Id, Id][] => (c.type === 'coincident' ? [[c.a, c.b]] : []));
 }
 
-// Spojování bodů: tentýž bod, nebo dvojice (vazba coincident), která je v použitých polohách splněná.
-// Tranzitivní, jde i přes počátek a promítnuté body. The answer is the vertex of a point: the point
-// with the smallest ID of those it is joined with. The profile of a sketch and the chain of a wall
-// (recompute/outline.ts) join points by this rule.
+// Joining of points: the same point, or a pair (constraint coincident) that is satisfied in the
+// positions used. Transitive, it goes through the origin and projected points too. The answer is
+// the vertex of a point: the point with the smallest ID of those it is joined with. The profile of
+// a sketch and the chain of a wall (recompute/outline.ts) join points by this rule.
 export function joinsOf(pairs: readonly [Id, Id][], geometry: SketchGeometry): (id: Id) => Id {
   const parent = new Map<Id, Id>(Object.keys(geometry.points).map((id) => [id, id]));
   const find = (id: Id): Id => {
@@ -184,12 +186,12 @@ export function curveEnds(shape: CurveShape): [Id, Id] | undefined {
   }
 }
 
-// ---------------------------------------------------------------- vstup solveru
+// ---------------------------------------------------------------- the input of the solver
 
 export interface SolverSetup {
-  input: SolveInput; // bez tažení
-  stamp: string; // otisk vstupů: křivky, řídicí vazby, hodnoty promítnuté geometrie
-  skipped: Id[]; // vazby vynechané, protože jejich promítnutá geometrie nemá žádné platné hodnoty
+  input: SolveInput; // without dragging
+  stamp: string; // fingerprint of the inputs: curves, driving constraints, values of projected geometry
+  skipped: Id[]; // constraints left out because their projected geometry has no valid values
 }
 
 // `references`: the resolved entries of `external` (fresh or frozen values and their geometry,
@@ -219,7 +221,7 @@ export function solverSetup(sketch: SketchFeature, references: Record<Id, Resolv
   for (const [id, c] of Object.entries(sketch.constraints)) {
     const available = constraintOperands(c).every((operand) => has(points, operand) || has(curves, operand));
     if (!available) skipped.push(id);
-    else if (!isDimension(c) || c.driving) constraints[id] = c; // referenční kóty počítá engine
+    else if (!isDimension(c) || c.driving) constraints[id] = c; // the engine computes reference dimensions
   }
   const used: Record<Id, StoredValue> = {};
   for (const id of Object.keys(sketch.external)) {
@@ -230,7 +232,7 @@ export function solverSetup(sketch: SketchFeature, references: Record<Id, Resolv
   return { input: { points, radii, curves, constraints, fixed }, stamp, skipped: skipped.sort() };
 }
 
-// Vlastní řešené proměnné skici z poloh, které vrátil solver.
+// The sketch's own solved variables from the positions the solver returned.
 export function ownVariables(sketch: SketchFeature, geometry: SketchGeometry): SketchGeometry {
   const points: Record<Id, Point2> = {};
   const radii: Record<Id, number> = {};
@@ -239,11 +241,12 @@ export function ownVariables(sketch: SketchFeature, geometry: SketchGeometry): S
   return { points, radii };
 }
 
-// ---------------------------------------------------------------- referenční kóty
+// ---------------------------------------------------------------- reference dimensions
 
 const xy = (p: Point2): Vec2 => [p.x, p.y];
 
-// Hodnoty referenčních kót (driving: false) z použitých poloh. Kóta, jejíž operand chybí, se vynechá.
+// The values of reference dimensions (driving: false) from the positions used. A dimension whose
+// operand is missing is left out.
 export function measure(sketch: SketchFeature, curves: Record<Id, Curve>, geometry: SketchGeometry): Record<Id, number> {
   const out: Record<Id, number> = {};
   const point = (id: Id): Vec2 | undefined => (has(geometry.points, id) ? xy(geometry.points[id]) : undefined);
@@ -266,7 +269,7 @@ export function measure(sketch: SketchFeature, curves: Record<Id, Curve>, geomet
       const [a, b] = [line(c.a), line(c.b)];
       if (a && b) {
         const [da, db] = [sub2(a[1], a[0]), sub2(b[1], b[0])];
-        value = Math.atan2(cross2(da, db), dot2(da, db)); // od směru a ke směru b, proti směru hodin
+        value = Math.atan2(cross2(da, db), dot2(da, db)); // from direction a to direction b, counterclockwise
       }
     } else if (c.type === 'radius' || c.type === 'diameter') {
       const curve = curves[c.curve];
@@ -295,10 +298,11 @@ export function measure(sketch: SketchFeature, curves: Record<Id, Curve>, geomet
   return out;
 }
 
-// ---------------------------------------------------------------- profily a oblasti
+// ---------------------------------------------------------------- profiles and regions
 
-// Uzavřená lomená čára v souřadnicích skici. Bod i má klíč keys[i]; hrana z bodu i do bodu i + 1
-// pochází z křivky curves[i]. Vnější smyčka jde proti směru hodin, díra po směru.
+// A closed polyline in the coordinates of the sketch. Point i has the key keys[i]; the edge from
+// point i to point i + 1 comes from the curve curves[i]. An outer loop goes counterclockwise, a
+// hole clockwise.
 // `exact`: the curves the polyline was divided from, in the order and direction the loop passes
 // them (the loops of a sketch and of a moved outline have them; a generated loop has none).
 // `sampled`: the curves of the loop that have no exact form, the splines (D70), in the order the
@@ -329,7 +333,7 @@ export interface Region {
   holes: Loop[];
 }
 export interface Profile {
-  valid: boolean; // false = křivky se kříží nebo dotýkají mimo spojené body
+  valid: boolean; // false = curves cross or touch outside joined points
   regions: Region[];
 }
 
@@ -368,7 +372,7 @@ const pieceOf = (s: SplineShape, k: number): LineShape => ({ id: s.id, kind: 'li
 const TAU = 2 * Math.PI;
 const positive = (angle: number): number => ((angle % TAU) + TAU) % TAU;
 
-// Vzdálenost bodu od křivky.
+// The distance of a point from a curve.
 function distanceTo(p: Vec2, s: Shape): number {
   switch (s.kind) {
     case 'spline': {
@@ -430,7 +434,8 @@ function roundOf(s: Shape): Round | undefined {
   }
 }
 
-// Průsečíky a body dotyku nosných křivek (přímka, kružnice), s tolerancí pro tečnost.
+// Intersections and points of contact of carrier curves (line, circle), with a tolerance for
+// tangency.
 // A spline has no carrier: its pieces are tested as lines (`piecePairs`) before this is asked.
 function carrierContacts(A: Shape, B: Shape, tol: number): Vec2[] {
   const noCarrier = (): never => {
@@ -472,7 +477,7 @@ type LineShape = Extract<Shape, { kind: 'line' }>;
 function lineContacts(A: LineShape, B: LineShape): Vec2[] {
   const [da, db] = [sub2(A.pb, A.pa), sub2(B.pb, B.pa)];
   const denominator = cross2(da, db);
-  if (Math.abs(denominator) <= 1e-12 * len2(da) * len2(db)) return []; // rovnoběžné: stačí kontrola koncových bodů
+  if (Math.abs(denominator) <= 1e-12 * len2(da) * len2(db)) return []; // parallel: checking the end points is enough
   const t = cross2(sub2(B.pa, A.pa), db) / denominator;
   return [[A.pa[0] + da[0] * t, A.pa[1] + da[1] * t]];
 }
@@ -494,11 +499,11 @@ function roundContacts(P: Round, Q: Round, tol: number): Vec2[] {
   const delta = sub2(Q.c, P.c);
   const D = len2(delta);
   if (D > P.r + Q.r + tol || D < Math.abs(P.r - Q.r) - tol) return [];
-  if (D <= tol) return []; // soustředné se stejným poloměrem: řeší se zvlášť
+  if (D <= tol) return []; // concentric with the same radius: handled separately
   const u: Vec2 = [delta[0] / D, delta[1] / D];
-  if (D >= P.r + Q.r - tol) return [[P.c[0] + u[0] * P.r, P.c[1] + u[1] * P.r]]; // vnější dotyk
+  if (D >= P.r + Q.r - tol) return [[P.c[0] + u[0] * P.r, P.c[1] + u[1] * P.r]]; // outer contact
   if (D <= Math.abs(P.r - Q.r) + tol) {
-    const sign = P.r > Q.r ? 1 : -1; // vnitřní dotyk
+    const sign = P.r > Q.r ? 1 : -1; // inner contact
     return [[P.c[0] + u[0] * P.r * sign, P.c[1] + u[1] * P.r * sign]];
   }
   const along = (D * D + P.r * P.r - Q.r * Q.r) / (2 * D);
@@ -670,7 +675,7 @@ function boxPairs(first: readonly Box[], second: readonly Box[], gap: number): [
   return pairs.sort((p, q) => p[0] - q[0] || p[1] - q[1]);
 }
 
-// Smějí se dvě křivky v profilu potkat? Dotýkat se smějí jen ve spojených bodech.
+// May two curves in a profile meet? They may touch only in joined points.
 function compatible(A: Shape, B: Shape, tol: number): boolean {
   if (A.kind === 'spline' || B.kind === 'spline') return piecePairs(A, B, tol).every(({ P, Q, shared }) => compatibleAt(P, Q, tol, shared));
   return compatibleAt(A, B, tol, sharedVertices(A, B).map((v) => v.at));
@@ -678,12 +683,13 @@ function compatible(A: Shape, B: Shape, tol: number): boolean {
 // The test of two exact shapes, with the positions of the vertices that excuse a contact near them.
 function compatibleAt(A: Exact, B: Exact, tol: number, shared: Vec2[]): boolean {
   const curved = [A, B].flatMap((s) => roundOf(s) ?? []);
-  // Soustředné kružnice nebo oblouky se stejným poloměrem leží na sobě.
+  // Concentric circles or arcs with the same radius lie on each other.
   if (curved.length === 2 && dist2(curved[0].c, curved[1].c) <= tol && Math.abs(curved[0].r - curved[1].r) <= tol) {
     if (A.kind === 'circle' || B.kind === 'circle') return false;
   }
-  // Společné vrcholy (`shared`). U tečného napojení (zaoblení) leží křivky pod tolerancí i kus od
-  // vrcholu, proto se dotyk bere jako dotyk ve vrcholu až do vzdálenosti dané poloměrem.
+  // Common vertices (`shared`). At a tangent joint (a fillet) the curves lie within the tolerance
+  // some way from the vertex too, so a contact counts as a contact at the vertex up to a distance
+  // given by the radius.
   const reach = vertexReach(A, B, tol);
   const candidates: Vec2[] = carrierContacts(A, B, tol);
   for (const s of [A, B]) if (s.kind !== 'circle') candidates.push(s.pa, s.pb, midpoint(s));
@@ -922,19 +928,20 @@ export function splinePolylineOf(curve: SketchCurve, joins: (id: Id) => Id, geom
   return shape?.kind === 'spline' ? shape.pts : undefined;
 }
 
-// Na kolik úseček se dělí oblouk. Strop brání tomu, aby obří poloměr nebo nepatrná tolerance
-// vyžádaly milióny úseček (pro r/tolerance nad 1e16 vychází krok nula); nad ním už dělení
-// toleranci nedodrží.
+// Into how many lines an arc is divided. The cap keeps a huge radius or a tiny tolerance from
+// asking for millions of lines (for r/tolerance above 1e16 the step comes out as zero); above it
+// the division no longer keeps the tolerance.
 const MAX_SEGMENTS = 4096;
 export function segments(sweep: number, radius: number, chordTolerance: number): number {
   const step = Math.min(2 * Math.acos(1 - Math.min(chordTolerance / radius, 1)), Math.PI / 4);
   return Math.min(MAX_SEGMENTS, Math.max(1, Math.ceil(sweep / step - 1e-9)));
 }
 
-// Obstojí oblasti i po rozdělení oblouků na úsečky? Platnost profilu se ověřuje na přesných
-// křivkách, ale těleso vzniká z lomených čar, které se od oblouku liší až o toleranci dělení.
-// Křivka, která oblouk těsně míjí, pak jeho lomenou čáru protne, a oblast tenčí než tolerance
-// splaskne do dvou bodů. Z takových smyček by nevzniklo uzavřené těleso.
+// Do the regions hold up after the arcs are divided into lines too? The validity of a profile is
+// checked on the exact curves, but the body is made from polylines, which differ from an arc by up
+// to the tolerance of the division. A curve that closely misses an arc then crosses its polyline,
+// and a region thinner than the tolerance collapses into two points. Such loops would not make a
+// closed body.
 export function soundTessellation(regions: Region[]): boolean {
   return tessellationProblem(regions) === undefined;
 }
@@ -968,21 +975,22 @@ function tessellationProblem(regions: Region[]): TightPlace | undefined {
         const j = (i + 1) % count;
         const [a, b] = [loop.keys[i], loop.keys[j]];
         const key = a < b ? `${a}|${b}` : `${b}|${a}`;
-        if (seen.has(key)) continue; // hranu sdílejí sousední oblasti
+        if (seen.has(key)) continue; // neighbouring regions share the edge
         seen.add(key);
         const [ax, ay, bx, by] = [loop.xy[2 * i], loop.xy[2 * i + 1], loop.xy[2 * j], loop.xy[2 * j + 1]];
         list.push({ a, b, curve: loop.curves[i], ax, ay, bx, by, minX: Math.min(ax, bx), maxX: Math.max(ax, bx) });
       }
     }
   }
-  // Na které straně úsečky p leží bod; úsečky se kříží, když konce každé leží na opačných stranách druhé.
+  // On which side of line p a point lies; lines cross when the ends of each lie on opposite sides
+  // of the other.
   const side = (p: Segment, x: number, y: number): number => (p.bx - p.ax) * (y - p.ay) - (p.by - p.ay) * (x - p.ax);
   list.sort((p, q) => p.minX - q.minX);
   for (let i = 0; i < list.length; i++) {
     const p = list[i];
     for (let j = i + 1; j < list.length && list[j].minX <= p.maxX; j++) {
       const q = list[j];
-      if (p.a === q.a || p.a === q.b || p.b === q.a || p.b === q.b) continue; // sousedé se dotýkají ve vrcholu
+      if (p.a === q.a || p.a === q.b || p.b === q.a || p.b === q.b) continue; // neighbours touch at a vertex
       if (Math.max(q.ay, q.by) < Math.min(p.ay, p.by) || Math.min(q.ay, q.by) > Math.max(p.ay, p.by)) continue;
       const [qa, qb] = [side(p, q.ax, q.ay), side(p, q.bx, q.by)];
       if (qa * qb < 0 && side(q, p.ax, p.ay) * side(q, p.bx, p.by) < 0) {
@@ -999,8 +1007,8 @@ export function detectProfile(sketch: SketchFeature, geometry: SketchGeometry, c
   return profileOf(sketchCurves(sketch, {}), pointJoins(sketch, geometry), geometry, chordTolerance);
 }
 
-// Najde oblasti z křivek, které je tvoří (`regions`), seřazených podle ID; konstrukční a promítnuté
-// křivky je netvoří. `joins` gives the vertex of a point (`joinsOf`).
+// Finds the regions from the curves that form them (`regions`), sorted by ID; construction and
+// projected curves do not form them. `joins` gives the vertex of a point (`joinsOf`).
 // `broad`: how pairs and faces are filtered (`BROAD_PHASE`; only the test of the broad phase gives
 // another).
 export function profileOf(curves: readonly SketchCurve[], joins: (id: Id) => Id, geometry: SketchGeometry, chordTolerance: number, broad: BroadPhase = BROAD_PHASE): Profile {
@@ -1058,14 +1066,14 @@ function buildProfile(curves: readonly SketchCurve[], joins: (id: Id) => Id, geo
         continue;
       case 'line':
         if (c.a.key === c.b.key || dist2(c.a.p, c.b.p) <= tol) {
-          valid = false; // křivka nulové délky
+          valid = false; // a curve of zero length
           continue;
         }
         shapes.push({ id, kind: 'line', a: c.a.key, b: c.b.key, pa: c.a.p, pb: c.b.p });
         continue;
       case 'arc':
         if (c.a.key === c.b.key || dist2(c.a.p, c.b.p) <= tol) {
-          valid = false; // křivka nulové délky
+          valid = false; // a curve of zero length
           continue;
         }
         if (!(c.radius > tol)) {
@@ -1098,14 +1106,14 @@ function buildProfile(curves: readonly SketchCurve[], joins: (id: Id) => Id, geo
   }
   if (!valid) return { profile: { valid: false, regions: [] } };
 
-  // ---- rovinný graf: půlhrany úseček a oblouků
+  // ---- the planar graph: half-edges of lines and arcs
   interface Half {
     shape: Open;
-    forward: boolean; // ve směru křivky (u oblouku proti směru hodin)
+    forward: boolean; // in the direction of the curve (for an arc counterclockwise)
     from: string;
     to: string;
-    angle: number; // směr, kterým půlhrana opouští vrchol (po seřazení směr k blízkému bodu křivky)
-    curvature: number; // se znaménkem: kladná zatáčí doleva
+    angle: number; // the direction the half-edge leaves the vertex in (after sorting, the direction to a near point of the curve)
+    curvature: number; // signed: positive turns left
     twin: number;
     loop: number;
   }
@@ -1141,10 +1149,11 @@ function buildProfile(curves: readonly SketchCurve[], joins: (id: Id) => Id, geo
     }
     const outgoing = new Map<string, number[]>();
     halves.forEach((h, i) => outgoing.set(h.from, [...(outgoing.get(h.from) ?? []), i]));
-    // Pořadí půlhran kolem vrcholu se bere podle směru k bodu křivky v malé vzdálenosti od vrcholu,
-    // ne podle tečny: úsečka a oblouk, které z vrcholu vycházejí tečně stejným směrem, mají tečny
-    // shodné až na šum solveru a pořadí by určovala náhoda. Vzdálenost je polovina nejkratší
-    // křivky ve vrcholu; tětiva oblouku je od tečny odkloněná o asin(křivost · vzdálenost / 2).
+    // The order of the half-edges around a vertex is taken by the direction to a point of the curve
+    // a small distance from the vertex, not by the tangent: a line and an arc that leave the vertex
+    // tangentially in the same direction have tangents equal up to the noise of the solver, and
+    // chance would decide the order. The distance is half of the shortest curve at the vertex; the
+    // chord of an arc deviates from the tangent by asin(curvature · distance / 2).
     // D70: how far a curve surely gets from the vertex (its reach) is for a line and an arc the
     // distance of its ends, for a spline the largest distance of its polyline from the vertex (for
     // a closed spline its farthest point, not its length); a spline leaves towards the first point
@@ -1166,7 +1175,8 @@ function buildProfile(curves: readonly SketchCurve[], joins: (id: Id) => Id, geo
       }
       list.sort((p, q) => halves[p].angle - halves[q].angle || halves[p].curvature - halves[q].curvature || p - q);
     }
-    // Další půlhrana kolem stěny (stěna vlevo): ve vrcholu první po směru hodin od protisměrné půlhrany.
+    // The next half-edge around a face (the face on the left): at the vertex the first clockwise
+    // from the opposite half-edge.
     const next = (i: number): number => {
       const list = outgoing.get(halves[i].to) as number[];
       const k = list.indexOf(halves[i].twin);
@@ -1182,13 +1192,13 @@ function buildProfile(curves: readonly SketchCurve[], joins: (id: Id) => Id, geo
       }
       loops.push(loop);
     });
-    // Křivka, která má po obou stranách stejnou stěnu, žádnou plochu neuzavírá: ignoruje se.
+    // A curve that has the same face on both sides encloses no area: it is ignored.
     const useless = new Set(halves.filter((h) => h.loop === halves[h.twin].loop).map((h) => h.shape));
     if (useless.size === 0) break;
     open = open.filter((s) => !useless.has(s));
   }
 
-  // Plocha smyčky se znaménkem: mnohoúhelník vrcholů plus kruhové úseče oblouků.
+  // The signed area of a loop: the polygon of the vertices plus the circular segments of the arcs.
   const position = new Map<string, Vec2>();
   for (const s of open) position.set(s.a, s.pa).set(s.b, s.pb);
   const areaOf = (loop: number[]): number => {
@@ -1218,7 +1228,8 @@ function buildProfile(curves: readonly SketchCurve[], joins: (id: Id) => Id, geo
     return area;
   };
 
-  // Lomená čára smyčky. Dělení oblouku nezávisí na směru průchodu, takže sousední oblasti sdílejí vrcholy.
+  // The polyline of a loop. The division of an arc does not depend on the direction of the pass,
+  // so neighbouring regions share vertices.
   const polyline = (loop: number[]): Loop => {
     const exact: OutlineCurve[] = [];
     const sampled: Id[] = [];
@@ -1281,8 +1292,8 @@ function buildProfile(curves: readonly SketchCurve[], joins: (id: Id) => Id, geo
     return out;
   };
 
-  // Leží bod uvnitř hranice? Paprsek ve směru +x; křivky se berou po úsecích monotónních v y
-  // s polootevřeným pravidlem, takže průchod vrcholem se nepočítá dvakrát.
+  // Does a point lie inside a boundary? A ray in the direction +x; the curves are taken in pieces
+  // monotonic in y with a half-open rule, so a pass through a vertex does not count twice.
   type Boundary = { halves: number[] } | { circle: Extract<Shape, { kind: 'circle' }> };
   // The box of a boundary as the ray test reads it: a line its ends, an arc its whole circle and its
   // two ends, a circle itself. A point outside it is crossed by no piece, or (left of it) by an even
@@ -1315,7 +1326,7 @@ function buildProfile(curves: readonly SketchCurve[], joins: (id: Id) => Id, geo
       if (from[1] > p[1] !== to[1] > p[1] && xAt() > p[0]) count++;
     };
     const arcPieces = (c: Vec2, r: number, start: number, sweep: number, from: Vec2, to: Vec2) => {
-      // dělicí body: vrchol a spodek kružnice
+      // dividing points: the top and the bottom of the circle
       const cuts = [Math.PI / 2, (3 * Math.PI) / 2].map((angle) => positive(angle - start)).filter((offset) => offset > 0 && offset < sweep).sort((x, y) => x - y);
       const stops = [0, ...cuts, sweep];
       for (let i = 0; i + 1 < stops.length; i++) {
@@ -1353,7 +1364,7 @@ function buildProfile(curves: readonly SketchCurve[], joins: (id: Id) => Id, geo
     return count;
   };
 
-  // ---- souvislé části grafu: každá má omezené stěny a jednu vnější hranici
+  // ---- connected parts of the graph: each has bounded faces and one outer boundary
   interface Face {
     area: number;
     boundary: Boundary;
@@ -1362,8 +1373,8 @@ function buildProfile(curves: readonly SketchCurve[], joins: (id: Id) => Id, geo
     box?: Box;
   }
   interface Component {
-    sample: Vec2; // bod části, podle kterého se hledá oblast, ve které leží
-    hole: () => Loop; // vnější hranice po směru hodin
+    sample: Vec2; // a point of the part by which the region it lies in is searched for
+    hole: () => Loop; // the outer boundary, clockwise
   }
   const faces: Face[] = [];
   const components: Component[] = [];
@@ -1393,7 +1404,8 @@ function buildProfile(curves: readonly SketchCurve[], joins: (id: Id) => Id, geo
     faces.push({ area: Math.PI * s.r * s.r, boundary: { circle: s }, region: { ref: { outerLoop: [s.id] }, outer: circleLoop(s, false), holes: [] }, component: components.length });
     components.push({ sample: [s.c[0] + s.r, s.c[1]], hole: () => circleLoop(s, true) });
   }
-  // Díry: část grafu vnořená do oblasti jiné části je její dírou; patří nejmenší oblasti, která ji obsahuje.
+  // Holes: a part of the graph nested in a region of another part is its hole; it belongs to the
+  // smallest region that contains it.
   components.forEach((component, index) => {
     let parentFace: Face | undefined;
     for (const face of faces) {

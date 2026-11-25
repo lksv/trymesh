@@ -1,5 +1,6 @@
-// Nástroje pro AI nad skutečným enginem: popis API vychází ze zdrojů enginu, dotazy na model
-// a skicu vracejí to, co engine spočítal, a příkazy procházejí beze změny.
+// The tools for the AI over the real engine: the API description comes from the sources of the
+// engine, queries on the model and the sketch return what the engine computed, and commands pass
+// unchanged.
 import { CONSTRAINTS, FEATURE_TYPE_INFO, GENERATORS, SKETCH_TOOLS, type Command, type Constraint, type Engine, type SolidKernel, createEngine, importMesh } from '@trymesh/engine';
 import { createManifoldKernel } from '@trymesh/kernel-manifold';
 import { createPlanegcsSolver } from '@trymesh/solver-planegcs';
@@ -17,7 +18,7 @@ const execute = (engine: Engine, command: Command) => ok(engine, 'execute', { co
 const sketch = (id: string): Command => ({ type: 'addFeature', feature: { id, name: id, suppressed: false, type: 'sketch', plane: { kind: 'base', plane: 'XY' }, points: {}, radii: {}, curves: {}, constraints: {}, external: {}, solved: { inputs: '', external: {} } } });
 const constrain = (id: string, constraint: Constraint): Command => ({ type: 'addConstraint', sketch: 's', id, constraint });
 
-// Obdélník 40 × 30 od ruky; `anchored` ho přichytí k počátku.
+// A freehand rectangle 40 × 30; `anchored` fixes it to the origin.
 function rectangle(engine: Engine, anchored: boolean) {
   const corners: [string, number, number][] = [
     ['a', 0.4, -0.3],
@@ -42,11 +43,11 @@ function rectangle(engine: Engine, anchored: boolean) {
   });
 }
 
-describe('popis API', () => {
-  it('katalog vazeb obsahuje každou vazbu enginu a každý příklad engine přijme', () => {
+describe('the API description', () => {
+  it('the catalog of constraints holds every constraint of the engine and the engine accepts every example', () => {
     const catalog = constraintCatalog();
     expect(catalog.map((entry) => entry.type).sort()).toEqual(Object.keys(CONSTRAINTS).sort());
-    // Skica s entitami všech druhů; příklad z katalogu se doplní skutečnými ID a pošle enginu.
+    // A sketch with entities of all kinds; the example from the catalog is filled with real IDs and sent to the engine.
     const engine = newEngine();
     execute(engine, {
       type: 'batch',
@@ -64,7 +65,7 @@ describe('popis API', () => {
       const used: Record<string, number> = {};
       const example = { ...entry.example };
       for (const operand of entry.operands) {
-        // první druh, pro který ještě zbývá entita; tečnost dvou úseček engine nebere, proto u ní kružnice
+        // the first kind that still has an entity left; the engine does not take tangency of two lines, hence circles for it
         const kind = (entry.type === 'tangent' ? ['circle'] : operand.kinds).find((candidate) => (used[candidate] ?? 0) < pick[candidate].length) as string;
         example[operand.field] = pick[kind][used[kind] ?? 0];
         used[kind] = (used[kind] ?? 0) + 1;
@@ -74,7 +75,7 @@ describe('popis API', () => {
     }
   });
 
-  it('typy se berou ze zdroje enginu: obsahují příkazy a dokument, neobsahují porty', () => {
+  it('the types are taken from the source of the engine: they hold the commands and the document, not the ports', () => {
     const types = engineTypes();
     expect(types).toContain('export type Command =');
     expect(types).toContain('export interface SketchFeature');
@@ -85,11 +86,11 @@ describe('popis API', () => {
     expect(types).not.toContain('ComputedMesh');
     expect(types).toContain('cleared?: Cleared[];');
     expect(types).toContain('export interface Cleared');
-    // každý typ vazby z katalogu je i v typech
+    // every type of constraint in the catalog is in the types too
     for (const type of Object.keys(CONSTRAINTS)) expect(types, type).toContain(`'${type}'`);
   });
 
-  it('describe_api vrací konvence, katalog a typy; seznam nástrojů neukazuje vnitřní nástroje', () => {
+  it('describe_api returns the conventions, the catalog and the types; the list of tools does not show internal tools', () => {
     // without arguments the index; the whole text is the sections one after another (D73)
     expect(ok(newEngine(), 'describe_api')).toBe(apiIndex());
     const description = apiText();
@@ -97,11 +98,11 @@ describe('popis API', () => {
     expect(description).toMatch(/^# Conventions\n- Lengths are in millimetres/);
     expect(description).toContain('export type Command =');
     for (const [type, spec] of Object.entries(CONSTRAINTS)) expect(description, type).toContain(`- ${type} (${spec.title}) {`);
-    expect(description).toContain('- distance (Vzdálenost) { a: point, b: point; value: non-negative, mm }');
-    // typy features jsou z registru enginu
+    expect(description).toContain('- distance (Distance) { a: point, b: point; value: non-negative, mm }');
+    // the feature types come from the registry of the engine
     for (const [type, info] of Object.entries(FEATURE_TYPE_INFO)) expect(description, type).toContain(`- ${type} (${info.title}): `);
     expect(description).toContain('updateFeature changes the fields: profile, extent, operation, targets.');
-    expect(description).toMatch(/- sketch \(Skica\): .* Its content is changed by its own commands, not by updateFeature\./);
+    expect(description).toMatch(/- sketch \(Sketch\): .* Its content is changed by its own commands, not by updateFeature\./);
     // D56: the two types of the boolean of bodies, their role and their error reach the AI from the registry and types.ts
     expect(description).toContain('export interface CombineFeature extends FeatureBase');
     expect(description).toContain('export interface SplitFeature extends FeatureBase');
@@ -133,7 +134,7 @@ describe('popis API', () => {
     expect(description).toContain('// - Run-outs (D67): an edge may also end at a round face C');
     const listed = tools().filter((tool) => !tool.hidden).map((tool) => tool.name);
     expect(listed).toEqual(['describe_api', 'get_model', 'get_document', 'get_sketch', 'get_parameters', 'explain_constraint', 'get_body', 'check_interference', 'query', 'execute', 'preview', 'sketch_tool', 'new_document', 'undo', 'redo']);
-    // popis execute vyjmenuje vazby z katalogu
+    // the description of execute lists the constraints of the catalog
     const executeTool = tools().find((tool) => tool.name === 'execute')!;
     for (const type of Object.keys(CONSTRAINTS)) expect(executeTool.description).toContain(type);
   });
@@ -387,7 +388,7 @@ describe('sketch tools', () => {
       return outcome.ok ? '' : outcome.error;
     };
     expect(error({ tool: 'polygon', input: hexagon })).toMatch(/argument "sketch"/);
-    expect(error({ sketch: 'nic', tool: 'polygon', input: hexagon })).toBe('the document has no sketch "nic"');
+    expect(error({ sketch: 'nope', tool: 'polygon', input: hexagon })).toBe('the document has no sketch "nope"');
     expect(error({ sketch: '', tool: 'polygon', input: hexagon })).toBe('argument "sketch": a text that is not empty is expected');
     // what an anchor and a size may be
     expect(error({ sketch: 's', tool: 'polygon', input: { ...hexagon, center: { at: [0, 0], snap: { kind: 'point', id: 'origin', extra: 1 } } } })).toMatch(/center: `snap` must be/);
@@ -513,8 +514,8 @@ describe('sketch tools', () => {
   });
 });
 
-describe('dotazy na skicu', () => {
-  it('get_sketch u neukotveného obdélníku řekne, co je volné a čím skicu dourčit', () => {
+describe('queries on a sketch', () => {
+  it('get_sketch of an unanchored rectangle says what is free and how to fully constrain the sketch', () => {
     const engine = newEngine();
     expect(rectangle(engine, false)).toMatchObject({ ok: true, problems: [], sketches: [{ id: 's', degreesOfFreedom: 2, profileValid: true, regions: 1 }] });
     const detail = ok(engine, 'get_sketch', { sketch: 's' });
@@ -522,13 +523,13 @@ describe('dotazy na skicu', () => {
     expect(detail.diagnosis).toMatchObject({ status: 'solved', degreesOfFreedom: 2, redundant: [], removable: [] });
     expect(detail.points).toEqual(['a', 'b', 'c', 'd'].map((id) => ({ id, at: [expect.any(Number), expect.any(Number)], freedom: 2 })));
     expect(detail.curves[0]).toEqual({ id: 'ab', type: 'line', a: 'a', b: 'b' });
-    expect(detail.constraints.find((c: { id: string }) => c.id === 'w')).toEqual({ id: 'w', label: 'Vodorovná vzdálenost (a, b)', type: 'horizontalDistance', a: 'a', b: 'b', value: 40, driving: true });
+    expect(detail.constraints.find((c: { id: string }) => c.id === 'w')).toEqual({ id: 'w', label: 'Horizontal distance (a, b)', type: 'horizontalDistance', a: 'a', b: 'b', value: 40, driving: true });
     expect(detail.regions).toEqual([{ ref: { outerLoop: ['ab', 'bc', 'cd', 'da'] }, area: expect.closeTo(1200, 4), holes: 0 }]);
     expect(detail.advice.join(' ')).toMatch(/2 degrees of freedom/);
-    expect(detail.advice.join(' ')).toMatch(/Setting the position of one of the points a, b, c, d determines the sketch \(for example by a horizontal and a vertical dimension from the origin\)/);
+    expect(detail.advice.join(' ')).toMatch(/position of one of the points a, b, c, d is set \(for example by a horizontal and a vertical dimension from the origin\)/);
   });
 
-  it('rada při jednom stupni volnosti nenavrhuje totožnost, která by skončila konfliktem', () => {
+  it('the advice at one degree of freedom does not suggest a coincidence that would end in a conflict', () => {
     const engine = newEngine();
     rectangle(engine, true);
     execute(engine, { type: 'removeConstraint', sketch: 's', id: 'h' });
@@ -536,33 +537,33 @@ describe('dotazy na skicu', () => {
     expect(detail.diagnosis.degreesOfFreedom).toBe(1);
     const advice = detail.advice.join(' ');
     expect(advice).toMatch(/1 degree of freedom/);
-    expect(advice).toMatch(/one of the points c, d determines the sketch \(by one dimension or constraint/);
-    expect(advice).not.toMatch(/coincident constraint/);
-    // totožnost s počátkem je opravdu konflikt, jedna kóta skicu určí
+    expect(advice).toMatch(/position of one of the points c, d is set \(by one dimension or constraint/);
+    expect(advice).not.toMatch(/\bcoincident\b/);
+    // a coincidence with the origin really is a conflict, one dimension fully constrains the sketch
     expect(ok(engine, 'preview', { command: constrain('bad', { type: 'coincident', a: 'c', b: 'origin' }) }).sketches[0]).toMatchObject({ solved: false });
     expect(execute(engine, constrain('fixed', { type: 'verticalDistance', a: 'origin', b: 'c', value: 30, driving: true })).sketches[0]).toEqual({ id: 's', solved: true, degreesOfFreedom: 0, profileValid: true, regions: 1 });
   });
 
-  it('počet stupňů volnosti se skloňuje', () => {
+  it('the number of degrees of freedom is inflected', () => {
     const engine = newEngine();
     execute(engine, { type: 'batch', commands: [sketch('s'), { type: 'addPoint', sketch: 's', id: 'p', x: 1, y: 1 }, { type: 'addPoint', sketch: 's', id: 'q', x: 5, y: 1 }, { type: 'addPoint', sketch: 's', id: 'r', x: 9, y: 4 }] });
     expect(ok(engine, 'get_sketch', { sketch: 's' }).advice[0]).toMatch(/^The sketch has 6 degrees of freedom/);
   });
 
-  it('po ukotvení je skica určená; vazba navíc se označí a explain_constraint ji vysvětlí', () => {
+  it('once anchored the sketch is fully constrained; a surplus constraint is marked and explain_constraint explains it', () => {
     const engine = newEngine();
     rectangle(engine, true);
-    expect(ok(engine, 'get_sketch', { sketch: 's' }).advice).toEqual(['The sketch is fully determined.']);
+    expect(ok(engine, 'get_sketch', { sketch: 's' }).advice).toEqual(['The sketch is fully constrained.']);
     execute(engine, constrain('par', { type: 'parallel', a: 'ab', b: 'cd' }));
     const detail = ok(engine, 'get_sketch', { sketch: 's' });
-    expect(detail.constraints.find((c: { id: string }) => c.id === 'par')).toMatchObject({ surplus: true, label: 'Rovnoběžně (ab, cd)' });
-    expect(detail.advice.join(' ')).toMatch(/Redundant constraints: par\./);
+    expect(detail.constraints.find((c: { id: string }) => c.id === 'par')).toMatchObject({ surplus: true, label: 'Parallel (ab, cd)' });
+    expect(detail.advice.join(' ')).toMatch(/Surplus constraints: par\./);
     expect(ok(engine, 'explain_constraint', { sketch: 's', constraint: 'par' })).toEqual({
-      constraint: { id: 'par', label: 'Rovnoběžně (ab, cd)' },
+      constraint: { id: 'par', label: 'Parallel (ab, cd)' },
       redundant: true,
       impliedBy: [
-        { id: 'h1', label: 'Vodorovně (ab)', removableInstead: true },
-        { id: 'h2', label: 'Vodorovně (cd)', removableInstead: true },
+        { id: 'h1', label: 'Horizontal (ab)', removableInstead: true },
+        { id: 'h2', label: 'Horizontal (cd)', removableInstead: true },
       ],
       note: 'The constraint itself or any of the constraints in impliedBy can be removed; the geometry does not change.',
     });
@@ -598,7 +599,7 @@ describe('dotazy na skicu', () => {
     detail = ok(engine, 'get_sketch', { sketch: 's' });
     expect(constraintOf('f1')).toMatchObject({ x: 9.5, y: 20, expressions: { y: 'margin * 2' } });
     expect(ok(engine, 'get_model').features[0].expressions).toEqual({ 'constraints/f1/y': 'margin * 2' });
-    expect(callTool(engine, 'execute', { command: { type: 'setConstraintValue', sketch: 's', id: 'f1', value: 3 } })).toMatchObject({ ok: false, error: expect.stringContaining('není kóta') });
+    expect(callTool(engine, 'execute', { command: { type: 'setConstraintValue', sketch: 's', id: 'f1', value: 3 } })).toMatchObject({ ok: false, error: expect.stringContaining('is not a dimension') });
     // a dimension that repeats a coordinate is surplus and explained by the fixed point
     execute(engine, constrain('dx', { type: 'horizontalDistance', a: 'origin', b: 'c1', value: 9.5, driving: true }));
     expect(ok(engine, 'explain_constraint', { sketch: 's', constraint: 'dx' })).toMatchObject({ redundant: true, impliedBy: [{ id: 'f1', label: 'Fixed point (c1)' }] });
@@ -608,8 +609,8 @@ describe('dotazy na skicu', () => {
     expect(clash.problems[0]).toMatchObject({ id: 's', warnings: [{ code: 'sketchConflict', refs: expect.arrayContaining(['dx', 'f1']) }] });
   });
 
-  it('explain_constraint neradí odebrat vazbu, bez které by se skica uvolnila', () => {
-    // bod na úsečce plyne ze středu úsečky, ale střed určuje i polohu bodu podél úsečky
+  it('explain_constraint does not advise removing a constraint without which the sketch would come loose', () => {
+    // the point on the line follows from the midpoint of the line, but the midpoint also sets the position of the point along the line
     const engine = newEngine();
     rectangle(engine, false);
     execute(engine, { type: 'addPoint', sketch: 's', id: 'm', x: 18, y: 1 });
@@ -619,17 +620,17 @@ describe('dotazy na skicu', () => {
     const before = freedom();
     const explained = ok(engine, 'explain_constraint', { sketch: 's', constraint: 'on' });
     expect(explained).toMatchObject({ redundant: true, impliedBy: [{ id: 'mid', removableInstead: false }] });
-    expect(explained.note).toBe('Only the constraint itself can be removed; the geometry does not change. The constraints in impliedBy cannot be removed: they set more than this constraint and the sketch would come loose.');
-    // rada platí: bez `on` se volnost nezmění, bez `mid` vzroste
+    expect(explained.note).toBe('Only the constraint itself can be removed; the geometry does not change. The constraints in impliedBy cannot be removed: they determine more than this constraint and the sketch would come loose.');
+    // the advice holds: without `on` the freedom does not change, without `mid` it grows
     expect(ok(engine, 'preview', { command: { type: 'removeConstraint', sketch: 's', id: 'on' } }).sketches[0].degreesOfFreedom).toBe(before);
     expect(ok(engine, 'preview', { command: { type: 'removeConstraint', sketch: 's', id: 'mid' } }).sketches[0].degreesOfFreedom).toBe(before + 1);
-    // smíšený případ: jedna z vazeb, ze kterých plyne, je sama navíc, druhá ne
+    // a mixed case: one of the constraints it follows from is surplus itself, the other is not
     execute(engine, constrain('co', { type: 'coincident', a: 'a', b: 'origin' }));
     execute(engine, constrain('hd', { type: 'horizontalDistance', a: 'origin', b: 'a', value: 0, driving: true }));
     expect(ok(engine, 'explain_constraint', { sketch: 's', constraint: 'hd' })).toMatchObject({ impliedBy: [{ id: 'co', removableInstead: false }] });
   });
 
-  it('konflikt a referenční kóta', () => {
+  it('a conflict and a reference dimension', () => {
     const engine = newEngine();
     rectangle(engine, true);
     execute(engine, constrain('ref', { type: 'distance', a: 'a', b: 'c', value: 1, driving: false }));
@@ -638,7 +639,7 @@ describe('dotazy na skicu', () => {
     expect(result.problems).toEqual([expect.objectContaining({ id: 's', status: 'warning', warnings: [expect.objectContaining({ code: 'sketchConflict' })] })]);
     const detail = ok(engine, 'get_sketch', { sketch: 's' });
     expect(detail.diagnosis.status).toBe('conflict');
-    // přehledy u nevyřešené skici stupně volnosti neuvádějí
+    // the summaries of an unsolved sketch do not state degrees of freedom
     expect(result.sketches).toEqual([{ id: 's', solved: false, conflicting: expect.arrayContaining(['bad']), profileValid: true, regions: 1 }]);
     expect(ok(engine, 'get_model').features[0]).toMatchObject({ id: 's', solved: false });
     expect(ok(engine, 'get_model').features[0]).not.toHaveProperty('degreesOfFreedom');
@@ -670,8 +671,8 @@ describe('dotazy na skicu', () => {
   });
 });
 
-describe('hrany tělesa', () => {
-  it('kruhová hrana má střed a poloměr, hrana přerušená výřezem krajní body a příznak mezery', () => {
+describe('the edges of a body', () => {
+  it('a circular edge has a centre and a radius, an edge interrupted by a cut-out has end points and the flag of gaps', () => {
     const engine = newEngine();
     rectangle(engine, true);
     execute(engine, {
@@ -682,7 +683,7 @@ describe('hrany tělesa', () => {
         constrain('mx', { type: 'horizontalDistance', a: 'origin', b: 'm', value: 12, driving: true }),
         constrain('my', { type: 'verticalDistance', a: 'origin', b: 'm', value: 14, driving: true }),
         constrain('kr', { type: 'radius', curve: 'k', value: 5, driving: true }),
-        { type: 'addFeature', feature: { id: 'e', name: 'Deska', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 's', regions: [{ outerLoop: ['ab', 'bc', 'cd', 'da'] }] }, extent: { type: 'distance', start: 0, distance: 10 }, operation: 'new' } },
+        { type: 'addFeature', feature: { id: 'e', name: 'Plate', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 's', regions: [{ outerLoop: ['ab', 'bc', 'cd', 'da'] }] }, extent: { type: 'distance', start: 0, distance: 10 }, operation: 'new' } },
       ],
     });
     let body = ok(engine, 'get_body', { body: 'e' });
@@ -692,7 +693,7 @@ describe('hrany tělesa', () => {
     expect(rim.length).toBeLessThan(2 * Math.PI * 5);
     expect(rim).not.toHaveProperty('from');
 
-    // zářez uprostřed přední hrany: hrana má dva kusy
+    // a notch in the middle of the front edge: the edge has two pieces
     const top = body.faces.find((face: { label: string }) => face.label === 'e/endCap').name;
     const notch: [string, number, number][] = [['n1', 15, -2], ['n2', 25, -2], ['n3', 25, 4], ['n4', 15, 4]];
     execute(engine, {
@@ -701,7 +702,7 @@ describe('hrany tělesa', () => {
         { type: 'addFeature', feature: { ...(sketch('s2') as Extract<Command, { type: 'addFeature' }>).feature, plane: { kind: 'face', body: 'e', face: top } } as never },
         ...notch.map(([id, x, y]): Command => ({ type: 'addPoint', sketch: 's2', id, x, y })),
         ...notch.map(([id], i): Command => ({ type: 'addCurve', sketch: 's2', id: `nl${i}`, curve: { type: 'line', a: id, b: notch[(i + 1) % 4][0] } })),
-        { type: 'addFeature', feature: { id: 'cut', name: 'Zářez', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 's2', regions: [{ outerLoop: ['nl0', 'nl1', 'nl2', 'nl3'] }] }, extent: { type: 'distance', start: 0, distance: -10 }, operation: 'cut', targets: ['e'] } },
+        { type: 'addFeature', feature: { id: 'cut', name: 'Notch', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 's2', regions: [{ outerLoop: ['nl0', 'nl1', 'nl2', 'nl3'] }] }, extent: { type: 'distance', start: 0, distance: -10 }, operation: 'cut', targets: ['e'] } },
       ],
     });
     body = ok(engine, 'get_body', { body: 'e' });
@@ -711,7 +712,7 @@ describe('hrany tělesa', () => {
   });
 });
 
-describe('model, tělesa a příkazy', () => {
+describe('the model, bodies and commands', () => {
   it('get_model summarises a feature by its type, with the keys in the order the tools always printed', () => {
     const engine = newEngine();
     execute(engine, sketch('s'));
@@ -1086,11 +1087,11 @@ describe('model, tělesa a příkazy', () => {
     expect(tools().find((tool) => tool.name === 'check_interference')?.description).toContain('`cleared`');
   });
 
-  it('vysunutí: get_model a get_body popíšou těleso a jména stěn jdou použít pro další skicu', () => {
+  it('an extrusion: get_model and get_body describe the body and the names of faces can be used for another sketch', () => {
     const engine = newEngine();
     rectangle(engine, true);
     const region = ok(engine, 'get_sketch', { sketch: 's' }).regions[0].ref;
-    const result = execute(engine, { type: 'addFeature', feature: { id: 'e', name: 'Deska', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 's', regions: [region] }, extent: { type: 'distance', start: 0, distance: 10 }, operation: 'new' } });
+    const result = execute(engine, { type: 'addFeature', feature: { id: 'e', name: 'Plate', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 's', regions: [region] }, extent: { type: 'distance', start: 0, distance: 10 }, operation: 'new' } });
     expect(result).toMatchObject({ ok: true, bodies: ['e'], problems: [] });
     const model = ok(engine, 'get_model');
     expect(model.features.map((f: { id: string; status: string }) => [f.id, f.status])).toEqual([['s', 'ok'], ['e', 'ok']]);
@@ -1101,12 +1102,12 @@ describe('model, tělesa a příkazy', () => {
     const top = body.faces.find((face: { label: string }) => face.label === 'e/endCap');
     expect(top).toMatchObject({ name: { feature: 'e', role: 'endCap' }, planar: true, area: expect.closeTo(1200, 3), normal: [0, 0, 1] });
     expect(body.edges.every((edge: { kind: string }) => edge.kind === 'line')).toBe(true);
-    // přímá hrana: délka a krajní body
+    // a straight edge: the length and the end points
     const front = body.edges.find((edge: { label: string }) => edge.label === 'e/endCap | e/side/ab');
     expect(front).toMatchObject({ segments: 1, length: 40 });
     expect([front.from, front.to].sort()).toEqual([[0, 0, 10], [40, 0, 10]]);
     expect(front).not.toHaveProperty('gaps');
-    // jméno stěny z get_body jako rovina další skici
+    // the name of a face from get_body as the plane of another sketch
     const onTop = execute(engine, { type: 'addFeature', feature: { ...(sketch('s2') as Extract<Command, { type: 'addFeature' }>).feature, plane: { kind: 'face', body: 'e', face: top.name } } as never });
     expect(onTop).toMatchObject({ ok: true, problems: [] });
     expect(ok(engine, 'get_sketch', { sketch: 's2' }).frame).toMatchObject({ origin: [0, 0, 10], normal: [0, 0, 1] });
@@ -1236,17 +1237,17 @@ describe('model, tělesa a příkazy', () => {
     expect(ok(engine, 'get_model', { at: 'f' })).not.toHaveProperty('jointDriveErrors');
   });
 
-  it('neplatný příkaz dokument nezmění a vrátí důvod; preview nezapisuje; undo a redo', () => {
+  it('an invalid command does not change the document and returns the reason; preview does not write; undo and redo', () => {
     const engine = newEngine();
     rectangle(engine, true);
     const before = engine.save();
-    // neplatný příkaz je chyba volání: klient ji dostane s příznakem chyby
-    expect(callTool(engine, 'execute', { command: constrain('h1', { type: 'vertical', line: 'ab' }) })).toEqual({ ok: false, error: 'invalidCommand: addConstraint.id: ID "h1" už v dokumentu je' });
-    expect(callTool(engine, 'execute', { command: { type: 'batch', commands: [constrain('x', { type: 'parallel', a: 'ab', b: 'cd' }), constrain('y', { type: 'nic', a: 'ab' } as never)] } })).toEqual({
+    // an invalid command is an error of the call: the client gets it with the error flag
+    expect(callTool(engine, 'execute', { command: constrain('h1', { type: 'vertical', line: 'ab' }) })).toEqual({ ok: false, error: 'invalidCommand: addConstraint.id: the ID "h1" is already in the document' });
+    expect(callTool(engine, 'execute', { command: { type: 'batch', commands: [constrain('x', { type: 'parallel', a: 'ab', b: 'cd' }), constrain('y', { type: 'nope', a: 'ab' } as never)] } })).toEqual({
       ok: false,
-      error: expect.stringMatching(/^invalidCommand: .*neznámá vazba "nic" \(the command of the batch at the index 1\)$/),
+      error: expect.stringMatching(/^invalidCommand: .*unknown constraint "nope" \(the command of the batch with the index 1\)$/),
     });
-    expect(callTool(engine, 'preview', { command: { type: 'nic' } })).toMatchObject({ ok: false, error: expect.stringMatching(/^invalidCommand: /) });
+    expect(callTool(engine, 'preview', { command: { type: 'nope' } })).toMatchObject({ ok: false, error: expect.stringMatching(/^invalidCommand: /) });
     expect(ok(engine, 'preview', { command: { type: 'setConstraintValue', sketch: 's', id: 'w', value: 55 } })).toMatchObject({ ok: true });
     expect(engine.save()).toBe(before);
     execute(engine, { type: 'setConstraintValue', sketch: 's', id: 'w', value: 55 });
@@ -1316,7 +1317,7 @@ describe('model, tělesa a příkazy', () => {
     expect(description).toContain('- equalRadius (Equal radius) { a: circle | arc, b: circle | arc }');
   });
 
-  it('chyby volání se vracejí jako text, ne jako výjimka', () => {
+  it('errors of a call come back as text, not as an exception', () => {
     const engine = newEngine();
     rectangle(engine, true);
     const error = (name: string, args: Record<string, unknown> = {}) => {
@@ -1324,14 +1325,14 @@ describe('model, tělesa a příkazy', () => {
       expect(outcome.ok, name).toBe(false);
       return outcome.ok ? '' : outcome.error;
     };
-    expect(error('nic')).toMatch(/unknown tool/);
+    expect(error('nope')).toMatch(/unknown tool/);
     expect(error('get_sketch', {})).toMatch(/argument "sketch"/);
-    expect(error('get_sketch', { sketch: 'nic' })).toMatch(/sketch "nic"/);
-    expect(error('get_sketch', { sketch: 'constructor' })).toMatch(/sketch "constructor"/);
-    expect(error('explain_constraint', { sketch: 's', constraint: 'toString' })).toMatch(/constraint "toString"/);
+    expect(error('get_sketch', { sketch: 'nope' })).toMatch(/the sketch "nope"/);
+    expect(error('get_sketch', { sketch: 'constructor' })).toMatch(/the sketch "constructor"/);
+    expect(error('explain_constraint', { sketch: 's', constraint: 'toString' })).toMatch(/the constraint "toString"/);
     expect(error('get_body', { body: 'e' })).toMatch(/the body "e"/);
-    expect(error('get_model', { at: 'nic' })).toMatch(/feature "nic"/);
-    expect(error('get_document', { feature: 'nic' })).toMatch(/feature "nic"/);
+    expect(error('get_model', { at: 'nope' })).toMatch(/feature "nope"/);
+    expect(error('get_document', { feature: 'nope' })).toMatch(/feature "nope"/);
     expect(error('execute', {})).toMatch(/argument "command"/);
     expect(error('execute', { command: 'addPoint' })).toMatch(/argument "command"/);
     expect(callTool(newEngine(), 'undo')).toEqual({ ok: false, error: 'there is nothing to undo' });

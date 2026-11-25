@@ -101,7 +101,7 @@ describe('the hole feature in the document', () => {
     // a hole names faces: a sketch may stand on its seat
     expect(() => run(doc, { type: 'addFeature', feature: emptySketch('S3', 'S3', { kind: 'face', body: 'A', face: { feature: 'H', role: 'holeSeat' } }) })).not.toThrow();
     // a hole creates no body
-    invalid(doc, add(hole('H2', { targets: ['H'] })), /feature "H" není těleso/);
+    invalid(doc, add(hole('H2', { targets: ['H'] })), /feature "H" is not a body/);
   });
 
   it('the points: at least one, none twice, own points of the sketch or its origin', () => {
@@ -112,12 +112,12 @@ describe('the hole feature in the document', () => {
     invalid(doc, add(hole('H', { points: ['nope'] })), /the sketch "S1" has no entity "nope"/);
     invalid(doc, add(hole('H', { points: ['c'] })), /"c" is a circle, expected point/);
     invalid(doc, add(hole('H', { sketch: 'S2', points: ['e/center'] })), /"e\/center" is projected geometry; an own point of the sketch "S2" is expected/);
-    invalid(doc, add(hole('H', { sketch: 'A' })), /feature "A" není skica/);
+    invalid(doc, add(hole('H', { sketch: 'A' })), /feature "A" is not a sketch/);
   });
 
   it('the shape: a kind, its fields and no other, positive sizes, an angle between 0 and π', () => {
     const doc = base();
-    invalid(doc, add(hole('H', { shape: { type: 'oval', diameter: 3 } as never })), /shape\.type: čeká se jedna z hodnot plain, counterbore, countersink, nutPocket/);
+    invalid(doc, add(hole('H', { shape: { type: 'oval', diameter: 3 } as never })), /shape\.type: one of the values plain, counterbore, countersink, nutPocket/);
     invalid(doc, add(hole('H', { shape: { type: 'counterbore', diameter: 3, headDiameter: 6 } as never })), /shape\.headDepth/);
     invalid(doc, add(hole('H', { shape: { type: 'plain', diameter: 3, headDiameter: 6 } as never })), /shape\.headDiameter: a hole of the type plain has no such field/);
     invalid(doc, add(hole('H', { shape: { type: 'plain', diameter: 0 } })), /shape\.diameter/);
@@ -142,11 +142,11 @@ describe('the hole feature in the document', () => {
     const doc = base();
     invalid(doc, add(hole('H', { targets: [] })), /targets: a hole needs at least one target body/);
     invalid(doc, add(hole('H', { targets: ['A', 'A'] })), /targets: a target body is listed twice/);
-    invalid(doc, add(hole('H', { targets: ['nope'] })), /feature "nope" neexistuje/);
+    invalid(doc, add(hole('H', { targets: ['nope'] })), /feature "nope" does not exist/);
     invalid(doc, add(hole('H', { label: '' })), /label: the label is not empty/);
     invalid(doc, add(hole('H', { label: '  ' })), /label: the label is not empty/);
     invalid(doc, add(hole('H', { label: 'x'.repeat(201) })), /label: at most 200 characters/);
-    invalid(doc, add(hole('H', { label: 3 as never })), /label: čeká se řetězec/);
+    invalid(doc, add(hole('H', { label: 3 as never })), /label: a string is expected/);
     expect(feature(run(doc, add(hole('H', { label: 'x'.repeat(200) }))), 'H').label).toHaveLength(200);
   });
 

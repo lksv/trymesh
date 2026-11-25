@@ -82,7 +82,7 @@ describe('the section and its upgrade step', () => {
     expect(step?.run({ ...older, mechanism: null })).toEqual({ ...older, mechanism: null });
     // a document of master with 3a (version 5, no names) loads with the empty section
     expect(validateDocument(older).mechanism).toEqual({ links: {}, joints: {} });
-    expect(() => validateDocument({ ...older, mechanism: null })).toThrow(/document\.mechanism: čeká se objekt/);
+    expect(() => validateDocument({ ...older, mechanism: null })).toThrow(/document\.mechanism: an object is expected/);
     // a document of version 1 goes through every step
     expect(validateDocument({ schemaVersion: 1, settings: { chordTolerance: 0.01 }, features: [] }).mechanism).toEqual({ links: {}, joints: {} });
   });
@@ -102,7 +102,7 @@ describe('the section and its upgrade step', () => {
       [{ ...ARM, poses: {} }, /document\.mechanism\.poses: the mechanism has no such field/],
       [{ links: { a: { bodies: [], colour: 'red' } }, joints: {} }, /links\.a\.colour: a link has no such field/],
       [{ links: { a: { bodies: ['x', 'x'] } }, joints: {} }, /links\.a\.bodies\[1\]: the body "x" is in the list twice/],
-      [{ links: { 'a/b': { bodies: [] } }, joints: {} }, /ID "a\/b" není přípustné/],
+      [{ links: { 'a/b': { bodies: [] } }, joints: {} }, /the ID "a\/b" is not allowed/],
       [joints({ ...ARM.joints.elbow, damping: 2.5 }), /joints\.elbow\.damping: a joint of the type revolute has no such field/],
       [joints({ type: 'fixed', parent: 'upper', child: 'forearm', axis: Z }), /joints\.elbow\.axis: a joint of the type fixed has no such field/],
       [joints({ type: 'spherical', parent: 'upper', child: 'forearm' }), /joints\.elbow\.type/],
@@ -169,7 +169,7 @@ describe('the commands', () => {
     refused(doc, setJoint('second', { type: 'fixed', parent: 'base', child: 'forearm' }), /the link "forearm" is the child of the joints "elbow" and "second"/);
     refused(doc, setJoint('wrist', revolute('forearm', 'nope')), /the child of the joint "wrist" is "nope", which is not a link of the mechanism/);
     refused(doc, setJoint('elbow', { ...ARM.joints.elbow, axis: { kind: 'sketchPoint', sketch: 'layout', point: 'wrist' } }), /setJoint\.joint\.axis\.point: the sketch "layout" has no entity "wrist"/);
-    refused(doc, setJoint('elbow', { ...ARM.joints.elbow, axis: { kind: 'sketchPoint', sketch: 'upper', point: 'x' } }), /setJoint\.joint\.axis\.sketch: feature "upper" není skica/);
+    refused(doc, setJoint('elbow', { ...ARM.joints.elbow, axis: { kind: 'sketchPoint', sketch: 'upper', point: 'x' } }), /setJoint\.joint\.axis\.sketch: feature "upper" is not a sketch/);
     // the sketch removed: the joint keeps its axis, and a change of another field passes
     const removed = apply(doc, { type: 'removeFeature', id: 'layout' });
     expect(apply(removed, setJoint('elbow', { ...ARM.joints.elbow, value: 0.5 })).mechanism.joints.elbow).toMatchObject({ axis: ELBOW, value: 0.5 });

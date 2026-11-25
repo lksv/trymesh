@@ -21,7 +21,7 @@ export const emptySketch = (id: Id, name: string, plane: PlaneRef): SketchFeatur
   solved: { inputs: '', external: {} },
 });
 
-// Všechna ID v dokumentu: features a entity všech skic.
+// All IDs in the document: features and the entities of all sketches.
 export function documentIds(doc: Document): Set<Id> {
   const ids = new Set<Id>();
   for (const f of doc.features) {
@@ -31,8 +31,9 @@ export function documentIds(doc: Document): Set<Id> {
   return ids;
 }
 
-// ID tělesa je ID feature, která ho vytvořila, nebo `<feature>/<místní jméno>`, když jich feature
-// vytváří víc. Lomítko v ID zadaném volajícím být nesmí, takže rozklad je jednoznačný.
+// The ID of a body is the ID of the feature that created it, or `<feature>/<local name>` when the
+// feature creates more of them. An ID given by the caller must not contain a slash, so the split is
+// unambiguous.
 export function bodyOwner(body: Id): { feature: Id; local?: string } {
   const slash = body.indexOf('/');
   return slash < 0 ? { feature: body } : { feature: body.slice(0, slash), local: body.slice(slash + 1) };
@@ -41,7 +42,7 @@ export function bodyOwner(body: Id): { feature: Id; local?: string } {
 export type { EntityKind };
 export interface Entity {
   kind: EntityKind;
-  own: boolean; // false = počátek nebo promítnutá geometrie: solver s ní nehýbe
+  own: boolean; // false = the origin or projected geometry: the solver does not move it
   // an entity of an entry of derived geometry (a copy of a mirror or pattern, D68): computed after
   // the sketch is solved, so no constraint of its own sketch may name it
   derived?: true;
@@ -100,7 +101,7 @@ export function curvePoints(curve: Curve): Id[] {
   }
 }
 
-// Operandy vazby v pořadí katalogu.
+// The operands of a constraint in the order of the catalog.
 export function constraintOperands(c: Constraint): Id[] {
   return CONSTRAINTS[c.type].operands.map((operand) => (c as unknown as Record<string, Id>)[operand.field]);
 }
@@ -111,11 +112,12 @@ export const isDimension = (c: Constraint): c is Dimension => CONSTRAINTS[c.type
 // The address of a constraint value among the numeric fields of a sketch.
 export const constraintPath = (constraint: Id, value = 'value'): FieldPath => `constraints/${constraint}/${value}`;
 
-// Vazby, které dostává solver: geometrické a řídicí kóty.
+// The constraints the solver gets: geometric ones and driving dimensions.
 export const isDriving = (c: Constraint): boolean => !isDimension(c) || c.driving;
 
-// Klíč vazby pro hledání duplicit: typ a operandy. Operandy, které katalog označuje za
-// zaměnitelné (u orientovaných kót a úhlu záměna jen obrací znaménko hodnoty), se seřadí.
+// The key of a constraint for finding duplicates: the type and the operands. Operands the catalog
+// marks as interchangeable (for oriented dimensions and the angle a swap only flips the sign of
+// the value) are sorted.
 export function constraintKey(c: Constraint): string {
   const spec = CONSTRAINTS[c.type];
   const value = (field: string): Id => (c as unknown as Record<string, Id>)[field];
@@ -124,7 +126,8 @@ export function constraintKey(c: Constraint): string {
   return JSON.stringify([c.type, ...unordered, ...ordered]);
 }
 
-// Řídicí vazba se stejným typem a operandy, která už ve skice je (kromě vazby `except`).
+// A driving constraint with the same type and operands that is already in the sketch (other than
+// the constraint `except`).
 export function duplicateOf(sketch: SketchFeature, c: Constraint, except?: Id): Id | undefined {
   if (!isDriving(c)) return undefined;
   const key = constraintKey(c);

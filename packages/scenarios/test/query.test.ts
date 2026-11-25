@@ -107,10 +107,10 @@ describe('Engine.query', () => {
     expect(engine.query('sketchDiagnosis', { sketch: 'S2' })).toMatchObject({ ok: true, result: { status: 'unavailable', degreesOfFreedom: 0 } });
     expect(engine.query('constraintExplanation', { sketch: 'S2', constraint: 'cr' })).toEqual({ ok: true, result: { redundant: false, impliedBy: [] } });
     // the methods keep their own texts and keep throwing
-    expect(() => engine.diagnoseSketch('nope')).toThrow('diagnoseSketch: skica "nope" neexistuje');
-    expect(() => engine.explainConstraint('S2', 'nope')).toThrow('explainConstraint: vazba "nope" ve skice "S2" není');
+    expect(() => engine.diagnoseSketch('nope')).toThrow('diagnoseSketch: the sketch "nope" does not exist');
+    expect(() => engine.explainConstraint('S2', 'nope')).toThrow('explainConstraint: the constraint "nope" is not in the sketch "S2"');
     expect(() => engine.interference({ bodies: ['nope'] })).toThrow('interference: the body "nope" does not exist');
     expect(() => engine.interference({ threshold: -1 })).toThrow('interference: the threshold is a volume in mm³, zero or more');
-    expect(() => engine.interference({ at: 'nope' })).toThrow('getState: feature "nope" neexistuje');
+    expect(() => engine.interference({ at: 'nope' })).toThrow('getState: the feature "nope" does not exist');
   });
 });

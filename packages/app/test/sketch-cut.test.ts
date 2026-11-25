@@ -42,11 +42,11 @@ describe('the tools Trim, Extend and Split in the app (D65)', () => {
     repairBox(h).checked = true;
     h.type(repairBox(h), '', true);
     expect(repairBox(h).checked).toBe(true);
-    h.press('toolbar', 'Dokončit skicu');
+    h.press('toolbar', 'Finish sketch');
     doubleClick(h, 'Skica 2');
     h.press('toolbar', 'Trim');
     expect(repairBox(h).checked).toBe(false);
-    h.press('toolbar', 'Dokončit skicu');
+    h.press('toolbar', 'Finish sketch');
     doubleClick(h, 'Skica 1');
     h.press('toolbar', 'Trim');
     expect(repairBox(h).checked).toBe(true);
@@ -107,7 +107,7 @@ describe('the tools Trim, Extend and Split in the app (D65)', () => {
   it('Up to: the curve selected bounds the trim; it does not carry over to another sketch; Clear drops it', async () => {
     const h = (harness = await startApp());
     crossed(h);
-    h.press('toolbar', 'Výběr');
+    h.press('toolbar', 'Select');
     h.move(at(30, 11));
     h.click(at(30, 11));
     h.press('toolbar', 'Trim');
@@ -117,13 +117,13 @@ describe('the tools Trim, Extend and Split in the app (D65)', () => {
     // bounded by W, the piece at x = 5 runs from the start of X to W, past V
     h.click(at(5, 20));
     expect(startOf(h, 'X')).toBeCloseTo(30, 6);
-    h.press('toolbar', 'Dokončit skicu');
+    h.press('toolbar', 'Finish sketch');
     run(h, { type: 'addFeature', feature: emptySketch('s2', 'Skica 2', { kind: 'base', plane: 'XY' }) });
     doubleClick(h, 'Skica 2');
     h.press('toolbar', 'Trim');
     expect(upTo(h)).toBe('Up to: the nearest curves');
     expect(h.button('panel', 'Clear').disabled).toBe(true);
-    h.press('toolbar', 'Dokončit skicu');
+    h.press('toolbar', 'Finish sketch');
     doubleClick(h, 'Skica 1');
     h.press('toolbar', 'Trim');
     expect(upTo(h)).toBe('Up to: W');

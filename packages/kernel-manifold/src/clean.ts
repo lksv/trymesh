@@ -1,20 +1,22 @@
-// Úklid sítě po booleanu a kontrola, že výsledek je uzavřená plocha. Two cleanings: `clean` for
-// every boolean, and `cleanBySubdivision` for an intersection that `clean` leaves open or folded (D51).
+// Cleaning of the mesh after a boolean and the check that the result is a closed surface. Two
+// cleanings: `clean` for every boolean, and `cleanBySubdivision` for an intersection that `clean`
+// leaves open or folded (D51).
 import type { Solid } from '@trymesh/engine';
 import { type Tolerances, type V3, add, cross, dot, fitFaces, len, mul, sub, triWidth, triangleCount, unit } from './geometry';
 
-type Tri = [number, number, number, number]; // tři vrcholy a číslo stěny
+type Tri = [number, number, number, number]; // three vertices and the face number
 
 const edgeKey = (a: number, b: number): string => (a < b ? `${a}_${b}` : `${b}_${a}`);
 
-// Vyčistí síť po booleanu. Pás, o který byla stěna posunutá, má po návratu nulovou šířku a zůstaly
-// by po něm nulové trojúhelníky, které by dál nesly číslo zaniklé stěny.
-//  1. Vrcholy blíž než eps se sloučí a trojúhelníky, které tím ztratily vrchol, se zahodí.
-//  2. Nulové trojúhelníky (vrcholy v přímce) a blány (dvojice trojúhelníků na stejných vrcholech
-//     s opačnou orientací) se zahodí.
-//  3. Hrany, které tím zůstaly bez protějšku, se dorovnají: trojúhelník s takovou hranou a–b se
-//     rozdělí ve vrcholu m, který na ní leží a ve kterém protější strana navazuje (T-spoj).
-//     Kroky 2 a 3 se opakují, dokud nějaká hrana bez protějšku zbývá.
+// Cleans the mesh after a boolean. The band by which a face was shifted has zero width after the
+// restore, and it would leave null triangles behind that would still carry the number of a face
+// that is gone.
+//  1. Vertices closer than eps are welded, and triangles that lost a vertex by it are dropped.
+//  2. Null triangles (vertices on a line) and membranes (pairs of triangles on the same vertices
+//     with opposite orientation) are dropped.
+//  3. Edges left without a counterpart by this are evened out: a triangle with such an edge a–b is
+//     split at the vertex m that lies on it and where the opposite side continues (a T-junction).
+//     Steps 2 and 3 repeat while some edge without a counterpart is left.
 //     The two steps can undo each other: a split leaves a piece that step 2 takes for a null
 //     triangle and drops, which opens the same edge again, and the states go round in a cycle
 //     (of two to four states in the cases seen). The loop therefore remembers the states it has
@@ -24,12 +26,14 @@ const edgeKey = (a: number, b: number): string => (a < b ? `${a}_${b}` : `${b}_$
 //     open, as before, and the adapter reports the failure. In a mesh of slivers (an
 //     intersection of a pin turned in its hole) the cycle is the usual ending; where it ends open
 //     or folded, `boolean` tries `cleanBySubdivision` below for an intersection (D51).
-//  4. Kde sloučením srostly části povrchu, které se jen dotýkají, se vrcholy zase rozdělí.
-// Dělí se jen hrany bez protějšku. Hrana, která protějšek má, je v pořádku, i když těsně u ní leží
-// cizí vrchol; dělit ji podle vzdálenosti vrcholu od přímky vedlo ke střídání dvou neuzavřených stavů.
-// Slučuje se podle polohy, ne jen po hranách: jinak by se nenašly blány ze dvou listů, které na
-// sebe po návratu dolehly, a jádro by je při načtení sbalilo špatně. Cenou je krok 4.
-// (Vyčištění průchodem přes Manifold se neosvědčilo: nulové trojúhelníky sbalil špatným směrem.)
+//  4. Where the weld fused parts of the surface that only touch, the vertices are split again.
+// Only edges without a counterpart are split. An edge that has a counterpart is fine even when
+// a foreign vertex lies right next to it; splitting it by the distance of the vertex from the line
+// led to alternating between two states that were not closed.
+// The weld goes by position, not only along edges: otherwise it would not find membranes made of
+// two sheets that came to lie on each other after the restore, and the kernel would collapse them
+// wrongly on loading. Step 4 is the price.
+// (Cleaning by a pass through Manifold did not work out: it collapsed null triangles the wrong way.)
 export function clean(s: Solid, eps: number): Solid {
   const pos = s.positions;
   const vertexCount = pos.length / 3;
@@ -40,7 +44,7 @@ export function clean(s: Solid, eps: number): Solid {
     return i;
   };
 
-  // 1. sloučení podle polohy (mřížka s buňkou 4·eps, hledá se v sousedních buňkách)
+  // 1. weld by position (a grid with a cell of 4·eps, searched in the neighbouring cells)
   const grid = new Map<string, number[]>();
   for (let i = 0; i < vertexCount; i++) {
     const c = [0, 1, 2].map((k) => Math.floor(pos[3 * i + k] / (eps * 4)));
@@ -64,16 +68,16 @@ export function clean(s: Solid, eps: number): Solid {
     if (tri[0] !== tri[1] && tri[1] !== tri[2] && tri[2] !== tri[0]) tris.push(tri);
   }
 
-  // Nulový je trojúhelník, jehož vrcholy leží v přímce. Užší než eps/4 (přesnost float32) je nulový
-  // vždy. Do šířky eps jen tehdy, když jeho prostřední vrchol leží zřetelně uvnitř nejdelší strany.
-  // Tenký trojúhelník s krátkou základnou (jehla) nulový není: jeho dva blízké vrcholy zůstávají
-  // různé a po zahození by po něm zbyla díra.
+  // A triangle is null when its vertices lie on a line. One narrower than eps/4 (the precision of
+  // float32) is always null. Up to a width of eps only when its middle vertex lies clearly inside
+  // the longest side. A thin triangle with a short base (a needle) is not null: its two near
+  // vertices stay distinct, and dropping it would leave a hole.
   const flat = (t: Tri): boolean => {
     const v: [V3, V3, V3] = [at(t[0]), at(t[1]), at(t[2])];
     const width = triWidth(v, cross(sub(v[1], v[0]), sub(v[2], v[0])));
     if (width < eps / 4) return true;
     if (width >= eps) return false;
-    let k = 0; // nejdelší strana vede z v[k] do v[k + 1]
+    let k = 0; // the longest side runs from v[k] to v[k + 1]
     for (let i = 1; i < 3; i++) if (len(sub(v[(i + 1) % 3], v[i])) > len(sub(v[(k + 1) % 3], v[k]))) k = i;
     const side = sub(v[(k + 1) % 3], v[k]);
     const along = dot(sub(v[(k + 2) % 3], v[k]), side) / len(side);
@@ -83,15 +87,15 @@ export function clean(s: Solid, eps: number): Solid {
   const seen = new Set<string>(); // signatures of the states step 3 has split
 
   for (let pass = 0; pass < 1000; pass++) {
-    // 2. nulové trojúhelníky a blány
+    // 2. null triangles and membranes
     tris = dropMembranes(tris.filter((t) => !flat(t)));
 
-    // 3. hrany bez protějšku
+    // 3. edges without a counterpart
     const count = new Map<number, number>();
     for (const t of tris) for (let k = 0; k < 3; k++) count.set(directed(t[k], t[(k + 1) % 3]), (count.get(directed(t[k], t[(k + 1) % 3])) ?? 0) + 1);
     const unpaired = (a: number, b: number) => (count.get(directed(a, b)) ?? 0) > (count.get(directed(b, a)) ?? 0);
-    const into = new Map<number, number[]>(); // vrchol → začátky hran bez protějšku, které do něj vedou
-    const outOf = new Map<number, number[]>(); // vrchol → konce hran bez protějšku, které z něj vedou
+    const into = new Map<number, number[]>(); // vertex → starts of the edges without a counterpart that lead into it
+    const outOf = new Map<number, number[]>(); // vertex → ends of the edges without a counterpart that lead out of it
     const note = (map: Map<number, number[]>, key: number, value: number) => {
       const list = map.get(key);
       if (list) list.push(value);
@@ -121,7 +125,7 @@ export function clean(s: Solid, eps: number): Solid {
         const b = t[(k + 1) % 3];
         const c = t[(k + 2) % 3];
         if (!unpaired(a, b)) continue;
-        // Protější strana vede z b do a po kratších hranách; její vrchol uvnitř a–b, nejbližší k a.
+        // The opposite side runs from b to a along shorter edges; its vertex inside a–b nearest to a.
         const A = at(a);
         const ab = sub(at(b), A);
         const length = len(ab);
@@ -143,7 +147,7 @@ export function clean(s: Solid, eps: number): Solid {
       if (!done) next.push(t);
     }
     tris = next;
-    if (!split) break; // zbylé hrany dorovnat nejde; výsledek nebude uzavřený a adaptér skončí chybou
+    if (!split) break; // the edges left cannot be evened out; the result will not be closed and the adapter ends with an error
     if (repeated) break; // steps 2 and 3 go round in a cycle; this is one of its split states
   }
 
@@ -273,7 +277,7 @@ function signature(tris: Tri[]): string {
   return `${tris.length}:${first}:${second}`;
 }
 
-// Blány: dvojice trojúhelníků na stejných vrcholech s opačnou orientací.
+// Membranes: pairs of triangles on the same vertices with opposite orientation.
 function dropMembranes(tris: Tri[]): Tri[] {
   const byVertices = new Map<string, number[]>();
   tris.forEach((t, i) => {
@@ -302,25 +306,27 @@ function dropMembranes(tris: Tri[]): Tri[] {
   return dead.size ? tris.filter((_, i) => !dead.has(i)) : tris;
 }
 
-// Sloučením vrcholů mohou dvě části povrchu srůst v hraně (těleso, které se samo sebe dotýká jen
-// hranou). Hrana pak má čtyři trojúhelníky a jádro takovou síť nepřijme správně. Povrch se v ní
-// zase rozdělí. Trojúhelníky kolem hrany se spárují po klínech materiálu a pak:
-//  - když se okolí některého konce hrany po klínech rozpadne na víc částí, zdvojí se tento vrchol
-//    (každá část dostane vlastní, na stejném místě);
-//  - jinak dostane každý pár uprostřed hrany vlastní nový vrchol. Je to potřeba, když úsek dotyku
-//    na obou koncích přechází do běžného povrchu a konce rozdělit nejdou.
-// Při dalším booleanu se zdvojené vrcholy zase sloučí a dělí se znovu. Pak už ale jde zdvojit
-// vrchol uprostřed úseku a nové trojúhelníky nepřibývají.
-// Vrcholy, ve kterých se povrch dotýká jen bodem, si jádro rozdělí samo.
+// The weld of vertices can fuse two parts of the surface at an edge (a body that touches itself
+// only at an edge). The edge then has four triangles, and the kernel does not take such a mesh
+// correctly. The surface is split at it again. The triangles around the edge are paired by the
+// wedges of material, and then:
+//  - when the neighbourhood of one end of the edge falls apart by the wedges into several parts,
+//    that vertex is doubled (each part gets its own, at the same place);
+//  - otherwise each pair gets a new vertex of its own in the middle of the edge. This is needed
+//    when the stretch of contact passes into ordinary surface at both ends and the ends cannot be
+//    split.
+// At the next boolean the doubled vertices are welded again and split again. By then, though, the
+// vertex in the middle of the stretch can be doubled, and no new triangles are added.
+// Vertices where the surface touches only at a point are split by the kernel itself.
 function splitNonManifold(pos: Float32Array, input: Tri[]): Solid {
   const positions = Array.from(pos);
   const at = (i: number): V3 => [positions[3 * i], positions[3 * i + 1], positions[3 * i + 2]];
   let tris = input.map((t): Tri => [t[0], t[1], t[2], t[3]]);
   for (let round = 0; round < 100; round++) {
     interface Use {
-      t: number; // trojúhelník
-      k: number; // kterou hranou
-      forward: boolean; // jde po hraně od menšího čísla vrcholu k většímu
+      t: number; // the triangle
+      k: number; // by which edge
+      forward: boolean; // goes along the edge from the lower vertex number to the higher
     }
     const byEdge = new Map<string, Use[]>();
     tris.forEach((tri, t) => {
@@ -332,8 +338,8 @@ function splitNonManifold(pos: Float32Array, input: Tri[]): Solid {
         else byEdge.set(edgeKey(a, b), [{ t, k, forward: a < b }]);
       }
     });
-    // Páry po klínech: úhel třetího vrcholu kolem hrany; klín materiálu jde od trojúhelníku proti
-    // směru hrany k nejbližšímu po směru.
+    // Pairs by wedges: the angle of the third vertex around the edge; a wedge of material goes from
+    // a triangle against the direction of the edge to the nearest one along it.
     const pairs = new Map<string, [Use, Use][]>();
     for (const [key, list] of byEdge) {
       if (list.length === 2) continue;
@@ -367,7 +373,7 @@ function splitNonManifold(pos: Float32Array, input: Tri[]): Solid {
 
     const touched = new Set<number>();
     let changed = false;
-    // 1. zdvojení vrcholu, jehož okolí se po klínech rozpadá
+    // 1. doubling a vertex whose neighbourhood falls apart by the wedges
     const star = new Map<number, number[]>();
     const ends = new Set<number>();
     for (const key of pairs.keys()) for (const v of key.split('_').map(Number)) ends.add(v);
@@ -409,7 +415,7 @@ function splitNonManifold(pos: Float32Array, input: Tri[]): Solid {
       for (const t of around) touched.add(t);
       changed = true;
     }
-    // 2. nový vrchol uprostřed hrany pro každý pár
+    // 2. a new vertex in the middle of the edge for each pair
     const gone = new Set<number>();
     const added: Tri[] = [];
     if (!changed) {
@@ -439,8 +445,8 @@ function splitNonManifold(pos: Float32Array, input: Tri[]): Solid {
   };
 }
 
-// Je síť uzavřená plocha? Každá hrana musí být právě ve dvou trojúhelnících, jednou v každém směru.
-// Jádro by jinou síť při dalším booleanu načetlo bez chyby, ale potichu z ní část zahodilo.
+// Is the mesh a closed surface? Every edge must be in exactly two triangles, once in each direction.
+// The kernel would load any other mesh at the next boolean without an error, but silently drop a part of it.
 export function isClosed(s: Solid): boolean {
   const count = new Map<number, number>();
   for (let t = 0; t < triangleCount(s); t++) {
@@ -455,7 +461,7 @@ export function isClosed(s: Solid): boolean {
   return true;
 }
 
-// Má některá rovinná stěna trojúhelník otočený proti své normále (přeloženou síť)?
+// Does some planar face have a triangle turned against its normal (a folded mesh)?
 export function isFolded(s: Solid, t: Tolerances): boolean {
   for (const face of fitFaces(s, t.tol).values()) {
     if (!face.planar) continue;

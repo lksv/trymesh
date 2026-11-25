@@ -1,49 +1,49 @@
-# Rozhodnutí
+# Decisions
 
-Živý dokument. Zapisuje, co bylo rozhodnuto, proč a co se zvažovalo. Rozhodnutí nejsou neměnná; při změně se záznam přepíše a původní stav se uvede v poznámce.
+A living document. It records what was decided, why, and what was considered. Decisions are not immutable; when one changes, its record is rewritten and the original state is given in a note.
 
-Poslední úprava: 2026-11-25
+Last change: 2026-11-25
 
-## Přehled
+## Overview
 
-| # | Téma | Stav | Rozhodnutí |
+| # | Topic | State | Decision |
 |---|---|---|---|
-| D1 | Jazyk enginu | rozhodnuto | TypeScript |
-| D2 | Knihovny třetích stran | rozhodnuto | Povolené, každá se schvaluje zvlášť a je za vlastním rozhraním |
-| D3 | Model dokumentu | rozhodnuto | Log operací se záměrem, geometrie odvozená přehráním |
-| D4 | Reference na geometrii | rozhodnuto | ID odvozená z původu entity, ne z pořadí |
-| D5 | Skici | rozhodnuto | Constraint solver od začátku |
-| D6 | Constraint solver | rozhodnuto | planegcs (WASM) za vlastním rozhraním |
-| D7 | Reprezentace těles | rozhodnuto | Mesh/CSG, bez B-rep |
-| D8 | Mesh/CSG jádro | rozhodnuto | Manifold (`manifold-3d`) za vlastním rozhraním |
-| D9 | Extrude | rozhodnuto | Síť staví engine sám, jádro dělá jen booleany |
-| D10 | Časová osa vs. historie příkazů | rozhodnuto | Skica je jedna feature; undo je oddělená historie příkazů |
-| D11 | Dokument | rozhodnuto | Neměnná struktura, undo = zásobník dokumentů, cache = memoizace |
-| D12 | Řešení skici | rozhodnuto (přepracováno), doplňky v D25 a D27 | Skica se řeší při přepočtu, když se změnily vstupy solveru; engine pak řešené proměnné v dokumentu aktualizuje |
-| D13 | Rozdělená stěna | rozhodnuto | Zůstává jednou logickou stěnou |
-| D14 | Rovina skici na stěně | rozhodnuto | Počítá se analyticky z definice feature |
-| D15 | Struktura repa | rozhodnuto | pnpm workspace: engine, dva adaptéry, app; Vitest |
-| D16 | Kotva skici | rozhodnuto | Rezervovaný pevný bod `origin` v každé skice |
-| D17 | Tvar vazeb | rozhodnuto | Každá varianta má pojmenované operandy; podmínky oblouku zajišťuje solver; referenční kóty počítá engine |
-| D18 | Orientace roviny na stěně | rozhodnuto | Normála vždy ven z tělesa, znaménko ze sítě, X = Y × N |
-| D19 | Koplanární booleany | rozhodnuto (přepracováno), doplňky v D27, D28 a D29 | Tolerance ke koplanárním stěnám je záruka portu jádra; adaptér Manifoldu ji plní tak, že každý styk v jedné rovině změní před booleanem na průnik a po něm stěny vrátí a síť vyčistí |
-| D20 | Přesnost jádra | rozhodnuto | `Solid.positions` je `Float32Array`, analytické výpočty ve float64 |
-| D21 | Vlastní rovina | rozhodnuto | `PlaneFeature` s posunem od roviny nebo stěny; náklon kolem hrany je budoucí funkce |
-| D22 | Pojmenování hran | rozhodnuto | Hrana = dvojice jmen stěn; přímka analyticky, rozsah ze sítě |
-| D23 | Promítnutá geometrie | rozhodnuto, doplněk v D28 | Přímé a kruhové hrany tělesa jako pevné referenční křivky ve skice; druh křivky se ukládá |
-| D24 | Rozšíření API z návrhu UI | rozhodnuto | `batch`, pozice v `addFeature`, `getState(at)`, konstrukční geometrie, data pro výběr |
-| D25 | Úpravy z druhé revize | rozhodnuto | Víko bez označení oblasti, stav `warning`, razítko řešení skici, hrana `coplanar`, pořadí konců promítnuté úsečky a další |
-| D26 | Formát exportu | rozhodnuto | STL v PoC, 3MF později |
-| D27 | Úpravy z třetí revize | rozhodnuto | Návrat posunutých stěn v adaptéru, jednotné pravidlo řešení skici, kontrakt příkazů, přesná definice oblastí a další |
-| D28 | Úpravy ze čtvrté revize | rozhodnuto | Druh promítnutí v dokumentu, validace odděluje odkazy ve skice a mezi features, přepracovaný adaptér jádra, oprava zdrojové skici extrude a další |
-| D29 | Náhodné testy adaptéru jádra, adaptéry v balíčcích | provedeno při implementaci, vlastník projektu zatím nepotvrdil | Adaptér jádra se ověřuje náhodnými posloupnostmi booleanů proti dvěma nezávislým orákulům; návrat stěn je přesný, síť se čistí vždy a uzavřenost se kontroluje; oba adaptéry jsou v balíčcích s testy |
-| D30 | Rozhodnutí z implementace enginu | provedeno při implementaci, vlastník projektu zatím nepotvrdil | Upřesnění, která návrh nechával otevřená: tažení mimo dávku, kritérium „bez účinku", profil dotýkající se v bodě, načtení dokumentu s odkazem na feature v jiném pořadí a další |
+| D1 | Engine language | decided | TypeScript |
+| D2 | Third-party libraries | decided | Allowed, each approved separately and behind an interface of its own |
+| D3 | Document model | decided | A log of operations that holds the intent, geometry derived by replaying it |
+| D4 | References to geometry | decided | IDs derived from the origin of the entity, not from the order |
+| D5 | Sketches | decided | A constraint solver from the start |
+| D6 | Constraint solver | decided | planegcs (WASM) behind an interface of its own |
+| D7 | Representation of bodies | decided | Mesh/CSG, no B-rep |
+| D8 | Mesh/CSG kernel | decided | Manifold (`manifold-3d`) behind an interface of its own |
+| D9 | Extrude | decided | The engine builds the mesh itself, the kernel does only booleans |
+| D10 | Timeline vs. command history | decided | A sketch is one feature; undo is a separate command history |
+| D11 | Document | decided | An immutable structure, undo = a stack of documents, cache = memoisation |
+| D12 | Solving a sketch | decided (reworked), additions in D25 and D27 | A sketch is solved during the recompute when the inputs of the solver have changed; the engine then updates the solved variables in the document |
+| D13 | Split face | decided | Stays one logical face |
+| D14 | Sketch plane on a face | decided | Computed analytically from the definition of the feature |
+| D15 | Repository structure | decided | pnpm workspace: engine, two adapters, app; Vitest |
+| D16 | Sketch anchor | decided | A reserved fixed point `origin` in every sketch |
+| D17 | Form of constraints | decided | Every variant has named operands; the conditions of an arc are kept by the solver; reference dimensions are computed by the engine |
+| D18 | Orientation of a plane on a face | decided | The normal always points out of the body, the sign from the mesh, X = Y × N |
+| D19 | Coplanar booleans | decided (reworked), additions in D27, D28 and D29 | Tolerance of coplanar faces is a guarantee of the kernel port; the Manifold adapter meets it by turning every contact in one plane into a penetration before the boolean, and after it returning the faces and cleaning the mesh |
+| D20 | Kernel precision | decided | `Solid.positions` is a `Float32Array`, analytic computations in float64 |
+| D21 | Custom plane | decided | `PlaneFeature` with an offset from a plane or a face; a tilt about an edge is a future function |
+| D22 | Naming of edges | decided | An edge = a pair of face names; the line analytically, the extent from the mesh |
+| D23 | Projected geometry | decided, addition in D28 | Straight and circular edges of a body as fixed reference curves in a sketch; the kind of the curve is stored |
+| D24 | API extensions from the UI design | decided | `batch`, a position in `addFeature`, `getState(at)`, construction geometry, data for selection |
+| D25 | Changes from the second review | decided | A cap without a mark of the region, the state `warning`, the stamp of a sketch solution, the edge `coplanar`, the order of the ends of a projected line and more |
+| D26 | Export format | decided | STL in the PoC, 3MF later |
+| D27 | Changes from the third review | decided | Return of shifted faces in the adapter, one rule for solving a sketch, the contract of commands, an exact definition of regions and more |
+| D28 | Changes from the fourth review | decided | The kind of a projection in the document, validation separates references within a sketch and between features, a reworked kernel adapter, a fix of the source sketch of an extrude and more |
+| D29 | Random tests of the kernel adapter, adapters in packages | done during the implementation, not yet confirmed by the owner | The kernel adapter is checked by random sequences of booleans against two independent oracles; the return of faces is exact, the mesh is always cleaned and closedness is checked; both adapters are in packages with tests |
+| D30 | Decisions from the implementation of the engine | done during the implementation, not yet confirmed by the owner | Points the design left open: dragging outside a batch, the criterion "no effect", a profile touching at a point, loading a document with a reference to a feature in another order and more |
 
-| D31 | Ukázková aplikace | provedeno při implementaci, vlastník projektu zatím nepotvrdil | `packages/app`: three.js a Vite bez UI frameworku; pokrývá funkce z ui.md potřebné k projití validačních scénářů; co UI odvozuje samo a co je vynecháno |
-| D34 | Souměrnost a střed úsečky | rozhodnuto | Dvě nové geometrické vazby; přidání vazby je položka katalogu, typ, rovnice rozboru a překlad pro solver, aplikace a MCP ji převezmou samy |
-| D33 | Rozhraní pro AI (MCP server) | rozhodnuto | `packages/mcp`: obecné nástroje nad enginem s popisem generovaným ze zdrojů enginu; pracuje nad souborem i nad běžící aplikací přes místní most |
-| D32 | Diagnostika skici | rozhodnuto | Engine z vlastního rozboru rovnic vazeb řekne, kolik má skica volnosti, které vazby jsou navíc, z čeho plynou, kterou sadu jde odebrat a co se ještě hýbe; stejnou řídicí vazbu nejde přidat dvakrát |
-| D35 | [Rozšíření pro robotický kloub](decisions/D35-robot-joint.md) | rozhodnuto včetně oprav po dvou revizích návrhu a po revizi kontraktu; spike ozubení proveden; all implemented: step 0 and points 1 to 7 | Sedm funkcí v levných variantách, které nezavírají cestu k plným: parametry a výrazy nad katalogem číselných polí, rozsah vysunutí jako varianta („skrz vše"), ozubení jako generátor profilu pro vysunutí, pole jako seznam transformací (features i těles), export po tělesech a dotazy nad tělesy, stejný poloměr a pevný bod, sdílené nástroje skici (mnohoúhelník). Plná sestava, pole ve skice, import a zaoblení se nedělají |
+| D31 | Demo application | done during the implementation, not yet confirmed by the owner | `packages/app`: three.js and Vite without a UI framework; covers the functions of ui.md needed to go through the validation scenarios; what the UI derives on its own and what is left out |
+| D34 | Symmetry and the midpoint of a line | decided | Two new geometric constraints; adding a constraint is a catalog entry, a type, the equation of the analysis and the translation for the solver, the app and MCP take it over on their own |
+| D33 | Interface for AI (MCP server) | decided | `packages/mcp`: general tools over the engine with a description generated from the sources of the engine; works over a file and over the running app through a local bridge |
+| D32 | Sketch diagnostics | decided | From its own analysis of the equations of constraints, the engine tells how many degrees of freedom a sketch has, which constraints are redundant, what they follow from, which set can be removed and what can still move; the same driving constraint cannot be added twice |
+| D35 | [Extensions for the robot joint](decisions/D35-robot-joint.md) | decided, including the fixes after two reviews of the design and after the review of the contract; the gear spike done; all implemented: step 0 and points 1 to 7 | Seven functions in cheap variants that do not close the way to the full ones: parameters and expressions over a catalog of numeric fields, the extent of an extrusion as a variant ("through all"), gearing as a profile generator for an extrusion, a pattern as a list of transforms (of features and of bodies), export by bodies and queries over bodies, equal radius and a fixed point, shared sketch tools (polygon). A full assembly, patterns in a sketch, import and fillets are not done |
 | D36 | [Order of work after D35](decisions/D36-order-after-d35.md) | decided 2026-11-14; the preparatory step (D37) is done; the plan is in [d36/README.md](d36/README.md) | Seven steps for the intended use (printed parts, mostly for a robotic arm, built with an AI through MCP): queries that let the AI see and measure, bracket and box, bought parts, shapes beyond prisms, mechanism, sketch, the rest. No assembly with mates, no 3D sketches with constraints, no fillets of general edges. Designs of the features are proposals in backlog.md |
 | D37 | [Preparatory step of D36](d36/00-prep/design.md) | scope decided 2026-11-14, design 2026-11-15 after five rounds of reviews; implemented 2026-11-15, all six parts | Six parts that turn the places every package of D36 would write to into places where things are only added: a registry of queries with one general MCP tool `query`, a module per feature type, panels and forms of the app as modules, a shared vocabulary, documents by area, working in several trees. No change of behaviour. The design with its reviews is the record of the decision |
 | D38 | [1a Section](d36/1a-section/design.md) | designed 2026-11-15 after three rounds of reviews; implemented and merged 2026-11-15 (the query `section` and the section view of the app) | A plane gives, per body, closed loops with areas and the face each segment lies on; the app shows the model cut |
@@ -83,651 +83,651 @@ Poslední úprava: 2026-11-25
 | D72 | [6f Import of an outline](d36/6f-outline-import/design.md) | designed 2026-11-25; reviewed in three rounds and revised after each the same day, with the owner's answers 37 and 38 ([d36/6-cross-review.md](d36/6-cross-review.md)); implemented, reviewed in two rounds (the kind and the solver, the import and its readers, MCP and the app: numbers out of range refused by the readers and the validator, deep SVG groups and slow patterns made linear, the tangency at a joined end read by one function in the analysis and the solver adapter, the box of an outline from its placed curves) and merged 2026-11-25 | An imported outline is a reference kind of entry of `external`, `outline`: the curves of a DXF or SVG file (lines, arcs, circles, splines) stored in the entry in the file's coordinates and placed by three numeric fields and an anchor; fixed for the solver, which gets only the entities constraints name; entities `<entry>/<local>` with points named by their curve, IDs by kind and order of the file; regions by a flag, default true, ends joined by position; a revised file is an update of the entry, refused while a constraint names an entity it drops; hand-written readers in a second catalog of formats with a bounded weld (0.01 mm: an open end onto one other end, never further), limits and a report, a file that is not whole refused; the options of the import stored in the entry; the MCP tool `import_outline` sends the command; no schema step. Alternatives: a section of the document, own geometry tied by `fixed`, IDs from geometry, the whole outline in the solver, a transitive weld |
 | D73 | [MCP and API ergonomics](#d73-mcp-and-api-ergonomics) | decided 2026-11-25 from the friction of a session that built a flange and a planetary gearbox through MCP; implemented in the branch `mcp-ergo`, waiting for its review | describe_api in sections with lookups; defaults of a new feature in addFeature; the rectangle by its centre and with its sizes, IDs in the order of the result, the fillet of several corners; `after` for check_interference, mass of all bodies, the arguments there are; English texts of the server; the reason a bridge cannot listen and another try; `new_document`; model colours in view_image; some features of get_model and the facts of what a command touched |
 
-D1–D28 jsou odsouhlasené (D10–D28 dne 2026-11-13). D29, D30 a D31 vznikly při samostatné práci na implementaci a čekají na potvrzení. D32 až D35 jsou odsouhlasené 2026-11-14. D36 was approved on 2026-11-14 as well, and the scope of D37 with it. D38 to D51 are the designs of the packages of D36, written by the sessions of tracks A, B, E and H; what in them waits for the owner is listed in [d36/cross-review.md](d36/cross-review.md), and for D50 and D51, which were written after that review, under "Open" of their designs. The decisions of step 6 (D64, D65, D68, D69 and D70) were read together in [d36/6-cross-review.md](d36/6-cross-review.md) on 2026-11-23; the owner answered its questions and those of the single reviews on 2026-11-24, and the answers are in that file, "Decisions of the owner" and "Later answers" (D71 and D72 were designed later and are answered there too). Of step 6, D64, D71, D65, D68, D69, D70 and D72 are implemented and merged (2026-11-25), and with 6h (the Onshape converter on the tools of the step, which takes no decision; its record is [onshape-import.md](onshape-import.md)) step 6 is complete. D73 came from a session that built parts through MCP and is in full below. Podrobnosti jsou v [architecture.md](architecture.md) a v souborech `architecture/`, návrh UI v [ui.md](ui.md) a `ui/`.
+D1–D28 are approved (D10–D28 on 2026-11-13). D29, D30 and D31 came out of autonomous work on the implementation and wait for confirmation. D32 to D35 were approved on 2026-11-14. D36 was approved on 2026-11-14 as well, and the scope of D37 with it. D38 to D51 are the designs of the packages of D36, written by the sessions of tracks A, B, E and H; what in them waits for the owner is listed in [d36/cross-review.md](d36/cross-review.md), and for D50 and D51, which were written after that review, under "Open" of their designs. The decisions of step 6 (D64, D65, D68, D69 and D70) were read together in [d36/6-cross-review.md](d36/6-cross-review.md) on 2026-11-23; the owner answered its questions and those of the single reviews on 2026-11-24, and the answers are in that file, "Decisions of the owner" and "Later answers" (D71 and D72 were designed later and are answered there too). Of step 6, D64, D71, D65, D68, D69, D70 and D72 are implemented and merged (2026-11-25), and with 6h (the Onshape converter on the tools of the step, which takes no decision; its record is [onshape-import.md](onshape-import.md)) step 6 is complete. D73 came from a session that built parts through MCP and is in full below. The details are in [architecture.md](architecture.md) and in the files of `architecture/`, the UI design in [ui.md](ui.md) and `ui/`.
 
-## D1 Jazyk enginu: TypeScript
+## D1 Engine language: TypeScript
 
-Rozhodnuto 2026-11-12. Engine běží v browseru i v Node. Výpočetně náročné části mohou být WASM knihovny (viz D2).
+Decided 2026-11-12. The engine runs in the browser and in Node. Computationally heavy parts may be WASM libraries (see D2).
 
-## D2 Knihovny třetích stran
+## D2 Third-party libraries
 
-Rozhodnuto 2026-11-12. Použití knihoven nevadí, ale každou vlastník projektu schvaluje výslovně. Každá knihovna je schovaná za úzkým rozhraním definovaným v enginu, aby šla vyměnit a aby šla napsat testovací implementace.
+Decided 2026-11-12. Using libraries is fine, but the owner approves each one explicitly. Every library is hidden behind a narrow interface defined in the engine, so that it can be replaced and a test implementation can be written.
 
-Schválené: planegcs (D6), Manifold (D8), `@modelcontextprotocol/sdk` pro MCP server (D33, schváleno 2026-11-14).
+Approved: planegcs (D6), Manifold (D8), `@modelcontextprotocol/sdk` for the MCP server (D33, approved 2026-11-14).
 
 Approved on 2026-11-15: a DOM for the tests of the app in Vitest, `happy-dom` or `jsdom`, one of the two, as a development dependency of `packages/app`. It lets the class `App` and its panels be tested without a browser (part 3 of the preparatory step of D36, [d36/00-prep/part3-app-panels.md](d36/00-prep/part3-app-panels.md)). Which of the two is taken is decided by the first test written with it and recorded here. Only tests import it and nothing of it is shipped, so it has no interface of its own.
 
 Taken on 2026-11-15: `happy-dom` 21.0.4. The first test (`packages/app/test/app.test.ts`) needs pointer events with capture, keyboard events, handlers set as properties (`onclick`, `oninput`, `onchange`) and the form controls of the app; all of them work in it, so `jsdom` was not tried. The test makes the window itself (`new Window()`) and does not use the test environment of Vitest, because the WASM adapters have to load as in Node before a `window` exists.
 
-Approved on 2026-11-17: a library that compresses the parts of a 3MF package, chosen by the session (owner: "použij komprimovaný, vyber a použij existující knihovnu"; D54, [d36/2g-export/deflate.md](d36/2g-export/deflate.md)). Taken: `pako` 2.1.0 (`github.com/nodeca/pako`, November 2022; licences MIT and Zlib; no dependencies), a port of zlib's deflate, through its entry for deflate alone, with its default options at level 6. The design measured 3.0.3 and proposed it; 2.1.0 was taken instead because it gives the same streams (those of zlib, byte for byte, measured by the design) and has been in wide use for four years (about 18 million downloads a week, against half a million for 3.0.3, released three weeks before). It has no types of its own: the adapter declares the one function it calls, so no second package is added. It sits behind the port `Deflater` of the engine (`deflate(bytes)`: a raw DEFLATE stream) and is imported by the adapter package `packages/deflate-pako` alone; the engine has no dependency and works without a compressor (its files are then stored).
+Approved on 2026-11-17: a library that compresses the parts of a 3MF package, chosen by the session (owner: "use a compressed one, choose and use an existing library"; D54, [d36/2g-export/deflate.md](d36/2g-export/deflate.md)). Taken: `pako` 2.1.0 (`github.com/nodeca/pako`, November 2022; licences MIT and Zlib; no dependencies), a port of zlib's deflate, through its entry for deflate alone, with its default options at level 6. The design measured 3.0.3 and proposed it; 2.1.0 was taken instead because it gives the same streams (those of zlib, byte for byte, measured by the design) and has been in wide use for four years (about 18 million downloads a week, against half a million for 3.0.3, released three weeks before). It has no types of its own: the adapter declares the one function it calls, so no second package is added. It sits behind the port `Deflater` of the engine (`deflate(bytes)`: a raw DEFLATE stream) and is imported by the adapter package `packages/deflate-pako` alone; the engine has no dependency and works without a compressor (its files are then stored).
 
-## D3 Model dokumentu: log operací
+## D3 Document model: a log of operations
 
-Rozhodnuto 2026-11-10. Dokument je uspořádaný seznam operací. Operace ukládá záměr: typ, parametry a reference na entity vytvořené dřívějšími operacemi. Výsledná geometrie se neukládá, vzniká přehráním logu.
+Decided 2026-11-10. The document is an ordered list of operations. An operation stores the intent: the type, the parameters and references to entities created by earlier operations. The resulting geometry is not stored; it comes from replaying the log.
 
-Důsledky:
-- Úprava operace uprostřed logu = změna parametru a přehrání od ní dál.
-- Undo/redo a serializace pracují s logem, ne s geometrií.
+Consequences:
+- Editing an operation in the middle of the log = changing a parameter and replaying from it onwards.
+- Undo/redo and serialisation work with the log, not with the geometry.
 
-## D4 Reference na geometrii: ID odvozená z původu
+## D4 References to geometry: IDs derived from origin
 
-Rozhodnuto 2026-11-12. Operace odkazují na entity přes ID. ID se neodvozuje z pořadí vzniku (to se při změně dřívější operace posune a reference by tiše ukázala jinam), ale z původu entity. Příklady:
+Decided 2026-11-12. Operations refer to entities by ID. An ID is not derived from the order of creation (that shifts when an earlier operation changes and the reference would silently point elsewhere) but from the origin of the entity. Examples:
 
-- „boční stěna extrude E3 vzniklá z úsečky L12 skici S1",
-- „horní víko extrude E3".
+- "the side face of extrude E3 made from line L12 of sketch S1",
+- "the top cap of extrude E3".
 
-Pravidla:
-- Entity skici mají vlastní trvalá ID přidělená při vytvoření.
-- Stěny těles dědí jméno z operace a ze zdrojové entity skici.
-- Při booleovské operaci se jména přenášejí podle toho, ze které vstupní stěny výsledný trojúhelník pochází (viz D8, sledování původu).
-- Pokud referenci nejde vyhodnotit (entita zanikla), operace se označí jako chybná a uživatel referenci opraví ručně. Tiché přesměrování je nepřípustné.
-- Rozdělená stěna chybou není, zůstává jednou logickou stěnou (D13).
+Rules:
+- Sketch entities have permanent IDs of their own, assigned when they are created.
+- Faces of bodies inherit their name from the operation and from the source entity of the sketch.
+- In a boolean operation the names are carried over by which input face the resulting triangle comes from (see D8, tracking of origin).
+- When a reference cannot be evaluated (the entity is gone), the operation is marked as failed and the user repairs the reference by hand. Silent redirection is not allowed.
+- A split face is not an error; it stays one logical face (D13).
 
-Schéma jmen je v architecture.md, sekce Pojmenování.
+The scheme of names is in architecture.md, section Naming.
 
-## D5 Skici: constraint solver od začátku
+## D5 Sketches: a constraint solver from the start
 
-Rozhodnuto 2026-11-12. Geometrie skici není výsledkem jednosměrných konstrukcí, ale řešením soustavy vazeb a kót. Zvažovaná alternativa (jednosměrné konstrukční operace, solver později) byla zamítnuta.
+Decided 2026-11-12. The geometry of a sketch is not the result of one-way constructions but the solution of a system of constraints and dimensions. The alternative considered (one-way construction operations, a solver later) was rejected.
 
 ## D6 Constraint solver: planegcs
 
-Rozhodnuto 2026-11-13. Použije se `@salusoft89/planegcs`, WASM port 2D solveru z FreeCADu, schovaný za rozhraním enginu (entity, vazby, výsledek, diagnostika).
+Decided 2026-11-13. `@salusoft89/planegcs` is used, a WASM port of the 2D solver of FreeCAD, hidden behind an interface of the engine (entities, constraints, result, diagnostics).
 
-Proč:
-- Solver je roky prověřený ve FreeCADu.
-- Má to, co je na vlastním solveru nejpracnější: diagnostiku pod- a přeurčených skic a dočasné vazby pro tažení myší. Referenční kóty podle spiku spolehlivě neumí, počítá je engine (D17).
-- Má TypeScript typy.
-- Hlavní riziko PoC je historie a pojmenování, ne solver.
+Why:
+- The solver has been proven in FreeCAD for years.
+- It has what is the most laborious part of a solver of one's own: diagnostics of under- and overconstrained sketches and temporary constraints for dragging with the mouse. By the spike it does not handle reference dimensions reliably; the engine computes them (D17).
+- It has TypeScript types.
+- The main risk of the PoC is the history and naming, not the solver.
 
-Rizika:
-- Licence LGPL-2.1. Samostatný WASM modul je s ní obvykle slučitelný; u uzavřeného produktu je potřeba právně ověřit.
-- Wrapper je malý projekt s nízkou adopcí.
-- Paměť WASM se uvolňuje ručně.
-- B-spline nejsou dokončené (netýká se PoC).
+Risks:
+- The licence is LGPL-2.1. A separate WASM module is usually compatible with it; for a closed product it needs a legal check.
+- The wrapper is a small project with low adoption.
+- WASM memory is freed by hand.
+- B-splines are not finished (does not concern the PoC).
 
-Ověřeno spikem 2026-11-13, výsledky jsou v architecture.md.
+Checked by a spike on 2026-11-13; the results are in architecture.md.
 
-Zvažované alternativy:
+Alternatives considered:
 
-| Knihovna | Proč ne |
+| Library | Why not |
 |---|---|
-| ezpz (KittyCAD, Rust, MIT) | Mladý, bez hotového npm balíku, neověřená diagnostika. Záložní volba, pokud by vadila LGPL. |
-| SolveSpace `slvs` (C++ → WASM) | GPL-3.0 by se přenesla na celý projekt. |
-| neoscad/sketch-solver (Rust, MIT/Apache) | Nový malý projekt, bez hotového browser buildu. |
-| Vlastní solver v TS | Realizovatelné, ale diagnostika a stabilní tažení jsou pracné. Možné později za stejným rozhraním, planegcs pak slouží jako testovací orákulum. |
-| jsketcher, protractr, assemble2d, 2d-solver | Solver není samostatná knihovna nebo jde o experiment s neúplnou sadou vazeb. |
-| Kiwi.js (Cassowary) | Jen lineární vazby. |
-| D-Cubed DCM, LGS, C3D Solver | Komerční. |
+| ezpz (KittyCAD, Rust, MIT) | Young, no ready npm package, unverified diagnostics. The fallback choice if LGPL were a problem. |
+| SolveSpace `slvs` (C++ → WASM) | GPL-3.0 would extend to the whole project. |
+| neoscad/sketch-solver (Rust, MIT/Apache) | A new small project, no ready browser build. |
+| A solver of our own in TS | Feasible, but diagnostics and stable dragging are laborious. Possible later behind the same interface; planegcs then serves as a test oracle. |
+| jsketcher, protractr, assemble2d, 2d-solver | The solver is not a separate library, or it is an experiment with an incomplete set of constraints. |
+| Kiwi.js (Cassowary) | Linear constraints only. |
+| D-Cubed DCM, LGS, C3D Solver | Commercial. |
 
-## D7 Reprezentace těles: mesh/CSG
+## D7 Representation of bodies: mesh/CSG
 
-Rozhodnuto 2026-11-13. Těleso je uzavřená trojúhelníková síť. B-rep (přesné plochy) se nepoužije.
+Decided 2026-11-13. A body is a closed triangle mesh. B-rep (exact surfaces) is not used.
 
-Původně se zvažoval B-rep kvůli přesnému STEP exportu (OpenCascade ve WASM). Zamítnuto kvůli složitosti.
+B-rep was considered at first for an exact STEP export (OpenCascade in WASM). Rejected because of the complexity.
 
-Důsledky:
-- STEP export není možný. Výstupem je STL, později i 3MF (D26).
-- Kružnice a oblouky se při extrude převádějí na segmenty. Skica zůstává přesná.
-- Zaoblení a zkosení hran jsou obtížná, jsou mimo PoC.
-- Přechod na B-rep by nebyl pouhou výměnou adaptéru. Změnil by se typ tělesa a stavba extrude, kterou si engine dělá sám (D9). Zůstal by model dokumentu, jména stěn a hran, reference, přepočet a skici.
+Consequences:
+- STEP export is not possible. The output is STL, later also 3MF (D26).
+- Circles and arcs are turned into segments in an extrude. The sketch stays exact.
+- Fillets and chamfers of edges are difficult; they are outside the PoC.
+- A move to B-rep would not be a mere replacement of the adapter. The type of a body would change, and so would the building of an extrude, which the engine does itself (D9). The document model, the names of faces and edges, the references, the recompute and the sketches would stay.
 
-## D8 Mesh/CSG jádro: Manifold
+## D8 Mesh/CSG kernel: Manifold
 
-Rozhodnuto 2026-11-13: Manifold (`manifold-3d`) za vlastním rozhraním.
+Decided 2026-11-13: Manifold (`manifold-3d`) behind an interface of its own.
 
-Jádro dělá booleovské operace nad tělesy (sjednocení, rozdíl, průnik). Engine od něj potřebuje dvě záruky:
+The kernel does boolean operations over bodies (union, difference, intersection). The engine needs two guarantees from it:
 
-1. **Výstup je vždy uzavřené těleso** (manifold). Jinak další operace v logu selhávají nepředvídatelně.
-2. **Sledování původu.** U každého výstupního trojúhelníku jde zjistit, ze které vstupní stěny pochází. Bez toho nejde udělat stabilní pojmenování (D4).
+1. **The output is always a closed body** (manifold). Otherwise further operations in the log fail unpredictably.
+2. **Tracking of origin.** For every output triangle one can find out which input face it comes from. Without this, stable naming cannot be done (D4).
 
-Zvolen **Manifold** (`manifold-3d`, C++ → WASM, Apache-2.0).
+Chosen: **Manifold** (`manifold-3d`, C++ → WASM, Apache-2.0).
 
-| Knihovna | Běh | Licence | Uzavřený výstup | Sledování původu | Hodnocení |
+| Library | Runtime | Licence | Closed output | Tracking of origin | Assessment |
 |---|---|---|---|---|---|
-| **Manifold** | WASM | Apache-2.0 | Zaručený | Ano (`originalID`, `faceID` přežijí booleany) | Zvoleno |
-| three-bvh-csg | JS nad three.js | MIT | Nezaručený (README sám odkazuje na Manifold) | Jen přes materiálové skupiny | Zamítnout: nespolehlivé a závisí na rendereru |
-| @jscad/modeling | čistý JS | MIT | Nezaručený (BSP algoritmus) | Ne | Zamítnout pro booleany |
-| trueform | WASM | neověřeno | Dle vlastního benchmarku ano | Neověřeno | Nový, málo informací |
-| MeshLib | WASM/JS vazby | komerční podmínky, neověřeno | Ano | Neověřeno | Nevhodná licence pro PoC |
-| csgrs | Rust (vlastní WASM build) | MIT | Jen v pomalejším režimu | Neověřeno | Zbytečná práce navíc |
-| OpenCascade | WASM | LGPL | B-rep | Ano | Vyřazeno rozhodnutím D7 |
+| **Manifold** | WASM | Apache-2.0 | Guaranteed | Yes (`originalID`, `faceID` survive booleans) | Chosen |
+| three-bvh-csg | JS over three.js | MIT | Not guaranteed (its README itself refers to Manifold) | Only through material groups | Reject: unreliable and depends on the renderer |
+| @jscad/modeling | pure JS | MIT | Not guaranteed (BSP algorithm) | No | Reject for booleans |
+| trueform | WASM | unverified | Yes by its own benchmark | Unverified | New, little information |
+| MeshLib | WASM/JS bindings | commercial terms, unverified | Yes | Unverified | Unsuitable licence for the PoC |
+| csgrs | Rust (own WASM build) | MIT | Only in a slower mode | Unverified | Needless extra work |
+| OpenCascade | WASM | LGPL | B-rep | Yes | Ruled out by decision D7 |
 
-Proč ne přímo three.js: je to vykreslovací knihovna. Umí vytáhnout profil do sítě pro zobrazení, ale neumí booleovské operace a nezaručuje uzavřené těleso. Navíc by engine závisel na rendereru, což porušuje základní princip 1.
+Why not three.js directly: it is a rendering library. It can extrude a profile into a mesh for display, but it cannot do boolean operations and does not guarantee a closed body. The engine would also depend on the renderer, which breaks basic principle 1.
 
-Rizika Manifoldu:
-- Při téměř shodných plochách selhává (blány, nespojená tělesa). Spike to potvrdil, řeší to adaptér (D19).
-- Vstupem musí být uzavřené těleso (to engine zaručí, protože sítě staví sám).
-- Zda `faceID` přežije i vestavěný extrude, se neověřovalo; engine si extrude staví sám (D9).
+Risks of Manifold:
+- It fails on nearly coincident surfaces (sheets, disconnected bodies). The spike confirmed it; the adapter handles it (D19).
+- The input must be a closed body (the engine guarantees this, because it builds the meshes itself).
+- Whether `faceID` also survives the built-in extrude was not checked; the engine builds extrudes itself (D9).
 
-## D9 Extrude staví engine sám
+## D9 Extrude is built by the engine itself
 
-Rozhodnuto 2026-11-13. Síť extrudovaného profilu sestaví engine v TypeScriptu a jádru ji předá hotovou i s ID stěn. Jádro se použije jen pro booleany.
+Decided 2026-11-13. The engine assembles the mesh of an extruded profile in TypeScript and hands it to the kernel finished, with the face IDs. The kernel is used only for booleans.
 
-Proč:
-- Engine při stavbě sítě ví, ze které entity skici každá stěna vzniká, a může ji rovnou pojmenovat (D4).
-- Všechny segmenty jedné kružnice dostanou stejné ID stěny, takže válcová plocha zůstane jednou logickou stěnou.
-- Rozhraní jádra je užší (jen booleany), a tedy snáz vyměnitelné.
+Why:
+- While building the mesh, the engine knows which sketch entity each face comes from and can name it right away (D4).
+- All segments of one circle get the same face ID, so a cylindrical surface stays one logical face.
+- The kernel interface is narrower (booleans only) and so easier to replace.
 
-Potřebuje triangulaci 2D profilu s dírami (víka). Používá se triangulace z Manifoldu přes rozhraní jádra, bez další knihovny; spike ji ověřil.
+It needs triangulation of a 2D profile with holes (the caps). The triangulation of Manifold is used through the kernel interface, with no other library; the spike checked it.
 
-## D10 Časová osa a historie příkazů
+## D10 Timeline and command history
 
-Časová osa je recept na model, historie příkazů slouží jen undo. Skica je na časové ose jedna položka a její obsah je stav, ne log.
+The timeline is the recipe of the model; the command history serves only undo. A sketch is one entry on the timeline and its content is state, not a log.
 
-Proč: kdyby každá úsečka byla krok časové osy, osa by měla stovky položek a reference mezi nimi by se staly nepřehlednými. Stejné rozdělení má Fusion. Zamítnutá alternativa: jediný log všech uživatelských akcí, který by byl receptem i historií zároveň.
+Why: if every line were a step of the timeline, the timeline would have hundreds of entries and the references between them would become hard to follow. Fusion has the same split. The rejected alternative: a single log of all user actions that would be the recipe and the history at once.
 
-## D11 Neměnný dokument
+## D11 Immutable document
 
-Každý příkaz vrátí nový dokument, nezměněné části se sdílejí.
+Every command returns a new document; the unchanged parts are shared.
 
-Proč: undo je zásobník dokumentů bez inverzních operací, cache přepočtu je memoizace podle identity objektů a `evaluate` může být čistá funkce. Zamítnutá alternativa: měnitelný dokument s inverzními příkazy a ručním zneplatňováním cache, která je náchylnější k chybám.
+Why: undo is a stack of documents without inverse operations, the cache of the recompute is memoisation by object identity, and `evaluate` can be a pure function. The rejected alternative: a mutable document with inverse commands and manual invalidation of the cache, which is more prone to errors.
 
-## D12 Řešení skici (přepracováno)
+## D12 Solving a sketch (reworked)
 
-Vývoj rozhodnutí:
-1. Původně: polohy uložené v dokumentu, solver běží jen v příkazech, přepočet skicu neřeší. Zamítnuto 2026-11-13: skica na stěně neviděla geometrii stěny, takže díra při změně rozměru tělesa zůstala na absolutních souřadnicích.
-2. Skica se řeší při každém přepočtu, uložené polohy jsou odhad. Opíralo se to o to, že solver vrátí splněný vstup bitově beze změny.
-3. D25: skica si pamatuje, pro jakou promítnutou geometrii polohy platí, a při shodě se neřeší.
-4. D27: razítko pokrývá všechny vstupy solveru (křivky, vazby i promítnutou geometrii), ne jen promítnutou geometrii. Řešení tak probíhá na jediném místě, při přepočtu, a stejné pravidlo platí pro změnu tělesa i úpravu skici. Zapisují se atomicky všechny řešené proměnné včetně poloměrů.
+How the decision evolved:
+1. At first: positions stored in the document, the solver runs only in commands, the recompute does not solve the sketch. Rejected 2026-11-13: a sketch on a face did not see the geometry of the face, so a hole stayed at absolute coordinates when a dimension of the body changed.
+2. The sketch is solved at every recompute; the stored positions are an initial guess. This relied on the solver returning a satisfied input unchanged to the bit.
+3. D25: the sketch remembers for which projected geometry its positions hold, and on a match it is not solved.
+4. D27: the stamp covers all the inputs of the solver (curves, constraints and projected geometry), not only the projected geometry. Solving thus happens in a single place, during the recompute, and the same rule holds for a change of the body and for an edit of the sketch. All solved variables, radii included, are written atomically.
 
-Vědomý důsledek: `execute` počítá kvůli zápisu výsledku vždy celý model.
+A deliberate consequence: `execute` always computes the whole model in order to write the result.
 
-## D13 Rozdělená stěna
+## D13 Split face
 
-Stěna, kterou výřez rozdělí na víc částí, zůstává jednou logickou stěnou.
+A face that a cut splits into several parts stays one logical face.
 
-Proč: části leží v jedné rovině, takže pro skicu na stěně na rozdělení nezáleží, a jméno zůstane stabilní. Zamítnutá alternativa: brát rozdělení jako nejednoznačnost a referenci rozbít; rozbíjelo by to reference při běžných úpravách. Stejně se chovají víka jedné extrude složené z více oblastí (D25).
+Why: the parts lie in one plane, so the split does not matter for a sketch on the face, and the name stays stable. The rejected alternative: treat the split as an ambiguity and break the reference; that would break references in ordinary edits. The caps of one extrude made of several regions behave the same way (D25).
 
-## D14 Rovina skici na stěně analyticky
+## D14 Sketch plane on a face computed analytically
 
-Rovina se počítá z definice feature, ze sítě se bere jen existence stěny a směr ven.
+The plane is computed from the definition of the feature; only the existence of the face and the outward direction are taken from the mesh.
 
-Proč: síť má přesnost float32 a po booleanech se její vrcholy mění, analytická rovina je přesná a stabilní. Podmínkou je, že výstup jádra s analytickou geometrií souhlasí (D19, D27).
+Why: the mesh has float32 precision and its vertices change after booleans; the analytic plane is exact and stable. The condition is that the output of the kernel agrees with the analytic geometry (D19, D27).
 
-## D15 Struktura repa
+## D15 Repository structure
 
-pnpm workspace se čtyřmi balíčky: `engine`, `solver-planegcs`, `kernel-manifold`, `app`. Testy ve Vitestu.
+A pnpm workspace with four packages: `engine`, `solver-planegcs`, `kernel-manifold`, `app`. Tests in Vitest.
 
-Proč: oddělení enginu od knihoven a rendereru je vynucené fyzicky, `engine` nemá žádnou runtime závislost. Zamítnutá alternativa: jeden balíček se složkami, kde hranice hlídá jen disciplína.
+Why: the separation of the engine from the libraries and the renderer is enforced physically; `engine` has no runtime dependency. The rejected alternative: one package with folders, where only discipline guards the boundaries.
 
-## D16 Kotva skici
+## D16 Sketch anchor
 
-Každá skica má rezervovaný pevný bod `origin`.
+Every sketch has a reserved fixed point `origin`.
 
-Proč: bez něj zbývají vždy aspoň dva stupně volnosti a skica nejde plně určit. Zamítnutá alternativa: obecná vazba „fix" na libovolný bod; je to možné rozšíření, ale počátek je potřeba i jako společný vztažný bod pro skici na stěnách.
+Why: without it at least two degrees of freedom always remain and the sketch cannot be fully constrained. The rejected alternative: a general constraint "fix" on any point; it is a possible extension, but the origin is also needed as a common reference point for sketches on faces.
 
-## D17 Tvar vazeb
+## D17 Form of constraints
 
-Každá varianta vazby má pojmenované operandy s pevným významem. Implicitní podmínky oblouku zajišťuje solver. Referenční kóty počítá engine.
+Every variant of a constraint has named operands with a fixed meaning. The implicit conditions of an arc are kept by the solver. Reference dimensions are computed by the engine.
 
-Proč: obecný seznam `refs` nechával význam na pořadí a druhu operandů a adaptér by musel hádat, kterou vazbu knihovny použít. Referenční kóty: spike ukázal, že je planegcs nezvládá spolehlivě.
+Why: a general list `refs` left the meaning to the order and kind of the operands, and the adapter would have to guess which constraint of the library to use. Reference dimensions: the spike showed that planegcs does not handle them reliably.
 
-## D18 Orientace roviny na stěně
+## D18 Orientation of a plane on a face
 
-Normála míří vždy ven z tělesa, osa X se dopočítá jako Y × N.
+The normal always points out of the body; the X axis is computed as Y × N.
 
-Proč: kladná vzdálenost extrude pak vždy znamená ven z tělesa, nezávisle na pořadí bodů úsečky nebo orientaci smyčky. Směr ven se bere ze sítě jako součet normál vážený plochou, protože závisí i na operaci (výřez stěny nástroje obrací).
+Why: a positive distance of an extrude then always means out of the body, regardless of the order of the points of a line or the orientation of a loop. The outward direction is taken from the mesh as the area-weighted sum of normals, because it also depends on the operation (a cut turns the faces of the tool over).
 
-## D19 Koplanární booleany (přepracováno)
+## D19 Coplanar booleans (reworked)
 
-Vývoj rozhodnutí:
-1. Původně: engine posune počáteční víko nástroje o `overlap` z nastavení dokumentu.
-2. Po spiku Manifoldu: návrh rozšířit pravidlo na všechny rovinné stěny nástroje, stále v core.
-3. Rozhodnuto 2026-11-13: přesah je obcházení slabiny konkrétního jádra, proto patří do jeho adaptéru. Port `SolidKernel` dostal záruku tolerance ke koplanárním stěnám. Core staví nástroj přesně, `overlap` z nastavení dokumentu zmizel.
+How the decision evolved:
+1. At first: the engine shifts the start cap of the tool by `overlap` from the settings of the document.
+2. After the spike of Manifold: a proposal to extend the rule to all planar faces of the tool, still in the core.
+3. Decided 2026-11-13: the overlap works around a weakness of one particular kernel, so it belongs in its adapter. The port `SolidKernel` got a guarantee of tolerance of coplanar faces. The core builds the tool exactly; `overlap` was removed from the settings of the document.
 
-Důvody pro adaptér:
-- B-rep jádro by záruku splnilo samo, core by obsahoval kód jen kvůli Manifoldu.
-- Ověření, že se koplanární stěny skutečně překrývají, potřebuje síť tak jako tak.
-- Velikost přesahu závisí na přesnosti jádra, kterou zná jen adaptér.
-- Přesah se použije jen tam, kde stěny opravdu lícují. Nepodmíněný přesah by prodloužil výstupek ze skici na rovině mimo těleso.
+Reasons for the adapter:
+- A B-rep kernel would meet the guarantee by itself; the core would contain code only for Manifold.
+- Checking that coplanar faces really overlap needs the mesh anyway.
+- The size of the overlap depends on the precision of the kernel, which only the adapter knows.
+- The overlap is used only where faces are really flush. An unconditional overlap would lengthen a boss from a sketch on a plane outside the body.
 
-Cena: detekce je podle tolerance ze zaokrouhlené sítě, ne přesně ze jmen stěn. Spike ukázal, že to stačí. Omezení jsou v architecture.md.
+The cost: detection is by a tolerance on the rounded mesh, not exactly from the face names. The spike showed that it is enough. The limits are in architecture.md.
 
-4. Doplněk 2026-11-13 (D27): samotný posun nestačil. Když stěna nástroje lícovala jen zčásti, zůstal její zbytek ve výsledku o přesah vedle roviny, kterou pro ni engine počítá analyticky, a další operace na ní selhala (nálitek na takové stěně skončil jako samostatná komponenta). Adaptér proto po booleanu vrací zbytky posunutých stěn do původní roviny a slučuje splynulé vrcholy. Spike s řetězenými případy: 34 z 34.
+4. Addition 2026-11-13 (D27): the shift alone was not enough. When a face of the tool was flush only in part, its remainder stayed in the result offset by the overlap from the plane the engine computes for it analytically, and a further operation on it failed (a boss on such a face ended up as a separate component). After the boolean the adapter therefore returns the remainders of shifted faces to the original plane and merges coincident vertices. Spike with chained cases: 34 of 34.
 
-5. Doplněk 2026-11-13 (D28): čtvrtá revize našla tři případy, které verze z bodu 4 nezvládla. Všechny se podařilo reprodukovat.
-   - Bok nálitku lícující s bokem tělesa sahal po sjednocení o přesah pod dosedací rovinu. Vracel se jen zbytek posunuté stěny, a ta v tomto případě zanikla celá. Po odříznutí nálitku zůstaly proužky jeho boků.
-   - Lícující stěny se u sjednocení neposouvaly a spoléhalo se, že je jádro spojí samo. S odchylkou float32 mezi nimi zůstal proužek horní stěny s úzkým trojúhelníkem; test rovinnosti podle normál trojúhelníků pak horní stěnu označil za nerovinnou a další operace na ní nechala blánu.
-   - Po válcovém výřezu ležel strop mimo rovinu o 2e-4 mm, protože posun vrcholů vycházel z normál úzkých trojúhelníků.
+5. Addition 2026-11-13 (D28): the fourth review found three cases that the version of point 4 did not handle. All of them were reproduced.
+   - The side of a boss flush with the side of the body reached by the overlap below the seating plane after a union. Only the remainder of the shifted face was returned, and in this case it vanished entirely. After the boss was cut off, strips of its sides remained.
+   - Flush faces were not shifted in a union, relying on the kernel to join them by itself. With a float32 deviation between them, a strip of the top face with a narrow triangle remained; the planarity test by the triangle normals then marked the top face as non-planar and a further operation on it left a sheet.
+   - After a cylindrical cut the ceiling lay off its plane by 2e-4 mm, because the shift of vertices came from the normals of narrow triangles.
 
-   Adaptér je proto postavený na jednom pravidle místo výčtu případů: stěny nástroje a tělesa se v jedné rovině nesmějí jen dotýkat. Před booleanem se každý takový styk (překryv, dotyk hranou, mezera do dvou přesahů) změní na průnik, po něm se vrátí vše, co s posunutou stěnou odjelo, a síť se vyčistí. Rovinnost se určuje vzdáleností vrcholů od proložené roviny. Podrobnosti jsou v architecture.md. Spike: 46 z 46.
+   The adapter is therefore built on one rule instead of a list of cases: faces of the tool and of the body in one plane must not merely touch. Before the boolean every such contact (overlap, touching at an edge, a gap of up to two overlaps) is turned into a penetration; after it everything that moved with the shifted face is returned, and the mesh is cleaned. Planarity is determined by the distance of the vertices from the fitted plane. The details are in architecture.md. Spike: 46 of 46.
 
-   Zvažované a zamítnuté: zarovnat lícující stěnu nástroje do roviny stěny tělesa a nechat spojení na jádru. Fungovalo jen někdy; jestli boky v šikmé poloze opravdu sousedí, záviselo na zaokrouhlení.
+   Considered and rejected: aligning the flush face of the tool into the plane of the body's face and leaving the joining to the kernel. It worked only sometimes; whether the sides in a tilted position really were adjacent depended on rounding.
 
-   Cena: adaptér má asi 300 řádků a obsahuje vlastní čištění sítě. Kde stěna nástroje lícuje se stěnou tělesa a překrývají se plochou, nese překrytou část jméno stěny nástroje.
+   The cost: the adapter has about 300 lines and contains its own mesh cleaning. Where a face of the tool is flush with a face of the body and they overlap in area, the overlapped part carries the name of the tool's face.
 
-6. Doplněk 2026-11-14 (D29): náhodné testy našly další vady, které pevné případy nezachytily. Návrat stěn se od té doby počítá přesně z původní geometrie, síť se čistí po každém booleanu a adaptér kontroluje uzavřenost výsledku. Podrobnosti a čísla jsou v D29.
+6. Addition 2026-11-14 (D29): random tests found further defects that the fixed cases did not catch. Since then the return of faces is computed exactly from the original geometry, the mesh is cleaned after every boolean and the adapter checks that the result is closed. The details and numbers are in D29.
 
-## D20 Přesnost jádra
+## D20 Kernel precision
 
-`Solid.positions` je `Float32Array`, analytické výpočty enginu běží ve float64.
+`Solid.positions` is a `Float32Array`; the analytic computations of the engine run in float64.
 
-Proč: Manifold jiný typ v JS API nenabízí. Engine proto geometrii neodvozuje ze sítě, pokud ji umí spočítat analyticky.
+Why: Manifold offers no other type in its JS API. The engine therefore does not derive geometry from the mesh when it can compute it analytically.
 
-## D21 Vlastní rovina
+## D21 Custom plane
 
-`PlaneFeature` s posunem od základní roviny, rovinné stěny nebo jiné vlastní roviny.
+`PlaneFeature` with an offset from a base plane, a planar face or another custom plane.
 
-Proč jen posun: náklon kolem hrany tělesa a rovina třemi body jsou budoucí funkce. Reference na hrany, které náklon potřebuje, už v PoC jsou (D22).
+Why only an offset: a tilt about an edge of a body and a plane through three points are future functions. References to edges, which a tilt needs, are already in the PoC (D22).
 
-## D22 Pojmenování hran
+## D22 Naming of edges
 
-Vynuceno promítnutou geometrií (D23); zároveň je to předpoklad pro budoucí rovinu nakloněnou kolem hrany, zaoblení a zkosení. Hrana se nepojmenovává samostatně, její jméno je dvojice jmen sousedních stěn. Přímka přímé hrany se počítá analyticky jako průsečnice rovin obou stěn, ze sítě se bere jen rozsah.
+Forced by projected geometry (D23); it is also a prerequisite for a future plane tilted about an edge, fillets and chamfers. An edge is not named separately; its name is the pair of names of the adjacent faces. The line of a straight edge is computed analytically as the intersection of the planes of both faces; only the extent is taken from the mesh.
 
-Omezení: krajní body promítnuté hrany mají přesnost sítě (D20).
+Limit: the end points of a projected edge have the precision of the mesh (D20).
 
-## D23 Promítnutá geometrie
+## D23 Projected geometry
 
-PoC promítá přímé hrany jako úsečky a kruhové hrany do rovnoběžné roviny jako kružnice (rozšířeno 2026-11-13 kvůli soustřednosti napříč skicami). Promítnutí kruhové hrany do šikmé roviny (elipsa) a vrcholy jsou budoucí funkce; architektura je na elipsu připravená. Promítnutí všech hran stěny při založení skici je věc UI (dávka příkazů), engine umí jen jednotlivou hranu.
+The PoC projects straight edges as lines and circular edges into a parallel plane as circles (extended 2026-11-13 for concentricity across sketches). Projecting a circular edge into a tilted plane (an ellipse) and vertices are future functions; the architecture is ready for the ellipse. Projecting all edges of a face when a sketch is created is a matter of the UI (a batch of commands); the engine handles only a single edge.
 
-Doplněk D28: promítnutí ukládá, jako jaký druh křivky se má hrana promítnout (`kind`). Původně se druh odvozoval až při přepočtu. To nešlo dohromady s validací příkazů a načítaného dokumentu, která má pracovat jen se strukturou: z druhu plynou odvozená ID (`<id>/a`, `<id>/center`) a přípustné vazby, a dávka potřebuje na promítnutou křivku navázat dřív, než přepočet proběhne. Když se hrana promítne jinak, než `kind` říká, je to varování a křivka zůstane zmrazená.
+Addition D28: a projection stores as which kind of curve the edge is to be projected (`kind`). At first the kind was derived only during the recompute. That did not fit with the validation of commands and of a loaded document, which is to work with the structure only: the kind determines the derived IDs (`<id>/a`, `<id>/center`) and the allowed constraints, and a batch needs to attach to a projected curve before the recompute runs. When the edge projects differently from what `kind` says, it is a warning and the curve stays frozen.
 
-Vlastní křivky na promítnuté body neodkazují, připojují se k nim vazbou `coincident`. Jinak by smazání promítnutí nechalo křivku bez koncového bodu.
+Own curves do not refer to projected points; they attach to them by a `coincident` constraint. Otherwise removing the projection would leave a curve without an end point.
 
-## D24 Rozšíření API z návrhu UI
+## D24 API extensions from the UI design
 
-Sepsání funkcí UI a potřebného API (ui.md) ukázalo, co v API chybělo: složený příkaz `batch`, pozice v `addFeature`, `getState(at)`, konstrukční geometrie, data pro výběr myší, `renameFeature`, `updatePlane`, `setSketchPlane`, `updateExternal`.
+Writing down the functions of the UI and the API they need (ui.md) showed what was missing from the API: the compound command `batch`, a position in `addFeature`, `getState(at)`, construction geometry, data for selection with the mouse, `renameFeature`, `updatePlane`, `setSketchPlane`, `updateExternal`.
 
-Proč: UI není těžištěm PoC, ale bez tohoto průchodu by mezery vyšly najevo až při implementaci.
+Why: the UI is not the focus of the PoC, but without this pass the gaps would have come to light only during the implementation.
 
-## D25 Úpravy z druhé revize
+## D25 Changes from the second review
 
-Revize 2026-11-13 našla jeden rozpor a několik mezer. Všechny připomínky byly oprávněné:
+The review of 2026-11-13 found one contradiction and several gaps. All the comments were justified:
 
-| Nález | Úprava |
+| Finding | Change |
 |---|---|
-| Scénář 2c tvrdil, že extrude po náhradě úsečky projde, ale podle pravidla pro oblasti skončí v `noProfile` | Pravidlo zůstává striktní, scénář je přepsaný. Identifikace smyčky body byla zamítnuta jako nejednoznačná. |
-| Jméno víka obsahovalo oblast, takže nový výběr profilu víko přejmenoval | Víko je jen `{feature, role}`. |
-| Přesah nástroje byl nepodmíněný | Vyřešeno přesunem do adaptéru (D19), který testuje koplanaritu i překryv. |
-| Hrana mezi stěnami v téže rovině nemá průsečnici | Nový druh hrany `coplanar`, nekreslí se a nejde promítnout. |
-| Konce promítnuté úsečky neměly určené pořadí | Přímka je orientovaná n_a × n_b v kanonickém pořadí jmen. |
-| `sketchConflict` měl dvojí význam | Je to varování: skica použije uložené polohy a model nezmizí. Nový stav `warning`. |
-| Determinismus stál na tom, že solver vrátí splněný vstup beze změny, a chyběl mechanismus pro cache | Skica si pamatuje razítko vstupů (původně `solvedFor`, od D27 `solved`); při shodě se neřeší. Záznam v cache se po zápisu převěsí na nový objekt. |
-| Sousední oblasti v jedné extrude by nechaly vnitřní stěnu | Sdílené smyčky se vyruší. |
-| Kontrakt `boolean` neříkal, kdo zajistí jedinečnost čísel stěn | Je to předpoklad na vstupu, zajišťuje engine. |
-| Směr „ven" z jednoho trojúhelníku | Součet normál vážený plochou. |
-| D4 odporovalo D13 | Opraveno. |
-| Náhled při úpravě skici přepočítával celý model | `preview(cmd, at)` a `evaluate` s koncem u zadané feature. |
+| Scenario 2c claimed that the extrude passes after a line is replaced, but by the rule for regions it ends in `noProfile` | The rule stays strict; the scenario is rewritten. Identifying a loop by points was rejected as ambiguous. |
+| The name of a cap contained the region, so a new choice of profile renamed the cap | A cap is only `{feature, role}`. |
+| The overlap of the tool was unconditional | Solved by moving it into the adapter (D19), which tests both coplanarity and overlap. |
+| An edge between faces in the same plane has no line of intersection | A new kind of edge `coplanar`; it is not drawn and cannot be projected. |
+| The ends of a projected line had no defined order | The line is oriented n_a × n_b in the canonical order of the names. |
+| `sketchConflict` had a double meaning | It is a warning: the sketch uses the stored positions and the model does not vanish. A new state `warning`. |
+| Determinism rested on the solver returning a satisfied input unchanged, and a mechanism for the cache was missing | The sketch remembers a stamp of its inputs (at first `solvedFor`, since D27 `solved`); on a match it is not solved. After the write, the cache entry is re-attached to the new object. |
+| Adjacent regions in one extrude would leave an inner face | Shared loops cancel out. |
+| The contract of `boolean` did not say who ensures that face numbers are unique | It is a precondition on the input, ensured by the engine. |
+| The "outward" direction from one triangle | The area-weighted sum of normals. |
+| D4 contradicted D13 | Fixed. |
+| The preview while editing a sketch recomputed the whole model | `preview(cmd, at)` and `evaluate` ending at a given feature. |
 
-## D26 Formát exportu: STL, 3MF později
+## D26 Export format: STL, 3MF later
 
-Rozhodnuto 2026-11-13. PoC exportuje jen binární STL, které engine zapíše sám. 3MF je budoucí funkce.
+Decided 2026-11-13. The PoC exports only binary STL, which the engine writes itself. 3MF is a future function.
 
-Důvod odkladu: 3MF je archiv ZIP s XML, takže by engine potřeboval zápis ZIP (vlastní, nebo knihovnu ke schválení podle D2).
+The reason for the delay: 3MF is a ZIP archive with XML, so the engine would need to write ZIP (its own code, or a library to be approved under D2).
 
-Poznámka pro později: STL nenese topologii, 3MF ano, a dokumentace Manifoldu proto doporučuje 3MF. API s více formáty počítá (`exportMesh(format)`).
+A note for later: STL does not carry topology, 3MF does, and the documentation of Manifold therefore recommends 3MF. The API allows for more formats (`exportMesh(format)`).
 
-## D27 Úpravy z třetí revize
+## D27 Changes from the third review
 
-Dvě nezávislé revize 2026-11-13. Všechny nálezy jsem ověřil a považuji je za oprávněné; dva z nich jsem ověřil spikem.
+Two independent reviews on 2026-11-13. I checked all the findings and consider them justified; two of them I checked with a spike.
 
-Chyby:
+Errors:
 
-| Nález | Úprava |
+| Finding | Change |
 |---|---|
-| Posun stěn v adaptéru rozbíjel navazování na analytické stěny | Reprodukováno. Adaptér po booleanu vrací zbytky posunutých stěn do roviny (D19, bod 4). |
-| Pravidlo pro spuštění solveru nepokrývalo úpravy samotné skici | Razítko pokrývá všechny vstupy solveru; řeší se jednotně při přepočtu pro `execute`, `preview` i `batch`. |
-| Zápis výsledku solveru nezahrnoval poloměry | Poloměry jsou řešené proměnné vedle bodů (`radii`) a zapisují se atomicky s nimi. |
-| Konfliktní `coincident` mohla změnit profil | Body se spojují jen vazbou, která je skutečně splněná. |
+| The shift of faces in the adapter broke attaching to analytic faces | Reproduced. After the boolean the adapter returns the remainders of shifted faces to their plane (D19, point 4). |
+| The rule for running the solver did not cover edits of the sketch itself | The stamp covers all the inputs of the solver; solving is done uniformly during the recompute for `execute`, `preview` and `batch`. |
+| Writing the result of the solver did not include radii | Radii are solved variables beside the points (`radii`) and are written atomically with them. |
+| A conflicting `coincident` could change the profile | Points are joined only by a constraint that is actually satisfied. |
 
-Mezery:
+Gaps:
 
-| Nález | Úprava |
+| Finding | Change |
 |---|---|
-| Rozbitá promítnutá hrana shodila celou skicu | Je to varování; hrana zůstane zmrazená na posledních platných hodnotách. |
-| Kontrakt příkazů nebyl popsaný | Doplněn typ `Command` a `CommandResult`, pravidla validace, generování ID volajícím, kaskády mazání, `load`. |
-| Tažení bylo ověřené jinak, než je navržené | Doplněn spike bezstavového tažení; drží. |
-| Detekce profilů byla nedourčená | Oblast je omezená stěna rovinného grafu; ruší se sdílené křivky; křížení křivek je chyba `invalidProfile`. |
-| Čísla stěn neseděla s cache | Tabulka čísel je součást memoizovaného stavu a je jedna společná. |
-| Zápis výsledku vynucuje plný přepočet | Zapsáno jako vědomý důsledek D12. |
-| Nadbytečné vazby neměly určený význam | Nejsou chyba ani varování. |
-| Chybělo chování pro prázdný výsledek | Varování `noEffect`, chyba `emptyResult`. |
-| Nedefinované konvence | Doplněno pořadí jmen, řazení ID, zákaz `/` v ID, orientace úhlu. |
-| Validační scénáře nepokrývaly řadu funkcí | Přidány scénáře 5 a 6. |
-| Výřez skrz | Zapsáno jako budoucí funkce. |
+| A broken projected edge brought down the whole sketch | It is a warning; the edge stays frozen at its last valid values. |
+| The contract of commands was not described | Added the types `Command` and `CommandResult`, the rules of validation, IDs generated by the caller, cascades of removal, `load`. |
+| Dragging was checked differently from how it is designed | Added a spike of stateless dragging; it holds. |
+| Detection of profiles was underspecified | A region is a bounded face of the planar graph; shared curves cancel out; crossing curves are the error `invalidProfile`. |
+| Face numbers did not fit with the cache | The table of numbers is part of the memoised state and is one shared table. |
+| Writing the result forces a full recompute | Recorded as a deliberate consequence of D12. |
+| Redundant constraints had no defined meaning | They are neither an error nor a warning. |
+| Behaviour for an empty result was missing | The warning `noEffect`, the error `emptyResult`. |
+| Undefined conventions | Added the order of names, the sorting of IDs, no `/` in IDs, the orientation of angles. |
+| The validation scenarios did not cover a number of functions | Added scenarios 5 and 6. |
+| A through cut | Recorded as a future function. |
 
-Rozpory a zastaralý text: referenční kóty (počítá engine, pole `measurements`), oprava promítnuté hrany v ui.md, tvrzení o Web Workeru, slib snadného přechodu na B-rep v D7, zastaralé části D6 a D8, pořadí a rozsah čísel rozhodnutí, chybějící zdůvodnění D10–D21 a D24.
+Contradictions and outdated text: reference dimensions (computed by the engine, the field `measurements`), the repair of a projected edge in ui.md, the claim about a Web Worker, the promise of an easy move to B-rep in D7, outdated parts of D6 and D8, the order and range of the decision numbers, the missing reasons for D10–D21 and D24.
 
-## D28 Úpravy ze čtvrté revize
+## D28 Changes from the fourth review
 
-Dvě nezávislé revize 2026-11-13. Každý nález je ověřený: chyby adaptéru a chování solveru spuštěním (případy jsou doplněné do spiků), ostatní proti textu dokumentů. Všechny nálezy byly oprávněné.
+Two independent reviews on 2026-11-13. Every finding is checked: errors of the adapter and behaviour of the solver by running them (the cases are added to the spikes), the others against the text of the documents. All the findings were justified.
 
-Rozpory:
+Contradictions:
 
-| Nález | Úprava |
+| Finding | Change |
 |---|---|
-| Promítnutí neukládalo druh křivky, ale validace i `load` ho potřebují znát bez přepočtu | `ExternalRef.kind`, typované hodnoty v razítku (D23). |
-| `load` vyžadoval existenci všech odkazovaných entit, takže dokument po `removeFeature` nešel načíst | Validace odděluje odkazy uvnitř skici (musí existovat vždy) a mezi features (ověřují se jen při nastavení; chybějící cíl je chyba přepočtu, ne dokumentu). |
+| A projection did not store the kind of the curve, but validation and `load` need to know it without a recompute | `ExternalRef.kind`, typed values in the stamp (D23). |
+| `load` required all referenced entities to exist, so a document could not be loaded after `removeFeature` | Validation separates references within a sketch (must always exist) and between features (checked only when set; a missing target is an error of the recompute, not of the document). |
 
-Chyby adaptéru jádra (reprodukováno, opraveno, viz D19 bod 5):
+Errors of the kernel adapter (reproduced, fixed, see D19 point 5):
 
-| Nález | Úprava |
+| Finding | Change |
 |---|---|
-| Po sjednocení zůstal bok nálitku protažený pod dosedací rovinu; po odříznutí nálitku zbyly proužky stěn | Návrat zahrnuje i hranice sousedních stěn, když posunutá stěna zanikla. |
-| Lícující nálitek s odchylkou float32 nevytvořil hranu `coplanar` a zneplatnil rovinnost horní stěny | Lícující stěny se u sjednocení také posouvají a vracejí; rovinnost se určuje vzdáleností vrcholů od roviny. |
-| Hledání dvojice stěn skončilo na první shodě, i když nevedla k posunu | Pravidlo je jednotné, posun vzniká vždy; zvětšení nástroje má přednost před zmenšením. |
-| Po válcovém výřezu ležel strop mimo rovinu o 2e-4 mm | Roviny pro posun vrcholu se berou proložené přes stěnu, úzké trojúhelníky se vynechají. |
+| After a union the side of a boss stayed extended below the seating plane; after the boss was cut off, strips of faces remained | The return also includes the boundaries of adjacent faces when the shifted face vanished. |
+| A flush boss with a float32 deviation did not create a `coplanar` edge and invalidated the planarity of the top face | Flush faces are also shifted and returned in a union; planarity is determined by the distance of vertices from the plane. |
+| The search for a pair of faces stopped at the first match, even when it did not lead to a shift | The rule is uniform; a shift always happens; enlarging the tool takes precedence over shrinking it. |
+| After a cylindrical cut the ceiling lay off its plane by 2e-4 mm | The planes for shifting a vertex are fitted over the face; narrow triangles are left out. |
 
-Při opravě vyšly najevo ještě dvě věci, které revize nenašly: výpočet posunu vrcholu byl pro jedinou šikmou rovinu numericky nestabilní a samotné slučování vrcholů nechávalo v síti nulové trojúhelníky s čísly zaniklých stěn. Obojí je opravené.
+The fix brought two more things to light that the reviews had not found: the computation of a vertex shift was numerically unstable for a single tilted plane, and merging vertices alone left null triangles with the numbers of vanished faces in the mesh. Both are fixed.
 
-Mezery:
+Gaps:
 
-| Nález | Úprava |
+| Finding | Change |
 |---|---|
-| `updateExtrude` neuměl změnit zdrojovou skicu, oprava po smazání skici znamenala nové ID | Pole `sketch` v `updateExtrude`. |
-| Přichycení na promítnutý bod mohlo vést ke křivce odkazující na odvozený bod; `removeExternal` by ji nechal bez konce | Křivka smí odkazovat jen na vlastní body a počátek; k promítnutému bodu se váže přes `coincident`. |
-| `evaluate` neměl jak dostat cíl tažení; `execute(dragPoint)` nezapisoval razítko | Parametr `drag`; tažení zapisuje proměnné i razítko. |
-| Rozdělená hrana měla jedinou lomenou čáru | `segments`, seznam úseček. |
-| Spojování bodů profilu neřeklo, co s počátkem a promítnutými body | Je tranzitivní a jde i přes ně. |
-| Druh hrany `coplanar` neměl toleranci | Úhlová tolerance enginu 1e-4 rad; délková 1e-6 mm pro skicu. |
-| Chyběly souřadné systémy základních rovin a znaménko vodorovné a svislé kóty | Doplněno do konvencí; kóty jsou orientované. |
-| planegcs: pomocné vazby v diagnostice, výpisy, vazby mezi pevnými entitami | Adaptér filtruje a vypíná výpisy; vazbu jen mezi pevnými entitami odmítá validace. Ověřeno spikem. |
-| Okrajové vstupy a potlačená feature | Nulová vzdálenost, prázdné oblasti a nekladný poloměr jsou neplatný příkaz; potlačená feature je prázdná operace. |
-| Formát razítka v `addFeature` a tolerance dotyku křivek (z kontroly oprav třetí revize) | Razítko počítá engine, volající posílá prázdné; dotyk křivek používá délkovou toleranci. |
+| `updateExtrude` could not change the source sketch; a repair after the sketch was removed meant a new ID | The field `sketch` in `updateExtrude`. |
+| Snapping to a projected point could lead to a curve referring to a derived point; `removeExternal` would leave it without an end | A curve may refer only to own points and the origin; it attaches to a projected point by `coincident`. |
+| `evaluate` had no way to get the target of a drag; `execute(dragPoint)` did not write the stamp | The parameter `drag`; dragging writes the variables and the stamp. |
+| A split edge had a single polyline | `segments`, a list of segments. |
+| Joining the points of a profile did not say what happens with the origin and projected points | It is transitive and also goes through them. |
+| The edge kind `coplanar` had no tolerance | The angular tolerance of the engine 1e-4 rad; the length tolerance 1e-6 mm for the sketch. |
+| The coordinate systems of the base planes and the sign of horizontal and vertical dimensions were missing | Added to the conventions; the dimensions are oriented. |
+| planegcs: auxiliary constraints in the diagnostics, console output, constraints between fixed entities | The adapter filters them and turns the output off; validation refuses a constraint only between fixed entities. Checked by a spike. |
+| Edge-case inputs and a suppressed feature | A zero distance, empty regions and a non-positive radius are an invalid command; a suppressed feature is an empty operation. |
+| The format of the stamp in `addFeature` and the tolerance of curves touching (from the check of the fixes of the third review) | The engine computes the stamp, the caller sends an empty one; curves touching use the length tolerance. |
 
-Volby z této revize, které vlastník projektu výslovně potvrdil 2026-11-13:
+Choices from this review that the owner explicitly confirmed on 2026-11-13:
 
-1. Druh promítnutí se ukládá do dokumentu (místo odvozování při přepočtu).
-2. Vlastní křivka nesmí odkazovat na promítnutý bod; UI vytváří vlastní bod a vazbu.
-3. Vodorovná a svislá kóta jsou orientované a smějí být záporné.
-4. V překryvu lícujících stěn u sjednocení nese plochu jméno stěny nástroje.
-5. Tečný dotyk dvou nekonstrukčních křivek mimo spojený bod zneplatní profil celé skici.
+1. The kind of a projection is stored in the document (instead of being derived during the recompute).
+2. An own curve must not refer to a projected point; the UI creates an own point and a constraint.
+3. Horizontal and vertical dimensions are oriented and may be negative.
+4. In the overlap of flush faces in a union, the area carries the name of the tool's face.
+5. A tangent touch of two non-construction curves away from a joined point invalidates the profile of the whole sketch.
 
-## D29 Náhodné testy adaptéru jádra, adaptéry v balíčcích
+## D29 Random tests of the kernel adapter, adapters in packages
 
-Provedeno 2026-11-13 a 14 při implementaci. Vlastník projektu zadal pokračovat samostatně; tento záznam shrnuje, co se přitom rozhodlo, a čeká na jeho potvrzení.
+Done on 2026-11-13 and 14 during the implementation. The owner asked for the work to go on autonomously; this record summarises what was decided along the way and waits for his confirmation.
 
-**Náhodné testy adaptéru jádra.** 46 pevných případů prošlo, ale adaptér je založený na tolerancích a pevné případy pokrývají jen situace, které někoho napadly. Generátor proto skládá náhodné posloupnosti sjednocení a rozdílů kvádrů, trojbokých hranolů a válců, které často lícují, v náhodně natočené poloze, a výsledek porovnává se dvěma orákuly nezávislými na adaptéru (mřížkový model se jmény stěn, řezy po vrstvách). Popis a čísla jsou v architecture.md, Výsledky spiků.
+**Random tests of the kernel adapter.** 46 fixed cases passed, but the adapter is built on tolerances and fixed cases cover only situations someone thought of. A generator therefore composes random sequences of unions and differences of boxes, triangular prisms and cylinders, which are often flush, in a randomly rotated position, and compares the result with two oracles independent of the adapter (a grid model with face names, slices by layers). The description and the numbers are in architecture.md, Results of the spikes.
 
-Co náhodné testy v adaptéru změnily (D19, bod 6):
-- Návrat posunutých stěn se nepočítá posunem „do roviny", ale přesně z původní geometrie nástroje a tělesa. Zbytková odchylka zlomku přesahu jinak při pozdější operaci přeložila síť.
-- Síť se čistí po každém booleanu, i když se nic neposouvalo.
-- Adaptér po každém booleanu ověří, že výsledek je uzavřená plocha, a jinak skončí chybou (`kernelFailure`). Manifold takovou síť při dalším booleanu načte bez chyby a potichu z ní část zahodí.
-- Těleso, které se samo sebe dotýká jen hranou, má v místě dotyku zdvojené vrcholy.
-- Čištění rozlišuje nulový trojúhelník (vrcholy v přímce) od jehly (dva blízké vrcholy, třetí daleko). Jehla do sítě patří.
-- Adaptér ověřuje i to, že žádná rovinná stěna nemá přeložený trojúhelník.
+What the random tests changed in the adapter (D19, point 6):
+- The return of shifted faces is not computed by a shift "into the plane" but exactly from the original geometry of the tool and the body. Otherwise a residual deviation of a fraction of the overlap folded the mesh in a later operation.
+- The mesh is cleaned after every boolean, even when nothing was shifted.
+- After every boolean the adapter checks that the result is a closed surface, and otherwise ends with an error (`kernelFailure`). Manifold loads such a mesh in the next boolean without an error and silently drops part of it.
+- A body that touches itself only along an edge has doubled vertices at the place of the touch.
+- Cleaning tells a null triangle (vertices on a line) from a needle (two close vertices, the third far away). A needle belongs in the mesh.
+- The adapter also checks that no planar face has a folded triangle.
 
-Zvažované a zamítnuté:
-- Čistit síť průchodem přes Manifold. Nulové trojúhelníky sbalil špatným směrem.
-- Slučovat vrcholy jen po hranách (sbalení hrany), aby nevznikaly hrany se čtyřmi trojúhelníky. Nenašly se tak blány ze dvou listů, které na sebe po návratu dolehly, a jádro je pak načetlo špatně (objem menší o stovky mm³).
-- Dělit při čištění každou hranu, u které leží cizí vrchol blízko její přímky. U zdravých hran pod malým úhlem se střídaly dva neuzavřené stavy; dělí se jen hrany bez protějšku.
-- Nechat vrcholy, které jádro vrátí bitově na stejném místě, vždy oddělené (kvůli dotyku hranou). Na stejném místě ale vycházejí i vrcholy, které se spojit musí.
+Considered and rejected:
+- Cleaning the mesh by a pass through Manifold. It collapsed null triangles in the wrong direction.
+- Merging vertices only along edges (edge collapse), so that no edges with four triangles arise. That way sheets of two layers that came to lie on each other after the return were not found, and the kernel then loaded them wrongly (a volume smaller by hundreds of mm³).
+- Splitting, during cleaning, every edge that has a foreign vertex close to its line. For healthy edges at a small angle two unclosed states alternated; only edges without a counterpart are split.
+- Always keeping separate the vertices that the kernel returns at the same place to the bit (because of touching along an edge). But vertices that must be joined also come out at the same place.
 
-Cena: adaptér jádra má asi 900 řádků a je nejsložitější částí mimo engine. Chování stojí na tolerancích odvozených z rozměru modelu; správnost není dokázaná, jen ověřená testy. Selhání je ale bezpečné: adaptér vrátí chybu, ne poškozené těleso.
+The cost: the kernel adapter has about 900 lines and is the most complex part outside the engine. Its behaviour rests on tolerances derived from the size of the model; its correctness is not proven, only checked by tests. A failure is safe, though: the adapter returns an error, not a damaged body.
 
-Stav po opravách z revize: 46 pevných případů prošlo; z 30 000 náhodných žádný vadný výsledek, tři adaptér odmítl chybou (jeden v návrhovém rozsahu).
+State after the fixes from the review: 46 fixed cases passed; of 30,000 random ones none gave a defective result, three were refused by the adapter with an error (one within the design range).
 
-**Nezávislé revize adaptérů (2026-11-14).** Oba adaptéry prošly revizí, která nálezy ověřovala spuštěním. Všechny níže uvedené nálezy se potvrdily.
+**Independent reviews of the adapters (2026-11-14).** Both adapters went through a review that checked its findings by running them. All the findings listed below were confirmed.
 
-Adaptér jádra, opraveno:
+Kernel adapter, fixed:
 
-| Nález | Úprava |
+| Finding | Change |
 |---|---|
-| Zmenšený nástroj přeskočil stěnu tělesa těsně za svou stěnou a nechal po ní blánu, bez chyby | Posun nejvýš do poloviny mezery; výsledek se kontroluje na přeložené trojúhelníky. |
-| Čištění bralo zdravé tenké trojúhelníky jako nulové (blok pronikající bokem o 0,005 až 0,02 mm: chyba ve třetině až polovině poloh) | Dělí se jen hrany bez protějšku; nulový trojúhelník se určuje přísněji. |
-| Tolerance nepočítaly se vzdáleností od počátku (model 450 mm od počátku: chyby i potichu vadné výsledky) | Rozměr pro tolerance je nejméně dvojnásobek největší souřadnice. |
-| Po dotyku hranou se při každém dalším booleanu zdvojnásobil počet trojúhelníků (28 → 32 980 po dvanácti operacích) | Zdvojí se existující vrchol místo nového uprostřed hrany. |
-| Náhodné testy nezkoušely odchylku boku mezi přesností float32 a tolerancí | Přidána odchylka ±3e-5; případy s ní smějí skončit chybou, ne vadným výsledkem. |
+| A shrunk tool skipped a face of the body just behind its own face and left a sheet of it, without an error | The shift goes at most to half the gap; the result is checked for folded triangles. |
+| Cleaning took healthy thin triangles as null (a block penetrating a side by 0.005 to 0.02 mm: an error in a third to a half of the positions) | Only edges without a counterpart are split; a null triangle is determined more strictly. |
+| The tolerances did not account for the distance from the origin (a model 450 mm from the origin: errors and silently defective results) | The size for the tolerances is at least twice the largest coordinate. |
+| After touching along an edge, the number of triangles doubled with every further boolean (28 → 32,980 after twelve operations) | An existing vertex is doubled instead of a new one in the middle of the edge. |
+| The random tests did not try a deviation of a side between float32 precision and the tolerance | A deviation of ±3e-5 was added; cases with it may end with an error, not a defective result. |
 
-Adaptér jádra, ponecháno jako popsané omezení (architecture.md, Omezení): rozlišení kolem 1e-4 rozměru modelu u lícujících stěn, shodné válcové plochy, úzké stěny nástroje, průnik, kvadratická složitost návratu stěn.
+Kernel adapter, kept as a described limit (architecture.md, Limits): a resolution of about 1e-4 of the model size for flush faces, coincident cylindrical surfaces, narrow faces of the tool, intersection, quadratic complexity of the return of faces.
 
-Obal jádra, opraveno: obalová funkce `triangulate` v knihovně neuvolňovala paměť WASM (adaptér volá funkci pod ní a uvolňuje sám); vadný vstup (neuzavřená nebo obrácená síť, špatný počet nebo rozsah čísel stěn) se odmítne před předáním knihovně; `triangulate` ověřuje vstup a má popsanou orientaci smyček.
+Kernel wrapper, fixed: the wrapper function `triangulate` in the library did not free WASM memory (the adapter calls the function below it and frees the memory itself); a defective input (an unclosed or inverted mesh, a wrong count or range of face numbers) is refused before it is passed to the library; `triangulate` checks its input and has the orientation of loops described.
 
-Adaptér solveru, opraveno:
+Solver adapter, fixed:
 
-| Nález | Úprava |
+| Finding | Change |
 |---|---|
-| Tažení ve skice s nadbytečnou vazbou skončilo konfliktem (nadbytečné vazby budou běžné) | Nadbytečné vazby se zjistí bez tažení a při tažení se vynechají. |
-| Stav `Converged` se bral jako úspěch, i když nadbytečná vazba zůstala nesplněná | Řeší se znovu z výsledku až do stavu `Success`. |
-| Stupně volnosti a nadbytečné vazby popisovaly výchozí odhad, ne výsledek; opakované řešení z výsledku dalo jinou diagnostiku | Diagnostika se bere z průchodu, který z výsledku vychází. |
-| Řešení se záporným poloměrem; oblouk s pevnými body na různých poloměrech | Takový výsledek je `failed`. |
-| Poloměr pevné kružnice s volným středem se měnil v posledních bitech | Vrací se vstupní hodnota. |
-| Neznámý druh křivky se bral jako oblouk; nepřípustné ID ve `fixed` se tiše ignorovalo | Výjimka. |
-| Výchozí algoritmus často nedoběhl | Záložní Levenberg–Marquardt. |
+| Dragging in a sketch with a redundant constraint ended in a conflict (redundant constraints will be common) | Redundant constraints are found without the drag and left out while dragging. |
+| The state `Converged` was taken as success even when a redundant constraint stayed unsatisfied | Solved again from the result until the state `Success`. |
+| Degrees of freedom and redundant constraints described the initial guess, not the result; solving again from the result gave different diagnostics | The diagnostics are taken from the pass that starts from the result. |
+| A solution with a negative radius; an arc with fixed points on different radii | Such a result is `failed`. |
+| The radius of a fixed circle with a free centre changed in its last bits | The input value is returned. |
+| An unknown kind of curve was taken as an arc; an invalid ID in `fixed` was silently ignored | An exception. |
+| The default algorithm often did not finish | A fallback to Levenberg–Marquardt. |
 
-Adaptér solveru, ponecháno jako popsané omezení (architecture.md, planegcs): falešný konflikt nadbytečné vazby z nepřesného odhadu, kóta mezi totožnými body, překlopení oblouku.
+Solver adapter, kept as a described limit (architecture.md, planegcs): a false conflict of a redundant constraint from an imprecise initial guess, a dimension between coincident points, an arc flipping over.
 
-Testy: doplněny případy ke každému opravenému nálezu a kontroly, že vazby dávají geometrii, kterou slibují (dosavadní testy mapování hlídaly jen úbytek stupňů volnosti).
+Tests: cases were added for every fixed finding, and checks that constraints give the geometry they promise (the existing tests of the mapping guarded only the loss of degrees of freedom).
 
-**Adaptéry v balíčcích (D15).** Workspace je založený: `packages/engine` (zatím jen typy přepsané z architecture.md), `packages/kernel-manifold`, `packages/solver-planegcs`. Případy ze spiků běží jako testy ve Vitestu, tisíc náhodných případů při každém spuštění. Kopie adaptéru jádra ve `spikes/` zanikla, aby neexistovaly dvě verze; ve `spikes/` zůstaly jen skripty ověřující samotné knihovny.
+**Adapters in packages (D15).** The workspace is set up: `packages/engine` (so far only the types copied from architecture.md), `packages/kernel-manifold`, `packages/solver-planegcs`. The cases from the spikes run as tests in Vitest, a thousand random cases on every run. The copy of the kernel adapter in `spikes/` was removed so that there are not two versions; only scripts that check the libraries themselves stayed in `spikes/`.
 
-Drobná rozhodnutí při tom:
-- Balíčky se neskládají, vystavují přímo zdrojový TypeScript (`exports` míří na `src/index.ts`). Sestavení bude potřeba až pro `app`.
-- pnpm se spouští přes `npx pnpm@9`, globálně nainstalovaný není. Verze je zapsaná v `packageManager`.
-- Vývojové závislosti navíc k D15: `typescript`, `vitest`, `@types/node`. Jsou to nástroje, ne knihovny v běhu; přesto je vlastník projektu výslovně neschvaloval.
-- Adaptér solveru vyhodí výjimku na vstup, který odkazuje na neexistující bod nebo křivku nebo dává tečnost dvou úseček. Takový vstup má odmítnout validace příkazů; výjimka je pojistka.
-- Adaptér jádra vyhodí výjimku i na vstupní těleso, které jádro nepřijme.
+Small decisions made along the way:
+- The packages are not built; they export the TypeScript source directly (`exports` points to `src/index.ts`). A build will be needed only for `app`.
+- pnpm is run through `npx pnpm@9`; it is not installed globally. The version is written in `packageManager`.
+- Development dependencies beyond D15: `typescript`, `vitest`, `@types/node`. They are tools, not runtime libraries; still, the owner did not approve them explicitly.
+- The solver adapter throws an exception on an input that refers to a nonexistent point or curve or gives a tangency of two lines. Such an input is to be refused by the validation of commands; the exception is a safeguard.
+- The kernel adapter also throws an exception on an input body that the kernel does not accept.
 
-## D30 Rozhodnutí z implementace enginu
+## D30 Decisions from the implementation of the engine
 
-Provedeno 2026-11-14. Engine je napsaný podle architecture.md; tady jsou místa, kde návrh nechával volbu na implementaci. Čeká na potvrzení vlastníka projektu.
+Done 2026-11-14. The engine is written by architecture.md; here are the places where the design left the choice to the implementation. Waits for the owner's confirmation.
 
-Příkazy a dokument:
-- **`dragPoint` nejde zařadit do dávky.** Tažení dokument nemění, cíl dostane přepočet; v dávce by nebylo jasné, kterému stavu patří. Zvažováno: brát poslední tažení v dávce.
-- **ID jsou jedinečná v celém dokumentu**, napříč features a entitami všech skic (tak to říká konvence), a nesmějí být prázdná ani `__proto__`.
-- **`load` nekontroluje typ a pořadí cíle odkazu mezi features**, jen jeho tvar. Důvod: po smazání feature jde přidat jinou se stejným ID na jiné místo, a dokument vzniklý povolenými příkazy se musí dát načíst. Špatný cíl se projeví při přepočtu jako `brokenReference`.
-- **`updateExtrude` ověřuje jen odkazy, které příkaz mění.** Jinak by nešla změnit vzdálenost u extrude, jehož skica byla smazána.
-- **`updateExternal` zahodí zmrazené hodnoty promítnutí**, protože patřily původní hraně.
-- **Oblasti a jméno hrany se ukládají v kanonickém tvaru** (seřazená ID křivek, stěny hrany v pořadí jmen), i když je volající pošle jinak.
-- **`load` zapisuje výsledek řešení stejně jako `execute`** a maže historii undo. `preview` do vráceného dokumentu výsledek řešení nezapisuje.
-- **`execute`, které dokument nezmění** (tažení, které solver nevyřeší), nepřidá krok undo.
+Commands and the document:
+- **`dragPoint` cannot be put into a batch.** A drag does not change the document; the recompute gets the target; in a batch it would not be clear which state it belongs to. Considered: taking the last drag in the batch.
+- **IDs are unique in the whole document**, across features and the entities of all sketches (as the convention says), and must not be empty or `__proto__`.
+- **`load` does not check the type and order of the target of a reference between features**, only its form. The reason: after a feature is removed, another with the same ID can be added at another place, and a document made by allowed commands must load. A wrong target shows in the recompute as `brokenReference`.
+- **`updateExtrude` checks only the references the command changes.** Otherwise the distance of an extrude whose sketch was removed could not be changed.
+- **`updateExternal` drops the frozen values of a projection**, because they belonged to the original edge.
+- **Regions and the name of an edge are stored in canonical form** (sorted curve IDs, the faces of an edge in the order of names), even when the caller sends them otherwise.
+- **`load` writes the result of solving just as `execute` does** and clears the undo history. `preview` does not write the result of solving into the returned document.
+- **An `execute` that does not change the document** (a drag the solver does not solve) adds no undo step.
 
-Skica:
-- **Razítko** je 64bitový otisk kanonického zápisu vstupu solveru: křivky bez konstrukčního příznaku, řídicí vazby, hodnoty promítnuté geometrie. Referenční kóty a konstrukční příznak ho nemění.
-- **Tečné napojení ve společném bodě je platné** (zaoblení rohu). Dotyk se bere jako dotyk ve vrcholu až do vzdálenosti √(8·R·tolerance) od něj, protože tečné křivky leží pod tolerancí i kus od bodu dotyku. Cena: skutečné křížení blíž než tato vzdálenost (setiny mm při R = 10) se nepozná.
-- **Křivka nulové délky** (úsečka nebo oblouk se spojenými konci) zneplatní profil.
-- **Křivky, které žádnou plochu neuzavírají**, se poznají tak, že mají po obou stranách stejnou stěnu grafu; platí to i pro spojku mezi dvěma uzavřenými tvary.
+Sketch:
+- **The stamp** is a 64-bit hash of the canonical form of the solver input: the curves without the construction flag, the driving constraints, the values of projected geometry. Reference dimensions and the construction flag do not change it.
+- **A tangent join at a common point is valid** (a corner fillet). A touch is taken as a touch at the vertex up to a distance of √(8·R·tolerance) from it, because tangent curves lie within the tolerance some way from the point of contact as well. The cost: a real crossing closer than this distance (hundredths of a mm at R = 10) is not recognised.
+- **A curve of zero length** (a line or an arc with joined ends) invalidates the profile.
+- **Curves that enclose no area** are recognised by having the same face of the graph on both sides; this also holds for a connector between two closed shapes.
 
-Tělesa a přepočet:
-- **Oblasti, které se dotýkají jen v bodě** (nebo oblast, jejíž hranice prochází jedním bodem dvakrát), dají těleso, které se samo sebe dotýká svislou hranou. Síť nástroje má v tom místě zdvojené vrcholy, aby byla uzavřenou plochou.
-- **Bez účinku (`noEffect`)**: objem tělesa se nezměnil (relativně do 1e-6); u výřezu navíc ve výsledku nesmí být žádná stěna nástroje. U přidání být může: nástroj uvnitř tělesa, jehož stěna lícuje se stěnou tělesa, ji podle D28 přejmenuje. Cena: přidání nebo výřez menší než miliontina objemu tělesa se ohlásí jako bez účinku.
-- **Feature v chybě nebo bez účinku nepřidá jména stěn do tabulky.**
-- **Stěny a hrany tělesa se počítají až pro výsledek přepočtu** a pamatují se podle identity sítě.
-- **Scénáře jsou ve vlastním balíčku** `packages/scenarios`, aby `engine` nezávisel na adaptérech ani v testech.
+Bodies and the recompute:
+- **Regions that touch only at a point** (or a region whose boundary passes one point twice) give a body that touches itself along a vertical edge. The mesh of the tool has doubled vertices at that place, so that it is a closed surface.
+- **No effect (`noEffect`)**: the volume of the body did not change (relatively within 1e-6); for a cut, moreover, no face of the tool may be in the result. For an addition there may be one: a tool inside the body whose face is flush with a face of the body renames it by D28. The cost: an addition or a cut smaller than a millionth of the volume of the body is reported as having no effect.
+- **A feature in error or with no effect adds no face names to the table.**
+- **The faces and edges of a body are computed only for the result of the recompute** and are remembered by the identity of the mesh.
+- **The scenarios are in a package of their own**, `packages/scenarios`, so that `engine` does not depend on the adapters, not even in tests.
 
-Doplněk po nezávislé revizi enginu (2026-11-14). Revize našla čtrnáct chyb, všechny reprodukované spuštěním kódu; opravy mají testy v `packages/engine/test/review.test.ts` a `packages/scenarios/test/review.test.ts`.
+Addition after the independent review of the engine (2026-11-14). The review found fourteen errors, all reproduced by running the code; the fixes have tests in `packages/engine/test/review.test.ts` and `packages/scenarios/test/review.test.ts`.
 
-| Nález | Oprava |
+| Finding | Fix |
 |---|---|
-| Úsečka a oblouk vycházející z vrcholu tečně stejným směrem: pořadí kolem vrcholu určoval šum solveru, takže oblasti chyběly nebo byly špatně (podle natočení skici ve třetině případů) | Pořadí se bere podle směru k bodu křivky v malé vzdálenosti od vrcholu, ne podle tečny |
-| ID nebo odkaz se jménem vlastnosti objektu (`constructor`, `toString`) shodily přepočet výjimkou nebo daly špatný kód chyby | Taková ID jsou nepřípustná a odkazy se hledají jen mezi vlastními klíči záznamů |
-| Přidání drobného výstupku na velké těleso se ohlásilo jako bez účinku | Změna objemu se měří proti menšímu z obou těles |
-| Tažení, které solver nevyřešil, nechalo ve stavu enginu přechodný konflikt | Takové tažení stav nemění |
-| Kružnice s obřím poloměrem vyžádala nekonečně mnoho úseček a vyčerpala paměť | Strop 4096 úseček na křivku, čísla dokumentu v rozsahu ±1e9 |
-| Křivka těsně míjející oblouk (pod tolerancí dělení) dala těleso, které se samo protíná a na kterém selhal každý další boolean | Profil se po rozdělení oblouků ověří znovu; křížení nebo splasknutá oblast ho zneplatní |
-| Bod smazaný a v téže dávce přidaný pod stejným ID zůstal nevyřešený, protože otisk vstupů solveru se nezměnil | Nový bod a nová křivka ruší razítko |
-| Konstrukční příznak měnil pořadí klíčů, takže uložení, načtení a uložení nedalo stejný text | Pořadí klíčů je stejné jako při načtení |
-| `load` smazal historii dřív, než přepočet doběhl | Historie se maže až po úspěšném přepočtu |
-| Příkazy bez účinku (přejmenování na stejné jméno, tažení plně určeného bodu) přidávaly krok undo | Krok undo vzniká jen změnou obsahu |
-| Výjimka posluchače připravila ostatní o zprávu; vnořené volání enginu doručilo stavy ve špatném pořadí | Viz „Chování fasády" v architecture.md |
-| Tatáž oblast dvakrát skončila zavádějící chybou jádra | Oblasti se při validaci slučují |
-| Pomocná tabulka přepočtu rostla s každou feature, která kdy existovala | Tabulka žije jen po dobu jednoho přepočtu |
-| Drobnosti: záporná nula, vzdálenost 1e300, záporný poloměr zmrazeného promítnutí | Validace |
+| A line and an arc leaving a vertex tangentially in the same direction: the order around the vertex was decided by the noise of the solver, so regions were missing or wrong (in a third of the cases, by the rotation of the sketch) | The order is taken by the direction to a point of the curve a small distance from the vertex, not by the tangent |
+| An ID or a reference named like an object property (`constructor`, `toString`) brought down the recompute with an exception or gave a wrong error code | Such IDs are not allowed and references are looked up only among the own keys of the records |
+| Adding a small boss to a large body was reported as having no effect | The change of volume is measured against the smaller of the two bodies |
+| A drag the solver did not solve left a transient conflict in the state of the engine | Such a drag does not change the state |
+| A circle with a huge radius asked for infinitely many segments and exhausted memory | A ceiling of 4096 segments per curve, document numbers in the range ±1e9 |
+| A curve passing just by an arc (below the tolerance of the division) gave a self-intersecting body on which every further boolean failed | The profile is checked again after the arcs are divided; a crossing or a collapsed region invalidates it |
+| A point removed and added in the same batch under the same ID stayed unsolved, because the hash of the solver inputs did not change | A new point and a new curve clear the stamp |
+| The construction flag changed the order of keys, so save, load and save did not give the same text | The order of keys is the same as on load |
+| `load` cleared the history before the recompute finished | The history is cleared only after a successful recompute |
+| Commands with no effect (renaming to the same name, dragging a fully constrained point) added an undo step | An undo step arises only from a change of content |
+| An exception in a listener deprived the others of the message; a nested call of the engine delivered states in the wrong order | See "Behaviour of the facade" in architecture.md |
+| The same region twice ended in a misleading kernel error | Regions are merged during validation |
+| An auxiliary table of the recompute grew with every feature that ever existed | The table lives only for the duration of one recompute |
+| Small things: negative zero, a distance of 1e300, a negative radius of a frozen projection | Validation |
 
-Rozhodnutí, která z toho plynou:
-- **Platnost profilu závisí i na `chordTolerance`.** Tvar, který je geometricky v pořádku, ale jemnější než dělení oblouků, je neplatný. Zvažováno: vyžadovat u přesných křivek odstup větší než výška úseče (bez druhé kontroly; vyžadovalo by počítat vzdálenost úsečky od oblouku a oblouku od oblouku) a zjemnit dělení jen v místě těsného míjení (složitější, sousední oblasti by přestaly sdílet vrcholy).
-- **Odkaz na stěnu nebo hranu zahrnuje extrude, který je pojmenoval:** skicu na dně kapsy nejde přesunout před výřez, který kapsu vytvořil.
-- **`getState(at)` s neznámou feature je výjimka, ne chybový výsledek:** je to chyba volajícího, ne stav dokumentu.
-- **Posluchač, který vyhodí výjimku, shodí volání `execute` až po zápisu stavu.** Zvažováno: výjimky posluchačů tiše zahodit (chyba v UI by zůstala neviditelná).
+Decisions that follow from this:
+- **The validity of a profile also depends on `chordTolerance`.** A shape that is geometrically fine but finer than the division of arcs is invalid. Considered: requiring a clearance larger than the sagitta for exact curves (without the second check; it would require computing the distance of a line from an arc and of an arc from an arc) and refining the division only where curves pass close (more complex; adjacent regions would stop sharing vertices).
+- **A reference to a face or an edge includes the extrude that named it:** a sketch on the bottom of a pocket cannot be moved before the cut that made the pocket.
+- **`getState(at)` with an unknown feature is an exception, not an error result:** it is a mistake of the caller, not a state of the document.
+- **A listener that throws an exception brings down the call of `execute` only after the state is written.** Considered: silently dropping the exceptions of listeners (an error in the UI would stay invisible).
 
-Co revize našla a zůstává: skutečné křížení blíž než √(8·R·tolerance) od společného vrcholu se nepozná (viz výše); `add` kusu, který se tělesa nedotýká, dá jedno těleso se dvěma částmi a stav `ok`; validační scénáře nepokrývají samostatně moduly `solid.ts` a `evaluate.ts` (jsou ověřené jen přes scénáře a náhodné posloupnosti revize).
+What the review found and remains: a real crossing closer than √(8·R·tolerance) to a common vertex is not recognised (see above); an `add` of a piece that does not touch the body gives one body with two parts and the state `ok`; the validation scenarios do not cover the modules `solid.ts` and `evaluate.ts` on their own (they are checked only through the scenarios and the random sequences of the review).
 
-## D31 Ukázková aplikace
+## D31 Demo application
 
-Provedeno 2026-11-14. `packages/app` je ukázkové UI podle [ui.md](ui.md). Čeká na potvrzení vlastníka projektu.
+Done 2026-11-14. `packages/app` is a demo UI by [ui.md](ui.md). Waits for the owner's confirmation.
 
-Knihovny a nástroje:
-- **three.js** (`three` 0.187) pro vykreslení. Je v návrhu od začátku (D15, architecture.md).
-- **Vite** (8.x) jako vývojový server a sestavení, **`@types/three`** pro typy. Jsou to vývojové nástroje, v běhu aplikace nejsou; vlastník projektu je výslovně neschvaloval. Zvažováno: esbuild s vlastním skriptem (méně závislostí, ale ruční obsluha WASM souborů a obnovování stránky).
-- **Bez UI frameworku.** Panely se při změně stavu postaví znovu z `EngineState` malou pomocnou funkcí. Zvažováno: React nebo Svelte; pro rozsah PoC by přidaly závislost a sestavovací krok bez přínosu.
+Libraries and tools:
+- **three.js** (`three` 0.187) for rendering. It has been in the design from the start (D15, architecture.md).
+- **Vite** (8.x) as the development server and build, **`@types/three`** for the types. They are development tools, not present when the app runs; the owner did not approve them explicitly. Considered: esbuild with a script of our own (fewer dependencies, but WASM files and page reloading handled by hand).
+- **No UI framework.** Panels are rebuilt from `EngineState` by a small helper function when the state changes. Considered: React or Svelte; for the scope of the PoC they would add a dependency and a build step with no benefit.
 
-Rozdělení: `viewport.ts` kreslí obecný popis scény a o enginu neví; `sketch-view.ts` a `sketch-commands.ts` jsou čisté funkce (geometrie skici, příkazy nástrojů, vazby z výběru) a mají testy proti skutečnému enginu v Node; `app.ts` drží stav UI. Engine se o UI nedozvěděl nic nového: aplikace používá jen veřejné API a žádná změna enginu kvůli ní nebyla potřeba.
+The split: `viewport.ts` draws a general description of the scene and knows nothing of the engine; `sketch-view.ts` and `sketch-commands.ts` are pure functions (the geometry of a sketch, the commands of tools, constraints from a selection) and have tests against the real engine in Node; `app.ts` holds the state of the UI. The engine learned nothing new about the UI: the app uses only the public API and no change of the engine was needed for it.
 
-Co UI rozhoduje samo (ui.md to nechával na něm):
-- **Pohled** je rovnoběžný (bez perspektivy). Levé tlačítko vybírá a kreslí, pravé otáčí, kolečko přibližuje, prostřední nebo Shift + pravé posouvá. Bez myši (touchpad): Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, posun dvěma prsty nebo roztažení přibližuje.
-- **Výběr v pohledu**: hrana má přednost před stěnou, stěna před rovinou. Rovinu jde v pohledu vybrat jen tam, kde pod kurzorem není těleso; základní roviny jdou zvolit i tlačítkem. Důvod: základní roviny procházejí modelem a zakrývaly by stěny.
-- **ID nových entit**: předpona a pořadové číslo (`p12`, `c7`, `k3`, `s2`), které v dokumentu není; čítač se během sezení nevrací. Cena: ID entity smazané v dřívějším sezení se může použít znovu. Zvažováno: náhodná ID (nikdy se neopakují, ale v seznamu vazeb se nedají číst).
-- **Skica na stěně promítne její obrys** hned při založení, v jednom kroku undo se založením skici.
-- **Nová kóta dostane současnou míru** zaokrouhlenou na setinu milimetru (úhel na celé stupně) a upravuje se v seznamu vazeb. Kótu jen mezi pevnými entitami engine jako řídicí odmítne; UI ji přidá jako referenční a oznámí to.
-- **Řetěz úseček** pokračuje z konce poslední úsečky a končí napojením na existující bod nebo klávesou Esc. Odvozuje se jen vodorovnost a svislost volného konce.
-- **Smazání křivky** smaže i její body, které už nic nepoužívá.
-- **Značka pozice**: model se zobrazí po zvolené feature a nové features se vkládají za ni.
-- **Vysunutí a rovina** se zadávají v panelu s živým náhledem přes `preview`; dokument se změní až potvrzením. Skica s jedinou oblastí ji vybere sama; skica na stěně tělesa navrhne přidání k tomuto tělesu.
-- **Viditelnost** těles, skic a rovin je stav UI a neukládá se.
+What the UI decides on its own (ui.md left it to the UI):
+- **The view** is parallel (no perspective). The left button selects and draws, the right one rotates, the wheel zooms, the middle one or Shift + right pans. Without a mouse (touchpad): Alt/Option + drag rotates, Alt + Shift + drag pans, a two-finger scroll or a pinch zooms.
+- **Selection in the view**: an edge takes precedence over a face, a face over a plane. A plane can be selected in the view only where no body is under the cursor; base planes can also be chosen by a button. The reason: the base planes pass through the model and would cover faces.
+- **IDs of new entities**: a prefix and a sequence number (`p12`, `c7`, `k3`, `s2`) that is not in the document; the counter does not go back during a session. The cost: the ID of an entity removed in an earlier session may be used again. Considered: random IDs (never repeated, but unreadable in the list of constraints).
+- **A sketch on a face projects its outline** right when it is created, in one undo step with the creation of the sketch.
+- **A new dimension gets the current measure** rounded to a hundredth of a millimetre (an angle to whole degrees) and is edited in the list of constraints. The engine refuses a dimension only between fixed entities as a driving one; the UI adds it as a reference dimension and says so.
+- **A chain of lines** continues from the end of the last line and ends by connecting to an existing point or with the Esc key. Only horizontal and vertical are inferred for the free end.
+- **Removing a curve** also removes its points that nothing else uses.
+- **The position marker**: the model is shown after the chosen feature and new features are inserted after it.
+- **An extrusion and a plane** are entered in a panel with a live preview through `preview`; the document changes only on confirmation. A sketch with a single region selects it by itself; a sketch on a face of a body proposes an addition to that body.
+- **Visibility** of bodies, sketches and planes is UI state and is not saved.
 
-Vynecháno proti ui.md: přichycení a odvozené vazby jiné než vodorovná a svislá, umístění kóty myší (vodorovná a svislá kóta mají vlastní tlačítko), ikony vazeb v pohledu (vazby jsou v seznamu, kóty i jako popisky), oprava odkazu na cílové těleso jinak než v panelu vysunutí, dotykové ovládání.
+Left out compared with ui.md: snapping and inferred constraints other than horizontal and vertical, placing a dimension with the mouse (horizontal and vertical dimensions have a button of their own), constraint icons in the view (constraints are in the list, dimensions also as labels), repairing the reference to a target body other than in the extrusion panel, touch control.
 
-Doplněk po nezávislé revizi aplikace (2026-11-14). Revize našla jednu vážnou chybu a devět středních; opravené jsou všechny, čisté části mají testy v `packages/app/test/sketch-tools.test.ts`.
+Addition after the independent review of the app (2026-11-14). The review found one serious error and nine medium ones; all are fixed, and the pure parts have tests in `packages/app/test/sketch-tools.test.ts`.
 
-| Nález | Oprava |
+| Finding | Fix |
 |---|---|
-| Dvojklik nástrojem Úsečka (běžné ukončení řetězu) založil úsečku nulové délky a zneplatnil skicu | Křivka mezi body na stejném místě nevznikne; místo pod kurzorem se po každé změně skici počítá znovu |
-| Výběr v pohledu přežil posun značky pozice, takže šla založit skica na stěně, která v tom místě osy neexistuje | Výběr platí jen pro to, co je vidět, a končí se změnou režimu |
-| Úprava vysunutí s chybějícím cílem ho při změně vzdálenosti tiše přepsala jiným tělesem | Chybějící cíl se sám nepřepisuje |
-| Neúspěšné otevření souboru nechalo UI v rozporu samo se sebou; úspěšné nechalo skrytá tělesa z minulého dokumentu | Stav UI se vrací při chybě a čistí při úspěchu |
-| Vyprázdněné pole kóty nastavilo hodnotu 0 | Prázdný vstup hodnotu nemění |
-| Úhlová kóta těsně u −180° se zaokrouhlila na hodnotu, kterou engine odmítá | Úhel se převádí do (−π, π] |
-| Rozpracovaná rovina šla zvolit jako svůj vlastní základ | V pohledu ji vybrat nejde |
-| Tažení bodu nešlo zrušit a po ztrátě ukazatele bod dál sledoval kurzor | Esc, ztráta ukazatele i změna dokumentu tažení ruší |
-| Promítnutí, které nejde vyhodnotit, nebylo v UI vidět a nešlo zrušit ani opravit | Panel skici má seznam promítnutí se stavem, opravou a zrušením |
-| Pohled na skicu na stěně obrácené dolů byl otočený o 180° | Úklon kamery se řídí směrem normály |
+| A double click with the Line tool (the usual way to end a chain) created a line of zero length and invalidated the sketch | No curve is created between points at the same place; the place under the cursor is computed again after every change of the sketch |
+| A selection in the view survived a move of the position marker, so a sketch could be created on a face that does not exist at that point of the timeline | A selection holds only for what is visible and ends with a change of mode |
+| Editing an extrusion with a missing target silently overwrote it with another body when the distance changed | A missing target is not overwritten by itself |
+| A failed opening of a file left the UI inconsistent with itself; a successful one left hidden bodies from the previous document | The UI state is restored on an error and cleared on success |
+| An emptied dimension field set the value 0 | An empty input does not change the value |
+| An angular dimension just by −180° was rounded to a value the engine refuses | The angle is converted into (−π, π] |
+| A plane being edited could be chosen as its own base | It cannot be selected in the view |
+| Dragging a point could not be cancelled, and after the pointer was lost the point kept following the cursor | Esc, loss of the pointer and a change of the document cancel the drag |
+| A projection that cannot be evaluated was not visible in the UI and could not be removed or repaired | The sketch panel has a list of projections with their state, repair and removal |
+| The view of a sketch on a face turned downwards was rotated by 180° | The tilt of the camera follows the direction of the normal |
 
-Drobnosti opravené zároveň: stará chyba ve stavovém řádku po úspěšném příkazu, značka pozice po zmizení své feature, skrývání u přidání a výřezu (těleso se skrývá u prvku, který ho založil), odznak „Plně určená" u prázdné a nevyřešené skici, hláška u nového vysunutí bez oblastí, zaokrouhlení nové kóty, rozlišení plátna po přesunu na jiný monitor. Undo a redo jsou při rozpracovaném vysunutí nebo rovině vypnuté.
+Small things fixed at the same time: an old error in the status line after a successful command, the position marker after its feature vanished, hiding with an addition and a cut (a body is hidden at the feature that created it), the badge "Fully constrained" on an empty and unsolved sketch, the message for a new extrusion without regions, the rounding of a new dimension, the resolution of the canvas after moving to another monitor. Undo and redo are disabled while an extrusion or a plane is being edited.
 
-Co zůstává: export STL vždy exportuje celý model, i když je zobrazen stav u značky pozice; logika třídy `App` (režimy, události) nemá automatické testy, jen ruční průchody v prohlížeči.
+What remains: the STL export always exports the whole model, even when the state at the position marker is shown; the logic of the class `App` (modes, events) has no automated tests, only manual passes in the browser.
 
-Ověření: testy čistých modulů ve Vitestu a ruční průchod v prohlížeči (skica, kóty, vysunutí, výřez na stěně, rovina, úprava, značka pozice, potlačení, smazání s chybou závislé feature, undo a redo, uložení a načtení, export STL).
+Verification: tests of the pure modules in Vitest and a manual pass in the browser (sketch, dimensions, extrusion, cut on a face, plane, edit, position marker, suppression, removal with an error of a dependent feature, undo and redo, save and load, STL export).
 
-## D32 Diagnostika skici
+## D32 Sketch diagnostics
 
-Rozhodnuto 2026-11-14 na podnět vlastníka projektu. Skica nakreslená v aplikaci měla dva stupně volnosti a šest vazeb navíc (tři z nich přesné duplicity) a z aplikace nešlo poznat ani jedno: solver jako nadbytečné označil dvě vazby ze šesti a o tom, co je volné, neříkal nic.
+Decided 2026-11-14 at the owner's suggestion. A sketch drawn in the app had two degrees of freedom and six redundant constraints (three of them exact duplicates), and neither could be seen in the app: the solver marked two of the six constraints as redundant and said nothing about what is free.
 
-- **Dva dotazy enginu,** `diagnoseSketch` a `explainConstraint`. Jsou na vyžádání a nic nemění; popis je v architecture.md, sekce Diagnostika skici. Stejná data použije aplikace i rozhraní pro AI.
-- **Rozbor v prvním řádu z vlastních rovnic vazeb,** ne dotazy na solver. Engine má pro každý typ vazby její rovnici, z derivací ve vyřešeném stavu sestaví Jacobiho matici a stupně volnosti, závislosti i volnost entit z ní počítá lineární algebrou. Stejný rozbor dává i počet stupňů volnosti ve výsledku skici.
-  - **První verze používala solver jako orákulum** (skica se řešila znovu bez každé vazby a s každým zafixovaným bodem). Nezávislá revize ji vyvrátila: solver ohlásí cyklus shodných délek jako plně určený, u úsečky stažené do bodu mu volnost s přidanou vazbou vzroste, šum ve vyřešené poloze označil pevný bod za volný a třicet obdélníků ve skice trvalo přes dvacet sekund.
-  - **Cena rozhodnutí:** engine teď zná rovnici každé vazby, což solver dřív zapouzdřoval. Je to jedna krátká funkce na typ vazby; shodu se solverem hlídají testy a úplnost tabulky typy. Solver zůstává vyměnitelný, protože rovnice popisují význam vazby, ne způsob řešení.
-  - **Zvažováno:** rozšířit port solveru o dotaz na závislosti (planegcs takový dotaz nemá a jeho vlastní hodnost je právě to, co selhalo).
-- **Nadbytečné jsou všechny členy závislé skupiny,** ne jen poslední přidaná vazba. Uživatel si má vybrat, kterou odebere; engine k tomu nabízí jednu konkrétní sadu, ve které zůstávají starší vazby.
-- **Volnost se udává po entitách,** ne po směrech. Bod přichycený na šikmou úsečku se může hýbat v obou osách, ale má jeden stupeň volnosti; počet stupňů to vystihuje, dvojice příznaků pro osy ne. Položka „stav určenosti po jednotlivých entitách" tím přešla z budoucích funkcí do PoC.
-- **Přesnou duplicitu engine odmítne** už v příkazu (`addConstraint`, přepnutí kóty na řídicí). Druhá kóta téhož s jinou hodnotou je také duplicita: správná cesta je upravit tu stávající. Načtení duplicity přijímá, jinak by nešly otevřít dokumenty ze starší verze; hodnotu takové kóty jde dál měnit.
-- **Katalog vazeb** (`engine/src/catalog.ts`) je jediný zdroj pravdy o tom, jaké vazby engine zná, jaké mají operandy a hodnoty. Řídí se jím validace příkazů, hledání duplicit i rozbor.
-- **Validační scénář 7** (skica krok za krokem s diagnostikou) a testy nad skicou, ze které podnět vzešel.
-- **Zobrazení v aplikaci.** V seznamu vazeb je označená jen sada navržená k odebrání, ne všechny členy závislých skupin: souhrn „6 vazeb navíc" tak odpovídá šesti označeným řádkům. Z čeho vazba plyne, ukáže kliknutí na ni (podbarvení v seznamu, zvýraznění v pohledu, věta v panelu). Hromadně jde smazat jen duplicity; u ostatních je na uživateli, kterou vazbu ze skupiny nechá. Volné entity jsou modré a určené tmavé, jak je v CAD zvykem. Podrobnosti jsou v ui.md, Stav implementace.
+- **Two queries of the engine,** `diagnoseSketch` and `explainConstraint`. They run on request and change nothing; the description is in architecture.md, section Sketch diagnostics. The app and the interface for AI use the same data.
+- **A first-order analysis from the engine's own equations of constraints,** not queries to the solver. The engine has the equation of every type of constraint; from the derivatives in the solved state it assembles the Jacobian matrix and computes the degrees of freedom, the dependencies and the freedom of entities from it by linear algebra. The same analysis also gives the number of degrees of freedom in the result of the sketch.
+  - **The first version used the solver as an oracle** (the sketch was solved again without each constraint and with each point fixed). An independent review refuted it: the solver reports a cycle of equal lengths as fully constrained, for a line collapsed to a point its freedom grows with an added constraint, noise in the solved position marked a fixed point as free, and thirty rectangles in a sketch took over twenty seconds.
+  - **The cost of the decision:** the engine now knows the equation of every constraint, which the solver used to encapsulate. It is one short function per type of constraint; tests guard the agreement with the solver and types guard the completeness of the table. The solver stays replaceable, because the equations describe the meaning of a constraint, not the way of solving it.
+  - **Considered:** extending the solver port with a query for dependencies (planegcs has no such query, and its own rank is exactly what failed).
+- **All members of a dependent group are redundant,** not only the constraint added last. The user is to choose which one to remove; the engine offers one particular set for it, in which the older constraints stay.
+- **Freedom is given per entity,** not per direction. A point snapped to a tilted line can move in both axes but has one degree of freedom; the count of degrees captures that, a pair of flags for the axes does not. The item "state of constraint per entity" thereby moved from the future functions into the PoC.
+- **The engine refuses an exact duplicate** already in the command (`addConstraint`, switching a dimension to driving). A second dimension of the same thing with another value is also a duplicate: the right way is to edit the existing one. Loading accepts a duplicate, otherwise documents from an older version could not be opened; the value of such a dimension can still be changed.
+- **The catalog of constraints** (`engine/src/catalog.ts`) is the single source of truth about which constraints the engine knows and what operands and values they have. The validation of commands, the search for duplicates and the analysis follow it.
+- **Validation scenario 7** (a sketch step by step with diagnostics) and tests over the sketch the suggestion came from.
+- **Display in the app.** In the list of constraints only the set proposed for removal is marked, not all members of the dependent groups: the summary "6 redundant constraints" thus matches six marked rows. Clicking a constraint shows what it follows from (a highlight in the list, a highlight in the view, a sentence in the panel). Only duplicates can be removed in bulk; for the others it is up to the user which constraint of the group to keep. Free entities are blue and constrained ones dark, as is usual in CAD. The details are in ui.md, Implementation status.
 
-Nálezy revize a jejich řešení:
+Findings of the review and their resolution:
 
-| Nález | Řešení |
+| Finding | Resolution |
 |---|---|
-| Úsečka stažená solverem do bodu: volnost 9 místo 5, všechny vazby „navíc" | Rozbor z vlastních rovnic; tento stav pro něj není zvláštní |
-| Cyklus shodných délek: skica ohlášená jako plně určená, potřebná kóta označená za nadbytečnou, vysvětlení nebylo nejmenší | Totéž; stav skici i diagnostika teď vycházejí z jednoho rozboru |
-| Pevný bod dotyku v drážce označený za volný | Totéž; tečnost ve společném bodě má vlastní rovnici (kolmost poloměru) |
-| V načteném dokumentu s duplicitními kótami nešla změnit hodnota žádné z nich | Duplicita se hlídá jen při přepnutí referenční kóty na řídicí |
-| Nulová vzdálenost vedle totožnosti neměla vysvětlení | Nulová vzdálenost se počítá jako totožnost |
-| Diagnostika trvala sekundy až desítky sekund | Rozbor nevolá solver; 240 vazeb kolem 0,1 s |
+| A line collapsed to a point by the solver: freedom 9 instead of 5, all constraints "redundant" | Analysis from the engine's own equations; this state is nothing special for it |
+| A cycle of equal lengths: the sketch reported as fully constrained, a needed dimension marked redundant, the explanation was not the smallest | The same; the state of the sketch and the diagnostics now come from one analysis |
+| A fixed point of contact in a slot marked as free | The same; tangency at a common point has an equation of its own (the radius perpendicular) |
+| In a loaded document with duplicate dimensions the value of none of them could be changed | A duplicate is guarded only when a reference dimension is switched to driving |
+| A zero distance beside a coincidence had no explanation | A zero distance counts as a coincidence |
+| The diagnostics took seconds to tens of seconds | The analysis does not call the solver; 240 constraints in about 0.1 s |
 
-Druhá revize (už nad rozborem z vlastních rovnic) našla chyby v jeho číselné stránce:
+A second review (already over the analysis from the engine's own equations) found errors in its numerics:
 
-| Nález | Řešení |
+| Finding | Resolution |
 |---|---|
-| Tečnost se počítala jako kolmost poloměru, kdykoli konec úsečky nebo oblouku na kružnici ležel, i jen shodou rozměrů nebo díky tečnosti samé: z rozboru vypadl poloměr (volnost o 1 vyšší, tečnost „navíc") | Podoba pro společný bod se použije, jen když bod na kružnici drží ostatní vazby; pozná se to z prostoru jejich řádků |
-| Body splynulé jen na přesnost solveru: krok derivace podtekl a vazba mezi nimi se nepočítala (volnost až o 2 vyšší) | Rovnice se vyhodnocují v souřadnicích vzhledem k bodu vazby a posun se přičítá až k nim |
-| Volnost entit: pomocné vektory pokrývaly jen dva rozměry, při volnosti skici 3 a víc vycházela bodům volnost nižší | Pomocné vektory z generátoru pseudonáhodných čísel s pevným semínkem |
-| Kolmost a rovnoběžnost stejně dlouhých úseček: dělení větší z obou délek má zlom, řádek měl chybu na hraně prahu (čtverec s volností 3 místo 4, kóta navíc ve vysvětlení) | Dělitelem je délka ve vyřešeném stavu |
-| Malý útvar daleko od počátku ztrácel nadbytečnost | Souřadnice vzhledem k bodu vazby (viz výše) |
-| Vysvětlení obsahovalo vazbu, bez které se obejde (totožnost zastoupená v bázi jen jednou rovnicí) | Ze sady se zkouší ubírat, dokud vazba plyne ze zbytku |
-| Počet vazeb v sadě k odebrání závisí na pořadí, když je mezi nimi vazba se dvěma rovnicemi | Chování zůstává, dokumentace opravena: na pořadí nezávisí počet odebraných rovnic, ne vazeb |
-| Rozbor běží při každém vyhodnocení a roste se třetí mocninou | Druhý průchod ortogonalizace jen tam, kde je potřeba; cena změřena a zapsána, u stovek vazeb zůstává omezením |
+| Tangency was counted as the radius being perpendicular whenever the end of a line or an arc lay on the circle, even only by coincidence of dimensions or thanks to the tangency itself: the radius dropped out of the analysis (freedom higher by 1, the tangency "redundant") | The form for a common point is used only when the other constraints hold the point on the circle; this is recognised from the space of their rows |
+| Points coincident only to the precision of the solver: the derivative step underflowed and the constraint between them was not counted (freedom up to 2 higher) | The equations are evaluated in coordinates relative to a point of the constraint, and the offset is added only to those |
+| Freedom of entities: the auxiliary vectors covered only two dimensions; with a sketch freedom of 3 or more, points came out with a lower freedom | Auxiliary vectors from a pseudorandom number generator with a fixed seed |
+| Perpendicularity and parallelism of lines of equal length: dividing by the larger of the two lengths has a kink, the row had an error at the edge of the threshold (a square with freedom 3 instead of 4, an extra dimension in the explanation) | The divisor is the length in the solved state |
+| A small shape far from the origin lost its redundancy | Coordinates relative to a point of the constraint (see above) |
+| An explanation contained a constraint it can do without (a coincidence represented in the basis by only one equation) | Constraints are removed from the set by trial as long as the constraint follows from the rest |
+| The number of constraints in the set for removal depends on the order when a constraint with two equations is among them | The behaviour stays, the documentation is fixed: what does not depend on the order is the number of removed equations, not of constraints |
+| The analysis runs at every evaluation and grows with the cube | A second pass of orthogonalisation only where needed; the cost measured and recorded, it stays a limit for hundreds of constraints |
 
-Revize zobrazení v aplikaci:
+Review of the display in the app:
 
-| Nález | Řešení |
+| Finding | Resolution |
 |---|---|
-| Vysvětlení tvrdilo, že odebrat jde i kterákoli z vazeb, ze kterých označená plyne; u vazby se dvěma rovnicemi (střed úsečky, totožnost) to neplatí | „Kterákoli z nich" se nabízí, jen když jsou ty vazby samy celé navíc |
-| Rada k ukotvení doporučovala totožnost s počátkem i tam, kde stáhne geometrii do bodu | Radí se dvě kóty od počátku |
-| Vysvětlení nad seznamem vazeb posouvalo řádky, takže druhé kliknutí trefilo jinou vazbu | Vysvětlení je hned pod označeným řádkem |
-| Stejná referenční kóta šla přidat opakovaně (kóta mezi pevnými entitami) | Aplikace ji podruhé nepřidá |
-| U skici v konfliktu byly duplicity označené, ale chyběl jejich počet a tlačítko pro smazání | Souhrn duplicit a tlačítko jsou i u nevyřešené skici |
-| Nevyřešená skica byla celá v barvě „volné" | Neutrální barva, dokud se o volnosti nedá nic říct |
-| Vazba vynechaná při řešení (ztracená promítnutá geometrie) se vysvětlovala jako potřebná | Vlastní věta |
-| Tvary slov („body p1", „a dalších 3") | Opraveno a pokryto testy |
+| The explanation claimed that any of the constraints the marked one follows from can be removed instead; for a constraint with two equations (midpoint, coincidence) this does not hold | "Any of them" is offered only when those constraints are themselves wholly redundant |
+| The advice on anchoring recommended a coincidence with the origin even where it collapses the geometry to a point | Two dimensions from the origin are advised |
+| An explanation above the list of constraints shifted the rows, so a second click hit another constraint | The explanation is right below the marked row |
+| The same reference dimension could be added repeatedly (a dimension between fixed entities) | The app does not add it a second time |
+| For a sketch in conflict the duplicates were marked, but their count and the button to remove them were missing | The summary of duplicates and the button are also shown for an unsolved sketch |
+| An unsolved sketch was all in the "free" colour | A neutral colour while nothing can be said about freedom |
+| A constraint left out while solving (lost projected geometry) was explained as needed | A sentence of its own |
+| Grammatical forms of words in the Czech messages ("body p1", "a dalších 3") | Fixed and covered by tests |
 
-Omezení:
+Limits:
 
-- Závislost se posuzuje v prvním řádu. Vazba plynoucí z ostatních jen díky konkrétním hodnotám se jako nadbytečná neoznačí a výsledek u ní může záviset na šumu ve vyřešených polohách; tečnost ve společném bodě je ošetřená jen tehdy, když je tím bodem konec úsečky nebo oblouku a na kružnici ho drží jiné vazby než tečnosti. Skica na hraně singulárního stavu může dát výsledek závislý na pořadí vazeb.
-- Vysvětlení vazby je sada, ze které nejde nic ubrat, ne nutně ta s nejmenším počtem vazeb. Do sady k odebrání se dostane jen celá vazba; vazba, ze které je navíc jedna rovnice ze dvou, označená není.
-- Při konfliktu diagnostika nadbytečnost ani volnost nepočítá a konfliktní vazby přebírá ze solveru, který jich označí víc, než je nutné.
-- „Starší vazby zůstávají" se řídí pořadím klíčů v dokumentu; ID ve tvaru celého čísla řadí JavaScript číselně, takže u nich pořadí vzniku neplatí.
-- Nadbytečnou vazbu, kterou solver sám nepozná (třetí rovnost délek v trojúhelníku), bere solver dál jako plnohodnotnou: skica se chová jako plně určená a bodem nejde táhnout, dokud se vazba neodebere. Diagnostika ji ukáže.
-- Cena roste se třetí mocninou počtu vazeb a rozbor běží při každém vyhodnocení skici včetně kroků tažení: 240 vazeb kolem 15 ms, 480 kolem 0,1 s, 960 kolem 0,8 s. Diagnostika a vysvětlení přidají čas stejného řádu.
+- Dependence is judged to first order. A constraint that follows from the others only thanks to particular values is not marked as redundant, and the result for it may depend on noise in the solved positions; tangency at a common point is handled only when that point is the end of a line or an arc and constraints other than tangencies hold it on the circle. A sketch at the edge of a singular state may give a result that depends on the order of the constraints.
+- The explanation of a constraint is a set from which nothing can be removed, not necessarily the one with the fewest constraints. Only a whole constraint gets into the set for removal; a constraint of which one equation of two is redundant is not marked.
+- In a conflict the diagnostics compute neither redundancy nor freedom and take the conflicting constraints from the solver, which marks more of them than necessary.
+- "The older constraints stay" follows the order of keys in the document; JavaScript orders IDs in the form of an integer numerically, so the order of creation does not hold for them.
+- A redundant constraint that the solver does not recognise itself (the third equality of lengths in a triangle) is still taken by the solver as a full one: the sketch behaves as fully constrained and a point cannot be dragged until the constraint is removed. The diagnostics show it.
+- The cost grows with the cube of the number of constraints, and the analysis runs at every evaluation of the sketch, steps of a drag included: 240 constraints about 15 ms, 480 about 0.1 s, 960 about 0.8 s. The diagnostics and the explanation add time of the same order.
 
-## D33 Rozhraní pro AI (MCP server)
+## D33 Interface for AI (MCP server)
 
-Rozhodnuto 2026-11-14 na podnět vlastníka projektu: místo předávání souboru má stačit říct „mám narýsovanou skicu se dvěma stupni volnosti, proč" a AI se na model podívá sama.
+Decided 2026-11-14 at the owner's suggestion: instead of handing over a file, it should be enough to say "I have drawn a sketch with two degrees of freedom, why" and the AI looks at the model itself.
 
-- **Balíček `packages/mcp`** s MCP serverem nad standardním vstupem a výstupem. Používá oficiální knihovnu `@modelcontextprotocol/sdk` (schválena vlastníkem; táhne s sebou zhruba devadesát tranzitivních balíčků, v běhu aplikace není).
-- **Málo obecných nástrojů místo nástroje na každou operaci:** `describe_api`, `get_model`, `get_document`, `get_sketch`, `explain_constraint`, `get_body`, `execute`, `preview`, `undo`, `redo` a pro soubory `session_status`, `open_document`, `save_document`, `export_stl`. Příkaz je hodnota typu `Command` enginu, validuje ho engine a vrací srozumitelnou chybu.
-- **Popis se generuje ze zdrojů enginu,** aby se rozhraní nerozcházelo s enginem a nové vazby a příkazy se v něm objevily samy: typy dokumentu a příkazů se berou přímo ze zdrojového textu `types.ts`, vazby z katalogu (`catalog.ts`), kterým se řídí i validace. Ručně psané jsou jen konvence (jednotky, ID, jak se staví skica). Test ověřuje, že každou vazbu z katalogu engine podle příkladu z popisu přijme. Zvažováno: nástroj na každý příkaz se schématem JSON (přesnější nápověda pro klienta, ale schémata by se psala ručně vedle typů a s každou vazbou by přibýval nástroj).
-- **Dva režimy, stejné nástroje.** Server má vlastní engine pro dokument ze souboru. Když se k němu připojí běžící aplikace, nástroje se provádějí nad jejím enginem: uživatel změny hned vidí a jdou vrátit přes Zpět. Soubory čte a zapisuje vždy server.
-- **Most do aplikace** je místní HTTP na `127.0.0.1` (výchozí port 4517): aplikace čte požadavky jako proud událostí a odpovědi posílá zpět. Bez další knihovny (WebSocket by v Node potřeboval balíček `ws`). Propojení se v aplikaci zapíná tlačítkem AI, samo se nenavazuje; platí poslední připojená aplikace.
-- **Kdo se smí k mostu připojit.** Jen stránka z tohoto počítače. Hlídají to tři věci zároveň: původ stránky (`Origin`), cílová adresa v hlavičce `Host` (obrana proti přesměrování DNS) a vlastní hlavička požadavku, kterou cizí stránka bez svolení serveru poslat nemůže a prvky jako obrázek ji neposílají vůbec. Sama kontrola původu nestačila: požadavek bez hlavičky `Origin` dokázal odpojit skutečnou aplikaci a převzít příkazy určené pro ni.
-- **Každý dokument má svůj soubor.** Server si pamatuje zvlášť soubor vlastního dokumentu a soubor dokumentu v aplikaci (jen po dobu jednoho připojení). Uložení bez cesty tak nezapíše dokument jednoho enginu přes soubor druhého.
-- **Rozpracovaná operace v aplikaci** (vysunutí, rovina) se zruší, když AI dokument opravdu změní; neplatný příkaz ani undo bez historie ji nechají. Načtení dokumentu od AI vymění stav UI stejně jako Otevřít a při neúspěchu ho vrátí.
-- **Neplatný příkaz je chyba volání** (příznak chyby v odpovědi), ne výsledek: klient i aplikace ho tak poznají bez čtení těla odpovědi.
-- **Spuštění:** `pnpm mcp:build` sestaví `packages/mcp/dist/server.js`; klient AI ho spouští příkazem `node packages/mcp/dist/server.js [--file model.json] [--port 4517] [--no-bridge]`. V kořeni repa je `.mcp.json`, takže Claude Code server nabídne sám.
+- **The package `packages/mcp`** with an MCP server over standard input and output. It uses the official library `@modelcontextprotocol/sdk` (approved by the owner; it pulls in about ninety transitive packages and is not present when the app runs).
+- **A few general tools instead of a tool for every operation:** `describe_api`, `get_model`, `get_document`, `get_sketch`, `explain_constraint`, `get_body`, `execute`, `preview`, `undo`, `redo`, and for files `session_status`, `open_document`, `save_document`, `export_stl`. A command is a value of the engine's type `Command`; the engine validates it and returns an understandable error.
+- **The description is generated from the sources of the engine,** so that the interface does not drift from the engine and new constraints and commands appear in it by themselves: the types of the document and of commands are taken directly from the source text of `types.ts`, constraints from the catalog (`catalog.ts`), which validation follows as well. Only the conventions (units, IDs, how a sketch is built) are written by hand. A test checks that the engine accepts every constraint of the catalog by the example in the description. Considered: a tool for every command with a JSON schema (more precise help for the client, but the schemas would be written by hand beside the types and a tool would be added with every constraint).
+- **Two modes, the same tools.** The server has an engine of its own for a document from a file. When the running app connects to it, the tools run over the app's engine: the user sees the changes right away and can revert them with Undo. Files are always read and written by the server.
+- **The bridge to the app** is local HTTP on `127.0.0.1` (default port 4517): the app reads requests as an event stream and sends the answers back. No other library (WebSocket would need the package `ws` in Node). The connection is turned on in the app by the AI button and is never made by itself; the last connected app wins.
+- **Who may connect to the bridge.** Only a page from this computer. Three things guard it together: the origin of the page (`Origin`), the target address in the `Host` header (a defence against DNS rebinding) and a custom request header, which a foreign page cannot send without the server's permission and which elements such as an image do not send at all. The check of the origin alone was not enough: a request without an `Origin` header managed to disconnect the real app and take over the commands meant for it.
+- **Every document has its own file.** The server remembers separately the file of its own document and the file of the document in the app (only for the duration of one connection). A save without a path thus does not write the document of one engine over the file of the other.
+- **An operation in progress in the app** (an extrusion, a plane) is cancelled when the AI actually changes the document; an invalid command or an undo with no history leaves it. Loading a document from the AI replaces the UI state just as Open does, and restores it on failure.
+- **An invalid command is an error of the call** (an error flag in the answer), not a result: the client and the app recognise it without reading the body of the answer.
+- **Running it:** `pnpm mcp:build` builds `packages/mcp/dist/server.js`; the AI client runs it with `node packages/mcp/dist/server.js [--file model.json] [--port 4517] [--no-bridge]`. The root of the repository has `.mcp.json`, so Claude Code offers the server by itself.
 
-Nálezy nezávislé revize a jejich řešení:
+Findings of the independent review and their resolution:
 
-| Nález | Řešení |
+| Finding | Resolution |
 |---|---|
-| Uložení bez cesty zapsalo dokument aplikace přes soubor serveru a naopak | Soubor se pamatuje pro každý dokument zvlášť |
-| Server po zavření vstupu neskončil a dál držel port mostu | Končí i při zavření standardního vstupu |
-| Most přijal požadavek bez hlavičky `Origin` a nehlídal `Host` | Kontrola `Host` a povinná vlastní hlavička |
-| Konce hran v `get_body` byly u oblouků, kružnic a přerušených hran špatně | Přímá hrana má krajní body a příznak mezery, kruhová střed a poloměr, každá délku |
-| Rada u skici s jedním stupněm volnosti navrhovala totožnost, která končí konfliktem | Rada se řídí počtem stupňů volnosti (i v panelu aplikace) |
-| Neplatný příkaz se vracel bez příznaku chyby; aplikace kvůli němu rušila rozpracovanou operaci | Chyba volání; operace se ruší jen při skutečné změně |
-| Neúspěšné otevření dokumentu od AI nechalo UI ve výchozím stavu | Stav UI se při neúspěchu vrací |
-| Výjimka v obsluze aplikace nechala volajícího bez odpovědi | Odpověď se pošle vždy; hlášení říká, že změna už mohla proběhnout |
-| Nevyřešená skica vypadala v přehledech jako „0 stupňů volnosti" | Přehledy mají příznak `solved` a volnost uvádějí jen u vyřešené skici |
-| Volby příkazové řádky: neplatný port, chybějící hodnota a neznámá volba se tiše ignorovaly | Jsou to chyby spuštění s nápovědou |
+| A save without a path wrote the app's document over the server's file and vice versa | The file is remembered for each document separately |
+| The server did not end after its input was closed and kept holding the port of the bridge | It also ends when standard input is closed |
+| The bridge accepted a request without an `Origin` header and did not check `Host` | A check of `Host` and a required custom header |
+| The ends of edges in `get_body` were wrong for arcs, circles and interrupted edges | A straight edge has end points and a gap flag, a circular one a centre and radius, each a length |
+| The advice for a sketch with one degree of freedom proposed a coincidence that ends in a conflict | The advice follows the number of degrees of freedom (in the app's panel too) |
+| An invalid command came back without an error flag; the app cancelled the operation in progress because of it | An error of the call; the operation is cancelled only on an actual change |
+| A failed opening of a document from the AI left the UI in its default state | The UI state is restored on failure |
+| An exception in the app's handler left the caller without an answer | An answer is always sent; the report says that the change may already have happened |
+| An unsolved sketch looked like "0 degrees of freedom" in the overviews | The overviews have a flag `solved` and give the freedom only for a solved sketch |
+| Command-line options: an invalid port, a missing value and an unknown option were silently ignored | They are start-up errors with help |
 
-Další revize (2026-11-14, dodaná vlastníkem projektu):
+A further review (2026-11-14, supplied by the owner):
 
-| Nález | Řešení |
+| Finding | Resolution |
 |---|---|
-| Po Nový nebo Otevřít v aplikaci zůstal zapamatovaný soubor předchozího dokumentu a `save_document` bez cesty ho přepsal novým dokumentem | Aplikace s každou odpovědí hlásí pořadové číslo dokumentu; zapamatovaný soubor platí jen pro dokument, ke kterému patří. `session_status` si číslo před odpovědí ověří |
-| Dvě aplikace se zapnutým propojením si spojení přebíraly dokola (vytlačená se po třech sekundách připojila znovu) a příkaz mohl změnit nesprávný dokument | Vytlačená aplikace dostane událost `displaced`, propojení v ní zhasne a sama se nepřipojuje |
-| `explain_constraint` radil odebrat kteroukoli vazbu z `impliedBy`, i když by se tím skica uvolnila (bod na úsečce plyne ze středu úsečky) | Rada se řídí tím, které z těch vazeb jsou samy navíc; každá má příznak `removableInstead` (stejné pravidlo jako v panelu aplikace) |
+| After New or Open in the app, the remembered file of the previous document stayed and `save_document` without a path overwrote it with the new document | With every answer the app reports the sequence number of its document; a remembered file holds only for the document it belongs to. `session_status` checks the number before it answers |
+| Two apps with the connection on took the connection from each other over and over (the displaced one reconnected after three seconds), and a command could change the wrong document | The displaced app gets an event `displaced`, its connection goes off and it does not reconnect by itself |
+| `explain_constraint` advised removing any constraint of `impliedBy`, even when that would free the sketch (a point on a line follows from the midpoint of the line) | The advice follows which of those constraints are themselves redundant; each has a flag `removableInstead` (the same rule as in the app's panel) |
 
-Omezení: most nemá přihlášení, spoléhá na místní adresu a kontroly popsané výše; připojit se může kterákoli stránka běžící na tomto počítači. Velikost odpovědi není omezená (model se stovkami těles dá megabajty) a `save_document` i `export_stl` existující soubor přepíšou bez ptaní. Běží-li dva MCP servery, most otevře jen první; druhý pracuje jen se soubory. Typy v `describe_api` jsou zdrojový text v TypeScriptu, ne schéma JSON, takže klient vstup příkazu sám nevaliduje. Texty nástrojů jsou česky jako zbytek projektu.
+Limits: the bridge has no login; it relies on the local address and the checks described above; any page running on this computer can connect. The size of an answer is not limited (a model with hundreds of bodies gives megabytes), and `save_document` and `export_stl` overwrite an existing file without asking. When two MCP servers run, only the first opens the bridge; the second works only with files. The types in `describe_api` are TypeScript source text, not a JSON schema, so the client does not validate the input of a command itself. The texts of the tools were in Czech like the rest of the project; they are English since 2026-11-25.
 
-## D34 Souměrnost a střed úsečky
+## D34 Symmetry and the midpoint of a line
 
-Rozhodnuto 2026-11-14. Konstrukční křivky byly bez těchto dvou vazeb málo užitečné: osa souměrnosti nešla použít jako osa.
+Decided 2026-11-14. Construction curves were of little use without these two constraints: an axis of symmetry could not be used as an axis.
 
-- **`symmetric`** (`a`, `b`, `line`): body `a`, `b` jsou souměrné podle přímky, na které úsečka leží. Na pořadí bodů nezáleží. Bod, který je koncem osy, souměrný být nesmí (byla by to totožnost).
-- **`midpoint`** (`point`, `line`): bod leží v polovině úsečky. Koncem téže úsečky být nesmí.
-- **Obě vazby mají dvě rovnice,** ubírají tedy dva stupně volnosti. V solveru je souměrnost vazba `p2p_symmetric_ppl`; střed úsečky je souměrnost jejích konců podle bodu (`p2p_symmetric_ppp`).
-- **Co přidání vazby stojí.** Čtyři místa v enginu a adaptéru: typ v `types.ts`, položka katalogu (operandy, zaměnitelnost, kontrola), rovnice v `analysis.ts` a překlad v adaptéru solveru. Úplnost rovnic i překladu hlídají typy (bez nich se projekt nepřeloží) a test, který pro každý typ vazby ověřuje shodu rovnic se solverem.
-- **Aplikace a MCP se neměnily kvůli těmto dvěma vazbám, ale kvůli všem dalším.** Aplikace bere seznam geometrických vazeb, jejich jména a nápovědu z katalogu a výběr rozděluje mezi operandy podle druhů, které katalog uvádí (zvláštní pravidla zůstala jen tam, kde jedna akce zakládá víc vazeb). MCP server nové vazby převzal bez jediné změny; jeho test, který každou vazbu z katalogu posílá enginu, je pokryl sám.
-- **Validační scénář 8** (souměrný díl s konstrukční osou).
+- **`symmetric`** (`a`, `b`, `line`): the points `a`, `b` are symmetric about the infinite line the line lies on. The order of the points does not matter. A point that is an end of the axis must not be symmetric (it would be a coincidence).
+- **`midpoint`** (`point`, `line`): the point lies halfway along the line. It must not be an end of the same line.
+- **Both constraints have two equations,** so they remove two degrees of freedom. In the solver, symmetry is the constraint `p2p_symmetric_ppl`; the midpoint of a line is the symmetry of its ends about the point (`p2p_symmetric_ppp`).
+- **What adding a constraint costs.** Four places in the engine and the adapter: the type in `types.ts`, the catalog entry (operands, interchangeability, check), the equation in `analysis.ts` and the translation in the solver adapter. The completeness of the equations and of the translation is guarded by the types (without them the project does not compile) and by a test that checks for every type of constraint that its equations agree with the solver.
+- **The app and MCP changed not because of these two constraints but because of all the ones to come.** The app takes the list of geometric constraints, their names and their help from the catalog and divides a selection among the operands by the kinds the catalog gives (special rules stayed only where one action creates several constraints). The MCP server took over the new constraints without a single change; its test, which sends every constraint of the catalog to the engine, covered them by itself.
+- **Validation scenario 8** (a symmetric part with a construction axis).
 
-- **Splynulá dvojice v adaptéru solveru.** Knihovna počítá souměrnost ze spojnice obou bodů (a střed úsečky ze spojnice jejích konců). Leží-li body ve stejném místě, hlásí vazbu jako konflikt, přestože je splněná: souměrná dvojice na ose je platný stav. Adaptér proto při takovém konfliktu zkusí dvě náhradní cesty: nejdřív body o kousek rozestoupí a řeší původní soustavu (najde se tak řešení, ve kterém nesplývají), a když to nepomůže, nahradí vazbu jejím splynulým tvarem (totožnost bodů a bod na ose, u středu úsečky totožnost bodu s oběma konci). Každé řešení náhradního tvaru původní vazbu splňuje, takže skutečný konflikt zůstává konfliktem.
+- **A coincident pair in the solver adapter.** The library computes symmetry from the line joining the two points (and the midpoint of a line from the line joining its ends). When the points lie at the same place, it reports the constraint as a conflict although it is satisfied: a symmetric pair on the axis is a valid state. On such a conflict the adapter therefore tries two fallback routes: first it moves the points slightly apart and solves the original system (which finds a solution in which they do not coincide), and when that does not help, it replaces the constraint by its coincident form (coincidence of the points and a point on the axis; for the midpoint of a line, coincidence of the point with both ends). Every solution of the fallback form satisfies the original constraint, so a real conflict stays a conflict.
 
-Nálezy revize a jejich řešení:
+Findings of the review and their resolution:
 
-| Nález | Řešení |
+| Finding | Resolution |
 |---|---|
-| Souměrná dvojice, kterou jiná vazba stáhne na osu (bod na ose, totožnost bodů, totožnost s počátkem, nulová vzdálenost), se hlásila jako konflikt; stejně dvojice splynulá už na vstupu | Náhradní cesty v adaptéru solveru (viz výše) |
-| Střed úsečky, jejíž konce leží přesně ve stejném místě, se hlásil jako konflikt | Totéž |
-| Aplikace nabízela souměrnost a střed úsečky i pro výběr, který engine vždy odmítne (souměrný bod je koncem osy) | Nabídka podle katalogu se řídí i vlastním pravidlem vazby |
-| Přiřazení výběru operandům bylo hladové a u budoucí vazby s překrývajícími se druhy operandů by platné přiřazení nenašlo | Přiřazení zkouší všechny možnosti |
-| Rada „totožností s počátkem" (aplikace i MCP) vedla u souměrné dvojice a u úsečky z počátku ke stažení geometrie do bodu | Radí se dvě kóty od počátku |
+| A symmetric pair that another constraint pulls onto the axis (a point on the axis, a coincidence of the points, a coincidence with the origin, a zero distance) was reported as a conflict; likewise a pair coincident already in the input | Fallback routes in the solver adapter (see above) |
+| The midpoint of a line whose ends lie exactly at the same place was reported as a conflict | The same |
+| The app offered symmetry and midpoint even for a selection the engine always refuses (the symmetric point is an end of the axis) | The offer by the catalog also follows the constraint's own rule |
+| The assignment of a selection to operands was greedy and would not find a valid assignment for a future constraint with overlapping kinds of operands | The assignment tries all possibilities |
+| The advice "by a coincidence with the origin" (app and MCP) led, for a symmetric pair and for a line from the origin, to collapsing the geometry to a point | Two dimensions from the origin are advised |
 
-Omezení:
+Limits:
 
-- Solver souměrnost nevyřeší, když oba body leží na téže straně osy a osu nic nedrží (stáhne osu do bodu a ohlásí neúspěch, nebo tím „splní" i vazby, které si odporují). S osou drženou vazbami nebo s body nakreslenými zhruba souměrně problém není; v aplikaci se osa obvykle kreslí jako konstrukční úsečka z počátku.
-- Přidání středu úsečky nebo souměrnosti dá platné řešení, ale tvar okolní geometrie nemusí zachovat (úsečka se může natáhnout nebo pootočit). Je to vlastnost solveru: hledá nejbližší řešení ve svých proměnných, ne nejmenší změnu tvaru.
-- Souměrnou dvojici splynulou na ose rozestoupí kóta nebo tažení jednoho z bodů; samotné odebrání vazby, která ji stáhla, ji nechá na místě.
+- The solver does not solve symmetry when both points lie on the same side of the axis and nothing holds the axis (it collapses the axis to a point and reports a failure, or thereby "satisfies" even constraints that contradict each other). With the axis held by constraints, or with points drawn roughly symmetrically, there is no problem; in the app the axis is usually drawn as a construction line from the origin.
+- Adding a midpoint or a symmetry gives a valid solution, but may not keep the shape of the surrounding geometry (a line may stretch or turn). It is a property of the solver: it looks for the nearest solution in its variables, not the smallest change of shape.
+- A symmetric pair coincident on the axis is moved apart by a dimension or by dragging one of the points; removing the constraint that pulled it together alone leaves it in place.
 
 ## D73 MCP and API ergonomics
 
@@ -743,14 +743,14 @@ The owner had an AI build a flange and a planetary gearbox through the MCP serve
 
 Known limits: the app's drawing tools do not offer the rectangle by its centre, the sizes or several corners (MCP only); new_document keeps the settings of the document (no command changes them); the app may connect to 4517 only, so a server on another port works on its own document.
 
-## Spiky 2026-11-13
+## Spikes 2026-11-13
 
-Obě knihovny předpoklady návrhu splnily, podrobné výsledky jsou v architecture.md. Tři nálezy změnily návrh:
+Both libraries met the assumptions of the design; the detailed results are in architecture.md. Three findings changed the design:
 
-- **D19 přepracováno.** Na šikmých stěnách nestačí posunout počáteční víko. Stejný problém mají boční stěny a koncové víko nástroje, pokud leží v rovině stěny tělesa. Řešení se přesunulo do adaptéru jádra, viz D19.
-- **D20 uzavřeno.** Manifold pracuje jen s float32, `Solid` proto také.
-- **D17 doplněno.** planegcs nezvládá referenční kóty spolehlivě, počítá je engine.
+- **D19 reworked.** On tilted faces it is not enough to shift the start cap. The side faces and the end cap of the tool have the same problem when they lie in the plane of a face of the body. The solution moved into the kernel adapter, see D19.
+- **D20 closed.** Manifold works only with float32, so `Solid` does too.
+- **D17 extended.** planegcs does not handle reference dimensions reliably; the engine computes them.
 
-## Otevřené otázky
+## Open questions
 
-Žádné.
+None.

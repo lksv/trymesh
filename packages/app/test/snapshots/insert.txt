@@ -3,23 +3,23 @@
   document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":10}
   toolbar:
       div.group
-        button title="Prázdný dokument": "Nový"
-        button: "Otevřít"
-        button: "Uložit"
+        button title="Empty document": "New"
+        button: "Open"
+        button: "Save"
         button disabled: "Export STL"
         input type=file hidden
       div.group
-        button title="Propojit s MCP serverem (packages/mcp): AI pak čte a mění dokument otevřený v aplikaci": "AI"
+        button title="Connect to the MCP server (packages/mcp): the AI then reads and changes the document open in the app": "AI"
       div.group
-        button disabled title="Ctrl+Z": "↶ Zpět"
-        button disabled title="Ctrl+Shift+Z": "↷ Znovu"
+        button disabled title="Ctrl+Z": "↶ Undo"
+        button disabled title="Ctrl+Shift+Z": "↷ Redo"
       div.group
-        button: "Zobrazit vše"
+        button: "Fit all"
         button disabled title="Save a picture of the model as PNG: the bodies that are shown, from the camera of the view and cut as the view is; without the selection, sketches, planes and dimensions": "Save picture"
-        button.active title="Zobrazit nebo skrýt roviny XY, XZ, YZ": "Základní roviny"
+        button.active title="Show or hide the planes XY, XZ, YZ": "Base planes"
   timeline:
-      h2: "Časová osa"
-      p.hint: "Zatím prázdná. Nové prvky se objeví zde."
+      h2: "Timeline"
+      p.hint: "Empty so far. New features will appear here."
   panel:
       h2: "New inserted document"
       p.hint: "The document has no stored document yet: insert a document file of the part."
@@ -29,9 +29,9 @@
       label
         "Frame"
         select value="base:XY"
-          option selected value="base:XY": "rovina XY"
-          option value="base:XZ": "rovina XZ"
-          option value="base:YZ": "rovina YZ"
+          option selected value="base:XY": "plane XY"
+          option value="base:XZ": "plane XZ"
+          option value="base:YZ": "plane YZ"
           option value="point": "A point of a sketch"
       div.buttons
         button: "Pick"
@@ -69,7 +69,7 @@
       p#draft-problem.issue.error
       div.buttons
         button.primary disabled: "OK"
-        button: "Zrušit"
+        button: "Cancel"
   status: Insert a document file of the part.
   view: 2 scene(s) set
   scene:
@@ -175,15 +175,15 @@
   feature i1:
       {"id":"i1","name":"Part 1","suppressed":false,"type":"insert","document":"disc_part","placement":{"frame":{"kind":"base","plane":"XY"}},"parameters":{"H":8},"bodies":["disc"]}
   toolbar:
-    +   button title="Ctrl+Z": "↶ Zpět"
-    -   button disabled title="Ctrl+Z": "↶ Zpět"
-    +   button title="Nová skica na rovině nebo rovinné stěně": "Skica"
-    +   button title="Vysunout oblasti skici": "Vysunutí"
+    +   button title="Ctrl+Z": "↶ Undo"
+    -   button disabled title="Ctrl+Z": "↶ Undo"
+    +   button title="A new sketch on a plane or a planar face": "Sketch"
+    +   button title="Extrude regions of a sketch": "Extrude"
     +   button title="Turn regions of a sketch about an axis in its plane": "Revolve"
     +   button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
     +   button title="Chamfer edges of a body by a distance": "Chamfer"
     +   button title="Round edges of a body by a radius": "Fillet"
-    +   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
+    +   button title="A plane offset from a plane or a planar face": "Plane"
     +   button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
     +   button title="Place a stored mesh (a bought part read from an STL file) as a body": "Mesh"
     +   button title="Insert another document (a part saved as a document file) as a part of this one": "Insert"
@@ -227,13 +227,13 @@
     +   span.dot: "●"
     +   span.name: "Part 1"
     +   button.icon title="Hide or show": "👁"
-    +   button.icon disabled title="Posunout dřív": "↑"
-    +   button.icon disabled title="Posunout později": "↓"
-    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
-    - p.hint: "Zatím prázdná. Nové prvky se objeví zde."
+    +   button.icon disabled title="Move earlier": "↑"
+    +   button.icon disabled title="Move later": "↓"
+    +   button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
+    - p.hint: "Empty so far. New features will appear here."
   panel:
     + h2: "Model"
-    + p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
+    + p.hint: "The right mouse button orbits, the wheel zooms, the middle button (or Shift + right) pans. On a touchpad: Alt/Option + drag orbits, Alt + Shift + drag pans, two fingers zoom. A feature on the timeline is edited by a double click."
     + h2: "Stored documents"
     + div.row.document
     +   span: "disc part.json (disc_part): 3 features; inserted by Part 1."
@@ -266,9 +266,9 @@
     - label
     -   "Frame"
     -   select value="base:XY"
-    -     option selected value="base:XY": "rovina XY"
-    -     option value="base:XZ": "rovina XZ"
-    -     option value="base:YZ": "rovina YZ"
+    -     option selected value="base:XY": "plane XY"
+    -     option value="base:XZ": "plane XZ"
+    -     option value="base:YZ": "plane YZ"
     -     option value="point": "A point of a sketch"
     - div.buttons
     -   button: "Pick"
@@ -319,8 +319,8 @@
     - p#draft-problem.issue.warning
     - div.buttons
     -   button.primary: "OK"
-    -   button: "Zrušit"
-  status: Inserted document přidáno.
+    -   button: "Cancel"
+  status: Inserted document added.
   view: 2 scene(s) set
 
 === 7. the value emptied: the patch removes it, the part is its own again
@@ -332,7 +332,7 @@
   feature i1:
     + {"id":"i1","name":"Part 1","suppressed":false,"type":"insert","document":"disc_part","placement":{"frame":{"kind":"base","plane":"XY"}},"bodies":["disc"]}
     - {"id":"i1","name":"Part 1","suppressed":false,"type":"insert","document":"disc_part","placement":{"frame":{"kind":"base","plane":"XY"}},"parameters":{"H":8},"bodies":["disc"]}
-  status: Změna uložena.
+  status: Change saved.
   view: 4 scene(s) set
   scene:
     + line #26303c width 1.5: 600 numbers, sum 1987.116
@@ -357,14 +357,14 @@
     +   button disabled title="Save a picture of the model as PNG: the bodies that are shown, from the camera of the view and cut as the view is; without the selection, sketches, planes and dimensions": "Save picture"
     -   button title="Save a picture of the model as PNG: the bodies that are shown, from the camera of the view and cut as the view is; without the selection, sketches, planes and dimensions": "Save picture"
   timeline:
-    + p.hint: "Zatím prázdná. Nové prvky se objeví zde."
+    + p.hint: "Empty so far. New features will appear here."
     - div.row.ok
     -   span.dot: "●"
     -   span.name: "Part 1"
     -   button.icon title="Hide or show": "👁"
-    -   button.icon disabled title="Posunout dřív": "↑"
-    -   button.icon disabled title="Posunout později": "↓"
-    -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon disabled title="Move earlier": "↑"
+    -   button.icon disabled title="Move later": "↓"
+    -   button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
   panel:
     +   span: "disc part.json (disc_part): 3 features; not inserted."
     -   span: "disc part.json (disc_part): 3 features; inserted by Part 1."
@@ -375,7 +375,7 @@
     -   button title="Bodies that move as one piece": "New link"
     -   button disabled title="A joint moves its child link against its parent link": "New joint"
     -   button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
-  status: Smazáno: Part 1. Závislé prvky zůstávají a hlásí chybu.
+  status: Deleted: Part 1. Dependent features stay and report an error.
   view: 2 scene(s) set
   scene:
     + bodies: (none)

@@ -1,5 +1,5 @@
-// Geometrie skici pro vykreslení a test zásahu: polohy z výsledku přepočtu, tvar křivek, měření.
-// Čisté funkce bez závislosti na prohlížeči.
+// Geometry of a sketch for drawing and hit testing: positions from the result of the recompute, shapes of
+// curves, measuring. Pure functions with no dependency on the browser.
 import { type Constraint, type DimensionShape, type Id, type SketchCurve, type SketchFeature, type SketchResult, type SketchToolContext, type Vec2, constraintOperands, curvePoints, derivedOrigin, isOriginAxis, kindOf as kindOfEntry, lineExtent, referenceEntities, solvedCurves, splinePolyline } from '@trymesh/engine';
 
 export const ORIGIN = 'origin';
@@ -8,7 +8,7 @@ const TAU = 2 * Math.PI;
 export type Shape =
   | { type: 'line'; a: Vec2; b: Vec2 }
   | { type: 'circle'; center: Vec2; radius: number }
-  | { type: 'arc'; center: Vec2; radius: number; from: number; sweep: number } // proti směru hodin
+  | { type: 'arc'; center: Vec2; radius: number; from: number; sweep: number } // counter-clockwise
   // a spline (D70): its control polygon and the polyline the view draws and hit-tests
   | { type: 'spline'; control: Vec2[]; points: Vec2[] };
 
@@ -25,16 +25,16 @@ export function splineShape(control: Vec2[]): Shape {
 export interface PointView {
   id: Id;
   at: Vec2;
-  own: boolean; // false = počátek nebo bod promítnuté geometrie
+  own: boolean; // false = the origin or a point of projected geometry
   derived?: true; // a point of a copy of a mirror or pattern (D68)
 }
 export interface CurveView {
   id: Id;
-  own: boolean; // false = promítnutá hrana
+  own: boolean; // false = a projected edge
   derived?: true; // a copy of a mirror or pattern (D68): drawn as derived geometry, not snapped to
   construction: boolean; // of a copy, the flag of its source
   shape: Shape;
-  points: Id[]; // určující body: konce úsečky; střed kružnice; střed, začátek a konec oblouku
+  points: Id[]; // defining points: the ends of a line; the centre of a circle; the centre, start and end of an arc
 }
 export interface SketchView {
   points: Map<Id, PointView>;
@@ -135,7 +135,7 @@ export const takesConstraint = (view: SketchView, id: Id): boolean => {
 
 export const kindOf = (view: SketchView, id: Id): EntityKind | undefined => (view.points.has(id) ? 'point' : view.curves.get(id)?.shape.type);
 
-// Lomená čára křivky; kružnice je uzavřená (poslední bod = první).
+// The polyline of a curve; a circle is closed (last point = first).
 export function polyline(shape: Shape): Vec2[] {
   let [from, sweep] = [0, TAU];
   switch (shape.type) {
@@ -160,7 +160,7 @@ export function polyline(shape: Shape): Vec2[] {
   return out;
 }
 
-// Nejbližší bod křivky k bodu p.
+// The nearest point of a curve to the point p.
 export function closestOn(shape: Shape, p: Vec2): Vec2 {
   switch (shape.type) {
     case 'line': {
@@ -178,7 +178,7 @@ export function closestOn(shape: Shape, p: Vec2): Vec2 {
       const { center, radius } = shape;
       let angle = Math.atan2(p[1] - center[1], p[0] - center[0]);
       const along = positive(angle - shape.from);
-      // mimo oblouk: bližší z koncových bodů
+      // outside the arc: the nearer of the end points
       if (along > shape.sweep) angle = along - shape.sweep < TAU - along ? shape.from + shape.sweep : shape.from;
       return [center[0] + radius * Math.cos(angle), center[1] + radius * Math.sin(angle)];
     }
@@ -198,7 +198,7 @@ export function closestOn(shape: Shape, p: Vec2): Vec2 {
 
 export const distanceTo = (shape: Shape, p: Vec2): number => dist(closestOn(shape, p), p);
 
-// Nejbližší bod skici do vzdálenosti `reach`; při shodě má přednost vlastní bod.
+// The nearest point of the sketch within the distance `reach`; on a tie the own point takes precedence.
 export function hitPoint(view: SketchView, p: Vec2, reach: number, skip?: (id: Id) => boolean): PointView | undefined {
   let best: PointView | undefined;
   let bestDistance = reach;
@@ -233,7 +233,8 @@ const endpoints = (view: SketchView, line: Id): [Vec2, Vec2] | undefined => {
   return shape?.type === 'line' ? [shape.a, shape.b] : undefined;
 };
 
-// Současná hodnota kóty podle poloh ve skice (stejné konvence jako engine); undefined = operand chybí.
+// The current value of a dimension from the positions in the sketch (the same conventions as the engine);
+// undefined = an operand is missing.
 export function measure(shape: DimensionShape, view: SketchView): number | undefined {
   const point = (id: Id) => view.points.get(id)?.at;
   switch (shape.type) {
@@ -276,13 +277,13 @@ export function measure(shape: DimensionShape, view: SketchView): number | undef
   }
 }
 
-// Operandy vazby (ID entit skici), podle katalogu enginu.
+// Operands of a constraint (IDs of entities of the sketch), by the engine's catalog.
 export const operandsOf = constraintOperands;
 
-// Místo pro popisek vazby: střed mezi operandy; u kružnice bod na obvodu. An axis of the origin
-// (D71), a whole line, has no middle: its spot is the foot on it of the middle of the other
-// operands (of the origin, when every operand is an axis), so the label of a dimension to an axis
-// stands beside the point it measures.
+// The place for the label of a constraint: the middle between the operands; for a circle a point on the
+// rim. An axis of the origin (D71), a whole line, has no middle: its spot is the foot on it of the middle
+// of the other operands (of the origin, when every operand is an axis), so the label of a dimension to an
+// axis stands beside the point it measures.
 export function anchorOf(c: Constraint, view: SketchView): Vec2 | undefined {
   const spots: Vec2[] = [];
   const axes: Shape[] = [];
@@ -320,7 +321,7 @@ export function anchorOf(c: Constraint, view: SketchView): Vec2 | undefined {
   return middle(spots);
 }
 
-// Leží bod uvnitř smyčky (dvojice souřadnic za sebou)?
+// Does a point lie inside a loop (pairs of coordinates one after another)?
 export function insideLoop(loop: ArrayLike<number>, p: Vec2): boolean {
   let inside = false;
   const count = loop.length / 2;

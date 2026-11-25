@@ -49,7 +49,7 @@ export function modelBounds(state: EngineState, pose: Pose = AS_MODELLED): { min
     for (const p of Object.values(result.sketch.points)) grow(toWorld(result.plane, p.x, p.y));
   }
   if (min[0] > max[0]) return { min: [-20, -20, -20], max: [20, 20, 20] };
-  // prázdná skica nebo drobný model: pohled se nepřibližuje víc než na 40 mm
+  // an empty sketch or a tiny model: the view does not zoom in closer than to 40 mm
   const pad = (40 - Math.hypot(max[0] - min[0], max[1] - min[1], max[2] - min[2])) / 2;
   if (pad > 0) return { min: [min[0] - pad, min[1] - pad, min[2] - pad], max: [max[0] + pad, max[1] + pad, max[2] + pad] };
   return { min, max };
@@ -105,7 +105,7 @@ export function modelScene(host: SceneHost, queries: QueryPanel, sketch: { id: I
   const additions = inModel ? queryScene(queries, host) : {};
   const clip = additions.clip;
 
-  // tělesa a jejich obrysy
+  // bodies and their outlines
   const outline: number[] = [];
   const blocked = new Map<Id, Id[]>(); // joint → the bodies it keeps from their pose
   for (const [id, body] of Object.entries(evaluation.bodies)) {
@@ -137,7 +137,7 @@ export function modelScene(host: SceneHost, queries: QueryPanel, sketch: { id: I
   }
   addToScene(model, additions, state, host, pose);
 
-  // roviny
+  // planes
   const square = planeSquare(host.planeSize(state));
   for (const plane of host.planes(state)) {
     const active = pickKey(plane) === pickKey(host.selected) || (plane.ref.kind === 'plane' && plane.ref.feature === host.selectedFeature);
@@ -146,7 +146,7 @@ export function modelScene(host: SceneHost, queries: QueryPanel, sketch: { id: I
     model.lines.push({ segments: loopSegments(plane.frame, square), color: active ? COLOR.select : hovered ? COLOR.hover : COLOR.plane, width: 1 });
   }
 
-  // skici mimo tu, která se právě upravuje
+  // sketches other than the one being edited
   for (const f of doc.features) {
     const result = evaluation.features[f.id];
     if (f.type !== 'sketch' || host.hidden.has(f.id) || !result?.sketch || !result.plane || sketch?.id === f.id) continue;
@@ -166,7 +166,7 @@ export function modelScene(host: SceneHost, queries: QueryPanel, sketch: { id: I
     model.lines.push({ segments: solid, color, width: f.id === host.selectedFeature ? 2.5 : 1.5 }, { segments: dashed, color, width: 1, dashed: true });
   }
 
-  // výběr a zvýraznění v modelu
+  // selection and highlighting in the model
   for (const [pick, color, opacity] of [[host.hover, COLOR.hover, 0.3], [sketch?.hoverEdge, COLOR.hover, 0.3], [host.selected, COLOR.select, 0.5]] as [ViewPick | undefined, number, number][]) {
     const body = pick && pick.kind !== 'plane' ? evaluation.bodies[pick.body] : undefined;
     if (!pick || pick.kind === 'plane' || !body) continue;

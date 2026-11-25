@@ -172,8 +172,8 @@ describe('the axes of the origin: constraints against the real solver', () => {
     const engine = solve([], [['p', 3, 4]]);
     expect(refused(engine, constrain('S', 'z1', { type: 'perpendicular', a: 'origin/x', b: 'origin/y' }))).toContain('only between fixed entities');
     expect(refused(engine, constrain('S', 'z2', { type: 'midpoint', point: 'p', line: 'origin/y' }))).toContain('origin/y is an axis of the origin, a whole line');
-    expect(refused(engine, constrain('S', 'z3', { type: 'symmetric', a: 'p', b: 'origin', line: 'origin/x' }))).toContain('souměrný bod nesmí být koncem osy');
-    expect(refused(engine, constrain('S', 'z4', { type: 'pointOnCurve', point: 'origin/y/b', curve: 'origin/x' }))).toContain('"origin/y/b" ve skice není');
+    expect(refused(engine, constrain('S', 'z3', { type: 'symmetric', a: 'p', b: 'origin', line: 'origin/x' }))).toContain('a symmetric point must not be an end of the axis');
+    expect(refused(engine, constrain('S', 'z4', { type: 'pointOnCurve', point: 'origin/y/b', curve: 'origin/x' }))).toContain('"origin/y/b" is not in the sketch');
     expect(refused(engine, { type: 'setCurvePoint', sketch: 'S', id: 'origin/x', point: 'a', to: 'p' })).toContain('origin/x');
     expect(refused(engine, constrain('S', 'z5', { type: 'parallel', a: 'origin/x', b: 'origin/y' }))).toContain('a constraint only between fixed entities (the origin, its axes origin/x and origin/y, projected geometry) would never take effect');
     // an axis is no curve of a wall, and the refusal says what it is

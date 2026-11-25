@@ -106,11 +106,11 @@ describe('roles of faces', () => {
     expect(Object.keys(faceName({ curve: 'l1', role: 'side', feature: 'E1' }, 'face'))).toEqual(['feature', 'role', 'curve']); // the canonical order
     expect(faceName({ feature: 'E1', role: 'endCap', curve: 'l1' }, 'face')).toEqual({ feature: 'E1', role: 'endCap' }); // a cap has no curve
     expect(faceName({ feature: 'E1', role: 'endCap', copy: [] }, 'face')).toEqual({ feature: 'E1', role: 'endCap' });
-    refused(() => faceName({ feature: 'E1', role: 'side' }, 'face'), /face\.curve: čeká se řetězec/);
-    refused(() => faceName({ feature: 'E1', role: 'side', curve: 3 }, 'face'), /face\.curve: čeká se řetězec/);
-    refused(() => faceName({ feature: 'E1', role: 'top' }, 'face'), /face\.role: čeká se jedna z hodnot side, startCap, endCap/);
+    refused(() => faceName({ feature: 'E1', role: 'side' }, 'face'), /face\.curve: a string is expected/);
+    refused(() => faceName({ feature: 'E1', role: 'side', curve: 3 }, 'face'), /face\.curve: a string is expected/);
+    refused(() => faceName({ feature: 'E1', role: 'top' }, 'face'), /face\.role: one of the values side, startCap, endCap/);
     refused(() => faceName({ feature: 'E1', role: 'constructor' }, 'face'), /face\.role/);
-    refused(() => edgeName({ a: { feature: 'E1', role: 'endCap' }, b: { feature: 'E1', role: 'endCap' } }, 'edge'), /hrana je rozhraní dvou různých stěn/);
+    refused(() => edgeName({ a: { feature: 'E1', role: 'endCap' }, b: { feature: 'E1', role: 'endCap' } }, 'edge'), /an edge is the boundary between two different faces/);
   });
 
   it('a role with several fields: every field is required and of its kind, and the key lists them by name', () => {
@@ -120,11 +120,11 @@ describe('roles of faces', () => {
     expect(faceKey(wall({ copy: [{ pattern: 'P', index: 1 }] }) as unknown as FaceName, WITH_WALL)).toBe('H/wall/p1/2/@P:1');
     // two walls of one hole differ by the step, two holes of one feature by the point
     expect(faceKey(wall({ step: 1 }) as unknown as FaceName, WITH_WALL)).not.toBe(faceKey(wall() as unknown as FaceName, WITH_WALL));
-    refused(() => faceName(wall({ step: '2' }), 'face', WITH_WALL), /face\.step: čeká se konečné číslo/);
+    refused(() => faceName(wall({ step: '2' }), 'face', WITH_WALL), /face\.step: a finite number is expected/);
     refused(() => faceName(wall({ step: 2.5 }), 'face', WITH_WALL), /face\.step: a whole number is expected/);
     refused(() => faceName(wall({ step: undefined }), 'face', WITH_WALL), /face\.step/);
-    refused(() => faceName(wall({ point: 7 }), 'face', WITH_WALL), /face\.point: čeká se řetězec/);
-    refused(() => faceName(wall(), 'face'), /face\.role: čeká se jedna z hodnot side, startCap, endCap/); // the real catalog has no wall
+    refused(() => faceName(wall({ point: 7 }), 'face', WITH_WALL), /face\.point: a string is expected/);
+    refused(() => faceName(wall(), 'face'), /face\.role: one of the values side, startCap, endCap/); // the real catalog has no wall
     // a role the catalog does not know has no fields in a key; it cannot come from a validated name
     expect(faceKey(wall() as unknown as FaceName)).toBe('H/wall');
   });

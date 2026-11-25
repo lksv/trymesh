@@ -72,11 +72,11 @@ describe('an extrusion with a generated profile', () => {
     bad({ teeth: 18, pressureAngle: 20 }, /params\.pressureAngle: the value 20 is not in the interval \(0, π\/2\)/); // degrees by mistake
     bad({ teeth: 18, pressureAngle: 0 }, /params\.pressureAngle/);
     bad({ teeth: 18, backlash: -0.1 }, /params\.backlash: the value must not be negative/);
-    bad({ teeth: 18, internal: 'yes' }, /params\.internal: čeká se true nebo false/);
+    bad({ teeth: 18, internal: 'yes' }, /params\.internal: true or false is expected/);
     bad({ teeth: 18, internal: 1 }, /params\.internal/);
     bad({ teeth: 18, helix: 0.2 }, /params\.helix: the generator involuteGear has no such entry/);
     bad({ teeth: 18, toString: 1 }, /params\.toString: the generator involuteGear has no such entry/);
-    bad({ teeth: true }, /params\.teeth: čeká se konečné číslo/);
+    bad({ teeth: true }, /params\.teeth: a finite number is expected/);
     expect(profileOf(run(doc, add(extrude('g', gearProfile('s', { teeth: 4, internal: true, rotation: -7 })))), 'g').params).toMatchObject({ teeth: 4, internal: true, rotation: -7 });
     expect(profileOf(run(doc, add(extrude('g', gearProfile('s', { teeth: 18.0000000001 })))), 'g').params.teeth).toBe(18);
   });
@@ -85,24 +85,24 @@ describe('an extrusion with a generated profile', () => {
     const doc = run(base(), add(extrude('sun', gearProfile('s'))), add(extrude('disc', { type: 'regions', sketch: 'S1', regions: [{ outerLoop: ['c'] }] })));
     const bad = (profile: object, pattern: RegExp) => invalid(doc, add(extrude('g', profile as Input<ProfileSource>)), pattern);
     const good = { type: 'generated', generator: 'involuteGear', sketch: 'S1', operands: { circle: 'p' }, params: { teeth: 27 } };
-    bad({ ...good, generator: 'cycloid' }, /profile\.generator: čeká se jedna z hodnot involuteGear/);
+    bad({ ...good, generator: 'cycloid' }, /profile\.generator: one of the values involuteGear/);
     bad({ ...good, generator: undefined }, /profile\.generator/);
-    bad({ ...good, sketch: 'S9' }, /profile\.sketch: feature "S9" neexistuje/);
-    bad({ ...good, sketch: 'sun' }, /není skica/);
-    bad({ ...good, operands: {} }, /profile\.operands\.circle: čeká se řetězec/);
-    bad({ ...good, operands: undefined }, /profile\.operands: čeká se objekt/);
+    bad({ ...good, sketch: 'S9' }, /profile\.sketch: the feature "S9" does not exist/);
+    bad({ ...good, sketch: 'sun' }, /is not a sketch/);
+    bad({ ...good, operands: {} }, /profile\.operands\.circle: a string is expected/);
+    bad({ ...good, operands: undefined }, /profile\.operands: an object is expected/);
     bad({ ...good, operands: { circle: 'p', other: 's' } }, /profile\.operands\.other: the generator involuteGear has no such entry/);
     bad({ ...good, operands: { circle: 'nope' } }, /profile\.operands\.circle: the sketch "S1" has no entity "nope"/);
     bad({ ...good, operands: { circle: 'l' } }, /profile\.operands\.circle: "l" is a line, expected circle/);
     bad({ ...good, operands: { circle: 'cp' } }, /"cp" is a point, expected circle/);
-    bad({ ...good, params: undefined }, /profile\.params: čeká se objekt/);
-    bad({ ...good, refs: { meshWith: 'nope' } }, /profile\.refs\.meshWith: feature "nope" neexistuje/);
+    bad({ ...good, params: undefined }, /profile\.params: an object is expected/);
+    bad({ ...good, refs: { meshWith: 'nope' } }, /profile\.refs\.meshWith: the feature "nope" does not exist/);
     bad({ ...good, refs: { meshWith: 'disc' } }, /feature "disc" is not an extrusion with a profile from the generator involuteGear/);
     bad({ ...good, refs: { meshWith: 'S1' } }, /is not an extrusion with a profile from the generator involuteGear/);
     bad({ ...good, refs: { gear: 'sun' } }, /profile\.refs\.gear: the generator involuteGear has no such entry/);
-    bad({ ...good, refs: { meshWith: 5 } }, /profile\.refs\.meshWith: čeká se řetězec/);
+    bad({ ...good, refs: { meshWith: 5 } }, /profile\.refs\.meshWith: a string is expected/);
     // the reference must lie before the feature
-    invalid(doc, add(extrude('g', { ...good, refs: { meshWith: 'sun' } } as Input<ProfileSource>), 1), /musí ležet před odkazující feature/);
+    invalid(doc, add(extrude('g', { ...good, refs: { meshWith: 'sun' } } as Input<ProfileSource>), 1), /must lie before the referring feature/);
     // an ordinary (not construction) circle is an operand as well
     expect(profileOf(run(doc, add(extrude('g', gearProfile('c', { teeth: 8 })))), 'g').operands).toEqual({ circle: 'c' });
     // a field of the other variant or an unknown one is a mistake, on creation and on loading
@@ -116,8 +116,8 @@ describe('an extrusion with a generated profile', () => {
 
   it('a gear refers to its mate: moving and removing features respects the reference', () => {
     const doc = run(base(), add(extrude('sun', gearProfile('s'))), add(extrude('planet', gearProfile('p', { teeth: 27 }, { refs: { meshWith: 'sun' } }))));
-    invalid(doc, { type: 'moveFeature', id: 'planet', index: 1 }, /by se dostala před feature "sun"/);
-    invalid(doc, { type: 'moveFeature', id: 'sun', index: 2 }, /by se dostala za feature "planet"/);
+    invalid(doc, { type: 'moveFeature', id: 'planet', index: 1 }, /would get before the feature "sun"/);
+    invalid(doc, { type: 'moveFeature', id: 'sun', index: 2 }, /would get after the feature "planet"/);
     // removing does not cascade; the document with the broken reference loads
     const broken = run(doc, { type: 'removeFeature', id: 'sun' }, { type: 'removeEntity', sketch: 'S1', id: 'p' });
     expect(profileOf(broken, 'planet')).toMatchObject({ operands: { circle: 'p' }, refs: { meshWith: 'sun' } });
@@ -200,16 +200,16 @@ describe('updateFeature on a generated profile', () => {
     expect(profileOf(run(disc, update('planet', { profile: { ...gearProfile('p', { teeth: 27 }), refs: { meshWith: null } } as never })), 'planet')).not.toHaveProperty('refs');
     // and back
     expect(profileOf(run(free, update('planet', { profile: { refs: { meshWith: 'sun' } } })), 'planet').refs).toEqual({ meshWith: 'sun' });
-    invalid(doc, update('planet', { profile: { operands: { circle: null } } }), /operands\.circle: čeká se řetězec/);
+    invalid(doc, update('planet', { profile: { operands: { circle: null } } }), /operands\.circle: a string is expected/);
     // a name the feature does not know is a typo, not a removal that succeeds and resets nothing
-    invalid(doc, update('planet', { profile: { params: { rotaton: null } } } as FeaturePatch), /profile\.params\.rotaton: vysunutí takové pole nemá/);
-    invalid(doc, update('planet', { profile: { operands: { bogus: null } } } as FeaturePatch), /profile\.operands\.bogus: vysunutí takové pole nemá/);
-    invalid(doc, update('planet', { profile: { refs: { gear: null } } } as FeaturePatch), /profile\.refs\.gear: vysunutí takové pole nemá/);
-    invalid(doc, update('planet', { profile: { bogus: null } } as FeaturePatch), /profile\.bogus: vysunutí takové pole nemá/);
-    invalid(doc, update('planet', { extent: { side: null } } as FeaturePatch), /extent\.side: vysunutí takové pole nemá/);
+    invalid(doc, update('planet', { profile: { params: { rotaton: null } } } as FeaturePatch), /profile\.params\.rotaton: this extrude has no such field/);
+    invalid(doc, update('planet', { profile: { operands: { bogus: null } } } as FeaturePatch), /profile\.operands\.bogus: this extrude has no such field/);
+    invalid(doc, update('planet', { profile: { refs: { gear: null } } } as FeaturePatch), /profile\.refs\.gear: this extrude has no such field/);
+    invalid(doc, update('planet', { profile: { bogus: null } } as FeaturePatch), /profile\.bogus: this extrude has no such field/);
+    invalid(doc, update('planet', { extent: { side: null } } as FeaturePatch), /extent\.side: this extrude has no such field/);
     // a profile of regions has no dictionaries to remove from
     invalid(disc, update('planet', { profile: { refs: { meshWith: null } } } as FeaturePatch), /profile\.refs: a profile of the type regions has no such field/);
-    invalid(disc, update('planet', { profile: { refs: null } } as FeaturePatch), /profile\.refs: vysunutí takové pole nemá/);
+    invalid(disc, update('planet', { profile: { refs: null } } as FeaturePatch), /profile\.refs: this extrude has no such field/);
     // an optional field of the feature may be removed whether it is there or not
     expect(feature(run(doc, update('sun', { targets: null })), 'sun')).not.toHaveProperty('targets');
   });
@@ -259,7 +259,7 @@ describe('updateFeature on a generated profile', () => {
     expect(profileOf(run(doc, update('planet', { profile: { operands: { circle: 'c' } } })), 'planet')).toMatchObject({ operands: { circle: 'c' }, refs: { meshWith: 'sun' } });
     invalid(doc, update('planet', { profile: { operands: { circle: 'l' } } }), /updateFeature\.patch\.profile\.operands\.circle: "l" is a line, expected circle/);
     invalid(doc, update('planet', { profile: { operands: { circle: 'gone' } } }), /the sketch "S1" has no entity "gone"/);
-    invalid(doc, update('planet', { profile: { refs: { meshWith: 'planet' } } }), /musí ležet před odkazující feature/);
+    invalid(doc, update('planet', { profile: { refs: { meshWith: 'planet' } } }), /must lie before the referring feature/);
     // the same entity ID in another sketch is another reference
     const other = run(doc, { type: 'addFeature', feature: emptySketch('S0', 'S0', XY), index: 0 });
     invalid(other, update('planet', { profile: { sketch: 'S0' } }), /the sketch "S0" has no entity "p"/);

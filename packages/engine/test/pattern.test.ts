@@ -86,15 +86,15 @@ describe('the pattern feature', () => {
     invalid(doc, add(pattern('P', { type: 'features', features: [] })), /source\.features: a non-empty list of feature IDs is expected/);
     invalid(doc, add(pattern('P', { type: 'features', features: 'H' as never })), /source\.features: a non-empty list/);
     invalid(doc, add(pattern('P', { type: 'features', features: ['H', 'H'] })), /a feature is listed twice/);
-    invalid(doc, add(pattern('P', { type: 'features', features: ['X'] })), /feature "X" neexistuje/);
-    invalid(doc, add(pattern('P', { type: 'body', body: 'H' })), /není těleso/);
-    invalid(doc, add(pattern('P', { type: 'body', body: 'A/1' })), /není těleso/);
-    invalid(doc, add(pattern('P', { type: 'solid' } as never)), /source\.type: čeká se jedna z hodnot features, body/);
+    invalid(doc, add(pattern('P', { type: 'features', features: ['X'] })), /feature "X" does not exist/);
+    invalid(doc, add(pattern('P', { type: 'body', body: 'H' })), /is not a body/);
+    invalid(doc, add(pattern('P', { type: 'body', body: 'A/1' })), /is not a body/);
+    invalid(doc, add(pattern('P', { type: 'solid' } as never)), /source\.type: one of the values features, body/);
     // the source must lie before the pattern
     invalid(doc, { type: 'addFeature', feature: pattern('P'), index: 2 }, /source\.features/);
     invalid(doc, { type: 'addFeature', feature: pattern('P', { type: 'body', body: 'A' }), index: 1 }, /source\.body/);
     // a pattern of a pattern: its own copy cannot be its source
-    invalid(doc, add(pattern('P', { type: 'body', body: 'P/1' })), /neexistuje/);
+    invalid(doc, add(pattern('P', { type: 'body', body: 'P/1' })), /does not exist/);
   });
 
   it('the count is an integer from 1 with an upper bound; the angle is in radians and not zero', () => {
@@ -108,8 +108,8 @@ describe('the pattern feature', () => {
     invalid(doc, add(pattern('P', holes, { span: { type: 'angle', angle: 0 } })), /transform\.span\.angle/);
     invalid(doc, add(pattern('P', holes, { span: { type: 'angle', angle: 90 } })), /transform\.span\.angle/); // degrees by mistake
     invalid(doc, add(pattern('P', holes, { span: { type: 'angle' } as never })), /transform\.span\.angle/);
-    invalid(doc, add(pattern('P', holes, { span: { type: 'arc' } as never })), /transform\.span\.type: čeká se jedna z hodnot full, angle/);
-    invalid(doc, add(pattern('P', holes, { type: 'helix' as never })), /transform\.type: čeká se jedna z hodnot circular, linear, mirror/);
+    invalid(doc, add(pattern('P', holes, { span: { type: 'arc' } as never })), /transform\.span\.type: one of the values full, angle/);
+    invalid(doc, add(pattern('P', holes, { type: 'helix' as never })), /transform\.type: one of the values circular, linear, mirror/);
   });
 
   it('numeric fields: the count always, the angle only with an angle span; both take expressions', () => {
@@ -137,8 +137,8 @@ describe('the pattern feature', () => {
       expect(circular(through, 'P').axis).toEqual({ kind: 'sketchPoint', sketch: 'S1', point });
       expect(featureRefs(feature(through, 'P'))).toEqual(['H', 'S1']);
     }
-    invalid(doc, add(pattern('P', holes, { axis: { kind: 'base', axis: 'W' } as never })), /transform\.axis\.axis: čeká se jedna z hodnot X, Y, Z/);
-    invalid(doc, add(pattern('P', holes, { axis: { kind: 'edge' } as never })), /transform\.axis\.kind: čeká se jedna z hodnot base, sketchPoint/);
+    invalid(doc, add(pattern('P', holes, { axis: { kind: 'base', axis: 'W' } as never })), /transform\.axis\.axis: one of the values X, Y, Z/);
+    invalid(doc, add(pattern('P', holes, { axis: { kind: 'edge' } as never })), /transform\.axis\.kind: one of the values base, sketchPoint/);
     invalid(doc, add(pattern('P', holes, { axis: { kind: 'sketchPoint', sketch: 'A', point: 'p' } })), /transform\.axis\.sketch/);
     invalid(doc, add(pattern('P', holes, { axis: { kind: 'sketchPoint', sketch: 'S1', point: 'c' } })), /transform\.axis\.point/); // a curve is not a point
     invalid(doc, add(pattern('P', holes, { axis: { kind: 'sketchPoint', sketch: 'S1', point: 'q' } })), /transform\.axis\.point/);
@@ -191,7 +191,7 @@ describe('the pattern feature', () => {
     expect(validateDocument(JSON.parse(JSON.stringify(doc)))).toEqual(doc);
     // an unrelated change passes, a new reference is verified
     expect(circular(run(doc, update('P', { transform: { count: 2 } })), 'P').count).toBe(2);
-    invalid(doc, update('P', { source: { features: ['H', 'B', 'X'] } }), /feature "X" neexistuje/);
+    invalid(doc, update('P', { source: { features: ['H', 'B', 'X'] } }), /feature "X" does not exist/);
     expect(feature(run(doc, update('P', { source: { features: ['B'] } })), 'P').source).toEqual({ type: 'features', features: ['B'] });
   });
 });
@@ -237,7 +237,7 @@ describe('the linear pattern and the mirror (D53)', () => {
     invalid(doc, add(of('P', holes, row({ axis: X }))), /transform\.axis: a transform of the type linear has no such field/);
     invalid(doc, add(of('P', holes, row({ plane: { kind: 'base', plane: 'XY' } }))), /transform\.plane: a transform of the type linear has no such field/);
     invalid(doc, add(of('P', holes, row({ span: { type: 'spacing', spacing: 5, length: 3 } }))), /transform\.span\.length: a span of the type spacing has no such field/);
-    invalid(doc, add(of('P', holes, row({ span: { type: 'angle', angle: 1 } }))), /transform\.span\.type: čeká se jedna z hodnot spacing, length/);
+    invalid(doc, add(of('P', holes, row({ span: { type: 'angle', angle: 1 } }))), /transform\.span\.type: one of the values spacing, length/);
     invalid(doc, add(of('P', holes, row({ direction: undefined }))), /transform\.direction/);
     invalid(doc, add(of('P', holes, { ...mirror(), count: 2 } as Any)), /transform\.count: a transform of the type mirror has no such field/);
     invalid(doc, add(of('P', holes, { ...mirror(), axis: X } as Any)), /transform\.axis: a transform of the type mirror has no such field/);
@@ -262,13 +262,13 @@ describe('the linear pattern and the mirror (D53)', () => {
     }
     expect(featureRefs(feature(run(doc, add(of('P', holes, mirror({ kind: 'plane', feature: 'M' })))), 'P'))).toEqual(['H', 'M']);
     expect(featureRefs(feature(run(doc, add(of('P', body, mirror({ kind: 'face', body: 'A', face: { feature: 'H', role: 'side', curve: 'c' } })))), 'P'))).toEqual(['A', 'H']);
-    invalid(doc, add(of('P', holes, mirror({ kind: 'plane', feature: 'X' }))), /feature "X" neexistuje/);
+    invalid(doc, add(of('P', holes, mirror({ kind: 'plane', feature: 'X' }))), /feature "X" does not exist/);
     invalid(doc, add(of('P', holes, mirror({ kind: 'plane', feature: 'H' }))), /transform\.plane/);
     invalid(doc, add(of('P', holes, mirror({ kind: 'base', plane: 'XX' }))), /transform\.plane\.plane/);
     // the plane must lie before the pattern, and cannot be moved behind it
     invalid(doc, { type: 'addFeature', feature: of('P', holes, mirror({ kind: 'plane', feature: 'M' })), index: 4 }, /transform\.plane/);
     const after = run(doc, add(of('P', holes, mirror({ kind: 'plane', feature: 'M' }))));
-    invalid(after, { type: 'moveFeature', id: 'M', index: after.features.length - 1 }, /"M" by se dostala za feature "P", která na ni odkazuje/);
+    invalid(after, { type: 'moveFeature', id: 'M', index: after.features.length - 1 }, /"M" would get after the feature "P" that refers to it/);
     // a face of a copy: the copy's pattern is a reference as well
     const copied = run(doc, add(of('Q', body, row())));
     const onCopy = run(copied, add(of('P', holes, mirror({ kind: 'face', body: 'Q/1', face: { feature: 'A', role: 'endCap', copy: [{ pattern: 'Q', index: 1 }] } }))));
@@ -304,7 +304,7 @@ describe('the linear pattern and the mirror (D53)', () => {
   it('a mirror creates the one body `<pattern>/1`; a command cannot name another', () => {
     const doc = run(base(), add(of('Q', body, mirror())));
     expect(() => run(doc, add(extrude('C', { operation: 'cut', targets: ['Q/1'] })))).not.toThrow();
-    invalid(doc, add(extrude('C', { operation: 'cut', targets: ['Q/2'] })), /feature "Q\/2" není těleso/);
+    invalid(doc, add(extrude('C', { operation: 'cut', targets: ['Q/2'] })), /feature "Q\/2" is not a body/);
     invalid(doc, { type: 'setBodyProperties', body: 'Q/2', patch: { color: '#000000' } }, /Q\/2/);
     expect(() => run(doc, { type: 'setBodyProperties', body: 'Q/1', patch: { color: '#000000' } })).not.toThrow();
     invalid(doc, { type: 'setLink', id: 'base', bodies: ['A', 'Q/2'] }, /Q\/2/);
@@ -338,9 +338,9 @@ describe('bodies and faces of copies', () => {
     expect(featureRefs(cut.features.find((f) => f.id === 'C') as ExtrudeFeature)).toEqual(['S1', 'Q', 'A']);
     // whether the copy with that number exists shows in the recompute: the count may be an expression
     expect(() => run(doc, add(extrude('C', { operation: 'cut', targets: ['Q/7'] })))).not.toThrow();
-    for (const body of ['Q/0', 'Q/x', 'Q/1/1', 'Q/', 'Q/01', 'Q']) invalid(doc, add(extrude('C', { operation: 'cut', targets: [body] })), /není těleso/);
+    for (const body of ['Q/0', 'Q/x', 'Q/1/1', 'Q/', 'Q/01', 'Q']) invalid(doc, add(extrude('C', { operation: 'cut', targets: [body] })), /is not a body/);
     // a pattern of features creates no bodies
-    invalid(run(base(), add(pattern('P'))), add(extrude('C', { operation: 'cut', targets: ['P/1'] })), /není těleso/);
+    invalid(run(base(), add(pattern('P'))), add(extrude('C', { operation: 'cut', targets: ['P/1'] })), /is not a body/);
     const second = run(doc, add(pattern('R', { type: 'body', body: 'Q/2' })));
     expect(featureRefs(feature(second, 'R'))).toEqual(['Q']);
     // the copy must exist before the feature that refers to it
@@ -359,8 +359,8 @@ describe('bodies and faces of copies', () => {
     // an empty list is the face of the original: one face, one spelling
     expect(run(doc, onFace({ ...top(), copy: [] })).features.find((f) => f.id === 'S2')).toMatchObject({ plane: { face: top() } });
     expect(run(doc, onFace({ ...top(), copy: [] })).features.find((f) => f.id === 'S2')).not.toHaveProperty('plane.face.copy');
-    invalid(doc, onFace(top([{ pattern: 'X', index: 1 }])), /feature "X" neexistuje/);
-    invalid(doc, onFace(top([{ pattern: 'H', index: 1 }])), /feature "H" není a feature that tags copied faces \(a pattern, or a combine as a difference\)/);
+    invalid(doc, onFace(top([{ pattern: 'X', index: 1 }])), /feature "X" does not exist/);
+    invalid(doc, onFace(top([{ pattern: 'H', index: 1 }])), /feature "H" is not a feature that tags copied faces \(a pattern, or a combine as a difference\)/);
     for (const index of [0, 1.5, -1]) invalid(doc, onFace(top([{ pattern: 'Q', index }])), /copy\[0\]\.index: the number of a copy is an integer from 1/);
     invalid(doc, onFace({ ...top(), copy: 'Q' }), /copy: a list of \{ pattern, index \} is expected/);
     invalid(doc, onFace({ ...top(), copy: [{ index: 1 }] }), /copy\[0\]\.pattern/);
@@ -380,7 +380,7 @@ describe('bodies and faces of copies', () => {
     const edge = { a: top(tag), b: { feature: 'A', role: 'side' as const, curve: 'c', copy: tag } };
     const projected = run(doc, { type: 'addExternal', sketch: 'S2', id: 'x', ref: { type: 'edge', body: 'Q/2', edge, kind: 'circle' } });
     expect(featureRefs(projected.features.find((f) => f.id === 'S2')!)).toEqual(['Q', 'A']);
-    invalid(doc, { type: 'addExternal', sketch: 'S2', id: 'x', ref: { type: 'edge', body: 'Q/2', edge: { ...edge, b: { ...edge.b, copy: [{ pattern: 'Z', index: 1 }] } }, kind: 'circle' } }, /feature "Z" neexistuje/);
+    invalid(doc, { type: 'addExternal', sketch: 'S2', id: 'x', ref: { type: 'edge', body: 'Q/2', edge: { ...edge, b: { ...edge.b, copy: [{ pattern: 'Z', index: 1 }] } }, kind: 'circle' } }, /feature "Z" does not exist/);
   });
 
   it('the key of a face name tells a copy from the original and copies from each other', () => {
@@ -541,7 +541,7 @@ describe('the grid: a second direction of the linear pattern (D53)', () => {
     invalid(base(), add(of('P', holes, grid({}, { direction: { kind: 'sketchPoint', sketch: 'S9', point: 'origin' } }))), /S9/);
     // a sketch after the source: the pattern keeps it in front of itself
     const late = run(base(), { type: 'addFeature', feature: emptySketch('S2', 'S2', XY) }, add(of('P', holes, grid({}, { direction: { kind: 'sketchPoint', sketch: 'S2', point: 'origin' } }))));
-    invalid(late, { type: 'moveFeature', id: 'S2', index: late.features.length - 1 }, /"S2" by se dostala za feature "P", která na ni odkazuje/);
+    invalid(late, { type: 'moveFeature', id: 'S2', index: late.features.length - 1 }, /"S2" would get after the feature "P" that refers to it/);
     // a sketch removed: the reference stays in the document, which loads; the recompute judges it
     const gone = run(late, { type: 'removeFeature', id: 'S2' });
     expect(linear(gone, 'P').second?.direction).toEqual({ kind: 'sketchPoint', sketch: 'S2', point: 'origin' });

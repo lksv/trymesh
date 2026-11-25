@@ -179,8 +179,8 @@ describe('the entry `sketch` and its commands (D69)', () => {
     refused({ type: 'sketch', sketch: 'a', entity: 'l1', kind: 'line', flag: true }, /flag/);
     refused({ type: 'sketch', sketch: 'a', entity: 'l1', kind: 'spline' }, /kind/);
     refused({ type: 'sketch', sketch: 'a', entity: 'l1', kind: 'line', regions: 'yes' }, /regions/);
-    refused({ type: 'sketch', sketch: 'b', entity: 'l1', kind: 'line' }, 'musí ležet před odkazující feature');
-    refused({ type: 'sketch', sketch: 'b', entity: 'l1', kind: 'line' }, 'musí ležet před odkazující feature', 'a');
+    refused({ type: 'sketch', sketch: 'b', entity: 'l1', kind: 'line' }, 'must lie before the referring feature');
+    refused({ type: 'sketch', sketch: 'b', entity: 'l1', kind: 'line' }, 'must lie before the referring feature', 'a');
     refused({ type: 'sketch', sketch: 'a', entity: 'zz', kind: 'line' }, 'the sketch "a" has no entity "zz"');
     refused({ type: 'sketch', sketch: 'a', entity: 'c1', kind: 'arc' }, '"c1" is a circle, expected arc');
     refused({ type: 'sketch', sketch: 'a', entity: 'origin/x', kind: 'line' }, UNDER_ORIGIN('origin/x', 'a'));
@@ -208,7 +208,7 @@ describe('the entry `sketch` and its commands (D69)', () => {
     expect(validateDocument(tampered((_b, a) => delete a.curves.l1))).toBeDefined();
     expect(validateDocument(tampered((_b, a) => (a.curves.l1 = { type: 'circle', center: 'p3' }, (a.radii.l1 = 1))))).toBeDefined();
     // a stored point never fits a line
-    expect(() => validateDocument(tampered((b) => (b.solved.external = { x1: { kind: 'point', at: [0, 0] } })))).toThrow(/neodpovídá promítnuté geometrii skici/);
+    expect(() => validateDocument(tampered((b) => (b.solved.external = { x1: { kind: 'point', at: [0, 0] } })))).toThrow(/does not match the projected geometry of the sketch/);
     expect(validateDocument(tampered((b) => (b.solved.external = { x1: { kind: 'line', a: [0, 0], b: [1, 0] } })))).toBeDefined();
   });
 
@@ -233,7 +233,7 @@ describe('the entry `sketch` and its commands (D69)', () => {
     expect(sketchOf(moved, 'b').solved.external.x1).toBeUndefined();
     // another kind: refused (an entity that stays keeps its kind)
     expect(() => applyCommand(other, { type: 'updateExternal', sketch: 'b', id: 'x1', ref: { type: 'sketch', sketch: 'a', entity: 'q1', kind: 'arc' } })).toThrow();
-    expect(() => applyCommand(add(other, 'x1', { type: 'sketch', sketch: 'a', entity: 'l1', kind: 'line' }), { type: 'updateExternal', sketch: 'b', id: 'x1', ref: { type: 'sketch', sketch: 'a', entity: 'q1', kind: 'arc' } })).toThrow('druh promítnutí změnit nejde');
+    expect(() => applyCommand(add(other, 'x1', { type: 'sketch', sketch: 'a', entity: 'l1', kind: 'line' }), { type: 'updateExternal', sketch: 'b', id: 'x1', ref: { type: 'sketch', sketch: 'a', entity: 'q1', kind: 'arc' } })).toThrow('the kind of a projection cannot be changed');
     // the entry itself is no duplicate of itself
     expect(() => applyCommand(add(other, 'x1', { type: 'sketch', sketch: 'a', entity: 'l1', kind: 'line' }), { type: 'updateExternal', sketch: 'b', id: 'x1', ref: { type: 'sketch', sketch: 'a', entity: 'l1', kind: 'line', regions: true } })).not.toThrow();
   });

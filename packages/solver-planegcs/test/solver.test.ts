@@ -16,7 +16,7 @@ const input = (parts: Partial<SolveInput>): SolveInput => ({
   ...parts,
 });
 
-// Obdélník ukotvený k pevnému počátku, polohy záměrně nepřesné (uživatel kreslí od ruky).
+// A rectangle anchored to the fixed origin, the positions inexact on purpose (the user draws freehand).
 const rect = (extra: Record<Id, Constraint> = {}): SolveInput =>
   input({
     points: {
@@ -45,8 +45,8 @@ const rect = (extra: Record<Id, Constraint> = {}): SolveInput =>
   });
 const height: Constraint = { type: 'distance', a: 'p2', b: 'p3', value: 30, driving: true };
 
-describe('řešení skici', () => {
-  it('plně určený obdélník: vyřešeno, dof 0, pevný bod se nepohne', () => {
+describe('solving a sketch', () => {
+  it('a fully determined rectangle: solved, dof 0, the fixed point does not move', () => {
     const r = solver.solve(rect({ height }));
     expect(r.status).toBe('solved');
     expect(r.degreesOfFreedom).toBe(0);
@@ -57,13 +57,13 @@ describe('řešení skici', () => {
     expect(r.redundant).toEqual([]);
   });
 
-  it('podurčený obdélník: dof 1', () => {
+  it('an underconstrained rectangle: dof 1', () => {
     const r = solver.solve(rect());
     expect(r.status).toBe('solved');
     expect(r.degreesOfFreedom).toBe(1);
   });
 
-  it('konflikt: vrací vstup beze změny, ID vazeb a dof 0', () => {
+  it('conflict: returns the input unchanged, the IDs of the constraints and dof 0', () => {
     const source = rect({ height, width2: { type: 'distance', a: 'p4', b: 'p3', value: 50, driving: true } });
     const r = solver.solve(source);
     expect(r.status).toBe('conflict');
@@ -73,14 +73,14 @@ describe('řešení skici', () => {
     expect(r.points).not.toBe(source.points);
   });
 
-  it('nadbytečná vazba: vyřešeno, ID v redundant', () => {
+  it('a redundant constraint: solved, the ID in redundant', () => {
     const r = solver.solve(rect({ height, width2: { type: 'distance', a: 'p4', b: 'p3', value: 40, driving: true } }));
     expect(r.status).toBe('solved');
     expect(r.redundant).toContain('width2');
     expect(r.conflicting).toEqual([]);
   });
 
-  it('stejný vstup dá bitově stejný výstup, i při jiném pořadí klíčů', () => {
+  it('the same input gives a bitwise identical output, also with another order of keys', () => {
     const a = solver.solve(rect({ height }));
     const b = solver.solve(rect({ height }));
     expect(b).toEqual(a);
@@ -90,7 +90,7 @@ describe('řešení skici', () => {
     expect(c).toEqual(a);
   });
 
-  it('splněný vstup se vrátí beze změny (plně určený i podurčený)', () => {
+  it('a satisfied input is returned unchanged (both fully determined and underconstrained)', () => {
     for (const source of [rect({ height }), rect()]) {
       const first = solver.solve(source);
       const again = solver.solve({ ...source, points: first.points, radii: first.radii });
@@ -99,19 +99,19 @@ describe('řešení skici', () => {
     }
   });
 
-  it('referenční kóta se solveru neposílá: neubírá dof a nemění geometrii', () => {
+  it('a reference dimension is not sent to the solver: it takes no dof and does not change the geometry', () => {
     const plain = solver.solve(rect());
     const withRef = solver.solve(rect({ ref: { type: 'distance', a: 'p2', b: 'p3', value: 999, driving: false } }));
     expect(withRef).toEqual(plain);
   });
 });
 
-describe('tažení', () => {
-  it('drží vazby, sleduje cíl ve volném směru, dof se nemění, vstup zůstává', () => {
+describe('dragging', () => {
+  it('keeps the constraints, follows the target in the free direction, dof does not change, the input stays', () => {
     const stored = solver.solve(rect());
     const source = { ...rect(), points: stored.points };
     for (let i = 1; i <= 30; i++) {
-      const target = { x: 40 + i * 1.5, y: 26 + i * 2 }; // x je kótou šířky zakázáno
+      const target = { x: 40 + i * 1.5, y: 26 + i * 2 }; // x is forbidden by the width dimension
       const r = solver.solve({ ...source, drag: { point: 'p3', target } });
       expect(r.status).toBe('solved');
       expect(r.degreesOfFreedom).toBe(1);
@@ -123,7 +123,7 @@ describe('tažení', () => {
     expect(source.points).toEqual(stored.points);
   });
 
-  it('tažení plně určeného bodu nic nezmění a není konflikt', () => {
+  it('dragging a fully determined point changes nothing and is no conflict', () => {
     const stored = solver.solve(rect({ height }));
     const r = solver.solve({ ...rect({ height }), points: stored.points, drag: { point: 'p3', target: { x: 80, y: 90 } } });
     expect(r.status).toBe('solved');
@@ -133,7 +133,7 @@ describe('tažení', () => {
   });
 });
 
-describe('promítnutá geometrie', () => {
+describe('projected geometry', () => {
   const projected = (): SolveInput =>
     input({
       points: { origin: { x: 0, y: 0 }, 'ext/center': { x: 12, y: 7 }, hc: { x: 10, y: 9 } },
@@ -143,7 +143,7 @@ describe('promítnutá geometrie', () => {
       fixed: ['origin', 'ext/center', 'ext'],
     });
 
-  it('soustředná díra: 1 dof, pevná kružnice se nezmění', () => {
+  it('a concentric hole: 1 dof, the fixed circle does not change', () => {
     const r = solver.solve(projected());
     expect(r.status).toBe('solved');
     expect(r.degreesOfFreedom).toBe(1);
@@ -153,7 +153,7 @@ describe('promítnutá geometrie', () => {
     expect(Object.keys(r.points).sort()).toEqual(['ext/center', 'hc', 'origin']);
   });
 
-  it('kóta průměru díry: dof 0, poloměr 4', () => {
+  it('a diameter dimension of the hole: dof 0, radius 4', () => {
     const source = projected();
     source.constraints.d = { type: 'diameter', curve: 'hole', value: 8, driving: true };
     const r = solver.solve(source);
@@ -161,11 +161,11 @@ describe('promítnutá geometrie', () => {
     expect(r.radii.hole).toBeCloseTo(4, 8);
   });
 
-  it('tečna k pevné kružnici ji nezmění', () => {
+  it('a tangent to a fixed circle does not change it', () => {
     const source = projected();
     source.points.q = { x: 20, y: 20 };
     source.curves.tl = { type: 'line', a: 'origin', b: 'q' };
-    source.constraints.tan = { type: 'tangent', a: 'ext', b: 'tl' }; // pořadí operandů je libovolné
+    source.constraints.tan = { type: 'tangent', a: 'ext', b: 'tl' }; // the order of the operands is arbitrary
     const r = solver.solve(source);
     const q = r.points.q!;
     expect(Math.abs(q.x * 7 - q.y * 12) / Math.hypot(q.x, q.y)).toBeCloseTo(10, 6);
@@ -173,7 +173,7 @@ describe('promítnutá geometrie', () => {
     expect(r.points['ext/center']).toEqual({ x: 12, y: 7 });
   });
 
-  it('kóta jiného poloměru pevné kružnice: konflikt bez pomocných vazeb adaptéru', () => {
+  it('a dimension of another radius of a fixed circle: a conflict without the auxiliary constraints of the adapter', () => {
     const source = projected();
     source.constraints.userRadius = { type: 'radius', curve: 'ext', value: 7, driving: true };
     const r = solver.solve(source);
@@ -184,17 +184,17 @@ describe('promítnutá geometrie', () => {
   });
 });
 
-describe('oblouk', () => {
+describe('arc', () => {
   const arc = (extra: Record<Id, Constraint> = {}): SolveInput =>
     input({
-      points: { origin: { x: 0, y: 0 }, c: { x: 10, y: 10 }, s: { x: 21, y: 9 }, e: { x: 11, y: 18 } }, // nesedí na poloměr
+      points: { origin: { x: 0, y: 0 }, c: { x: 10, y: 10 }, s: { x: 21, y: 9 }, e: { x: 11, y: 18 } }, // does not fit the radius
       curves: { arc: { type: 'arc', center: 'c', start: 's', end: 'e' } },
       constraints: extra,
       fixed: ['origin'],
     });
   const radiusOf = (p: Record<Id, Point2>, id: Id) => Math.hypot(p[id]!.x - p.c!.x, p[id]!.y - p.c!.y);
 
-  it('začátek i konec leží na kótovaném poloměru', () => {
+  it('both the start and the end lie on the dimensioned radius', () => {
     const r = solver.solve(arc({ r: { type: 'radius', curve: 'arc', value: 8, driving: true } }));
     expect(r.status).toBe('solved');
     expect(radiusOf(r.points, 's')).toBeCloseTo(8, 6);
@@ -202,14 +202,14 @@ describe('oblouk', () => {
     expect(r.redundant).toEqual([]);
   });
 
-  it('volný oblouk má 5 stupňů volnosti a oba konce na stejném poloměru', () => {
+  it('a free arc has 5 degrees of freedom and both ends on the same radius', () => {
     const r = solver.solve(arc());
     expect(r.status).toBe('solved');
     expect(r.degreesOfFreedom).toBe(5);
     expect(radiusOf(r.points, 's')).toBeCloseTo(radiusOf(r.points, 'e'), 6);
   });
 
-  it('oblouk přes úhel ±π (konec má menší úhel než začátek)', () => {
+  it('an arc across the angle ±π (the end has a smaller angle than the start)', () => {
     const source = input({
       points: { c: { x: 0, y: 0 }, s: { x: -7, y: 7.5 }, e: { x: -7.2, y: -7 } },
       curves: { arc: { type: 'arc', center: 'c', start: 's', end: 'e' } },
@@ -220,13 +220,13 @@ describe('oblouk', () => {
     expect(r.status).toBe('solved');
     expect(Math.hypot(r.points.s!.x, r.points.s!.y)).toBeCloseTo(10, 6);
     expect(Math.hypot(r.points.e!.x, r.points.e!.y)).toBeCloseTo(10, 6);
-    // konce zůstaly na své straně, oblouk se nepřeklopil
+    // the ends stayed on their side, the arc did not flip over
     expect(r.points.s!.y).toBeGreaterThan(5);
     expect(r.points.e!.y).toBeLessThan(-5);
   });
 });
 
-describe('mapování vazeb', () => {
+describe('mapping of constraints', () => {
   const base = (): SolveInput =>
     input({
       points: {
@@ -259,9 +259,9 @@ describe('mapování vazeb', () => {
   const d = (shape: object): Constraint => ({ ...shape, driving: true }) as Constraint;
   const variants: Record<string, Constraint> = {
     coincident: { type: 'coincident', a: 'a', b: 'origin' },
-    'pointOnCurve úsečka': { type: 'pointOnCurve', point: 'd', curve: 'ab' },
-    'pointOnCurve kružnice': { type: 'pointOnCurve', point: 'd', curve: 'circ' },
-    'pointOnCurve oblouk': { type: 'pointOnCurve', point: 'd', curve: 'arcA' },
+    'pointOnCurve line': { type: 'pointOnCurve', point: 'd', curve: 'ab' },
+    'pointOnCurve circle': { type: 'pointOnCurve', point: 'd', curve: 'circ' },
+    'pointOnCurve arc': { type: 'pointOnCurve', point: 'd', curve: 'arcA' },
     horizontal: { type: 'horizontal', line: 'ab' },
     vertical: { type: 'vertical', line: 'bcLine' },
     parallel: { type: 'parallel', a: 'ab', b: 'cd' },
@@ -272,24 +272,24 @@ describe('mapování vazeb', () => {
     'equalRadius circle–arc': { type: 'equalRadius', a: 'circ2', b: 'arcB' },
     'equalRadius arc–arc': { type: 'equalRadius', a: 'arcA', b: 'arcB' },
     fixed: { type: 'fixed', point: 'c', x: -3, y: 12 },
-    'tangent úsečka–kružnice': { type: 'tangent', a: 'ab', b: 'circ' },
-    'tangent kružnice–úsečka': { type: 'tangent', a: 'circ', b: 'ab' },
-    'tangent úsečka–oblouk': { type: 'tangent', a: 'arcA', b: 'ab' },
-    'tangent kružnice–kružnice': { type: 'tangent', a: 'circ', b: 'circ2' },
-    'tangent oblouk–kružnice': { type: 'tangent', a: 'arcA', b: 'circ2' },
-    'tangent oblouk–oblouk': { type: 'tangent', a: 'arcA', b: 'arcB' },
+    'tangent line–circle': { type: 'tangent', a: 'ab', b: 'circ' },
+    'tangent circle–line': { type: 'tangent', a: 'circ', b: 'ab' },
+    'tangent line–arc': { type: 'tangent', a: 'arcA', b: 'ab' },
+    'tangent circle–circle': { type: 'tangent', a: 'circ', b: 'circ2' },
+    'tangent arc–circle': { type: 'tangent', a: 'arcA', b: 'circ2' },
+    'tangent arc–arc': { type: 'tangent', a: 'arcA', b: 'arcB' },
     distance: d({ type: 'distance', a: 'a', b: 'b', value: 12 }),
     distancePointLine: d({ type: 'distancePointLine', point: 'c', line: 'ab', value: 5 }),
     horizontalDistance: d({ type: 'horizontalDistance', a: 'a', b: 'b', value: 7 }),
     verticalDistance: d({ type: 'verticalDistance', a: 'a', b: 'c', value: 6 }),
     angle: d({ type: 'angle', a: 'ab', b: 'bcLine', value: Math.PI / 3 }),
-    'radius kružnice': d({ type: 'radius', curve: 'circ', value: 4 }),
-    'radius oblouku': d({ type: 'radius', curve: 'arcA', value: 4 }),
-    'diameter kružnice': d({ type: 'diameter', curve: 'circ', value: 9 }),
-    'diameter oblouku': d({ type: 'diameter', curve: 'arcA', value: 9 }),
+    'radius circle': d({ type: 'radius', curve: 'circ', value: 4 }),
+    'radius arc': d({ type: 'radius', curve: 'arcA', value: 4 }),
+    'diameter circle': d({ type: 'diameter', curve: 'circ', value: 9 }),
+    'diameter arc': d({ type: 'diameter', curve: 'arcA', value: 9 }),
   };
 
-  it.each(Object.entries(variants))('%s ubere aspoň jeden stupeň volnosti', (_name, constraint) => {
+  it.each(Object.entries(variants))('%s takes at least one degree of freedom', (_name, constraint) => {
     const free = solver.solve(base()).degreesOfFreedom;
     const source = base();
     source.constraints.k = constraint;
@@ -301,7 +301,7 @@ describe('mapování vazeb', () => {
   const dir = (p: Record<Id, Point2>, from: Id, to: Id) => Math.atan2(p[to]!.y - p[from]!.y, p[to]!.x - p[from]!.x);
   const wrap = (angle: number) => Math.atan2(Math.sin(angle), Math.cos(angle));
 
-  it('orientované vzdálenosti znamenají b − a, i záporné', () => {
+  it('oriented distances mean b − a, also negative ones', () => {
     for (const value of [7, -7]) {
       const source = base();
       source.constraints.h = d({ type: 'horizontalDistance', a: 'a', b: 'b', value });
@@ -313,7 +313,7 @@ describe('mapování vazeb', () => {
     }
   });
 
-  it('úhel se měří od směru a ke směru b proti směru hodin', () => {
+  it('the angle is measured from the direction of a to the direction of b counterclockwise', () => {
     for (const value of [Math.PI / 3, -Math.PI / 3, (2 * Math.PI) / 3]) {
       const source = base();
       source.constraints.k = d({ type: 'angle', a: 'ab', b: 'cd', value });
@@ -323,7 +323,7 @@ describe('mapování vazeb', () => {
     }
   });
 
-  it('vzdálenost bodu od přímky a tečnost dávají správnou geometrii', () => {
+  it('the distance of a point from a line and tangency give the right geometry', () => {
     const source = base();
     source.constraints.k = d({ type: 'distancePointLine', point: 'c', line: 'ab', value: 5 });
     source.constraints.t = { type: 'tangent', a: 'cd', b: 'circ' };
@@ -337,8 +337,8 @@ describe('mapování vazeb', () => {
   });
 });
 
-describe('souměrnost a střed úsečky', () => {
-  // svislá osa z pevného počátku a dva body od ruky
+describe('symmetry and the midpoint of a line', () => {
+  // a vertical axis from the fixed origin and two freehand points
   const axis = (constraints: Record<Id, Constraint>, points: Record<Id, Point2> = {}): SolveInput =>
     input({
       points: { origin: { x: 0, y: 0 }, top: { x: 0.6, y: 29 }, a: { x: -14, y: 3 }, b: { x: 22, y: 9 }, ...points },
@@ -347,28 +347,28 @@ describe('souměrnost a střed úsečky', () => {
       fixed: ['origin'],
     });
 
-  it('souměrné body mají stejnou vzdálenost od osy a spojnici na ni kolmou', () => {
+  it('symmetric points have the same distance from the axis and the line joining them is perpendicular to it', () => {
     const result = solver.solve(axis({ s: { type: 'symmetric', a: 'a', b: 'b', line: 'axis' } }));
     expect(result.status).toBe('solved');
     const { a, b, top } = result.points;
     expect(top.x).toBeCloseTo(0, 8);
     expect(a.x).toBeCloseTo(-b.x, 8);
     expect(a.y).toBeCloseTo(b.y, 8);
-    expect(Math.abs(a.x)).toBeGreaterThan(5); // body se nestáhly na osu
+    expect(Math.abs(a.x)).toBeGreaterThan(5); // the points did not collapse onto the axis
   });
 
-  it('na pořadí souměrných bodů nezáleží a šikmá osa funguje stejně', () => {
+  it('the order of the symmetric points does not matter and an oblique axis works the same', () => {
     const swapped = solver.solve(axis({ s: { type: 'symmetric', a: 'b', b: 'a', line: 'axis' } }));
     expect(swapped.status).toBe('solved');
     expect(swapped.points.a.x).toBeCloseTo(-swapped.points.b.x, 8);
-    // osa pod 45°: zrcadlení zamění souřadnice
+    // an axis at 45°: the mirror swaps the coordinates
     const slanted = solver.solve(input({ points: { origin: { x: 0, y: 0 }, e: { x: 10, y: 10 }, a: { x: 8, y: 1 }, b: { x: 2, y: 9 } }, curves: { axis: { type: 'line', a: 'origin', b: 'e' } }, constraints: { s: { type: 'symmetric', a: 'a', b: 'b', line: 'axis' } }, fixed: ['origin', 'e'] }));
     expect(slanted.status).toBe('solved');
     expect(slanted.points.a.x).toBeCloseTo(slanted.points.b.y, 8);
     expect(slanted.points.a.y).toBeCloseTo(slanted.points.b.x, 8);
   });
 
-  it('bod ve středu úsečky drží střed i po změně její délky', () => {
+  it('a point at the midpoint of a line keeps the midpoint also after a change of its length', () => {
     const constraints: Record<Id, Constraint> = { m: { type: 'midpoint', point: 'c', line: 'ab' }, h: { type: 'horizontal', line: 'ab' }, fix: { type: 'coincident', a: 'a', b: 'origin' } };
     for (const length of [30, 80]) {
       const result = solver.solve(axis({ ...constraints, len: { type: 'distance', a: 'a', b: 'b', value: length, driving: true } }, { c: { x: 3, y: 4 } }));
@@ -378,20 +378,20 @@ describe('souměrnost a střed úsečky', () => {
     }
   });
 
-  // Knihovna ve stavu, kdy souměrné body splývají, hlásí souměrnost jako konflikt, i když je
-  // splněná. Adaptér to obchází (viz Splynulá souměrnost v index.ts).
-  describe('souměrné body, které splynou na ose', () => {
+  // In a state where the symmetric points coincide, the library reports the symmetry as a conflict
+  // although it is satisfied. The adapter works around it (see Merged symmetry in index.ts).
+  describe('symmetric points that collapse on the axis', () => {
     const s: Constraint = { type: 'symmetric', a: 'a', b: 'b', line: 'axis' };
     const forced: Record<string, Constraint> = {
-      'bod na ose': { type: 'pointOnCurve', point: 'a', curve: 'axis' },
-      'totožnost bodů': { type: 'coincident', a: 'a', b: 'b' },
-      'totožnost s počátkem': { type: 'coincident', a: 'a', b: 'origin' },
-      'nulová vzdálenost': { type: 'distance', a: 'a', b: 'b', value: 0, driving: true },
-      'nulová vodorovná vzdálenost': { type: 'horizontalDistance', a: 'a', b: 'b', value: 0, driving: true },
-      'nulová vzdálenost od osy': { type: 'distancePointLine', point: 'a', line: 'axis', value: 0, driving: true },
+      'point on the axis': { type: 'pointOnCurve', point: 'a', curve: 'axis' },
+      'coincident points': { type: 'coincident', a: 'a', b: 'b' },
+      'coincident with the origin': { type: 'coincident', a: 'a', b: 'origin' },
+      'zero distance': { type: 'distance', a: 'a', b: 'b', value: 0, driving: true },
+      'zero horizontal distance': { type: 'horizontalDistance', a: 'a', b: 'b', value: 0, driving: true },
+      'zero distance from the axis': { type: 'distancePointLine', point: 'a', line: 'axis', value: 0, driving: true },
     };
     for (const [name, extra] of Object.entries(forced)) {
-      it(`${name}: skica se vyřeší s oběma body na ose`, () => {
+      it(`${name}: the sketch is solved with both points on the axis`, () => {
         const first = solver.solve(axis({ s }));
         expect(first.status).toBe('solved');
         const result = solver.solve(axis({ s, extra }, first.points));
@@ -399,12 +399,12 @@ describe('souměrnost a střed úsečky', () => {
         const { a, b } = result.points;
         expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeLessThan(1e-7);
         expect(a.x).toBeCloseTo(0, 7);
-        // a další řešení ze splynulého stavu také
+        // and so is the next solve from the collapsed state
         expect(solver.solve(axis({ s, extra }, result.points)).status).toBe('solved');
       });
     }
 
-    it('body splynulé už na vstupu: mimo osu se rozestoupí nebo přesunou na osu, na ose zůstanou', () => {
+    it('points that coincide already in the input: off the axis they move apart or onto the axis, on the axis they stay', () => {
       const off = solver.solve(axis({ s }, { a: { x: 7, y: 10 }, b: { x: 7, y: 10 } }));
       expect(off.status).toBe('solved');
       expect(off.points.a.x).toBeCloseTo(-off.points.b.x, 7);
@@ -416,8 +416,8 @@ describe('souměrnost a střed úsečky', () => {
       expect(apart.points.a.x).toBeCloseTo(-apart.points.b.x, 7);
     });
 
-    it('splynulé body jde zase rozestoupit kótou i tažením', () => {
-      const collapsed = solver.solve(axis({ s, on: forced['bod na ose'] }));
+    it('collapsed points can be moved apart again by a dimension and by dragging', () => {
+      const collapsed = solver.solve(axis({ s, on: forced['point on the axis'] }));
       expect(collapsed.status).toBe('solved');
       const width = solver.solve(axis({ s, w: { type: 'distance', a: 'a', b: 'b', value: 10, driving: true } }, collapsed.points));
       expect(width.status).toBe('solved');
@@ -429,14 +429,14 @@ describe('souměrnost a střed úsečky', () => {
       expect(dragged.points.b.x).toBeCloseTo(-6, 6);
     });
 
-    it('skutečný konflikt zůstává konfliktem', () => {
-      // osa má danou délku; volnou osu by solver stáhl do bodu a vazby by tím „splnil"
-      const result = solver.solve(axis({ s, len: { type: 'distance', a: 'origin', b: 'top', value: 29, driving: true }, on: forced['bod na ose'], w: { type: 'distance', a: 'a', b: 'b', value: 10, driving: true } }));
+    it('a real conflict stays a conflict', () => {
+      // the axis has a given length; the solver would collapse a free axis to a point and so "satisfy" the constraints
+      const result = solver.solve(axis({ s, len: { type: 'distance', a: 'origin', b: 'top', value: 29, driving: true }, on: forced['point on the axis'], w: { type: 'distance', a: 'a', b: 'b', value: 10, driving: true } }));
       expect(result.status).not.toBe('solved');
     });
   });
 
-  it('střed úsečky, jejíž konce leží na vstupu ve stejném místě', () => {
+  it('the midpoint of a line whose ends lie in the same place in the input', () => {
     const result = solver.solve(input({ points: { p: { x: 5, y: 5 }, q: { x: 5, y: 5 }, m: { x: 8, y: 9 } }, curves: { l: { type: 'line', a: 'p', b: 'q' } }, constraints: { mid: { type: 'midpoint', point: 'm', line: 'l' } }, fixed: [] }));
     expect(result.status).toBe('solved');
     const { p, q, m } = result.points;
@@ -444,7 +444,7 @@ describe('souměrnost a střed úsečky', () => {
     expect(m.y).toBeCloseTo((p.y + q.y) / 2, 7);
   });
 
-  it('souměrnost podle promítnuté (pevné) úsečky a střed pevné úsečky', () => {
+  it('symmetry about a projected (fixed) line and the midpoint of a fixed line', () => {
     const fixedLine = input({
       points: { 'x/a': { x: 10, y: 0 }, 'x/b': { x: 10, y: 20 }, a: { x: 4, y: 6 }, b: { x: 15, y: 5 }, c: { x: 9, y: 9 } },
       curves: { x: { type: 'line', a: 'x/a', b: 'x/b' } },
@@ -459,36 +459,36 @@ describe('souměrnost a střed úsečky', () => {
     expect([result.points.c.x, result.points.c.y]).toEqual([expect.closeTo(10, 8), expect.closeTo(10, 8)]);
   });
 
-  it('střed úsečky chce úsečku: kružnice je chyba vstupu', () => {
+  it('the midpoint of a line needs a line: a circle is an error of the input', () => {
     const bad = input({ points: { o: { x: 0, y: 0 }, p: { x: 1, y: 1 } }, radii: { k: 3 }, curves: { k: { type: 'circle', center: 'o' } }, constraints: { m: { type: 'midpoint', point: 'p', line: 'k' } } });
-    expect(() => solver.solve(bad)).toThrow(/čeká úsečku/);
+    expect(() => solver.solve(bad)).toThrow(/expects a line/);
   });
 });
 
-describe('chyby vstupu a okrajové chování', () => {
-  it('neznámý bod, křivka a nesprávný druh křivky vyhodí výjimku', () => {
+describe('errors of the input and edge behaviour', () => {
+  it('an unknown point, curve and a wrong kind of curve throw an exception', () => {
     const curves: Record<Id, Curve> = { l: { type: 'line', a: 'a', b: 'missing' } };
-    expect(() => solver.solve(input({ points: { a: { x: 0, y: 0 } }, curves }))).toThrow(/neznámý bod/);
+    expect(() => solver.solve(input({ points: { a: { x: 0, y: 0 } }, curves }))).toThrow(/unknown point/);
     const source = rect();
     source.constraints.bad = { type: 'horizontal', line: 'nope' };
-    expect(() => solver.solve(source)).toThrow(/neznámou křivku/);
+    expect(() => solver.solve(source)).toThrow(/an unknown curve/);
     const two = rect();
     two.constraints.bad = { type: 'tangent', a: 'l1', b: 'l2' };
-    expect(() => solver.solve(two)).toThrow(/tečnost/);
-    expect(() => solver.solve(input({ points: { m: { x: 0, y: 0 } }, curves: { k: { type: 'circle', center: 'm' } } }))).toThrow(/poloměr/);
+    expect(() => solver.solve(two)).toThrow(/tangency/);
+    expect(() => solver.solve(input({ points: { m: { x: 0, y: 0 } }, curves: { k: { type: 'circle', center: 'm' } } }))).toThrow(/radius/);
   });
 
-  it('po výjimce i po konfliktu solver dál funguje', () => {
+  it('after an exception and after a conflict the solver still works', () => {
     expect(() => solver.solve(input({ curves: { l: { type: 'line', a: 'x', b: 'y' } } }))).toThrow();
     expect(solver.solve(rect({ height })).status).toBe('solved');
   });
 
-  it('prázdná skica je vyřešená s dof 0', () => {
+  it('an empty sketch is solved with dof 0', () => {
     const r = solver.solve(input({}));
     expect(r).toEqual({ status: 'solved', points: {}, radii: {}, degreesOfFreedom: 0, conflicting: [], redundant: [] });
   });
 
-  it('solver nic nevypisuje', () => {
+  it('the solver prints nothing', () => {
     const lines: unknown[] = [];
     const original = console.log;
     console.log = (...args: unknown[]) => void lines.push(args);
@@ -504,8 +504,8 @@ describe('chyby vstupu a okrajové chování', () => {
   });
 });
 
-// Nálezy z revize adaptéru 2026-11-14.
-describe('nálezy z revize', () => {
+// Findings of the review of the adapter, 2026-11-14.
+describe('findings of the review', () => {
   const clean = (extra: Record<Id, Constraint> = {}): SolveInput => {
     const source = rect(extra);
     source.points = { origin: { x: 0, y: 0 }, p1: { x: 0, y: 0 }, p2: { x: 40, y: 0 }, p3: { x: 40, y: 26 }, p4: { x: 0, y: 26 } };
@@ -514,10 +514,10 @@ describe('nálezy z revize', () => {
   const distanceOf = (p: Record<Id, Point2>, a: Id, b: Id) => Math.hypot(p[a]!.x - p[b]!.x, p[a]!.y - p[b]!.y);
 
   it.each<[string, Record<Id, Constraint>]>([
-    ['kóta protější strany', { width2: { type: 'distance', a: 'p4', b: 'p3', value: 40, driving: true } }],
-    ['zdvojená vodorovnost', { h1b: { type: 'horizontal', line: 'l1' } }],
-    ['rovnoběžnost protějších stran', { par: { type: 'parallel', a: 'l1', b: 'l3' } }],
-  ])('tažení ve skice s nadbytečnou vazbou není konflikt (%s)', (_name, extra) => {
+    ['a dimension of the opposite side', { width2: { type: 'distance', a: 'p4', b: 'p3', value: 40, driving: true } }],
+    ['a doubled horizontal', { h1b: { type: 'horizontal', line: 'l1' } }],
+    ['parallel opposite sides', { par: { type: 'parallel', a: 'l1', b: 'l3' } }],
+  ])('a drag in a sketch with a redundant constraint is no conflict (%s)', (_name, extra) => {
     const source = clean(extra);
     const plain = solver.solve(source);
     expect(plain.status).toBe('solved');
@@ -530,15 +530,15 @@ describe('nálezy z revize', () => {
     expect(r.redundant).toEqual(Object.keys(extra));
   });
 
-  it('tažení ve skice, která je bez tažení v konfliktu, vrátí konflikt', () => {
+  it('a drag in a sketch that is in conflict without the drag returns a conflict', () => {
     const source = clean({ height: { type: 'distance', a: 'p2', b: 'p3', value: 26, driving: true }, width2: { type: 'distance', a: 'p4', b: 'p3', value: 50, driving: true } });
     const r = solver.solve({ ...source, drag: { point: 'p3', target: { x: 45, y: 28 } } });
     expect(r.status).toBe('conflict');
     expect(r.points).toEqual(source.points);
   });
 
-  // Knihovna tu skončí stavem Converged a nadbytečnou vazbu nechá nesplněnou; adaptér řeší dál.
-  it('výsledek splňuje i vazby, které knihovna označila za nadbytečné', () => {
+  // The library ends here in the state Converged and leaves the redundant constraint unsatisfied; the adapter solves on.
+  it('the result satisfies also the constraints the library marked as redundant', () => {
     const source = input({
       points: { origin: { x: 0, y: 0 }, p0: { x: -12.4, y: 4.9 }, p1: { x: 6.8, y: -0.2 } },
       curves: { l0: { type: 'line', a: 'origin', b: 'p0' }, l1: { type: 'line', a: 'p1', b: 'origin' } },
@@ -552,13 +552,13 @@ describe('nálezy z revize', () => {
     });
     const r = solver.solve(source);
     if (r.status === 'solved') {
-      expect(Math.abs(r.points.p0!.x)).toBeLessThan(1e-6); // svislá i vodorovná úsečka z počátku má nulovou délku
+      expect(Math.abs(r.points.p0!.x)).toBeLessThan(1e-6); // a line from the origin that is both vertical and horizontal has zero length
       expect(Math.abs(r.points.p0!.y)).toBeLessThan(1e-6);
       expect(distanceOf(r.points, 'p0', 'p1')).toBeLessThan(1e-6);
     } else expect(r.points).toEqual(source.points);
   });
 
-  it('diagnostika popisuje vrácenou geometrii: opakované řešení z výsledku dá totéž', () => {
+  it('the diagnostics describe the returned geometry: solving again from the result gives the same', () => {
     const source = input({
       points: { origin: { x: 0, y: 0 }, a: { x: 0, y: 0 }, b: { x: 40, y: 0 }, c: { x: 5, y: 20 }, d: { x: 35, y: 21 } },
       curves: { l1: { type: 'line', a: 'a', b: 'b' }, l2: { type: 'line', a: 'c', b: 'd' } },
@@ -578,7 +578,7 @@ describe('nálezy z revize', () => {
     expect(first.degreesOfFreedom).toBe(4);
   });
 
-  it('záporný poloměr není řešení', () => {
+  it('a negative radius is no solution', () => {
     const source = input({
       points: { origin: { x: 0, y: 0 }, m: { x: 0, y: 0 }, n: { x: 13, y: 0 } },
       radii: { k: 10, j: 3 },
@@ -597,7 +597,7 @@ describe('nálezy z revize', () => {
     else expect(r.radii).toEqual(source.radii);
   });
 
-  it('pevná kružnice s volným středem si drží poloměr bitově', () => {
+  it('a fixed circle with a free centre keeps its radius bitwise', () => {
     const r = solver.solve(
       input({
         points: { origin: { x: 0, y: 0 }, p1: { x: -0.4, y: 0.5 }, p3: { x: -3.7, y: -17.5 } },
@@ -611,7 +611,7 @@ describe('nálezy z revize', () => {
     expect(r.radii.k0).toBe(5.6);
   });
 
-  it('oblouk se všemi body pevnými a konci na různých poloměrech není řešení', () => {
+  it('an arc with all points fixed and its ends on different radii is no solution', () => {
     const source = input({
       points: { c: { x: 0, y: 0 }, s: { x: 10, y: 0 }, e: { x: 0, y: 7 } },
       curves: { arc: { type: 'arc', center: 'c', start: 's', end: 'e' } },
@@ -620,18 +620,18 @@ describe('nálezy z revize', () => {
     expect(solver.solve(source).status).not.toBe('solved');
   });
 
-  it('neznámý druh křivky, nepřípustné fixed a kolize s pomocnými ID vyhodí výjimku', () => {
+  it('an unknown kind of curve, an inadmissible fixed and a collision with auxiliary IDs throw an exception', () => {
     const points = { a: { x: 0, y: 0 }, b: { x: 5, y: 0 }, c: { x: 0, y: 5 } };
     const ellipse = { type: 'ellipse', center: 'a', start: 'b', end: 'c' } as unknown as Curve;
-    expect(() => solver.solve(input({ points, curves: { e: ellipse } }))).toThrow(/neznámý druh křivky/);
+    expect(() => solver.solve(input({ points, curves: { e: ellipse } }))).toThrow(/unknown kind of curve/);
     const arc: Curve = { type: 'arc', center: 'a', start: 'b', end: 'c' };
-    expect(() => solver.solve(input({ points, curves: { arc }, fixed: ['arc'] }))).toThrow(/není bod ani kružnice/);
-    expect(() => solver.solve(input({ points, fixed: ['ghost'] }))).toThrow(/není bod ani kružnice/);
-    expect(() => solver.solve(input({ points: { ...points, '//x': { x: 1, y: 1 } } }))).toThrow(/koliduje/);
+    expect(() => solver.solve(input({ points, curves: { arc }, fixed: ['arc'] }))).toThrow(/is neither a point nor a circle/);
+    expect(() => solver.solve(input({ points, fixed: ['ghost'] }))).toThrow(/is neither a point nor a circle/);
+    expect(() => solver.solve(input({ points: { ...points, '//x': { x: 1, y: 1 } } }))).toThrow(/collides/);
   });
 
-  it('výsledek nezávisí na pořadí klíčů ani u skici bez přesného řešení', () => {
-    // podurčená skica s oblouky a tečnostmi: výsledek závisí na průběhu iterací
+  it('the result does not depend on the order of the keys even for a sketch without an exact solution', () => {
+    // an underconstrained sketch with arcs and tangencies: the result depends on the course of the iterations
     const source = input({
       points: { origin: { x: 0, y: 0 }, a: { x: 1.3, y: 0.7 }, b: { x: 9.1, y: 2.2 }, c: { x: 8.4, y: 9.3 }, m: { x: 14, y: 3 }, s: { x: 19, y: 4 }, e: { x: 13, y: 8 } },
       radii: { k: 3.1 },
@@ -650,7 +650,7 @@ describe('nálezy z revize', () => {
     expect(solver.solve({ ...source, points: reversed(source.points), curves: reversed(source.curves), constraints: reversed(source.constraints), radii: reversed(source.radii) })).toEqual(first);
   });
 
-  it('vazby dávají geometrii, kterou jejich jméno slibuje', () => {
+  it('constraints give the geometry their name promises', () => {
     const base = (): SolveInput =>
       input({
         points: { origin: { x: 0, y: 0 }, a: { x: 1, y: 1 }, b: { x: 9, y: 2 }, c: { x: 8, y: 9 }, d: { x: 2, y: 8 }, m: { x: 20, y: 5 }, m2: { x: 30, y: 6 }, ac: { x: 40, y: 0 }, as: { x: 45, y: 0 }, ae: { x: 40, y: 5 } },
@@ -691,7 +691,7 @@ describe('nálezy z revize', () => {
     expect(Math.min(Math.abs(centres - (r.radii.k! + r.radii.k2!)), Math.abs(centres - Math.abs(r.radii.k! - r.radii.k2!)))).toBeLessThan(1e-6);
     r = solved({ type: 'pointOnCurve', point: 'd', curve: 'arc' });
     expect(distanceOf(r.points, 'd', 'ac')).toBeCloseTo(distanceOf(r.points, 'as', 'ac'), 6);
-    expect(distanceOf(r.points, 'd', 'as')).toBeGreaterThan(0.1); // ne totožnost se začátkem oblouku
+    expect(distanceOf(r.points, 'd', 'as')).toBeGreaterThan(0.1); // not coincidence with the start of the arc
     r = solved({ type: 'pointOnCurve', point: 'd', curve: 'k' });
     expect(distanceOf(r.points, 'd', 'm')).toBeCloseTo(r.radii.k!, 6);
   });

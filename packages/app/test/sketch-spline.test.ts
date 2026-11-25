@@ -137,18 +137,18 @@ describe('the tool Spline (D70)', () => {
     const h = await open();
     run(h, ...fixed('s1', 0, 40), ...fixed('s2', 20, 40), ...fixed('s3', 40, 40), ...fixed('u1', 0, 45), ...fixed('u2', 40, 45));
     run(h, { type: 'addCurve', sketch: 's', id: 'k', curve: { type: 'spline', points: ['s1', 's2', 's3'] } }, { type: 'addCurve', sketch: 's', id: 'u', curve: { type: 'line', a: 'u1', b: 'u2' } });
-    h.press('toolbar', 'Úsečka');
+    h.press('toolbar', 'Line');
     h.click(at(30, 41.5)); // 1.5 from the spline, 3.5 from the line `u`
     h.click(at(30, 80));
     const held = Object.values(sketchOf(h).constraints).filter((c) => c.type === 'pointOnCurve');
     expect(held).toEqual([{ type: 'pointOnCurve', point: expect.any(String), curve: 'u' }]);
     // nothing else in reach: the bare place
     h.key('Escape');
-    h.press('toolbar', 'Bod');
+    h.press('toolbar', 'Point');
     h.click(at(30, 37)); // 3 from the spline, 8 from `u` and from the end of the new line
     expect(Object.values(sketchOf(h).constraints).filter((c) => c.type === 'pointOnCurve')).toHaveLength(1);
     // the Select tool selects the spline; with the point q1 no constraint is offered, and no re-pointing
-    h.press('toolbar', 'Výběr');
+    h.press('toolbar', 'Select');
     h.click(at(10, 40));
     h.click(at(10, 10), { shiftKey: true });
     h.click(at(20, 45), { shiftKey: true }); // and the line `u`: a point, a line and a spline

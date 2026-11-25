@@ -17,18 +17,18 @@ export interface SketchMode {
   kind: 'sketch';
   id: Id;
   tool: SketchToolName; // a tool of the bar (SKETCH_TOOL_UI)
-  clicks: Place[]; // dosud zadané body rozpracovaného tvaru
+  clicks: Place[]; // the points of the shape in progress entered so far
   cursor?: Place;
   infer?: 'horizontal' | 'vertical' | 'extension'; // 'extension': on the extension of a line (the spline, D70)
   selection: Id[];
   hover?: Id;
   hoverConstraint?: Id;
-  focus?: Id; // vazba označená v seznamu: pohled ukáže ji a vazby, ze kterých plyne
-  construction?: boolean; // kreslicí nástroje zakládají konstrukční křivky
+  focus?: Id; // the constraint marked in the list: the view shows it and the constraints it follows from
+  construction?: boolean; // the drawing tools create construction curves
   hoverEdge?: ViewPick;
   drag?: { point: Id; moved: boolean };
-  preview?: EngineState; // stav při tažení bodu
-  repair?: Id; // promítnutí, které další kliknutí nástrojem Promítnout opraví
+  preview?: EngineState; // the state while dragging a point
+  repair?: Id; // the projection the next click with the Project tool repairs
   entry?: Id; // the entry of `external` whose form is open in the panel (a mirror or pattern, D68)
   outline?: OutlineDraft; // the import of an outline in progress (D72)
 }
@@ -91,7 +91,7 @@ export function settleSketch(m: SketchMode, context: SketchContext | undefined):
   m.clicks = m.clicks.filter((a) => !a.snap || a.snap.kind === 'foreign' || (view && kindOf(view, a.snap.id)));
   if (m.repair && !context?.feature.external[m.repair]) m.repair = undefined;
   if (m.entry && !context?.feature.external[m.entry]) m.entry = undefined;
-  // místo pod kurzorem se po změně skici počítá znovu: přichycení mohlo vzniknout nebo zaniknout
+  // the place under the cursor is computed again after a change of the sketch: a snap may have appeared or disappeared
   m.cursor = undefined;
   m.infer = undefined;
   m.hover = undefined;
@@ -126,9 +126,9 @@ export function dropPoint(host: SketchHost, m: SketchMode, point: Id, event: Poi
   if (!p || !host.run({ type: 'dragPoint', sketch: m.id, point, x: p[0], y: p[1] })) host.refresh();
 }
 
-// Místo pod kurzorem ve skice a přichycení: bod má přednost před křivkou. A copy of a mirror or
-// pattern (D68) and a spline (D70) are snapped to only with `copies` (the select tool, which hovers
-// and selects them): a new point cannot be held on either (`holdsPoint`).
+// The place under the cursor in the sketch and the snap: a point takes precedence over a curve. A copy of a
+// mirror or pattern (D68) and a spline (D70) are snapped to only with `copies` (the select tool, which
+// hovers and selects them): a new point cannot be held on either (`holdsPoint`).
 function anchorAt(host: SketchHost, event: { clientX: number; clientY: number }, context: SketchContext, copies = false): Place | undefined {
   const p = host.planePoint(event, context.frame)?.at;
   if (!p) return undefined;
@@ -164,7 +164,7 @@ export function sketchMove(host: SketchHost, m: SketchMode, event: PointerEvent,
     if (!p || !down) return undefined;
     if (!m.drag.moved && Math.hypot(event.clientX - down.x, event.clientY - down.y) <= 4) return undefined;
     m.drag.moved = true;
-    // náhled počítá jen po upravovanou skicu a dokument nemění
+    // the preview computes only up to the sketch being edited and does not change the document
     const result = host.engine.preview({ type: 'dragPoint', sketch: m.id, point: m.drag.point, x: p[0], y: p[1] }, m.id);
     if (!result.ok) return undefined;
     m.preview = result.state;
@@ -187,7 +187,7 @@ export function sketchMove(host: SketchHost, m: SketchMode, event: PointerEvent,
     const on = first.snap?.kind === 'foreign' ? undefined : extensionOf(context.view, first as Anchor, anchor.at, PICK_REACH * host.pixelSize());
     if (on) [anchor.at, m.infer] = [on.at, 'extension'];
   }
-  // odvozená vazba: volný konec úsečky skoro vodorovně nebo svisle od začátku
+  // inferred constraint: the free end of a line almost horizontally or vertically from the start
   else if (anchor && !anchor.snap && tool.infer === true && m.clicks.length === 1) {
     const from = placePosition(context.view, m.clicks[0]);
     const reach = PICK_REACH * host.pixelSize();
@@ -208,7 +208,8 @@ export function sketchClick(host: SketchHost, m: SketchMode, event: PointerEvent
   const entry = SKETCH_TOOL_UI[m.tool];
   if (entry.picks === 'edge') return entry.click(host, m, host.pick(event, { edges: true }), context);
   const tool: SketchPlaceTool<unknown> = entry;
-  // místo kliknutí včetně odvozené vazby spočítal poslední pohyb myši; bez něj se dopočítá
+  // the last mouse move computed the place of the click including the inferred constraint; without it, it
+  // is computed now
   const place = m.cursor && !tool.atClick ? m.cursor : placeAt(host, tool, event, context);
   if (!place) return;
   if (tool.clicks !== undefined && m.clicks.length + 1 < tool.clicks) {
@@ -249,24 +250,24 @@ export function sketchFinish(host: SketchHost, m: SketchMode): boolean {
 
 export function addConstraints(host: SketchHost, m: SketchMode, constraints: Constraint[] | undefined): void {
   if (!constraints) return;
-  // Vazbu, kterou skica už má, engine odmítne; ze sady se přidá jen to, co chybí.
+  // The engine refuses a constraint the sketch already has; of the set only what is missing is added.
   const feature = host.sketchContext()?.feature;
   const fresh = feature ? constraints.filter((c) => duplicateOf(feature, c) === undefined) : constraints;
-  if (fresh.length === 0) return host.say(constraints.some(isDimension) ? 'Tuhle kótu už skica má; její hodnotu upravíte v seznamu vazeb.' : 'Tuhle vazbu už skica má.', true);
+  if (fresh.length === 0) return host.say(constraints.some(isDimension) ? 'The sketch already has this dimension; change its value in the list of constraints.' : 'The sketch already has this constraint.', true);
   constraints = fresh;
   const commands = (list: Constraint[]): Command => ({ type: 'batch', commands: list.map((constraint): Command => ({ type: 'addConstraint', sketch: m.id, id: host.newId('k'), constraint })) });
   const result: CommandResult = host.engine.execute(commands(constraints));
-  if (result.ok) return host.say('Vazba přidána.');
-  // kótu jen mezi pevnými entitami engine odmítne jako řídicí; nabídne se jako referenční
+  if (result.ok) return host.say('Constraint added.');
+  // the engine refuses as driving a dimension only between fixed entities; it is offered as a reference one
   const reference = constraints.map((c) => (isDimension(c) ? { ...c, driving: false } : c));
-  // stejná referenční kóta už ve skice je: engine duplicity hlídá jen u řídicích vazeb
+  // the same reference dimension is already in the sketch: the engine guards duplicates only for driving constraints
   const keys = new Set(Object.values(feature?.constraints ?? {}).map(constraintKey));
-  if (reference.every((c) => isDimension(c) && keys.has(constraintKey(c)))) return host.say('Tuhle kótu už skica má.', true);
-  if (constraints.some(isDimension) && host.engine.execute(commands(reference)).ok) return host.say('Kóta je mezi pevnými entitami, proto je jen referenční.');
+  if (reference.every((c) => isDimension(c) && keys.has(constraintKey(c)))) return host.say('The sketch already has this dimension.', true);
+  if (constraints.some(isDimension) && host.engine.execute(commands(reference)).ok) return host.say('The dimension is between fixed entities, so it is only a reference dimension.');
   host.say(result.error.message, true);
 }
 
-// Smaže vybrané entity; s křivkou zmizí i její body, které už nic dalšího nepoužívá.
+// Deletes the selected entities; with a curve go its points that nothing else uses any more.
 export function deleteSelection(host: SketchHost, m: SketchMode): void {
   const context = host.sketchContext();
   if (!context || m.selection.length === 0) return;
@@ -275,13 +276,13 @@ export function deleteSelection(host: SketchHost, m: SketchMode): void {
   const copy = m.selection.find((id) => context.view.points.get(id)?.derived === true || context.view.curves.get(id)?.derived === true);
   const entry = copy === undefined ? undefined : derivedOrigin(context.feature, copy)?.entry;
   const copyHint = entry === undefined ? '' : `"${copy}" is a copy of the mirror or pattern "${entry}" and is not deleted by itself: remove "${entry}" by ✕ in its row, or change its sources in its form.`;
-  if (commands.length === 0) return host.say(copyHint || 'Počátek a body promítnuté geometrie smazat nejdou; promítnutí se maže výběrem jeho křivky.', true);
+  if (commands.length === 0) return host.say(copyHint || 'The origin and the points of projected geometry cannot be deleted; a projection is deleted by selecting its curve.', true);
   m.selection = [];
-  host.run({ type: 'batch', commands }, copyHint ? `Deleted the own entities of the selection; ${copyHint}` : 'Smazáno.');
+  host.run({ type: 'batch', commands }, copyHint ? `Deleted the own entities of the selection; ${copyHint}` : 'Deleted.');
 }
 
-// Vysvětlení označené vazby. Pamatuje se podle diagnostiky, aby se při každém překreslení
-// pohledu nepočítalo znovu.
+// The explanation of the marked constraint. It is remembered by the diagnosis, so that it is not computed again
+// on every redraw of the view.
 export function explain(host: SketchHost, sketch: Id, id: Id, diagnosis: SketchDiagnosis): ConstraintExplanation {
   if (host.sketching.explained?.diagnosis !== diagnosis || host.sketching.explained.id !== id) host.sketching.explained = { diagnosis, id, value: host.engine.explainConstraint(sketch, id) };
   return host.sketching.explained.value;
@@ -301,7 +302,7 @@ export function sketchScene(host: SketchHost, m: SketchMode, model: SceneModel):
   const { feature, view, result, frame } = context;
   const selected = new Set(m.selection);
   const hovered = new Set(m.hoverConstraint && feature.constraints[m.hoverConstraint] ? operandsOf(feature.constraints[m.hoverConstraint]) : m.hover ? hoverMarks(feature, m.hover) : []);
-  // Diagnostika: volné entity modře, určené tmavě; označená vazba a vazby, ze kterých plyne.
+  // Diagnosis: free entities in blue, constrained ones dark; the marked constraint and the constraints it follows from.
   const diagnosis = host.engine.diagnoseSketch(m.id);
   const free = freeEntities(diagnosis, view);
   const focus = m.focus && feature.constraints[m.focus] ? m.focus : undefined;
@@ -313,7 +314,7 @@ export function sketchScene(host: SketchHost, m: SketchMode, model: SceneModel):
   // the query sketchContacts, whose view draws the same marks
   else model.points.push({ positions: (contactsOf(host, m.id)?.contacts ?? []).flatMap((contact) => toWorld(frame, contact.at[0], contact.at[1])), color: COLOR.clash, size: 9 });
 
-  // `unknown`: skica není vyřešená a o volnosti se nedá nic říct
+  // `unknown`: the sketch is not solved and nothing can be said about freedom
   const lines: Record<'own' | 'determined' | 'unknown' | 'construction' | 'external' | 'derived' | 'derivedConstruction' | 'selected' | 'hover' | 'focus' | 'implying', number[]> = { own: [], determined: [], unknown: [], construction: [], external: [], derived: [], derivedConstruction: [], selected: [], hover: [], focus: [], implying: [] };
   // The axes of the origin (D71) in a bucket of their own: thin lines in the colour of a plane,
   // drawn by the view as their stretch inside what it shows.
@@ -401,7 +402,7 @@ export function sketchScene(host: SketchHost, m: SketchMode, model: SceneModel):
     { positions: points.selected, color: COLOR.select, size: 10 },
   );
 
-  // kóty jako popisky u svých operandů
+  // dimensions as labels at their operands
   for (const [id, c] of Object.entries(feature.constraints)) {
     if (!isDimension(c)) continue;
     const at = anchorOf(c, view);
@@ -411,7 +412,7 @@ export function sketchScene(host: SketchHost, m: SketchMode, model: SceneModel):
     model.labels.push({ at: toWorld(frame, at[0], at[1]), text: c.driving ? text : `(${text})`, tone: result.conflicting.includes(id) ? 'problem' : c.driving ? 'driving' : 'reference' });
   }
 
-  // rozpracovaný tvar: what the tool draws, the marker of a snap and the inferred direction
+  // the shape in progress: what the tool draws, the marker of a snap and the inferred direction
   const cursor = m.cursor;
   const tool = placeTool(m);
   if (cursor && tool && !tool.hovers) {
@@ -421,6 +422,6 @@ export function sketchScene(host: SketchHost, m: SketchMode, model: SceneModel):
     for (const points of tool.draw?.(places, cursor, context, toolOptions(host, m.tool)) ?? []) pushPolyline(rubber, frame, points);
     model.lines.push({ segments: rubber, color: m.infer ? COLOR.select : m.construction ? COLOR.construction : COLOR.rubber, width: 1.5, dashed: true, onTop: true });
     if (cursor.snap) model.points.push({ positions: toWorld(frame, at[0], at[1]), color: 0x16a34a, size: 12 });
-    if (m.infer) model.labels.push({ at: toWorld(frame, at[0], at[1]), text: m.infer === 'horizontal' ? 'vodorovně' : m.infer === 'vertical' ? 'svisle' : 'tangent', tone: 'reference' });
+    if (m.infer) model.labels.push({ at: toWorld(frame, at[0], at[1]), text: m.infer === 'horizontal' ? 'horizontal' : m.infer === 'vertical' ? 'vertical' : 'tangent', tone: 'reference' });
   }
 }

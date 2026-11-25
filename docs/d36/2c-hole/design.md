@@ -124,7 +124,7 @@ The step, in `features/hole.ts`:
 | `startCap`, `endCap` | none | the mouths and the bottoms, for all points (the roles of today) |
 
 - **Named by meaning, not by a count.** The brief and the vocabulary suggest "a point and a step". A step number renames the bore when a plain hole (step 1) becomes a counterbore (bore: step 2), and every sketch on it and every projected rim breaks. With `holeBore` the bore keeps its name through every change of the shape (`calls.ts`, `socketHeadsInstead`). The role with two parts the vocabulary provides for is `holeFlat`.
-- **The seat and the caps are one face per feature**, like the caps of an extrusion with several regions (architecture.md, "Stěny"): they lie in one plane, a sketch on one stands on all, and a point added later renames nothing.
+- **The seat and the caps are one face per feature**, like the caps of an extrusion with several regions (architecture/naming.md, "Faces"): they lie in one plane, a sketch on one stands on all, and a point added later renames nothing.
 - A flat is a plane and gets a name of its own, so a sketch can stand on it and its edges are lines; one face for the whole hexagon would have to be `swept`.
 
 ## The catalogs

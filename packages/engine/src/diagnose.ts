@@ -1,5 +1,6 @@
-// Diagnostika skici: duplicitní a nadbytečné vazby, volnost bodů a poloměrů, vysvětlení vazby.
-// Pravidla jsou v docs/architecture.md, sekce Diagnostika skici; počítá se z rozboru v analysis.ts.
+// Sketch diagnosis: duplicate and redundant constraints, freedom of points and radii, explanation
+// of a constraint. The rules are in docs/architecture/sketch.md, section "Sketch diagnosis"; it is computed
+// from the analysis in analysis.ts.
 import type { SketchAnalysis } from './analysis';
 import { constraintKey, constraintOperands, curvePoints } from './sketch-content';
 import type { ConstraintExplanation, Constraint, Id, SketchDiagnosis, SolveInput } from './types';
@@ -7,15 +8,15 @@ import { has } from './util';
 
 export const UNAVAILABLE: SketchDiagnosis = { status: 'unavailable', degreesOfFreedom: 0, conflicting: [], duplicates: [], redundant: [], removable: [], free: [] };
 
-// Co je o vyhodnocené skice potřeba: vstup solveru s použitými polohami, výsledek řešení a rozbor
-// (ten je jen u vyřešené skici).
+// What is needed about an evaluated sketch: the input of the solver with the positions used, the
+// result of solving and the analysis (which only a solved sketch has).
 export interface Diagnosable {
   input: SolveInput;
   solve: { status: 'solved' | 'conflict' | 'failed'; conflicting: Id[] };
   analysis?: SketchAnalysis;
 }
 
-// Skupiny vazeb se stejným typem a operandy, v pořadí dokumentu.
+// Groups of constraints with the same type and operands, in the order of the document.
 function duplicateGroups(constraints: Record<Id, Constraint>): Id[][] {
   const groups = new Map<string, Id[]>();
   for (const [id, c] of Object.entries(constraints)) {
@@ -34,7 +35,7 @@ export function diagnose(sketch: Diagnosable): SketchDiagnosis {
   return { status: 'solved', degreesOfFreedom: sketch.analysis.degreesOfFreedom, conflicting: [], duplicates, redundant, removable, free: sketch.analysis.free() };
 }
 
-// Entity, kterých se vazba dotýká: operandy a body křivek.
+// The entities a constraint touches: the operands and the points of curves.
 function touched(input: SolveInput, c: Constraint): Set<Id> {
   const out = new Set<Id>();
   for (const id of constraintOperands(c)) {
@@ -44,9 +45,10 @@ function touched(input: SolveInput, c: Constraint): Set<Id> {
   return out;
 }
 
-// Nejmenší sada ostatních vazeb, ze kterých vazba plyne. Sad může být víc; přednost má duplicita
-// a pak vazby na stejných entitách. Prázdná sada u nadbytečné vazby: plyne z definice křivky
-// (podmínka oblouku), nebo její rovnice v tomto stavu nic neurčuje.
+// The smallest set of other constraints the constraint follows from. There can be more such sets;
+// a duplicate takes precedence, and then constraints on the same entities. An empty set for a
+// redundant constraint: it follows from the definition of a curve (the condition of an arc), or
+// its equation determines nothing in this state.
 export function explain(sketch: Diagnosable, constraint: Id): ConstraintExplanation {
   const all = sketch.input.constraints;
   if (!sketch.analysis || sketch.solve.status !== 'solved' || !has(all, constraint)) return { redundant: false, impliedBy: [] };

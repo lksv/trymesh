@@ -3,8 +3,8 @@
 import { type SketchPlaceTool, anchor } from './spec';
 
 export const select: SketchPlaceTool<undefined> = {
-  label: 'Výběr',
-  hint: 'Klikněte na bod nebo křivku (Shift přidává). Bod lze táhnout.',
+  label: 'Select',
+  hint: 'Click a point or a curve (Shift adds). A point can be dragged.',
   hovers: true,
   drags: true,
   atClick: true,

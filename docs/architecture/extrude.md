@@ -4,9 +4,9 @@ Part of [architecture.md](../architecture.md), the design as implemented. The ex
 
 ## Extrude
 
-Krok přepočtu má tři oddělené části (D35 krok 0), aby šla každá později vyměnit nebo zopakovat samostatně:
+The step of the recompute has three separate parts (D35 step 0), so that each can later be replaced or repeated on its own:
 
-1. **Profil.** Ze zdroje profilu vzejdou oblasti v rovině a souřadný systém roviny. A generated profile comes from its generator (below); regions with an offset and a wall along curves come from an exact outline ("Profile offset and a wall", below). U zdroje `regions` se vyhodnotí rovina skici a vybrané oblasti; neplatný profil → `invalidProfile`, chybějící oblast → `noProfile`. Oblouky a kružnice jsou rozdělené na segmenty podle `chordTolerance`, nejvýš na 4096 úseček na křivku (u obřích poloměrů pak dělení toleranci nedodrží). A spline (D70) is its polyline within `chordTolerance` (at most 4096 straight pieces per Bezier piece), and its side is one swept face (`curveOf` answers `{ type: 'general' }`); the offset of regions and the taper read the exact outline and refuse a profile with a spline (`invalidProfile` naming the splines), and so does the wall, which runs along lines, arcs and circles only.
+1. **Profile.** The profile source gives regions in the plane and the coordinate system of the plane. A generated profile comes from its generator (below); regions with an offset and a wall along curves come from an exact outline ("Profile offset and a wall", below). For the source `regions` the plane of the sketch and the selected regions are evaluated; an invalid profile → `invalidProfile`, a missing region → `noProfile`. Arcs and circles are divided into segments by `chordTolerance`, into at most 4096 straight pieces per curve (for huge radii the division then does not keep the tolerance). A spline (D70) is its polyline within `chordTolerance` (at most 4096 straight pieces per Bezier piece), and its side is one swept face (`curveOf` answers `{ type: 'general' }`); the offset of regions and the taper read the exact outline and refuse a profile with a spline (`invalidProfile` naming the splines), and so does the wall, which runs along lines, arcs and circles only.
 2. **Tool.** The engine builds the closed mesh of a prism over an interval along the normal of the sketch plane: two caps (triangulated by the kernel) and the side faces. For the extent `distance` the interval is `start` to `start + distance`; for `throughAll` it is measured against the targets (below). Every triangle gets a face number by name; `startCap` is the cap at the start of the interval and `endCap` at its end, whichever way the interval points.
 3. **Application.** `new` stores the tool as a body. `add` and `cut` hand a tool recipe to `applyTool`, which runs one boolean per target body.
 
@@ -238,14 +238,14 @@ The build functions of the disc and of the pulley are modules of their own (`gen
 - **The polygon lies inside the exact outline**: points on the arcs whose centre is in the material (the tip circle, the fillets), the corners of tangents `radius / cos(step/2)` on the arcs whose centre is in the groove (the bottom, the flanks), the rule of the tool of a ring gear. The area of the polygon of 20 grooves at the tolerance 0.01 is 102.853 mm² against the exact 103.020; 40 grooves 460.012 against 460.278.
 - Facts: `teeth`, `pitch` (2), `pitchDiameter`, `outsideDiameter` and `rootDiameter` (with the allowance), `allowance`, `rotation`, and in model coordinates `center`, `axis`. One side face, `grooves`.
 
-Výsledky, které nejsou běžné:
+Results that are not the usual ones:
 
-| Situace | Chování |
+| Situation | Behaviour |
 |---|---|
 | `cut` misses a target, `add` adds nothing | The target stays unchanged and the feature has the warning `noEffect`, whose `refs` list the unchanged targets. The other targets of a cut are cut, and the message then says that only the targets in `refs` were missed. When nothing changed at all, no face of the tool enters the face table. The change of volume is measured against the smaller of the two solids (body, tool), so a small boss on a large plate does have an effect. |
-| `add` kusu, který se tělesa nedotýká | Těleso má dvě nesouvislé části; stav je `ok`. |
+| `add` of a piece that does not touch the body | The body has two disconnected parts; the state is `ok`. |
 | `cut` would remove a whole target | Error `emptyResult` with the target in `refs`; the feature behaves as an empty operation and none of its targets changes, not even those cut before the failing one. |
 | A target is missing (removed, suppressed, in error) | Error `brokenReference` with the missing targets in `refs`; nothing is cut. |
-| Jádro selže | Chyba `kernelFailure`. |
+| The kernel fails | Error `kernelFailure`. |
 
-**Koplanární stěny (D19).** Engine staví nástroj přesně podle skici a nic neposouvá. Skica na stěně znamená, že víko nástroje leží v rovině této stěny; že s tím jádro neumí pracovat spolehlivě, je vlastnost konkrétního jádra a řeší ji jeho adaptér (viz záruka č. 3 u SolidKernel).
+**Coplanar faces (D19).** The engine builds the tool exactly by the sketch and moves nothing. A sketch on a face means that the cap of the tool lies in the plane of that face; that the kernel cannot work with this reliably is a property of the particular kernel, and its adapter deals with it (see guarantee 3 of SolidKernel).

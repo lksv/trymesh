@@ -7,7 +7,7 @@ import { FACE_ROLES, type RoleCatalog } from './face-roles';
 import type { AxisRef, CommandResult, CopyTag, Document, EdgeName, Expr, FaceName, FieldPath, FrameRef, Id, PlaneRef } from './types';
 import { ORIGIN, canonicalEdge, faceKey, has } from './util';
 
-// Neplatný příkaz nebo dokument. `commandIndex` říká, který příkaz dávky to byl.
+// An invalid command or document. `commandIndex` says which command of the batch it was.
 export type ExpressionProblem = NonNullable<Extract<CommandResult, { ok: false }>['error']['expression']>;
 export class CommandError extends Error {
   commandIndex?: number;
@@ -19,28 +19,29 @@ export const fail = (message: string, expression?: ExpressionProblem): never => 
   throw error;
 };
 
-// ---------------------------------------------------------------- základní kontroly
+// ---------------------------------------------------------------- basic checks
 
 export type Dict = Record<string, unknown>;
 export const isObject = (v: unknown): v is Dict => typeof v === 'object' && v !== null && !Array.isArray(v);
-export const object = (v: unknown, what: string): Dict => (isObject(v) ? v : fail(`${what}: čeká se objekt`));
-export const string = (v: unknown, what: string): string => (typeof v === 'string' ? v : fail(`${what}: čeká se řetězec`));
-// Čísla dokumentu: konečná a v rozumném rozsahu (souřadnice tělesa jsou float32). Záporná nula
-// se ukládá jako nula, aby se uložený a znovu načtený dokument nelišil.
+export const object = (v: unknown, what: string): Dict => (isObject(v) ? v : fail(`${what}: an object is expected`));
+export const string = (v: unknown, what: string): string => (typeof v === 'string' ? v : fail(`${what}: a string is expected`));
+// The numbers of a document: finite and in a reasonable range (the coordinates of a body are
+// float32). Negative zero is stored as zero, so that a saved and reloaded document does not differ.
 export const finite = (v: unknown, what: string): number => {
-  if (typeof v !== 'number' || !Number.isFinite(v)) return fail(`${what}: čeká se konečné číslo`);
-  if (Math.abs(v) > MAX_NUMBER) return fail(`${what}: číslo je mimo rozsah ±${MAX_NUMBER}`);
+  if (typeof v !== 'number' || !Number.isFinite(v)) return fail(`${what}: a finite number is expected`);
+  if (Math.abs(v) > MAX_NUMBER) return fail(`${what}: the number is outside the range ±${MAX_NUMBER}`);
   return v + 0;
 };
-export const boolean = (v: unknown, what: string): boolean => (typeof v === 'boolean' ? v : fail(`${what}: čeká se true nebo false`));
+export const boolean = (v: unknown, what: string): boolean => (typeof v === 'boolean' ? v : fail(`${what}: true or false is expected`));
 export const oneOf = <T extends string>(v: unknown, options: readonly T[], what: string): T =>
-  options.includes(v as T) ? (v as T) : fail(`${what}: čeká se jedna z hodnot ${options.join(', ')}`);
+  options.includes(v as T) ? (v as T) : fail(`${what}: one of the values ${options.join(', ')} is expected`);
 
-// ID generuje volající. Nesmí obsahovat `/` (odvozená ID promítnuté geometrie), nesmí být `origin`
-// ani jméno vlastnosti, kterou má každý objekt (`constructor`, `toString`…): ID jsou klíče záznamů.
+// The caller generates IDs. An ID must not contain `/` (derived IDs of projected geometry), must
+// not be `origin` nor the name of a property every object has (`constructor`, `toString`…): IDs are
+// keys of records.
 export function newId(v: unknown, what: string): Id {
   const id = string(v, what);
-  if (id === '' || id.includes('/') || id === ORIGIN || id in Object.prototype) fail(`${what}: ID "${id}" není přípustné`);
+  if (id === '' || id.includes('/') || id === ORIGIN || id in Object.prototype) fail(`${what}: the ID "${id}" is not allowed`);
   return id;
 }
 
@@ -133,7 +134,7 @@ export function plain(value: number, spec: NumberSpec, what: string): number {
   return checked.ok ? checked.value : fail(`${what}: ${checked.message}`);
 }
 
-// ---------------------------------------------------------------- jména a odkazy mezi features
+// ---------------------------------------------------------------- names and references between features
 
 // A face name in its canonical form. An empty `copy` is the same as none, so that one face has one
 // spelling.
@@ -196,11 +197,12 @@ export const faceRefs = (face: FaceName, path: string): FeatureRef[] => [
 export function edgeName(v: unknown, what: string): EdgeName {
   const o = object(v, what);
   const edge = { a: faceName(o.a, `${what}.a`), b: faceName(o.b, `${what}.b`) };
-  if (faceKey(edge.a) === faceKey(edge.b)) fail(`${what}: hrana je rozhraní dvou různých stěn`);
+  if (faceKey(edge.a) === faceKey(edge.b)) fail(`${what}: an edge is the boundary between two different faces`);
   return canonicalEdge(edge);
 }
 
-// Odkaz jedné feature na jinou. `path` je místo odkazu uvnitř feature (cesta oddělená lomítky).
+// A reference of one feature to another. `path` is the place of the reference inside the feature
+// (a path separated by slashes).
 // - `entity` is a reference to an entity of a sketch (an operand of a profile generator, a curve of
 //   a wall): `id` is the entity, `sketch` its sketch and `accepts` the entity kinds allowed. With
 //   `notProjected` the entity must not be projected geometry: an own curve; for a point, an own
@@ -221,14 +223,14 @@ export function edgeName(v: unknown, what: string): EdgeName {
 export type RefKind = 'plane' | 'sketch' | 'body' | 'faceSource' | 'entity' | 'generated' | 'tool' | 'pattern' | 'mesh' | 'document' | 'insertion' | 'parameter' | 'documentBody';
 export interface FeatureRef {
   path: string;
-  id: Id; // u `body` ID tělesa, u `entity` ID entity skici, jinak ID feature
+  id: Id; // for `body` the ID of the body, for `entity` the ID of an entity of a sketch, otherwise the ID of a feature
   kind: RefKind;
   sketch?: Id;
   document?: Id; // of a reference of the kind `parameter`: the stored document
   accepts?: readonly string[];
   notProjected?: boolean;
 }
-export const REF_LABEL: Record<Exclude<RefKind, 'entity' | 'generated' | 'tool'>, string> = { plane: 'rovina', sketch: 'skica', body: 'těleso', faceSource: 'a feature that names faces', pattern: 'a feature that tags copied faces (a pattern, or a combine as a difference)', mesh: 'stored mesh', document: 'stored document', insertion: 'an inserted document (a feature of the type insert)', parameter: 'parameter of the stored document', documentBody: 'body of the stored document' };
+export const REF_LABEL: Record<Exclude<RefKind, 'entity' | 'generated' | 'tool'>, string> = { plane: 'a plane', sketch: 'a sketch', body: 'a body', faceSource: 'a feature that names faces', pattern: 'a feature that tags copied faces (a pattern, or a combine as a difference)', mesh: 'stored mesh', document: 'stored document', insertion: 'an inserted document (a feature of the type insert)', parameter: 'parameter of the stored document', documentBody: 'body of the stored document' };
 
 // What a helper that checks a reference needs. Whether the target of a reference exists, is of the
 // right kind and lies before the referring feature is a question for the registry of feature types

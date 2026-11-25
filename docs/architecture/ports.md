@@ -2,7 +2,7 @@
 
 Part of [architecture.md](../architecture.md), the design as implemented. The contracts of `SketchSolver`, `SolidKernel` and `Deflater`.
 
-## Porty
+## Ports
 
 ### SketchSolver
 
@@ -12,11 +12,11 @@ interface SketchSolver {
 }
 
 interface SolveInput {
-  points: Record<Id, { x: number; y: number }>;   // počáteční odhad
-  radii: Record<Id, number>;                      // počáteční odhad poloměrů kružnic
-  curves: Record<Id, Curve>;                      // včetně promítnutých křivek
+  points: Record<Id, { x: number; y: number }>;   // initial estimate
+  radii: Record<Id, number>;                      // initial estimate of the radii of circles
+  curves: Record<Id, Curve>;                      // including projected curves
   constraints: Record<Id, Constraint>;
-  fixed: Id[];                                    // body, které se nehýbou, a kružnice s pevným poloměrem
+  fixed: Id[];                                    // points that do not move, and circles with a fixed radius
   drag?: { point: Id; target: { x: number; y: number } };
 }
 
@@ -24,35 +24,35 @@ interface SolveResult {
   status: 'solved' | 'conflict' | 'failed';
   points: Record<Id, { x: number; y: number }>;
   radii: Record<Id, number>;
-  degreesOfFreedom: number;          // 0 = plně určená
-  conflicting: Id[];                 // vazby v konfliktu
+  degreesOfFreedom: number;          // 0 = fully constrained
+  conflicting: Id[];                 // constraints in conflict
   redundant: Id[];
 }
 ```
 
 A spline in `curves` (D70): an adapter adds no primitive and no equation for it; its control points are points of the input (checked as the ends of a line are), and no constraint names a spline, so the planegcs adapter's cases of a spline in a constraint throw (never reached). The analysis of freedom gives it no row either.
 
-Bezstavová funkce. Načtení WASM je asynchronní a proběhne při vytvoření adaptéru, `solve` je synchronní.
+A stateless function. Loading the WASM is asynchronous and happens when the adapter is created; `solve` is synchronous.
 
-Záruky implementace:
-1. Body ve `fixed` se nepohnou, kružnice ve `fixed` nezmění poloměr.
-2. U každého oblouku leží `start` i `end` na stejném poloměru kolem `center`.
-3. Stejný vstup dá vždy stejný výstup.
+What an implementation guarantees:
+1. Points in `fixed` do not move; circles in `fixed` do not change their radius.
+2. For every arc, `start` and `end` lie at the same radius around `center`.
+3. The same input always gives the same output.
 
-planegcs navíc vrací splněný vstup bitově beze změny (ověřeno spikem), ale návrh se o to neopírá.
+planegcs moreover returns a satisfied input bit for bit unchanged (verified by a spike), but the design does not rely on it.
 
-Když solver najde stav, který není použitelná geometrie (nekonečná hodnota, nekladný poloměr, oblouk s konci na různých poloměrech), vrací adaptér `failed`.
+When the solver finds a state that is not usable geometry (an infinite value, a radius that is not positive, an arc with its ends at different radii), the adapter returns `failed`.
 
-Jak adaptér planegcs řeší:
-1. Při tažení nejdřív vyřeší skicu bez tažení a zjistí nadbytečné vazby. S dočasným cílem tažení by je knihovna ohlásila jako konflikt, proto se při tažení vynechají. They are left out by the constraints of the library, not of the engine: of a fixed point only the coordinate the library called redundant goes (a point fixed on a horizontal line from the origin), the other one keeps the point in place during the drag.
-2. Vyřeší skicu. Když výchozí algoritmus (DogLeg) nedoběhne a konflikt nehlásí, zkusí Levenberg–Marquardt; stejně postupuje FreeCAD.
-3. Řeší znovu z nalezeného stavu, dokud není ustálený. Knihovna totiž stupně volnosti a nadbytečné vazby hlásí podle výchozího odhadu, ne podle výsledku, a ve stavu `Converged` může nechat nadbytečnou vazbu nesplněnou. Vrácená diagnostika tak popisuje vrácenou geometrii a opakované řešení z výsledku dá totéž; o to se opírá krok 2 řešení skici (jen diagnostika z uložených proměnných).
+How the planegcs adapter solves:
+1. During a drag it first solves the sketch without the drag and finds the redundant constraints. With the temporary target of the drag the library would report them as a conflict, so they are left out during the drag. They are left out by the constraints of the library, not of the engine: of a fixed point only the coordinate the library called redundant goes (a point fixed on a horizontal line from the origin), the other one keeps the point in place during the drag.
+2. It solves the sketch. When the default algorithm (DogLeg) does not converge and reports no conflict, it tries Levenberg–Marquardt; FreeCAD does the same.
+3. It solves again from the state found until the state is stable. The library reports the degrees of freedom and the redundant constraints by the initial estimate, not by the result, and in the state `Converged` it may leave a redundant constraint unsatisfied. So the returned diagnostics describe the returned geometry, and solving again from the result gives the same; step 2 of solving a sketch (only the diagnostics from the stored variables) relies on that.
 
-Adaptér překládá každou variantu `Constraint` na odpovídající vazbu knihovny jedna ku jedné podle `type`. Two exceptions (D35, point 6): `equalRadius` becomes `equal_radius_cc`, `equal_radius_ca` or `equal_radius_aa` by the kinds of its two curves (the library wants the circle first in the mixed one), and `fixed` becomes two constraints of the library, `coordinate_x` under the ID of the constraint and `coordinate_y` under a derived ID that the adapter maps back, so `conflicting` and `redundant` name the constraint once. A point with a `fixed` constraint starts every pass at the coordinates of the constraint and not at its estimate: from a rough estimate the library could stop where a dimension agreeing with the coordinates looked like a conflict. Neznámý druh křivky nebo ID ve `fixed`, které není bod ani kružnice, je výjimka. Pomocné vazby, které si přidává sám (podmínky oblouku, pevný poloměr promítnuté kružnice), z `conflicting` a `redundant` odfiltruje: výsledek smí obsahovat jen ID ze vstupu. Při stavu `conflict` nebo `failed` nemá `degreesOfFreedom` význam: knihovna vrací −1, adaptér předá 0 a UI se řídí varováním `sketchConflict` a seznamem `conflicting`.
+The adapter translates every variant of `Constraint` to the matching constraint of the library one to one by `type`. Two exceptions (D35, point 6): `equalRadius` becomes `equal_radius_cc`, `equal_radius_ca` or `equal_radius_aa` by the kinds of its two curves (the library wants the circle first in the mixed one), and `fixed` becomes two constraints of the library, `coordinate_x` under the ID of the constraint and `coordinate_y` under a derived ID that the adapter maps back, so `conflicting` and `redundant` name the constraint once. A point with a `fixed` constraint starts every pass at the coordinates of the constraint and not at its estimate: from a rough estimate the library could stop where a dimension agreeing with the coordinates looked like a conflict. An unknown kind of curve, or an ID in `fixed` that is neither a point nor a circle, is an exception. The auxiliary constraints it adds itself (the conditions of an arc, the fixed radius of a projected circle) are filtered out of `conflicting` and `redundant`: the result may hold only IDs of the input. In the state `conflict` or `failed`, `degreesOfFreedom` has no meaning: the library returns −1, the adapter passes on 0, and the UI goes by the warning `sketchConflict` and the list `conflicting`.
 
 **A tangency of a line and an arc at a common end** (D52, the third exception). When an end of the arc (`start` or `end`) is an end of the line (`a` or `b`), by the same point ID or by two points that one `coincident` constraint of the input names together, `tangent` becomes `perpendicular_pppp(centre, that end of the arc, line.a, line.b)`: the radius to the common end is square to the line. Otherwise it stays `tangent_la` ("the centre is the radius away from the line").
 
-- Why: at a common end the form `tangent_la` has a double root (its derivative there is the derivative of the rule of the arc with the opposite sign). The library finds redundant constraints from the derivatives at the estimate, so when the state is exact (a fillet of the sketch tool, a slot drawn by an AI at computed coordinates) it calls the tangency redundant, solves without it and reports it as a conflict after any change of a dimension. The engine's own analysis has read such a tangency as a square radius since D32 ([sketch.md](sketch.md), "Dvojnásobné kořeny"); the adapter now agrees with it for this case.
+- Why: at a common end the form `tangent_la` has a double root (its derivative there is the derivative of the rule of the arc with the opposite sign). The library finds redundant constraints from the derivatives at the estimate, so when the state is exact (a fillet of the sketch tool, a slot drawn by an AI at computed coordinates) it calls the tangency redundant, solves without it and reports it as a conflict after any change of a dimension. The engine's own analysis has read such a tangency as a square radius since D32 ([sketch.md](sketch.md), "Double roots"); the adapter now agrees with it for this case.
 - The two forms say the same wherever the line has a length: the end lies on the circle by the rule of the arc and on the line as its end, and a line through a point of a circle touches it there exactly when the radius is square to it. A line of no length satisfies the new form; a sketch that lets the line collapse can solve into that, and its profile then reports a curve of no length.
 - **Two fixed points at one place are one end (D72).** Two ends are one end when they are one ID, or two fixed points of the input at most `FIXED_JOIN` (1e-6) mm apart and, when the arc of the tangency is fixed too, within 1e-6 of its radius (`sameEnd`). A line and an arc have a common end when an end of the line and an end of the arc are one end, or when one coincident names two points that are one end with an end of the line and with an end of the arc. So it reads the same from either side: an own line held on the end of an imported outline's line and tangent to the arc beside it (the end of `o/l1` and the start of `o/a1` are two IDs at one place), an own arc held on the start of that arc and tangent to the line, two projections of 6b that meet, an own line that starts at `origin` where a fixed arc starts. By the radius only when the arc is fixed, so that a point near in millimetres and far by the size of a small arc is not taken (no tangent passes through it); for an own arc, whose radius is a variable, by 1e-6 mm alone, so the form does not change while the arc is dragged. The rule is one function of the engine, `commonEnd` (`common-end.ts`, with `FIXED_JOIN`), which the adapter imports and the analysis of the sketch reads too. This is the one exception to the rule that an adapter knows only the public types of the engine ([architecture.md](../architecture.md)): `common-end.ts` is a leaf that imports nothing at run time (only types), shared by the analysis and the solver adapter so that the two read one rule, and `packages/engine/test/modules.test.ts` holds that it stays a leaf and that no adapter imports another value of the engine. With one function the two never disagree about the form: where the common end is found only through two fixed points at one place (`byPlace`), the analysis reads the adapter's equation (the radius to that end of the arc square to the line) also when the end of the line lies off the circle by more than `SHARED` of the size (an own arc under 1 mm held on a fixed point 8e-7 mm from the end of a fixed line, and a fixed arc at the very bound of the join, where the analysis before counted one freedom too many; the review of 6f's implementation, kind 1). Run over every test of the repository and the spikes with the decision of before logged beside the new one: 4124 decisions, none differed.
 - The rule is decided from the curves and the constraints of the input and from the positions and the radius of fixed entities only (numbers of the input, never a variable of the estimate), and does not depend on the order of their keys (the start of the arc before its end, the joins by ID). Only a direct join is read; an end joined through a third point, an end held on the line by `pointOnCurve`, a line and a circle, and two arcs tangent at a common end keep the form of the library and its defect (measured in [2d-sketch-fillet/design.md](../d36/2d-sketch-fillet/design.md), "Measured"). The line may be a projected one (a line of the input with two fixed points, joined by the `coincident` of a snap) or end at `origin`. A constraint the engine leaves out of the input (one on a lost projection) is not there to be read.
@@ -60,39 +60,39 @@ Adaptér překládá každou variantu `Constraint` na odpovídající vazbu knih
 - On load: the solver is called at every recompute, also when the stamp matches. A stored state that is exactly tangent satisfies both forms. The new form is as strict about a tangency as the library is about every other constraint (its residual grows with the angle off tangent, that of `tangent_la` with its square), so a sketch whose other constraints hold the points only nearly tangent (measured: fixed points 1e-9 to 1e-5 mm off at a size of 10 mm) gets a `sketchConflict` it did not have; its geometry is the stored one. A sketch saved in conflict because of the double root has a stamp that does not match and is solved on load to what its dimensions say. Both are pinned by `packages/scenarios/test/tangent.test.ts`.
 - The fallback, should the rule have to go: the adapter is left as it was and the fillet holds its arc by two construction radii from the centre to the ends of the arc, each `perpendicular` to its line. It measures like the square radius, but every fillet carries two more lines and a tangent arc drawn by hand stays broken. The rule is one function of the engine (`commonEnd` of `common-end.ts`, which the analysis reads too) and one case of the adapter (`line-arc` of `translate`), so it can be reverted alone.
 
-Referenční kóty (`driving: false`) se solveru neposílají. Engine je před voláním odfiltruje a jejich hodnotu spočítá z vyřešených poloh. planegcs s nimi podle spiku nepracuje spolehlivě.
+Reference dimensions (`driving: false`) are not sent to the solver. The engine filters them out before the call and computes their value from the solved positions. By the spike, planegcs does not work with them reliably.
 
 ### SolidKernel
 
 ```ts
 interface Solid {
   positions: Float32Array;   // xyz
-  triangles: Uint32Array;    // indexy vrcholů
-  faceIds: Uint32Array;      // číslo stěny pro každý trojúhelník
+  triangles: Uint32Array;    // vertex indices
+  faceIds: Uint32Array;      // the face number of every triangle
 }
 
 interface ComputedMesh { unverified: Solid }       // a mesh the kernel computed and did not verify (D50)
 
 interface SolidKernel {
   boolean(op: 'union' | 'difference' | 'intersection', a: Solid, b: Solid): Solid;
-  triangulate(loops: Float64Array[]): Uint32Array;   // 2D polygon s dírami: vnější smyčka proti směru hodin, díry po směru
+  triangulate(loops: Float64Array[]): Uint32Array;   // a 2D polygon with holes: the outer loop counter-clockwise, the holes clockwise
   intersectionAsComputed(a: Solid, b: Solid): ComputedMesh;   // for measuring only (D50)
 }
 ```
 
-Předpoklad na vstupu: čísla stěn v `a` i `b` pocházejí z jedné společné tabulky. Stejné číslo znamená stejnou stěnu, různé stěny mají různá čísla. Zajišťuje to engine (viz tabulka čísel stěn v sekci Přepočet).
+A precondition on the input: the face numbers in both `a` and `b` come from one common table. The same number means the same face; different faces have different numbers. The engine ensures it (see the table of face numbers in the section Recompute).
 
 **No face number in both operands of a union or a difference** (D56). The adapter tells the faces of the tool from those of the body by their numbers, and two bodies of a model may share numbers (the two parts of a split, two bodies cut by one feature, a body and the pocket a kept tool left in another): measured, a union of two such bodies came out with a wrong volume without a word in about half the cases tried. An implementation throws for such operands (the Manifold adapter: `the operands of a union share the face number …`), so a caller that forgets gets an exception and not a wrong body. A tool of an extrusion has new numbers anyway; `booleanOfBodies` (`recompute/body-boolean.ts`) gives the tool numbers of its own for the call and puts them back. An intersection may share numbers (the collisions ask it so).
 
 The engine asks the port for an intersection as a body as well since D56 (a combine with the operation `intersection`), and for the intersection that checks the volume of a union and a difference of two bodies. It does not trust the port blindly there: `booleanOfBodies` ([combine.md](combine.md)) checks the volume of a union and a difference against the identity with the intersection, the sheets left in the result, and drops the pieces of an intersection that are all sheet; a result that fails is `kernelFailure`.
 
-Záruky implementace:
-1. Výstup `boolean` je uzavřené těleso.
-2. Každý výstupní trojúhelník má `faceId` stěny, ze které pochází.
-3. Rovinné stěny obou operandů, které leží v jedné rovině v rámci tolerance jádra a překrývají se, se berou jako shodné. The band is 10⁻⁵ D, D the diagonal of the box of the two solids but at least twice their largest coordinate (`tolerances` of the adapter; pinned in `packages/kernel-manifold/test/precondition.test.ts`). Faces in the band are joined with no gap or wall between them, but the volume is not exact: the adapter's shift of 4 · 10⁻⁵ D may stay as material, up to the shift times the area of the contact (D56, "Verified", 2); the checks of `booleanOfBodies` turn that into a refusal, an extrusion is exposed to it as before. Výsledek neobsahuje blány, vnitřní stěny ani zbytky stěn, které měly zaniknout. Platí pro sjednocení a rozdíl. The engine uses an intersection only in the query of collisions (`interference`), which wants its volume, not its faces: the Manifold adapter does not keep this guarantee for an intersection, does not adjust the tool before it and only cleans and verifies the result, with a second cleaning where the first fails the checks (step 8 below, D51); when it cannot verify it, it throws, and the query then asks for the intersection as computed (below) and may clear the pair by it, or reports it as failed.
-4. Stejný vstup dá vždy stejný výstup.
+What an implementation guarantees:
+1. The output of `boolean` is a closed body.
+2. Every output triangle has the `faceId` of the face it comes from.
+3. Planar faces of the two operands that lie in one plane within the tolerance of the kernel and overlap are taken as coincident. The band is 10⁻⁵ D, D the diagonal of the box of the two solids but at least twice their largest coordinate (`tolerances` of the adapter; pinned in `packages/kernel-manifold/test/precondition.test.ts`). Faces in the band are joined with no gap or wall between them, but the volume is not exact: the adapter's shift of 4 · 10⁻⁵ D may stay as material, up to the shift times the area of the contact (D56, "Verified", 2); the checks of `booleanOfBodies` turn that into a refusal, an extrusion is exposed to it as before. The result holds no membranes, no inner faces and no remains of faces that should have disappeared. This holds for a union and a difference. The engine uses an intersection only in the query of collisions (`interference`), which wants its volume, not its faces: the Manifold adapter does not keep this guarantee for an intersection, does not adjust the tool before it and only cleans and verifies the result, with a second cleaning where the first fails the checks (step 8 below, D51); when it cannot verify it, it throws, and the query then asks for the intersection as computed (below) and may clear the pair by it, or reports it as failed.
+4. The same input always gives the same output.
 
-Když adaptér výsledek zaručit nedokáže, skončí výjimkou a engine ji ohlásí jako `kernelFailure`. Potichu vadné těleso vrátit nesmí. Výjimkou končí i vadný vstup: neuzavřená nebo dovnitř orientovaná síť, nesedící počet čísel stěn.
+When the adapter cannot guarantee the result, it throws an exception and the engine reports it as `kernelFailure`. It must never return a silently broken body. A faulty input throws as well: a mesh that is not closed or is oriented inwards, a count of face numbers that does not match.
 
 #### The intersection as computed (D50)
 
@@ -112,68 +112,68 @@ An intersection from `boolean` is not free of the first of these either: it hold
 
 **The adapter of Manifold**: the boolean of the library as it is (the inner `rawBoolean`: both inputs checked as for `boolean`, the library asked, its error thrown, the arrays copied out), then `isClosed` of `clean.ts` on the result, then the wrapper. No shift of faces before, no cleaning after, no check of folded triangles, no tolerances. Every mesh looked at was closed (136 refused poses of the design and the poses of its tests). The library has a floor of its own: triangles colinear within its tolerance are removed and shorter edges may be collapsed; that tolerance follows the largest coordinate as the precision of the coordinates does and is about an eighth of it, so what it may lose is thinner than what the collisions call nothing ([the design](../d36/5e-kernel-second/design.md), "The port"). The option `{ prepare: false }` of `ManifoldKernel.boolean` is the same raw boolean for the tests of the adapter, without the check and the wrapper.
 
-**Jak záruku č. 3 plní adaptér Manifoldu.** Manifold sám toleranci ke skoro-koplanárním plochám nemá a na šikmých stěnách kvůli float32 selhává. Adaptér se proto řídí jedním pravidlem: stěny nástroje a tělesa se v jedné rovině nesmějí jen dotýkat. Každý takový styk změní před booleanem na skutečný průnik a po booleanu posunuté stěny vrátí.
+**How the Manifold adapter keeps guarantee no. 3.** Manifold itself has no tolerance for nearly coplanar faces and fails on tilted faces because of float32. The adapter therefore follows one rule: faces of the tool and of the body in one plane must not merely touch. It turns every such contact into a real overlap before the boolean and moves the shifted faces back after the boolean.
 
-Před booleanem:
-1. Proloží roviny stěnami obou těles (podle čísel stěn). Stěna je rovinná, když její vrcholy leží do tolerance od proložené roviny. Podle normál jednotlivých trojúhelníků se nerozhoduje: úzký trojúhelník z dřívějšího booleanu má normálu nespolehlivou a celou stěnu by označil za nerovinnou.
-2. Najde dvojice stěn nástroje a tělesa v jedné rovině, které se překrývají, dotýkají, nebo je dělí mezera do dvou přesahů. Dotyk se počítá, protože bok nálitku se boku tělesa dotýká jen hranou. Mezera se počítá, protože se stěny posunem sousedních stěn o přesah protáhnou.
-3. Stěnu nástroje posune o přesah tak, aby se nástroj zvětšil. Jediná výjimka: u rozdílu, když nástroj na těleso dosedá zvenku, se nástroj zmenší. Když stěna nástroje potká ve své rovině stěny obou orientací (horní stěnu a spodek převisu), má zvětšení přednost; zmenšení by na lícující části nechalo blánu.
-4. Vrcholy posouvá podél průsečnic sousedních stěn, aby se sousední stěny nenaklonily.
+Before the boolean:
+1. It fits planes through the faces of both bodies (by face numbers). A face is planar when its vertices lie within the tolerance of the fitted plane. The normals of single triangles do not decide: a thin triangle from an earlier boolean has an unreliable normal and would mark the whole face as not planar.
+2. It finds the pairs of faces of the tool and the body in one plane that overlap, touch, or are separated by a gap of up to two overlaps. A touch counts because the side of a boss touches the side of the body only along an edge. A gap counts because the faces get stretched when the neighbouring faces are shifted by the overlap.
+3. It shifts the face of the tool by the overlap so that the tool grows. The only exception: in a difference, when the tool rests on the body from outside, the tool shrinks. When a face of the tool meets faces of both orientations in its plane (a top face and the underside of an overhang), growing takes precedence; shrinking would leave a membrane on the flush part.
+4. It moves the vertices along the intersection lines of the neighbouring faces, so that the neighbouring faces do not tilt.
 
-Po booleanu:
-5. Vrátí zpět vše, co po posunu ve výsledku zůstalo. Polohy se neodhadují z okolí, dopočítají se přesně z původní, neposunuté geometrie. Každý vrchol výsledku je totiž buď vrchol jednoho z těles, nebo průsečík hrany jednoho tělesa se stěnou druhého:
-   - posunutý vrchol nástroje se vrátí na původní vrchol,
-   - průsečík hrany nástroje, jejíž konec se posunul (včetně úhlopříček triangulace), se stěnou tělesa se přesune do průsečíku původní hrany s rovinou té stěny,
-   - průsečík hrany tělesa s posunutou stěnou nástroje, a každý jiný vrchol v pásu mezi původní a posunutou rovinou, se přesune po té hraně tělesa do původní roviny,
-   - průsečík, který by na původní hraně ležel mimo její konce, v přesné geometrii neexistuje; stáhne se do bližšího konce.
-6. Vyčistí síť, a to vždy, i když se nic neposouvalo:
-   - sloučí vrcholy na stejném místě,
-   - zahodí trojúhelníky s vrcholy v přímce a blány nulové tloušťky,
-   - hrany, které tím zůstaly bez protějšku, dorovná: trojúhelník s takovou hranou rozdělí ve vrcholu, který na ní leží a ve kterém protější strana navazuje (T-spoj),
+After the boolean:
+5. It moves back everything that remained in the result after the shift. The positions are not estimated from the surroundings; they are computed exactly from the original, unshifted geometry. Every vertex of the result is either a vertex of one of the bodies or the intersection of an edge of one body with a face of the other:
+   - a shifted vertex of the tool returns to the original vertex,
+   - the intersection of an edge of the tool whose end was shifted (including the diagonals of the triangulation) with a face of the body moves to the intersection of the original edge with the plane of that face,
+   - the intersection of an edge of the body with the shifted face of the tool, and every other vertex in the band between the original and the shifted plane, moves along that edge of the body into the original plane,
+   - an intersection that would lie outside the ends of the original edge does not exist in the exact geometry; it is pulled to the nearer end.
+6. It cleans the mesh, always, even when nothing was shifted:
+   - it merges vertices at the same place,
+   - it drops triangles with their vertices on a line and membranes of zero thickness,
+   - it evens out the edges left without a counterpart by that: a triangle with such an edge is split at the vertex that lies on it and at which the opposite side continues (a T-junction),
    - the two steps before can undo each other (a split leaves a piece the dropping takes for a null triangle, which opens the same edge again) and go round in a cycle of a few states, so the cleanup remembers the states it has split and stops after splitting one of them for the second time; where the mesh used to end closed it ends closed, and a cycle without a closed state fails the check of step 7 after a few passes instead of a thousand,
-   - kde se těleso samo sebe dotýká jen hranou, rozdělí povrch po klínech materiálu.
-7. Ověří výsledek a jinak skončí chybou (`kernelFailure`):
-   - síť je uzavřená plocha (každá hrana právě ve dvou trojúhelnících, jednou v každém směru),
-   - žádná rovinná stěna nemá trojúhelník otočený proti své normále.
+   - where the body touches itself only along an edge, it splits the surface by the wedges of material.
+7. It verifies the result and otherwise ends with an error (`kernelFailure`):
+   - the mesh is a closed surface (every edge in exactly two triangles, once in each direction),
+   - no planar face has a triangle turned against its normal.
 8. **For an intersection that fails step 7, a second cleaning** (`cleanBySubdivision` of `clean.ts`, D51). In a mesh of slivers (a pin turned in a hole of the same circle, faces flush only to the precision of the coordinates) the dropping and the splitting of step 6 undo each other in a thin quadrilateral with two corners a few tolerances apart, and the loop stops open or with a piece turned over. The second cleaning starts again from the raw mesh (an intersection has no faces moved): the same weld, the same membranes and the same rule of a null triangle, but the drop and the split are one operation: the long side a–b of a null triangle is subdivided at its middle vertex m in every triangle on that side, (a, b, x) becoming (a, m, x) and (m, b, x) with its face number, and the null triangle itself becoming nothing. Every state is closed by its directed edges (a subdivision replaces a→b and b→a alike and adds m→x with x→m), so it cannot end open; each subdivision (a side and a vertex) is made once at most and a pass without one ends the loop (the bound of a thousand passes leaves a closed mesh), so it ends; a null triangle whose subdivision was made before stays. Then the parting of the edges as in step 6, and the checks of step 7; a mesh that passes is the answer, otherwise the adapter throws the message of step 7. What the first cleaning verifies is returned as before, so an intersection answered before D51 keeps its arrays. A union and a difference never reach it: it may leave a null triangle carrying the number of a face that should be gone (guarantee 3). The option `{ second: false }` of `ManifoldKernel.boolean` switches it off, and the counter `secondCleanings` says how often it ran, both for the tests only.
 
-Proč jsou kroky 5 až 7 nutné:
-- Bez návratu leží zbylá stěna o přesah vedle roviny, kterou pro ni engine počítá analyticky, a další operace na ní selže: nálitek zavěšený na takové stěně skončil ve spiku jako samostatná komponenta s mezerou 0,002 mm. Výstup adaptéru tedy musí být konzistentní s analytickou geometrií v rámci přesnosti float32, ne v rámci přesahu.
-- Bez čištění zůstanou po pásu nulové šířky trojúhelníky, které dál nesou číslo zaniklé stěny, a reference na ni by se nerozbila. Totéž nechává jádro samo tam, kde se nástroj tělesa jen dotkne hranou; proto se čistí vždy.
-- Bez kontroly by chyba prošla potichu. Manifold síť, která není uzavřenou plochou, při dalším booleanu načte bez chyby, část trojúhelníků zahodí a změní objem (ve spiku o stovky mm³).
+Why steps 5 to 7 are needed:
+- Without moving back, the remaining face lies an overlap away from the plane the engine computes for it analytically, and the next operation on it fails: in the spike a boss hung on such a face ended as a separate component with a gap of 0.002 mm. The output of the adapter therefore has to be consistent with the analytic geometry within the precision of float32, not within the overlap.
+- Without cleaning, the band of zero width leaves triangles that still carry the number of the vanished face, and a reference to it would not break. The kernel itself leaves the same where the tool touches the body only along an edge; that is why it always cleans.
+- Without the check an error would pass silently. Manifold loads a mesh that is not a closed surface without an error in the next boolean, drops part of the triangles and changes the volume (in the spike by hundreds of mm³).
 
-Co se ukázalo až v obecně natočené poloze a v náhodných testech:
-- Roviny stěn se prokládají přes celou stěnu. Normály jednotlivých trojúhelníků výsledku použít nejde: úzké trojúhelníky je mají vychýlené o desítky stupňů.
-- Návrat jen „do roviny" nestačí. Průsečík hrany, která se posunem natočila, zůstane ve správných rovinách, ale o zlomek přesahu vedle. Sám nevadí, dokud pozdější nástroj nemá stěnu přesně v tom místě; pak se síť přeloží. Proto se polohy dopočítávají z původních hran.
-- Svislá hrana válce může ležet celá v rovině boku tělesa. Průsečík s takovou rovinou není určený; bere se nejpříčnější ze stěn tělesa, kterých se vrchol dotýká.
-- Posun vrcholů nástroje před booleanem se počítá v ortonormální bázi normál. Výpočet přes regularizovanou soustavu 3×3 byl pro vrchol držený jedinou šikmou rovinou nestabilní.
-- Tenký trojúhelník není totéž co trojúhelník s vrcholy v přímce. Jádro běžně vrací jehly: dva vrcholy pár desetitisícin od sebe a třetí daleko. Jehla má plochu a do sítě patří. Za nulový se proto bere trojúhelník užší než čtvrtina tolerance slučování (přesnost float32), širší jen tehdy, když jeho prostřední vrchol leží zřetelně uvnitř nejdelší strany.
-- Dělit se smějí jen hrany bez protějšku. První verze dělila každou hranu, u které ležel cizí vrchol dost blízko její přímky. U zdravé hrany vycházející pod malým úhlem to vedlo ke střídání dvou stavů, z nichž ani jeden nebyl uzavřený.
-- Po dotyku hranou se zdvojené vrcholy při dalším booleanu zase sloučí a dělí znovu. Dělení přes nový vrchol uprostřed hrany tak při každé další operaci zdvojnásobilo počet trojúhelníků v místě dotyku. Kde to jde, zdvojí se proto existující vrchol.
-- Přesnost float32 klesá se vzdáleností od počátku. Tolerance odvozené jen z rozměru modelu selhávaly u modelu 60 mm velkého a 450 mm vzdáleného od počátku.
-- Zmenšený nástroj mohl přeskočit stěnu tělesa ležící těsně za jeho stěnou; materiál mezi nimi zůstal jako blána. Posouvá se proto nejvýš do poloviny mezery.
+What showed only in a generally turned position and in random tests:
+- The planes of faces are fitted through the whole face. The normals of single triangles of the result cannot be used: thin triangles have them off by tens of degrees.
+- Moving back only "into the plane" is not enough. The intersection of an edge that the shift turned stays in the right planes, but a fraction of the overlap beside. That alone does no harm until a later tool has a face exactly at that place; then the mesh folds. That is why the positions are computed from the original edges.
+- A vertical edge of a cylinder may lie wholly in the plane of a side of the body. The intersection with such a plane is not determined; the face of the body most across it of those the vertex touches is taken.
+- The shift of the vertices of the tool before the boolean is computed in an orthonormal basis of the normals. Computing it through a regularised 3×3 system was unstable for a vertex held by a single tilted plane.
+- A thin triangle is not the same as a triangle with its vertices on a line. The kernel commonly returns needles: two vertices a few ten-thousandths apart and the third far away. A needle has an area and belongs in the mesh. So a triangle counts as null when it is narrower than a quarter of the merge tolerance (the precision of float32), and a wider one only when its middle vertex lies clearly inside its longest side.
+- Only edges without a counterpart may be split. The first version split every edge that had a foreign vertex close enough to its line. At a sound edge leaving at a small angle that led to alternating between two states, neither of them closed.
+- After a touch along an edge, the doubled vertices are merged again in the next boolean and split again. Splitting through a new vertex in the middle of the edge thus doubled the number of triangles at the place of the touch with every further operation. So where it can, an existing vertex is doubled.
+- The precision of float32 falls with the distance from the origin. Tolerances derived only from the size of the model failed for a model 60 mm large and 450 mm away from the origin.
+- A shrunk tool could skip a face of the body lying just behind its face; the material between them remained as a membrane. So the shift goes at most to half of the gap.
 
-Důsledek pro jména: kde stěna nástroje lícuje se stěnou tělesa a překrývají se plochou, nese překrytou část ve výsledku jméno stěny nástroje. Obě stěny dál existují a dělí je hrana druhu `coplanar`.
+Consequence for names: where a face of the tool is flush with a face of the body and they overlap in area, the overlapped part carries the name of the tool's face in the result. Both faces still exist and are separated by an edge of the kind `coplanar`.
 
-Všechny tolerance odvozuje adaptér z rozměru D: úhlopříčka obálky obou těles, nejméně však dvojnásobek největší souřadnice (model daleko od počátku má horší přesnost float32). Stejná rovina 1e-5 D, přesah 4e-5 D, slučování vrcholů 1e-6 D. V dokumentu ani v core se nenastavují.
+The adapter derives all tolerances from the size D: the diagonal of the bounding box of both bodies, but at least twice the largest coordinate (a model far from the origin has a worse float32 precision). Same plane 1e-5 D, overlap 4e-5 D, merging of vertices 1e-6 D. They are set neither in the document nor in the core.
 
-Omezení:
-- **Rozlišení.** Detail menší než asi 1e-4 D (u modelu 70 mm kolem 0,01 mm) těsně u lícujících stěn adaptér nezvládá spolehlivě: schod nebo mezera této velikosti, o kterou se nástroj posouvá. Výsledek je pak buď správný, nebo chyba `kernelFailure`; testy z revize potvrzují, že potichu vadný není. Od 0,05 mm výš prošly všechny zkoušené polohy.
-- Řeší se jen rovinné stěny. Válcová stěna nástroje shodná s válcovou stěnou tělesa (rozšíření díry na stejný poloměr, výřez přesně podle válcového nálitku) ne; povrch pak vyjde špatně a chyba se neohlásí.
-- Stěna nástroje užší než 8e-5 D (kapsa hluboká pár tisícin) se pro určení roviny nepoužije a lícování na ní se nepozná.
-- Průnik se neupravuje (viz záruka č. 3).
+Limits:
+- **Resolution.** A detail smaller than about 1e-4 D (around 0.01 mm for a 70 mm model) right next to flush faces is not handled reliably by the adapter: a step or a gap of this size, by which the tool is shifted. The result is then either right or the error `kernelFailure`; the tests from the review confirm that it is not silently broken. From 0.05 mm up all tried positions passed.
+- Only planar faces are handled. A cylindrical face of the tool coinciding with a cylindrical face of the body (widening a hole to the same radius, a cut-out exactly along a cylindrical boss) is not; the surface then comes out wrong and no error is reported.
+- A face of the tool narrower than 8e-5 D (a pocket a few thousandths deep) is not used to determine the plane, and flushness on it is not recognised.
+- An intersection is not adjusted (see guarantee no. 3).
 - **A few intersections stay refused** after the second cleaning (step 8): 4 of 183 poses of the arm and of flush faces that the first cleaning refused, 49 of 9,999 cases of the sliver fuzz (0.19 % at the origin, 2.2 % 450 or 2,000 mm away). The second cleaning's mesh is closed there and has a folded triangle; where the weld itself turns a triangle of a planar face over (a square or hexagonal key nearly flush in its socket, each side a face of its own), both cleanings end folded. The collisions then take the intersection as computed (D50). The refusals of a union and a difference are not repaired by step 8 (D51, "Known limits").
 - The first cleaning can take seconds before it gives up on an intersection (1.1 to 4.2 s in rare cases); that time is spent before the second cleaning is tried.
-- Návrat posunutých stěn porovnává každý vrchol výsledku se všemi posunutými hranami nástroje a hranami tělesa. U těles do několika tisíc trojúhelníků to nevadí; u desky se 192 kruhovými otvory (19 tisíc trojúhelníků) trval jeden boolean 7,6 s, samotné jádro 0,07 s. Prostorové vyhledávání je možná pozdější optimalizace.
-- Vyčištění průchodem přes Manifold nejde použít: nulové trojúhelníky sbalil špatným směrem a poškodil těleso. Síť si adaptér čistí sám.
-- Těleso, které se samo sebe dotýká jen hranou, adaptér zpracuje (v síti jsou v místě dotyku zdvojené vrcholy). Geometricky je to ale mezní stav a další operace přesně v místě dotyku zkoušené nejsou.
-- Zkoušené nástroje jsou hranoly (kvádry, trojboké hranoly se šikmou stěnou) a válce. Jiné v PoC nevznikají, nástroj je vždy extrude. The tools of a chamfer and a fillet of edges (D63) are prisms and revolves that reach past both faces of the edge, their ends on round faces lifted off them by 1.5 chord tolerances (at least two bands); measured with them: tools lying on round faces leave their own polygons in the result and are 5 to 15 times slower, ends exactly on round faces were refused in 7.5 % of 3 600 random edges, the lifted ones in none of 7 192 at the chord tolerance 0.01 ([edge-blend.md](edge-blend.md)). At a chord tolerance near the band, and 1 000 to 2 000 mm from the origin, the adapter still refuses some of them (a folded triangle, a result that is not closed), and once collapsed a vertex of a result 0.7 mm off its face without an error at a lift of one band; the engine checks the blend faces for it.
-- Výřez, jehož víko zároveň lícuje se spodkem převisu a leží na opačně orientované stěně v téže rovině, přejmenuje dotčenou část té stěny na víko nástroje. Geometrie je správná.
-- Obalová funkce `triangulate` v knihovně neuvolňuje paměť WASM (u smyčky s 256 body 8 kB na volání). Adaptér proto volá funkci pod ní a paměť uvolňuje sám; je to vnitřní rozhraní knihovny a při její aktualizaci se musí ověřit.
+- Moving the shifted faces back compares every vertex of the result with all shifted edges of the tool and the edges of the body. For bodies of up to a few thousand triangles that does not matter; for a plate with 192 round holes (19 thousand triangles) one boolean took 7.6 s, the kernel alone 0.07 s. A spatial search is a possible later optimisation.
+- Cleaning by a pass through Manifold cannot be used: it collapsed null triangles in the wrong direction and damaged the body. The adapter cleans the mesh itself.
+- A body that touches itself only along an edge is handled by the adapter (the mesh has doubled vertices at the place of the touch). Geometrically it is a borderline state, though, and further operations exactly at the place of the touch are not tried.
+- The tried tools are prisms (boxes, triangular prisms with a tilted face) and cylinders. Others are not made in the PoC; the tool is always an extrude. The tools of a chamfer and a fillet of edges (D63) are prisms and revolves that reach past both faces of the edge, their ends on round faces lifted off them by 1.5 chord tolerances (at least two bands); measured with them: tools lying on round faces leave their own polygons in the result and are 5 to 15 times slower, ends exactly on round faces were refused in 7.5 % of 3 600 random edges, the lifted ones in none of 7 192 at the chord tolerance 0.01 ([edge-blend.md](edge-blend.md)). At a chord tolerance near the band, and 1 000 to 2 000 mm from the origin, the adapter still refuses some of them (a folded triangle, a result that is not closed), and once collapsed a vertex of a result 0.7 mm off its face without an error at a lift of one band; the engine checks the blend faces for it.
+- A cut-out whose cap is at the same time flush with the underside of an overhang and lies on an oppositely oriented face in the same plane renames the affected part of that face to the cap of the tool. The geometry is right.
+- The wrapper function `triangulate` of the library does not free WASM memory (8 kB a call for a loop of 256 points). So the adapter calls the function under it and frees the memory itself; that is an internal interface of the library and has to be checked when the library is updated.
 
-**Přesnost (D20).** Manifold přijímá i vrací souřadnice jen ve `Float32Array`, proto je má `Solid` také v tomto typu. Engine geometrii nikdy neodvozuje ze sítě, pokud ji umí spočítat analyticky; analytické výpočty běží ve float64. Naměřená odchylka vrcholů od roviny po 12 booleanech za sebou na šikmé stěně byla 2e-6.
+**Precision (D20).** Manifold takes and returns coordinates only in a `Float32Array`, so `Solid` has them in this type too. The engine never derives geometry from the mesh when it can compute it analytically; the analytic computations run in float64. The measured deviation of vertices from the plane after 12 booleans in a row on a tilted face was 2e-6.
 
-`Solid` jsou čistá data. Přechod na B-rep by znamenal jiný typ tělesa a jiný adaptér; jména, reference a přepočet zůstanou.
+`Solid` is plain data. A move to B-rep would mean another body type and another adapter; the names, the references and the recompute would stay.
 
 ### Deflater (D54)
 

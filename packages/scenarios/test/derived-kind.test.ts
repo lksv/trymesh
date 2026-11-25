@@ -116,7 +116,7 @@ describe('derived geometry: the copies never reach the solver', () => {
     const stored = { ...document, features: document.features.map((f) => (f.id === 'S2' ? { ...s2, solved: { ...s2.solved, external: { ...s2.solved.external, c: { kind: 'line', a: [0, 0], b: [1, 0] } } } } : f)) };
     const result = newEngine().load(JSON.stringify(stored));
     expect(result.ok).toBe(false);
-    expect(result.ok ? '' : result.error.message).toContain('"c" neodpovídá');
+    expect(result.ok ? '' : result.error.message).toContain('"c" does not match');
   });
 
   it('the result has the copies, derived, in the order of the entries; the base of a tool has none, its world has them', () => {
@@ -139,9 +139,9 @@ describe('derived geometry: the copies never reach the solver', () => {
     expect(text).toContain('"c/1/l" is a copy of the mirror or pattern "c": a copy cannot be constrained in its own sketch');
     expect(text).toContain('constrain its source "l"');
     expect(refused(engine, { type: 'addConstraint', sketch: 'S2', id: 'k3', constraint: { type: 'coincident', a: 'p', b: 'c/9/q' } })).toContain('"c/9/q" is a copy');
-    expect(refused(engine, { type: 'addConstraint', sketch: 'S2', id: 'k3', constraint: { type: 'coincident', a: 'p', b: 'c/100/q' } })).toContain('entita "c/100/q" ve skice není');
-    expect(refused(engine, { type: 'removeEntity', sketch: 'S2', id: 'c/1/l' })).toContain('není vlastní');
-    expect(refused(engine, { type: 'dragPoint', sketch: 'S2', point: 'c/1/p', x: 0, y: 0 })).toContain('není vlastní');
+    expect(refused(engine, { type: 'addConstraint', sketch: 'S2', id: 'k3', constraint: { type: 'coincident', a: 'p', b: 'c/100/q' } })).toContain('entity "c/100/q" is not in the sketch');
+    expect(refused(engine, { type: 'removeEntity', sketch: 'S2', id: 'c/1/l' })).toContain('is neither an own point');
+    expect(refused(engine, { type: 'dragPoint', sketch: 'S2', point: 'c/1/p', x: 0, y: 0 })).toContain('is not an own point');
   });
 
   it('the commands ask the kind against the sketch, and an update may not change the source of an entry', () => {

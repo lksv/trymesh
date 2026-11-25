@@ -1,4 +1,4 @@
-// Nálezy z revize enginu: případy, které dřív dávaly špatný výsledek nebo výjimku.
+// Findings of the review of the engine: cases that used to give a wrong result or an exception.
 import { describe, expect, it } from 'vitest';
 import { CommandError, applyCommand, emptyDocument, emptySketch, validateDocument } from '../src/document';
 import { createEngine } from '../src/engine';
@@ -63,9 +63,9 @@ const profile = (s: SketchFeature, tolerance = 0.01) => detectProfile(s, geometr
 const line = (a: string, b: string): Curve => ({ type: 'line', a, b });
 const outer = (s: SketchFeature) => profile(s).regions.map((r) => r.ref.outerLoop.join(','));
 
-describe('profil', () => {
-  it('úsečka a oblouk vycházející z vrcholu tečně stejným směrem: oblasti nezávisí na natočení', () => {
-    // čtvrtkruh se středem v počátku a dvě tečny, které ho doplňují na čtverec
+describe('profile', () => {
+  it('a line and an arc leaving a vertex tangentially in the same direction: the regions do not depend on the rotation', () => {
+    // a quarter circle centred at the origin and two tangents that complete it to a square
     for (let i = 0; i < 200; i++) {
       const angle = 0.0137 + i * 0.0314;
       const turn = (x: number, y: number): [number, number] => [x * Math.cos(angle) - y * Math.sin(angle), x * Math.sin(angle) + y * Math.cos(angle)];
@@ -76,78 +76,78 @@ describe('profil', () => {
         ['vz', line('v', 'z')],
         ['zw', line('z', 'w')],
       ]);
-      expect(outer(s), `natočení ${angle}`).toEqual(['arc,cv,wc', 'arc,vz,zw']);
+      expect(outer(s), `rotation ${angle}`).toEqual(['arc,cv,wc', 'arc,vz,zw']);
     }
   });
 
-  it('obří poloměr se dělí nejvýš na 4096 úseček', () => {
+  it('a giant radius is divided into at most 4096 segments', () => {
     const s = sketch({}, [['k', { type: 'circle', center: 'origin' }, 1e9]]);
     expect(profile(s).regions[0].outer.keys).toHaveLength(4096);
     expect(() => sketch({}, [['k', { type: 'circle', center: 'origin' }, 1e15]])).toThrow(CommandError);
   });
 
-  it('křivka blíž k oblouku, než rozliší jeho dělení, zneplatní profil', () => {
+  it('a curve closer to an arc than its division can resolve invalidates the profile', () => {
     const square = (radius: number): SketchFeature => {
       const corners = [0, 1, 2, 3].map((i): [number, number] => [radius * Math.cos(0.02 + (i * Math.PI) / 2), radius * Math.sin(0.02 + (i * Math.PI) / 2)]);
       return sketch(Object.fromEntries(corners.map((p, i) => [`q${i}`, p])), [['k', { type: 'circle', center: 'origin' }, 10], ...corners.map((_, i): Entry => [`s${i}`, line(`q${i}`, `q${(i + 1) % 4}`)])]);
     };
-    // rohy čtverce 0,003 pod kružnicí: přesné křivky se nedotýkají, ale lomená čára kružnice je protne
+    // the corners of the square 0.003 below the circle: the exact curves do not touch, but the polyline of the circle crosses them
     expect(profile(square(9.997))).toEqual({ valid: false, regions: [] });
     expect(outer(square(9.9))).toEqual(['k', 's0,s1,s2,s3']);
     expect(profile(square(9.9)).regions[0].holes).toHaveLength(1);
   });
 
-  it('oblast tenčí než tolerance dělení oblouku zneplatní profil', () => {
+  it('a region thinner than the tolerance of the division of an arc invalidates the profile', () => {
     const at = (angle: number): [number, number] => [100 * Math.cos(angle), 100 * Math.sin(angle)];
     const lens = (half: number) => sketch({ s: at(-half), e: at(half) }, [['arc', { type: 'arc', center: 'origin', start: 's', end: 'e' }], ['chord', line('e', 's')]]);
-    expect(profile(lens(0.01))).toEqual({ valid: false, regions: [] }); // výška úseče 0,005 < 0,01
+    expect(profile(lens(0.01))).toEqual({ valid: false, regions: [] }); // the height of the circular segment 0.005 < 0.01
     expect(outer(lens(0.1))).toEqual(['arc,chord']);
   });
 });
 
-describe('dokument', () => {
+describe('document', () => {
   const rejects = (run: () => unknown) => expect(run).toThrow(CommandError);
   const base = sketch({ a: [0, 0.5], b: [5, 0.5] }, [['l', line('a', 'b')]]);
   const doc: Document = { ...emptyDocument(), features: [base] };
 
-  it('ID nesmí být jméno vlastnosti každého objektu', () => {
+  it('an ID must not be the name of a property of every object', () => {
     for (const id of ['constructor', 'toString', 'hasOwnProperty', 'valueOf', '__proto__']) {
       rejects(() => apply([{ type: 'addFeature', feature: emptySketch(id, 'x', { kind: 'base', plane: 'XY' }) }]));
       rejects(() => apply([{ type: 'addPoint', sketch: 'S', id, x: 0, y: 0 }], doc));
     }
   });
 
-  it('konstrukční příznak nemění pořadí klíčů: uložení, načtení a uložení dá stejný text', () => {
+  it('the construction flag does not change the order of keys: save, load and save give the same text', () => {
     const flagged = apply([{ type: 'setConstruction', sketch: 'S', id: 'l', construction: true }], doc);
     expect(JSON.stringify(validateDocument(JSON.parse(JSON.stringify(flagged))))).toBe(JSON.stringify(flagged));
   });
 
-  it('záporná nula se ukládá jako nula a čísla mimo rozsah se odmítnou', () => {
+  it('negative zero is stored as zero and numbers out of range are refused', () => {
     const s = apply([{ type: 'addPoint', sketch: 'S', id: 'n', x: -0, y: 3 }], doc).features[0] as SketchFeature;
     expect(Object.is(s.points.n.x, 0)).toBe(true);
     rejects(() => apply([{ type: 'addPoint', sketch: 'S', id: 'n', x: 1e300, y: 0 }], doc));
     rejects(() => apply([{ type: 'addFeature', feature: { id: 'P', name: 'P', suppressed: false, type: 'plane', base: { kind: 'base', plane: 'XY' }, offset: 2e9 } }], doc));
   });
 
-  it('nový bod a nová křivka ruší razítko řešení', () => {
-    const solved: Document = { ...doc, features: [{ ...base, solved: { inputs: 'otisk', external: {} } }] };
+  it('a new point and a new curve clear the stamp of the solution', () => {
+    const solved: Document = { ...doc, features: [{ ...base, solved: { inputs: 'imprint', external: {} } }] };
     const stamp = (commands: Command[]) => (apply(commands, solved).features[0] as SketchFeature).solved.inputs;
     expect(stamp([{ type: 'addPoint', sketch: 'S', id: 'n', x: 1, y: 1 }])).toBe('');
     expect(stamp([{ type: 'addCurve', sketch: 'S', id: 'k', curve: { type: 'circle', center: 'a' }, radius: 2 }])).toBe('');
-    expect(stamp([{ type: 'setConstruction', sketch: 'S', id: 'l', construction: true }])).toBe('otisk');
+    expect(stamp([{ type: 'setConstruction', sketch: 'S', id: 'l', construction: true }])).toBe('imprint');
   });
 
-  it('tatáž oblast dvakrát je jedna oblast', () => {
+  it('the same region twice is one region', () => {
     const extrude: ExtrudeFeature = { id: 'E', name: 'E', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 'S', regions: [{ outerLoop: ['l', 'm'] }, { outerLoop: ['m', 'l', 'l'] }] }, extent: { type: 'distance', start: 0, distance: 5 }, operation: 'new' };
     expect(apply([{ type: 'addFeature', feature: extrude }], doc).features[1]).toMatchObject({ profile: { regions: [{ outerLoop: ['l', 'm'] }] } });
   });
 
-  it('zmrazená promítnutá kružnice musí mít kladný poloměr', () => {
+  it('a frozen projected circle must have a positive radius', () => {
     const frozen = { ...base, solved: { inputs: '', external: { x: { kind: 'circle', center: [0, 0], radius: -5 } } } };
     rejects(() => validateDocument(JSON.parse(JSON.stringify({ ...doc, features: [frozen] }))));
   });
 
-  it('skica na stěně nesmí ležet před extrude, který stěnu vytvořil', () => {
+  it('a sketch on a face must not lie before the extrude that created the face', () => {
     const extrude = (id: string, sketchId: string, rest: Partial<ExtrudeFeature> = {}): ExtrudeFeature => ({ id, name: id, suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: sketchId, regions: [{ outerLoop: ['l'] }] }, extent: { type: 'distance', start: 0, distance: 5 }, operation: 'new', ...rest });
     const pocket = { kind: 'face' as const, body: 'E1', face: { feature: 'E2', role: 'endCap' as const } };
     const model = apply(
@@ -160,8 +160,8 @@ describe('dokument', () => {
       doc,
     );
     expect(model.features.map((f) => f.id)).toEqual(['S', 'E1', 'S2', 'E2', 'S3']);
-    rejects(() => apply([{ type: 'moveFeature', id: 'S3', index: 3 }], model)); // před E2
-    rejects(() => apply([{ type: 'moveFeature', id: 'E2', index: 4 }], model)); // E2 za skicu na své stěně
+    rejects(() => apply([{ type: 'moveFeature', id: 'S3', index: 3 }], model)); // before E2
+    rejects(() => apply([{ type: 'moveFeature', id: 'E2', index: 4 }], model)); // E2 after the sketch on its own face
     rejects(() => apply([{ type: 'addFeature', feature: emptySketch('S4', 'S4', pocket), index: 3 }], model));
     rejects(() => apply([{ type: 'setSketchPlane', sketch: 'S2', plane: pocket }], model));
     const edge = { type: 'edge' as const, body: 'E1', edge: { a: { feature: 'E1', role: 'endCap' as const }, b: { feature: 'E2', role: 'side' as const, curve: 'l' } }, kind: 'line' as const };
@@ -170,7 +170,7 @@ describe('dokument', () => {
   });
 });
 
-// Náhradní adaptéry: solver vrací vstup beze změny, při tažení bod přesune nebo selže.
+// Stand-in adapters: the solver returns the input unchanged, on a drag it moves the point or fails.
 function mockEngine(options: { failDrag?: boolean } = {}) {
   const solver: SketchSolver = {
     solve: (input) => {
@@ -182,7 +182,7 @@ function mockEngine(options: { failDrag?: boolean } = {}) {
   };
   const kernel: SolidKernel = {
     boolean: () => {
-      throw new Error('náhradní jádro booleany neumí');
+      throw new Error('the stand-in kernel cannot do booleans');
     },
     intersectionAsComputed: () => {
       throw new Error('the stand-in kernel has no intersection');
@@ -199,12 +199,12 @@ function mockEngine(options: { failDrag?: boolean } = {}) {
     { type: 'addConstraint', sketch: 'S', id: 'd', constraint: { type: 'distance', a: 'a', b: 'b', value: 4, driving: true } },
     { type: 'addFeature', feature: { id: 'P', name: 'P', suppressed: false, type: 'plane', base: { kind: 'base', plane: 'XY' }, offset: 3 } },
   );
-  expect(engine.load(engine.save())).toMatchObject({ ok: true }); // prázdná historie
+  expect(engine.load(engine.save())).toMatchObject({ ok: true }); // an empty history
   return { engine, run };
 }
 
-describe('fasáda enginu', () => {
-  it('tažení, které solver nevyřeší, nezanechá ve stavu konflikt', () => {
+describe('the facade of the engine', () => {
+  it('a drag the solver does not solve leaves no conflict in the state', () => {
     const { engine } = mockEngine({ failDrag: true });
     const before = engine.getState();
     const seen: EngineState[] = [];
@@ -216,12 +216,12 @@ describe('fasáda enginu', () => {
     expect(after.evaluation.features.S.status).toBe('ok');
     expect(after.canUndo).toBe(false);
     expect(seen).toHaveLength(1);
-    // náhled téhož tažení konflikt ukáže, stav enginu se nemění
+    // a preview of the same drag shows the conflict, the state of the engine does not change
     const preview = engine.preview({ type: 'dragPoint', sketch: 'S', point: 'a', x: 9, y: 9 }, 'S');
     expect(preview.ok && preview.state.evaluation.features.S.warnings.map((w) => w.code)).toEqual(['sketchConflict']);
   });
 
-  it('krok undo vzniká jen změnou obsahu dokumentu', () => {
+  it('an undo step comes only from a change of the content of the document', () => {
     const { engine } = mockEngine();
     const noop: Command[] = [
       { type: 'renameFeature', id: 'P', name: 'P' },
@@ -231,7 +231,7 @@ describe('fasáda enginu', () => {
       { type: 'setConstruction', sketch: 'S', id: 'l', construction: false },
       { type: 'moveFeature', id: 'P', index: 1 },
       { type: 'batch', commands: [] },
-      { type: 'dragPoint', sketch: 'S', point: 'a', x: 1, y: 2 }, // na místo, kde bod už je
+      { type: 'dragPoint', sketch: 'S', point: 'a', x: 1, y: 2 }, // to the place where the point already is
     ];
     for (const command of noop) {
       expect(engine.execute(command), command.type).toMatchObject({ ok: true });
@@ -242,7 +242,7 @@ describe('fasáda enginu', () => {
     expect((engine.getState().document.features[0] as SketchFeature).points.a).toEqual({ x: 2, y: 2 });
   });
 
-  it('výjimka posluchače nepřipraví ostatní o zprávu; vnořená změna dorazí všem ve správném pořadí', () => {
+  it('an exception of a listener does not deprive the others of the message; a nested change reaches all in the right order', () => {
     const { engine } = mockEngine();
     const names = (state: EngineState) => state.document.features[1].name;
     const first: string[] = [];
@@ -252,29 +252,29 @@ describe('fasáda enginu', () => {
       first.push(names(state));
       if (!nested) {
         nested = true;
-        engine.execute({ type: 'renameFeature', id: 'P', name: 'vnořená' });
+        engine.execute({ type: 'renameFeature', id: 'P', name: 'nested' });
       }
     });
     engine.subscribe(() => {
-      throw new Error('posluchač selhal');
+      throw new Error('the listener failed');
     });
     engine.subscribe((state) => last.push(names(state)));
-    expect(() => engine.execute({ type: 'renameFeature', id: 'P', name: 'vnější' })).toThrow('posluchač selhal');
-    expect(first).toEqual(['vnější', 'vnořená']);
-    expect(last).toEqual(['vnější', 'vnořená']);
-    expect(names(engine.getState())).toBe('vnořená');
+    expect(() => engine.execute({ type: 'renameFeature', id: 'P', name: 'outer' })).toThrow('the listener failed');
+    expect(first).toEqual(['outer', 'nested']);
+    expect(last).toEqual(['outer', 'nested']);
+    expect(names(engine.getState())).toBe('nested');
     expect(engine.getState().canUndo).toBe(true);
   });
 
-  it('neznámá feature v getState a preview je chyba, ne tichý přepočet celé osy', () => {
+  it('an unknown feature in getState and preview is an error, not a silent recompute of the whole timeline', () => {
     const { engine } = mockEngine();
-    expect(() => engine.getState('není')).toThrow('neexistuje');
-    expect(engine.preview({ type: 'renameFeature', id: 'P', name: 'x' }, 'není')).toMatchObject({ ok: false, error: { code: 'invalidCommand' } });
+    expect(() => engine.getState('missing')).toThrow('does not exist');
+    expect(engine.preview({ type: 'renameFeature', id: 'P', name: 'x' }, 'missing')).toMatchObject({ ok: false, error: { code: 'invalidCommand' } });
     expect(engine.preview({ type: 'removeFeature', id: 'P' }, 'P')).toMatchObject({ ok: false, error: { code: 'invalidCommand' } });
     expect(engine.preview({ type: 'renameFeature', id: 'P', name: 'x' }, 'S')).toMatchObject({ ok: true });
   });
 
-  it('odkaz na chybějící feature se jménem vlastnosti objektu je brokenReference, ne výjimka', () => {
+  it('a reference to a missing feature named like a property of an object is brokenReference, not an exception', () => {
     const { engine } = mockEngine();
     const doc = JSON.parse(engine.save()) as Document;
     doc.features.push(
@@ -326,10 +326,10 @@ describe('a module per feature type (D37): what the move could have changed unse
   it('updateExternal checks the reference against the place of its sketch', () => {
     const doc = model();
     const to = (body: string, source = body): Command => ({ type: 'updateExternal', sketch: 'S2', id: 'x', ref: { type: 'edge', body, edge: rim(source), kind: 'circle' } });
-    refused(doc, to('Z'), /feature "Z" musí ležet před odkazující feature/);
-    refused(doc, to('nope'), /feature "nope" neexistuje/);
-    refused(doc, to('S1', 'A'), /feature "S1" není těleso/);
-    refused(doc, to('A', 'PL'), /feature "PL" není a feature that names faces/);
+    refused(doc, to('Z'), /feature "Z" must lie before the referring feature/);
+    refused(doc, to('nope'), /feature "nope" does not exist/);
+    refused(doc, to('S1', 'A'), /feature "S1" is not a body/);
+    refused(doc, to('A', 'PL'), /feature "PL" is not a feature that names faces/);
     expect(((feature(applyCommand(doc, to('A', 'H')), 'S2') as SketchFeature).external.x as EdgeProjection).edge.a.feature).toBe('H');
   });
 
@@ -342,7 +342,7 @@ describe('a module per feature type (D37): what the move could have changed unse
 
   it('the order of the registry and of the fields of a type is what clients were told', () => {
     expect(Object.keys(FEATURE_TYPE_INFO)).toEqual(['plane', 'sketch', 'extrude', 'pattern', 'hole', 'mesh', 'combine', 'split', 'revolve', 'chamfer', 'fillet', 'insert']);
-    refused(emptyDocument(), { type: 'addFeature', feature: { ...planeFeature, type: 'nope' } as unknown as PlaneFeature }, /čeká se jedna z hodnot plane, sketch, extrude, pattern, hole, mesh, combine, split, revolve/);
+    refused(emptyDocument(), { type: 'addFeature', feature: { ...planeFeature, type: 'nope' } as unknown as PlaneFeature }, /one of the values plane, sketch, extrude, pattern, hole, mesh, combine, split, revolve/);
     const paths = FEATURE_TYPE_INFO.extrude.fields.map((field) => field.path);
     expect(paths.slice(-5)).toEqual(['extent/start', 'extent/distance', 'extent/taper', 'extent/start', 'extent/gap']);
     // the offset of regions and the thickness of a wall (D44) come first, then the parameters of the generators
@@ -1262,8 +1262,8 @@ describe('the review of the implementation of 6a (D64)', () => {
   );
 
   it('the points of an entry for the rule of a constraint come from the registry of kinds: the ends of a projected line', () => {
-    expect(() => applyCommand(doc, { type: 'addConstraint', sketch: 'S2', id: 'k', constraint: { type: 'midpoint', point: 'x1/a', line: 'x1' } })).toThrow(/středem úsečky nemůže být její konec/);
-    expect(() => applyCommand(doc, { type: 'addConstraint', sketch: 'S2', id: 'k', constraint: { type: 'symmetric', a: 'q', b: 'x1/b', line: 'x1' } })).toThrow(/souměrný bod nesmí být koncem osy/);
+    expect(() => applyCommand(doc, { type: 'addConstraint', sketch: 'S2', id: 'k', constraint: { type: 'midpoint', point: 'x1/a', line: 'x1' } })).toThrow(/the midpoint of a line cannot be its end/);
+    expect(() => applyCommand(doc, { type: 'addConstraint', sketch: 'S2', id: 'k', constraint: { type: 'symmetric', a: 'q', b: 'x1/b', line: 'x1' } })).toThrow(/a symmetric point must not be an end of the axis/);
     // the centre of the projected circle is no point of the line (an own operand, so the rule really runs)
     expect(() => applyCommand(doc, { type: 'addConstraint', sketch: 'S2', id: 'k', constraint: { type: 'symmetric', a: 'q', b: 'x2/center', line: 'x1' } })).not.toThrow();
     expect(() => applyCommand(doc, { type: 'addConstraint', sketch: 'S2', id: 'k', constraint: { type: 'midpoint', point: 'q', line: 'x1' } })).not.toThrow();
@@ -1284,10 +1284,10 @@ describe('the review of the implementation of 6a (D64)', () => {
     expect(() => validateDocument(tampered((s) => (s.external.x1 = { body: 'E1' })))).toThrow(unknown);
     expect(() => validateDocument(tampered((s) => (s.solved.external = { x1: { kind: 'ellipse', center: [0, 0] } })))).toThrow(/solved\.external\.x1\.kind: point, line, circle or arc is expected/);
     // a stored point or arc never fits the projection of an edge
-    expect(() => validateDocument(tampered((s) => (s.solved.external = { x1: { kind: 'point', at: [0, 0] } })))).toThrow(/neodpovídá promítnuté geometrii skici/);
-    expect(() => validateDocument(tampered((s) => (s.solved.external = { x2: { kind: 'arc', center: [0, 0], start: [1, 0], end: [0, 1] } })))).toThrow(/neodpovídá promítnuté geometrii skici/);
-    expect(() => validateDocument(tampered((s) => (s.solved.external = { x2: { kind: 'circle', center: [0, 0], radius: 0 } })))).toThrow(/solved\.external\.x2\.radius: poloměr musí být kladný/);
-    expect(() => validateDocument(tampered((s) => (s.solved.external = { x2: { kind: 'line', a: [0, 0], b: [1, 0] } })))).toThrow(/neodpovídá promítnuté geometrii skici/);
+    expect(() => validateDocument(tampered((s) => (s.solved.external = { x1: { kind: 'point', at: [0, 0] } })))).toThrow(/does not match the projected geometry of the sketch/);
+    expect(() => validateDocument(tampered((s) => (s.solved.external = { x2: { kind: 'arc', center: [0, 0], start: [1, 0], end: [0, 1] } })))).toThrow(/does not match the projected geometry of the sketch/);
+    expect(() => validateDocument(tampered((s) => (s.solved.external = { x2: { kind: 'circle', center: [0, 0], radius: 0 } })))).toThrow(/solved\.external\.x2\.radius: the radius must be positive/);
+    expect(() => validateDocument(tampered((s) => (s.solved.external = { x2: { kind: 'line', a: [0, 0], b: [1, 0] } })))).toThrow(/does not match the projected geometry of the sketch/);
     expect(validateDocument(tampered((s) => (s.solved.external = { x2: { kind: 'circle', center: [0, 0], radius: 2 } })))).toBeDefined();
   });
 });

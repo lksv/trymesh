@@ -23,7 +23,7 @@ export type ProfileChange = Pick<ExtrudeChange, 'regions' | 'offset' | 'curves' 
 export const sameRegion = (a: RegionRef, b: RegionRef): boolean => a.outerLoop.length === b.outerLoop.length && a.outerLoop.every((id, i) => id === b.outerLoop[i]);
 
 export function sketchRegions(host: PanelHost, id: Id): { result: SketchResult; frame: Frame } | undefined {
-  if (!host.feature(id)) return undefined; // skica vysunutí mohla být smazána
+  if (!host.feature(id)) return undefined; // the extrusion's sketch may have been deleted
   const result = host.engine.getState(id).evaluation.features[id];
   return result?.sketch && result.plane ? { result: result.sketch, frame: result.plane } : undefined;
 }
@@ -55,9 +55,9 @@ export function regionsFields(host: PanelHost, m: AnyDraft, profile: Extract<Dra
   const available = sketchRegions(host, profile.sketch)?.result.regions ?? [];
   const stale = profile.regions.filter((region) => !available.some((other) => sameRegion(other.ref, region))).length;
   return [
-    h('p', { className: 'hint' }, `Vybraných oblastí: ${profile.regions.length}. Oblasti se vybírají kliknutím v pohledu.`),
-    stale > 0 ? h('p', { className: 'issue warning' }, `${stale} z vybraných oblastí už ve skice není. Zrušte výběr a vyberte oblasti znovu.`) : null,
-    h('div', { className: 'buttons' }, h('button', { textContent: 'Zrušit výběr oblastí', disabled: profile.regions.length === 0, onclick: () => set({ regions: [] }) })),
+    h('p', { className: 'hint' }, `Picked regions: ${profile.regions.length}. Regions are picked by a click in the view.`),
+    stale > 0 ? h('p', { className: 'issue warning' }, `${stale} of the picked regions are no longer in the sketch. Clear the selection and pick the regions again.`) : null,
+    h('div', { className: 'buttons' }, h('button', { textContent: 'Clear picked regions', disabled: profile.regions.length === 0, onclick: () => set({ regions: [] }) })),
     draftField(host, m, 'Offset (mm or an expression; positive grows the profile; empty = none)', 'profile/offset', (offset) => set({ offset: typeof offset === 'number' && Number.isNaN(offset) ? null : offset }, false)),
   ];
 }

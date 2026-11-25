@@ -2,19 +2,19 @@
 
 Part of [architecture.md](../architecture.md), the design as implemented. Packages, the modules of the engine and of the app, and which may import which.
 
-## Struktura repozitáře
+## Structure of the repository
 
-pnpm workspace. Hranice jsou tím vynucené fyzicky: `engine` nemá v `package.json` žádnou závislost.
+A pnpm workspace. The boundaries are thereby enforced physically: `engine` has no dependency in its `package.json`.
 
 ```
 packages/
-  engine/            jádro, čistý TS
-  solver-planegcs/   adaptér SketchSolver
-  kernel-manifold/   adaptér SolidKernel
+  engine/            the core, plain TS
+  solver-planegcs/   adapter of SketchSolver
+  kernel-manifold/   adapter of SolidKernel
   deflate-pako/      adapter of Deflater over pako 2.1.0 (D54): compression of the parts of a 3MF
-  scenarios/         validační scénáře proti skutečným adaptérům (jen testy)
-  app/               ukázkové UI + renderer (three.js)
-  mcp/               rozhraní pro AI: MCP server a most do běžící aplikace
+  scenarios/         validation scenarios against the real adapters (tests only)
+  app/               the demo UI + renderer (three.js)
+  mcp/               the interface for AI: the MCP server and the bridge to the running app
 ```
 
 Modules of the app (`packages/app/src`), run by `pnpm dev`:
@@ -118,12 +118,12 @@ Modules of the engine (`packages/engine/src`), after the preparatory step of D36
 
 The imports go one way, in the order of the table: the leaves, then `sketch-content`, then `validation`, `schema` and `sketch`, then `mesh`, then `recompute/*`, then `references/*`, then `features/module`, `features/profile` and `features/extent`, then the modules of the types, then `features/index`, then `sections/*`, then `document.ts` and `evaluate.ts`, then `sketch-cut.ts`, then `query/*`, `export/*` and `import/*`, then `sketch-tools.ts` and `engine.ts`. A module of a feature type imports neither the registry, nor `document.ts`, nor `evaluate.ts`; what it has to ask the registry (does the target of a reference exist, is it of the right kind and before this feature) reaches its validator as `context.requireRef`. `document.ts` and `evaluate.ts` re-export what moved out of them, so the import paths of the tests and of the other packages did not change. `packages/engine/test/modules.test.ts` guards the direction: it reads the imports of every module with the TypeScript parser and fails on a cycle among those that load a module at run time. Only a statement that is type-only as a whole (`import type`, `export type … from`) is left out: with `verbatimModuleSyntax` a statement whose names are each marked `type` still loads the module. It also loads every module as the first one, which catches a module that reads another at its top level before that one is set.
 
-Moduly rozhraní pro AI (`packages/mcp/src`): `tools.ts` (nástroje nad enginem, bez závislosti na Node i prohlížeči), `host.ts` (the registry of operations of the app and the entry that runs one, shared by the server and the app), `view-image.ts` (the operation `view_image` and the capability of the view it asks; the app imports it as `@trymesh/mcp/view-image`), `export-writer.ts` (the writer of exported files, for the server), `api.ts` (popis API generovaný ze zdrojů enginu), `server.ts` a `main.ts` (MCP server a jeho spuštění), `bridge.ts` a `bridge-client.ts` (most mezi serverem a aplikací). Sestavuje se `pnpm mcp:build`; je to jediný balíček, který se skládá do jednoho souboru, protože ho spouští Node bez Vite.
+Modules of the interface for AI (`packages/mcp/src`): `tools.ts` (the tools over the engine, with no dependency on Node or the browser), `host.ts` (the registry of operations of the app and the entry that runs one, shared by the server and the app), `view-image.ts` (the operation `view_image` and the capability of the view it asks; the app imports it as `@trymesh/mcp/view-image`), `export-writer.ts` (the writer of exported files, for the server), `api.ts` (the description of the API generated from the sources of the engine), `server.ts` and `main.ts` (the MCP server and its start), `bridge.ts` and `bridge-client.ts` (the bridge between the server and the app). It is built by `pnpm mcp:build`; it is the only package bundled into one file, because Node runs it without Vite.
 
 An adapter imports only types of the engine (`import type` from `@trymesh/engine`), with one exception: `solver-planegcs` imports the function `commonEnd` (`common-end.ts`, the leaf above), so that the adapter and the analysis of the sketch read one rule of a tangency at a common end (D72). `modules.test.ts` holds both: `common-end.ts` imports nothing at run time, and no adapter imports another value of the engine.
 
 The adapter packages are the only places that import a library behind a port: `solver-planegcs` (`@salusoft89/planegcs`), `kernel-manifold` (`manifold-3d`) and `deflate-pako` (`pako`, from `pako/lib/deflate.js`, with the one function it calls declared in `src/pako.d.ts` because the package has no types). The app and the server compose them in their `main.ts`; `packages/mcp/package.json` names `pako` too, because the bundle of the server leaves third-party libraries outside and Node finds them from `packages/mcp/node_modules`.
 
-Testy: Vitest (`pnpm test`), typová kontrola `pnpm typecheck`. Validační scénáře běží v Node proti skutečným adaptérům. Balíčky se neskládají: každý vystavuje přímo zdrojový TypeScript.
+Tests: Vitest (`pnpm test`), type check `pnpm typecheck`. The validation scenarios run in Node against the real adapters. The packages are not built: each exports its TypeScript source directly.
 
-Stav 2026-11-14: oba adaptéry a engine jsou hotové včetně testů; všech šest validačních scénářů prochází v Node proti skutečným adaptérům. Ukázková aplikace pokrývá funkce z [ui.md](../ui.md) potřebné k jejich projití v prohlížeči (D31).
+State on 2026-11-14: both adapters and the engine are done including tests; all six validation scenarios pass in Node against the real adapters. The demo app covers the functions of [ui.md](../ui.md) needed to go through them in the browser (D31).

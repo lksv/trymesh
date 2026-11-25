@@ -1,4 +1,4 @@
-// Pomůcky pro validační scénáře: engine se skutečnými adaptéry a stavba běžných skic.
+// Helpers for the validation scenarios: an engine with the real adapters and building common sketches.
 import { expect } from 'vitest';
 import { createPakoDeflater } from '@trymesh/deflate-pako';
 import { type Command, type CommandResult, type Constraint, type Engine, type EngineState, type ExtrudeFeature, type FaceName, type Id, type PlaneRef, type Solid, createEngine, emptySketch, faceParts } from '@trymesh/engine';
@@ -13,12 +13,12 @@ export const cap = (extrude: Id, role: 'startCap' | 'endCap' = 'endCap'): FaceNa
 export const side = (extrude: Id, curve: Id): FaceName => ({ feature: extrude, role: 'side', curve });
 export const onFace = (body: Id, face: FaceName): PlaneRef => ({ kind: 'face', body, face });
 
-// Provede příkaz a ověří, že je platný.
+// Runs the commands and checks that each is valid.
 export function run(engine: Engine, ...commands: Command[]): EngineState {
   let result: CommandResult | undefined;
   for (const command of commands) {
     result = engine.execute(command);
-    if (!result.ok) throw new Error(`neplatný příkaz ${command.type}: ${result.error.message}`);
+    if (!result.ok) throw new Error(`invalid command ${command.type}: ${result.error.message}`);
   }
   return (result as Extract<CommandResult, { ok: true }>).state;
 }
@@ -38,9 +38,10 @@ export const addExtrude = (...args: Parameters<typeof extrude>): Command => ({ t
 export const constrain = (sketch: Id, id: Id, constraint: Constraint): Command => ({ type: 'addConstraint', sketch, id, constraint });
 export const dimension = (sketch: Id, id: Id, shape: object, value: number): Command => constrain(sketch, id, { ...shape, value, driving: true } as Constraint);
 
-// Obdélník od ruky s rohem u (x, y), plně určený: vodorovné a svislé strany, kóty šířky a výšky,
-// levý dolní roh přichycený k `anchor` (počátek nebo jiný bod), nebo okótovaný od počátku.
-// ID: body `${p}1..4`, úsečky `${p}a` (spodní), `${p}b` (pravá), `${p}c` (horní), `${p}d` (levá).
+// A freehand rectangle with its corner at (x, y), fully constrained: horizontal and vertical sides,
+// dimensions of the width and the height, the bottom left corner attached to `anchor` (the origin or
+// another point), or dimensioned from the origin.
+// IDs: points `${p}1..4`, lines `${p}a` (bottom), `${p}b` (right), `${p}c` (top), `${p}d` (left).
 export function rectangle(sketch: Id, p: string, x: number, y: number, width: number, height: number, anchor: Id | null = 'origin'): Command {
   const corners: [number, number][] = [
     [x + 0.4, y - 0.3],
@@ -65,7 +66,7 @@ export function rectangle(sketch: Id, p: string, x: number, y: number, width: nu
 }
 export const rectLoop = (p: string): Id[] => [`${p}a`, `${p}b`, `${p}c`, `${p}d`];
 
-// Kružnice se středem okótovaným od počátku a s kótou poloměru. ID: střed `${id}c`, kóty `${id}x`, `${id}y`, `${id}r`.
+// A circle with its centre dimensioned from the origin and a dimension of the radius. IDs: centre `${id}c`, dimensions `${id}x`, `${id}y`, `${id}r`.
 export function circle(sketch: Id, id: Id, x: number, y: number, radius: number): Command {
   return batch(
     { type: 'addPoint', sketch, id: `${id}c`, x: x + 0.3, y: y - 0.2 },
@@ -76,7 +77,7 @@ export function circle(sketch: Id, id: Id, x: number, y: number, radius: number)
   );
 }
 
-// ---------------------------------------------------------------- měření výsledku
+// ---------------------------------------------------------------- measuring the result
 
 export function volume(s: Solid): number {
   let sum = 0;
@@ -88,7 +89,7 @@ export function volume(s: Solid): number {
   return sum / 6;
 }
 
-// Obálka trojúhelníků stěny daného jména; undefined = stěna v tělese není.
+// The bounding box of the triangles of the face of the given name; undefined = the face is not in the body.
 export function faceBox(state: EngineState, body: Id, name: FaceName): { min: number[]; max: number[]; area: number } | undefined {
   const id = state.evaluation.faceNames.findIndex((n) => JSON.stringify(n) === JSON.stringify(name));
   const solid = state.evaluation.bodies[body]?.solid;

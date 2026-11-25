@@ -1,25 +1,27 @@
-// Rozbor určenosti skici v prvním řádu: stupně volnosti, závislé vazby, volnost entit.
-// Pravidla jsou v docs/architecture.md, sekce Diagnostika skici.
+// First-order analysis of how determined a sketch is: degrees of freedom, dependent constraints,
+// freedom of entities. The rules are in docs/architecture/sketch.md, section "Sketch diagnosis".
 //
-// Každá vazba je jedna nebo dvě rovnice nad polohami bodů a poloměry kružnic. Z jejich derivací
-// ve vyřešeném stavu (Jacobiho matice) plyne všechno ostatní lineární algebrou: stupně volnosti
-// jsou počet proměnných minus hodnost, vazba je nadbytečná, když její řádky leží v prostoru
-// řádků ostatních vazeb, a bod je volný, když ho řádky vazeb nedrží. Solver se k tomu nevolá:
-// jeho počet stupňů volnosti není spolehlivý (cyklus shodných délek, úsečka stažená do bodu)
-// a opakované řešení je pomalé.
+// Each constraint is one or two equations over the positions of points and the radii of circles.
+// From their derivatives in the solved state (the Jacobian matrix) everything else follows by
+// linear algebra: the degrees of freedom are the number of variables minus the rank, a constraint
+// is redundant when its rows lie in the space of the rows of the other constraints, and a point is
+// free when the rows of the constraints do not hold it. The solver is not called for this: its
+// count of degrees of freedom is not reliable (a cycle of equal lengths, a line collapsed to a
+// point) and solving repeatedly is slow.
 import { CONSTRAINTS } from './catalog';
 import { commonEnd } from './common-end';
 import { curvePoints } from './sketch-content';
 import type { Constraint, Curve, FreeEntity, Id, SolveInput, Vec2 } from './types';
 import { ORIGIN, unreachable } from './util';
 
-// Rovnice mají rozměr délky, jejich derivace jsou tedy bezrozměrné a prahy nezávisí na měřítku.
-const DEPENDENT = 1e-6; // řádek se po odečtení průmětu do prostoru ostatních počítá za závislý
-const ZERO_ROW = 1e-9; // rovnice, která v tomto stavu nic neurčuje
-const SUPPORT = 1e-6; // koeficient, od kterého se vazba počítá mezi ty, ze kterých jiná plyne
-const STEP = 1e-6; // krok numerické derivace vzhledem k velikosti geometrie vazby
-const PROBE = 1e-3; // část pomocného vektoru, která musí zbýt, aby se počítala za nový pohyb
-const SHARED = 1e-6; // bod leží na kružnici (vzhledem k velikosti křivek)
+// The equations have the dimension of a length, so their derivatives are dimensionless and the
+// thresholds do not depend on the scale.
+const DEPENDENT = 1e-6; // a row counts as dependent after its projection onto the space of the others is subtracted
+const ZERO_ROW = 1e-9; // an equation that determines nothing in this state
+const SUPPORT = 1e-6; // the coefficient from which a constraint counts among those another one follows from
+const STEP = 1e-6; // the step of the numeric derivative relative to the size of the constraint's geometry
+const PROBE = 1e-3; // the part of an auxiliary vector that must remain for it to count as a new motion
+const SHARED = 1e-6; // a point lies on a circle (relative to the size of the curves)
 
 const sub = (a: Vec2, b: Vec2): Vec2 => [a[0] - b[0], a[1] - b[1]];
 const cross = (a: Vec2, b: Vec2): number => a[0] * b[1] - a[1] * b[0];
@@ -27,7 +29,8 @@ const dot = (a: Vec2, b: Vec2): number => a[0] * b[0] + a[1] * b[1];
 const len = (a: Vec2): number => Math.hypot(a[0], a[1]);
 const nonZero = (value: number): number => (value > 0 ? value : 1);
 const sign = (value: number): number => (value < 0 ? -1 : 1);
-// Opakovatelná „náhodná" čísla z (−1, 1) (mulberry32); výsledek rozboru se tak nemění.
+// Repeatable "random" numbers from (−1, 1) (mulberry32), so the result of the analysis does not
+// change.
 const random = (seed: number): (() => number) => {
   let a = seed >>> 0;
   return () => {
@@ -43,11 +46,11 @@ const norm = (vector: Float64Array): number => {
   return Math.sqrt(sum);
 };
 
-// Geometrie skici při daných hodnotách proměnných.
+// The geometry of the sketch at given values of the variables.
 interface Geometry {
   point(id: Id): Vec2;
   curve(id: Id): Curve;
-  radius(id: Id): number; // kružnice: proměnná nebo pevná hodnota; oblouk: vzdálenost začátku od středu
+  radius(id: Id): number; // circle: a variable or a fixed value; arc: the distance of the start from the center
 }
 const lineOf = (g: Geometry, id: Id): [Vec2, Vec2] => {
   const c = g.curve(id) as Extract<Curve, { type: 'line' }>;
@@ -60,12 +63,13 @@ const direction = (g: Geometry, id: Id): Vec2 => {
 const centerOf = (g: Geometry, id: Id): Vec2 => g.point((g.curve(id) as Extract<Curve, { center: Id }>).center);
 
 type Equations = (g: Geometry) => number[];
-// Drží ostatní vazby (bez tečností) bod na kružnici nebo oblouku?
+// Do the other constraints (without tangencies) hold the point on the circle or arc?
 type Held = (point: Id, round: Id) => boolean;
 // The end of the arc the adapter takes as the common end of a tangency of a line and an arc only
 // because two fixed points lie at one place (`commonEnd` with `byPlace`, D72), or undefined.
 type JoinedByPlace = (line: Id, arc: Id) => Id | undefined;
-// Varianta vazby daného typu (i když ji typy sdružují s jinou, jako horizontal a vertical).
+// The variant of a constraint of the given type (even when the types group it with another one,
+// like horizontal and vertical).
 type Variant<C, T> = C extends { type: infer U } ? (T extends U ? C : never) : never;
 type Of<T extends Constraint['type']> = Variant<Constraint, T>;
 
@@ -75,11 +79,12 @@ const neverAnOperand = (what: string): never => {
   throw new Error(`a spline is never an operand of ${what}`);
 };
 
-// Rovnice každé vazby: v řešení jsou nulové. `g0` je vyřešený stav; rozhoduje se podle něj to,
-// co rovnice sama neurčuje (na které straně přímky bod leží, vnější nebo vnitřní dotyk kružnic),
-// a berou se z něj délky, kterými se dělí rovnice s nulovou pravou stranou: dělitel je pak
-// konstanta a rovnice zůstane hladká. Rovnice závisí jen na rozdílech poloh, ne na počátku.
-// Význam musí odpovídat adaptéru solveru; hlídá to test, že vyřešená skica rovnice splňuje.
+// The equations of each constraint: they are zero in the solution. `g0` is the solved state; it
+// decides what the equation does not determine by itself (on which side of a line a point lies,
+// outer or inner contact of circles), and the lengths that divide equations with a zero right-hand
+// side are taken from it: the divisor is then a constant and the equation stays smooth. The
+// equations depend only on differences of positions, not on the origin. Their meaning must match
+// the adapter of the solver; a test that the solved sketch satisfies the equations guards it.
 const EQUATIONS: { [T in Constraint['type']]: (c: Of<T>, g0: Geometry, held: Held, joined: JoinedByPlace) => Equations } = {
   coincident: (c) => (g) => sub(g.point(c.a), g.point(c.b)),
   pointOnCurve: (c, g0) => {
@@ -123,12 +128,14 @@ const EQUATIONS: { [T in Constraint['type']]: (c: Of<T>, g0: Geometry, held: Hel
     const [p, o] = [g.point(c.point), g.point(ORIGIN)];
     return [p[0] - o[0] - c.x, p[1] - o[1] - c.y];
   },
-  // Tečnost má dvě podoby. Obecně: vzdálenost středu od přímky (nebo středů od sebe) odpovídá
-  // poloměrům. Drží-li ale ostatní vazby na kružnici už určující bod druhé křivky (konec úsečky,
-  // konec oblouku), říká tahle rovnice v prvním řádu totéž co ony: soustava má v řešení
-  // dvojnásobný kořen. Tečnost pak znamená, že poloměr v tom bodě je kolmý na úsečku, respektive
-  // že oba středy a společný bod leží na přímce. Když bod na kružnici leží jen shodou okolností
-  // nebo až díky tečnosti samé, platí obecná podoba: jinak by z rozboru vypadl poloměr.
+  // Tangency has two forms. In general: the distance of the center from the line (or of the centers
+  // from each other) matches the radii. But when the other constraints already hold a defining
+  // point of the other curve on the circle (the end of a line, the end of an arc), this equation
+  // says the same in the first order as they do: the system has a double root in the solution.
+  // Tangency then means that the radius at that point is perpendicular to the line, or that both
+  // centers and the common point lie on a line. When the point lies on the circle only by
+  // coincidence or only thanks to the tangency itself, the general form applies: otherwise the
+  // radius would drop out of the analysis.
   tangent: (c, g0, held, joined) => {
     const [first, second] = g0.curve(c.a).type === 'line' ? [c.a, c.b] : [c.b, c.a];
     const onCircle = (point: Id, round: Id, size: number): boolean => Math.abs(len(sub(g0.point(point), centerOf(g0, round))) - g0.radius(round)) <= SHARED * nonZero(size);
@@ -196,7 +203,7 @@ const EQUATIONS: { [T in Constraint['type']]: (c: Of<T>, g0: Geometry, held: Hel
     const s = sign(r1 - r2);
     return (g) => [between(g) - (outer ? g.radius(first) + g.radius(second) : s * (g.radius(first) - g.radius(second)))];
   },
-  // Střed bodů a, b leží na ose a jejich spojnice je na osu kolmá.
+  // The midpoint of points a, b lies on the axis and the line joining them is perpendicular to it.
   symmetric: (c) => (g) => {
     const [p, q] = lineOf(g, c.line);
     const u = sub(q, p);
@@ -209,7 +216,7 @@ const EQUATIONS: { [T in Constraint['type']]: (c: Of<T>, g0: Geometry, held: Hel
     const m = g.point(c.point);
     return [m[0] - (p[0] + q[0]) / 2, m[1] - (p[1] + q[1]) / 2];
   },
-  // Nulová vzdálenost je totožnost: jedna rovnice by v řešení měla nulovou derivaci.
+  // A zero distance is identity: a single equation would have a zero derivative in the solution.
   distance: (c) => (g) => {
     const d = sub(g.point(c.a), g.point(c.b));
     return c.value === 0 ? d : [len(d) - c.value];
@@ -224,7 +231,8 @@ const EQUATIONS: { [T in Constraint['type']]: (c: Of<T>, g0: Geometry, held: Hel
   },
   horizontalDistance: (c) => (g) => [g.point(c.b)[0] - g.point(c.a)[0] - c.value],
   verticalDistance: (c) => (g) => [g.point(c.b)[1] - g.point(c.a)[1] - c.value],
-  // Úhel se násobí délkou, aby měla rovnice rozměr délky jako ostatní.
+  // The angle is multiplied by a length so that the equation has the dimension of a length like
+  // the others.
   angle: (c) => (g) => {
     const [u, v] = [direction(g, c.a), direction(g, c.b)];
     const off = Math.atan2(cross(u, v), dot(u, v)) - c.value;
@@ -234,26 +242,28 @@ const EQUATIONS: { [T in Constraint['type']]: (c: Of<T>, g0: Geometry, held: Hel
   diameter: (c) => (g) => [2 * g.radius(c.curve) - c.value],
 };
 
-// Podmínka oblouku, kterou dokument jako vazbu neukládá: oba konce stejně daleko od středu.
+// The condition of an arc that the document does not store as a constraint: both ends equally far
+// from the center.
 const arcRule =
   (arc: Extract<Curve, { type: 'arc' }>): Equations =>
   (g) => [len(sub(g.point(arc.start), g.point(arc.center))) - len(sub(g.point(arc.end), g.point(arc.center)))];
 
-// ---------------------------------------------------------------- lineární algebra
+// ---------------------------------------------------------------- linear algebra
 
-// Rostoucí ortonormální báze. U každého přijatého vektoru si pamatuje, jak je složený z původních
-// přijatých vektorů, aby šel závislý vektor vyjádřit jejich kombinací.
+// A growing orthonormal basis. For each accepted vector it remembers how it is composed of the
+// original accepted vectors, so that a dependent vector can be expressed as their combination.
 class Basis {
   private readonly q: Float64Array[] = [];
-  private readonly mix: Float64Array[] = []; // q[i] = Σ mix[i][j] · původní[j], j ≤ i
-  readonly members: number[] = []; // značky přijatých vektorů
+  private readonly mix: Float64Array[] = []; // q[i] = Σ mix[i][j] · original[j], j ≤ i
+  readonly members: number[] = []; // tags of the accepted vectors
 
   get size(): number {
     return this.q.length;
   }
 
-  // Odečte průmět do báze; vrací zbytek a složky v bázi. Když se odečetla větší část vektoru,
-  // zbytek nese zaokrouhlovací chybu a odečítá se podruhé; jinak stačí jeden průchod.
+  // Subtracts the projection onto the basis; returns the remainder and the components in the basis.
+  // When most of the vector was subtracted, the remainder carries rounding error and is subtracted
+  // a second time; otherwise one pass is enough.
   private reduce(vector: Float64Array): { rest: Float64Array; parts: Float64Array } {
     const rest = Float64Array.from(vector);
     const parts = new Float64Array(this.q.length);
@@ -272,13 +282,13 @@ class Basis {
     return { rest, parts };
   }
 
-  // Délka části vektoru, která v prostoru báze neleží.
+  // The length of the part of the vector that does not lie in the space of the basis.
   outside(vector: Float64Array): Float64Array {
     return this.reduce(vector).rest;
   }
 
-  // Přidá jednotkový vektor. Je-li závislý, nepřidá ho a vrátí koeficienty u původních přijatých
-  // vektorů (v pořadí `members`), kterými ho jde složit.
+  // Adds a unit vector. If it is dependent, it does not add it and returns the coefficients of the
+  // original accepted vectors (in the order of `members`) that compose it.
   add(vector: Float64Array, tag: number): Float64Array | undefined {
     const { rest, parts } = this.reduce(vector);
     const length = norm(rest);
@@ -304,30 +314,31 @@ const normalized = (vector: Float64Array): Float64Array | undefined => {
   return length > ZERO_ROW ? vector.map((value) => value / length) : undefined;
 };
 
-// ---------------------------------------------------------------- rozbor
+// ---------------------------------------------------------------- analysis
 
 interface Row {
-  owner: Id | undefined; // vazba; undefined = podmínka oblouku
-  vector: Float64Array | undefined; // jednotkový řádek Jacobiho matice; undefined = nulový
+  owner: Id | undefined; // the constraint; undefined = the condition of an arc
+  vector: Float64Array | undefined; // a unit row of the Jacobian matrix; undefined = zero
 }
 
 export class SketchAnalysis {
   readonly degreesOfFreedom: number;
-  readonly residual: number; // největší odchylka rovnic ve vyřešeném stavu (mm)
+  readonly residual: number; // the largest deviation of the equations in the solved state (mm)
   private readonly rows: Row[] = [];
-  private readonly order: Id[]; // vazby v pořadí dokumentu
+  private readonly order: Id[]; // the constraints in the order of the document
   private readonly variables: { id: Id; kind: FreeEntity['kind']; at: number }[] = [];
-  private readonly count: number; // počet proměnných
-  private readonly basis: Basis; // řádky v pořadí dokumentu: starší mají přednost
-  private readonly dual = new Map<number, Float64Array>(); // řádek → jeho složky v bázi závislostí
-  private readonly dependencies: number; // rozměr prostoru závislostí mezi řádky
+  private readonly count: number; // the number of variables
+  private readonly basis: Basis; // rows in the order of the document: older ones take precedence
+  private readonly dual = new Map<number, Float64Array>(); // row → its components in the basis of the dependencies
+  private readonly dependencies: number; // the dimension of the space of dependencies between the rows
   private surplusCache?: { redundant: Id[]; removable: Id[] };
   private freeCache?: FreeEntity[];
 
-  // `input`: vstup solveru s vyřešenými polohami; jen řídicí vazby, v pořadí dokumentu.
+  // `input`: the input of the solver with the solved positions; driving constraints only, in the
+  // order of the document.
   constructor(private readonly input: SolveInput) {
     const fixed = new Set(input.fixed);
-    const at = new Map<Id, number>(); // bod → index x (y následuje)
+    const at = new Map<Id, number>(); // point → index of x (y follows)
     const radiusAt = new Map<Id, number>();
     let count = 0;
     for (const id of Object.keys(input.points)) {
@@ -347,9 +358,10 @@ export class SketchAnalysis {
     for (const [id, index] of at) values.set([input.points[id].x, input.points[id].y], index);
     for (const [id, index] of radiusAt) values[index] = input.radii[id];
 
-    // Rovnice se vyhodnocují v polohách vzhledem k bodu vazby (`origin`), ne k počátku skici:
-    // malý útvar daleko od počátku by jinak ztratil přesnost v zaokrouhlení souřadnic.
-    // Derivuje se posunem jedné proměnné (`moved`) o `shift`.
+    // The equations are evaluated at positions relative to a point of the constraint (`origin`),
+    // not to the origin of the sketch: a small shape far from the origin would otherwise lose
+    // precision in the rounding of the coordinates. The derivative is taken by moving one variable
+    // (`moved`) by `shift`.
     let origin: Vec2 = [0, 0];
     let moved = -1;
     let shift = 0;
@@ -384,14 +396,15 @@ export class SketchAnalysis {
       return curvePoints(curve);
     };
 
-    // Jednotkové řádky Jacobiho matice numerickou derivací; krok se řídí velikostí geometrie,
-    // které se vazba týká. Řádek rovnice, která v tomto stavu nic neurčuje, je undefined.
+    // Unit rows of the Jacobian matrix by numeric derivative; the step follows the size of the
+    // geometry the constraint concerns. The row of an equation that determines nothing in this
+    // state is undefined.
     let extent = 0;
     for (const p of Object.values(input.points)) extent = Math.max(extent, Math.abs(p.x), Math.abs(p.y));
     let residual = 0;
     const derive = (build: (g0: Geometry) => Equations, entities: Id[]): (Float64Array | undefined)[] => {
       const points = [...new Set(entities.flatMap(pointsOf))];
-      const outer = origin; // derive se volá i zevnitř `build` (otázka tečnosti)
+      const outer = origin; // derive is called from inside `build` too (the question of tangency)
       origin = points.length > 0 ? [input.points[points[0]].x, input.points[points[0]].y] : [0, 0];
       const touched = new Set<number>();
       let size = 0;
@@ -436,8 +449,9 @@ export class SketchAnalysis {
       return vectors.map(normalized);
     };
 
-    // Tečnost se ptá, jestli bod drží na kružnici ostatní vazby. Proto se nejdřív spočítají řádky
-    // všeho ostatního; z nich se (jen když je to potřeba) postaví báze, proti které se otázka řeší.
+    // Tangency asks whether the other constraints hold a point on the circle. So the rows of
+    // everything else are computed first; from them (only when needed) the basis is built against
+    // which the question is answered.
     const ends = { points: input.points, fixed };
     const joined: JoinedByPlace = (line, arc) => {
       const [l, a] = [input.curves[line], input.curves[arc]];
@@ -458,7 +472,7 @@ export class SketchAnalysis {
     let others: Basis | undefined;
     const held: Held = (point, round) => {
       const [row] = derive(() => (g) => [len(sub(g.point(point), centerOf(g, round))) - g.radius(round)], [point, round]);
-      if (!row) return true; // začátek oblouku na něm leží z definice
+      if (!row) return true; // the start of the arc lies on it by definition
       if (!others) {
         others = new Basis();
         for (const vector of [...arcRows, ...this.order.flatMap((id) => built.get(id) ?? [])]) if (vector) others.add(vector, 0);
@@ -470,9 +484,10 @@ export class SketchAnalysis {
     for (const id of this.order) for (const vector of built.get(id) as (Float64Array | undefined)[]) this.rows.push({ owner: id, vector });
     this.residual = residual;
 
-    // Báze řádků v pořadí dokumentu. Každý závislý řádek dává jednu závislost: sám minus
-    // kombinace přijatých řádků. Složky řádku ve všech závislostech (sloupec „duální" matice)
-    // říkají, jestli a s čím je řádek zaměnitelný.
+    // The basis of the rows in the order of the document. Each dependent row gives one dependency:
+    // itself minus a combination of the accepted rows. The components of a row in all the
+    // dependencies (a column of the "dual" matrix) say whether and with what the row is
+    // interchangeable.
     this.basis = new Basis();
     const relations: { row: number; coefficients: Float64Array; members: number[] }[] = [];
     this.rows.forEach((row, index) => {
@@ -498,8 +513,9 @@ export class SketchAnalysis {
     return out;
   }
 
-  // `redundant`: vazby, které plynou z ostatních. `removable`: sada, kterou jde odebrat naráz;
-  // odebírá se od nejnovější vazby, takže starší zůstávají. Obojí v pořadí dokumentu.
+  // `redundant`: the constraints that follow from the others. `removable`: a set that can be
+  // removed at once; it is removed from the newest constraint, so the older ones stay. Both in the
+  // order of the document.
   surplus(): { redundant: Id[]; removable: Id[] } {
     if (this.surplusCache) return this.surplusCache;
     if (this.dependencies === 0) return (this.surplusCache = { redundant: [], removable: [] });
@@ -510,8 +526,9 @@ export class SketchAnalysis {
     return (this.surplusCache = { redundant, removable: removable.reverse() });
   }
 
-  // Přidá vazbu do sady k odebrání, pokud to hodnost nesníží; jinak sadu nechá beze změny.
-  // Sadu řádků jde odebrat právě tehdy, když jsou jejich složky v závislostech lineárně nezávislé.
+  // Adds a constraint to the set to remove when that does not lower the rank; otherwise it leaves
+  // the set unchanged. A set of rows can be removed exactly when their components in the
+  // dependencies are linearly independent.
   private removableTogether(removed: Basis, constraint: Id): boolean {
     const units: Float64Array[] = [];
     for (const index of this.rowsOf(constraint)) {
@@ -520,7 +537,8 @@ export class SketchAnalysis {
       if (!unit) return false;
       units.push(unit);
     }
-    // zbytky všech řádků vazby po odečtení sady musí být nezávislé i mezi sebou
+    // the remainders of all rows of the constraint after subtracting the set must be independent
+    // of each other too
     const rests = units.map((unit) => removed.outside(unit));
     const own = new Basis();
     for (const rest of rests) {
@@ -531,10 +549,11 @@ export class SketchAnalysis {
     return true;
   }
 
-  // Entity, které se ještě mohou hýbat: bod o 1 nebo 2 stupně, poloměr kružnice o 1.
-  // Pohyby, které vazby dovolují, tvoří prostor kolmý na řádky vazeb. Jeho báze se získá průmětem
-  // tolika pomocných vektorů, kolik má skica stupňů volnosti; volnost entity je hodnost té báze
-  // omezené na souřadnice entity.
+  // The entities that can still move: a point by 1 or 2 degrees, the radius of a circle by 1.
+  // The motions the constraints allow form the space perpendicular to the rows of the constraints.
+  // Its basis is obtained by projecting as many auxiliary vectors as the sketch has degrees of
+  // freedom; the freedom of an entity is the rank of that basis restricted to the coordinates of
+  // the entity.
   free(): FreeEntity[] {
     if (this.freeCache) return this.freeCache;
     const out: FreeEntity[] = [];
@@ -560,7 +579,7 @@ export class SketchAnalysis {
       if (variable.kind === 'point') {
         const second = along(variable.at + 1);
         if (freedom === 1) {
-          // druhý směr se počítá, jen když není násobkem prvního
+          // the second direction counts only when it is not a multiple of the first
           let d = 0;
           for (let k = 0; k < first.length; k++) d += second[k] * first[k];
           const square = norm(first) ** 2;
@@ -573,8 +592,9 @@ export class SketchAnalysis {
     return (this.freeCache = out);
   }
 
-  // Sada ostatních vazeb, ze kterých vazba plyne a ze které už nejde nic ubrat; undefined =
-  // neplyne z nich. Sad může být víc: `prefer` říká, které vazby mají mít přednost (menší číslo dřív).
+  // The set of other constraints the constraint follows from, from which nothing more can be
+  // removed; undefined = it does not follow from them. There can be more such sets: `prefer` says
+  // which constraints take precedence (a smaller number first).
   explain(constraint: Id, prefer: (other: Id) => number): Id[] | undefined {
     const own = this.rowsOf(constraint);
     if (own.length === 0) return undefined;
@@ -589,7 +609,7 @@ export class SketchAnalysis {
     const implied = new Set<Id>();
     for (const index of own) {
       const vector = this.rows[index].vector;
-      if (!vector) continue; // rovnice, která nic neurčuje, neplyne z ničeho konkrétního
+      if (!vector) continue; // an equation that determines nothing follows from nothing in particular
       const coefficients = basis.add(vector, index);
       if (!coefficients) return undefined;
       coefficients.forEach((value, j) => {
@@ -597,9 +617,10 @@ export class SketchAnalysis {
         if (Math.abs(value) > SUPPORT && owner !== undefined) implied.add(owner);
       });
     }
-    // Vazba se dvěma rovnicemi se do báze může dostat jen jednou z nich a druhou za ni zastoupí
-    // jiná vazba, která pak v sadě zbytečně zůstane. Proto se ze sady zkouší ubírat, od nejméně
-    // vhodných vazeb: co jde vynechat, aniž vazba přestane plynout, tam nepatří.
+    // A constraint with two equations can get into the basis with only one of them, and another
+    // constraint stands in for the second one and then stays in the set needlessly. So removing
+    // from the set is tried, from the least suitable constraints: what can be left out without the
+    // constraint ceasing to follow does not belong there.
     const targets = own.map((index) => this.rows[index].vector).filter((vector) => vector !== undefined);
     const follows = (from: Set<Id>): boolean => {
       const span = new Basis();

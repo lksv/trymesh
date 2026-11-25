@@ -1,4 +1,4 @@
-// Vektory, roviny stěn a tolerance adaptéru.
+// Vectors, planes of faces and the tolerances of the adapter.
 import type { Solid } from '@trymesh/engine';
 
 export type V3 = [number, number, number];
@@ -11,7 +11,7 @@ export const cross = (a: V3, b: V3): V3 => [a[1] * b[2] - a[2] * b[1], a[2] * b[
 export const len = (a: V3): number => Math.hypot(a[0], a[1], a[2]);
 export const unit = (a: V3): V3 => mul(a, 1 / len(a));
 
-// poloha vrcholu i
+// position of the vertex i
 export const vertex = (s: Solid, i: number): V3 => [s.positions[3 * i], s.positions[3 * i + 1], s.positions[3 * i + 2]];
 export const triangleCount = (s: Solid): number => s.triangles.length / 3;
 export const corners = (s: Solid, t: number): [V3, V3, V3] => [
@@ -20,20 +20,20 @@ export const corners = (s: Solid, t: number): [V3, V3, V3] => [
   vertex(s, s.triangles[3 * t + 2]),
 ];
 
-// Šířka trojúhelníku: výška na nejdelší stranu. `normal` je neznormovaný vektorový součin stran.
+// Width of a triangle: its height over the longest side. `normal` is the unnormalised cross product of the sides.
 export function triWidth(v: [V3, V3, V3], normal: V3): number {
   const longest = Math.max(len(sub(v[1], v[0])), len(sub(v[2], v[1])), len(sub(v[0], v[2])));
   return longest === 0 ? 0 : len(normal) / longest;
 }
 
-// Tolerance adaptéru, vše odvozené z rozměru D: úhlopříčka obálky obou těles, nejméně však
-// dvojnásobek největší souřadnice.
+// Tolerances of the adapter, all derived from the size D: the diagonal of the bounding box of both
+// bodies, but at least twice the largest coordinate.
 export interface Tolerances {
-  tol: number; // co se ještě bere jako "v jedné rovině"
-  overlap: number; // o kolik se stěna posune
-  sliver: number; // užší trojúhelník zakřivené stěny se pro určení roviny nepoužije
-  onPlane: number; // vrchol "leží v posunuté rovině"
-  weld: number; // vrcholy blíž než tohle se sloučí
+  tol: number; // what is still taken as "in one plane"
+  overlap: number; // how far a face is shifted
+  sliver: number; // a narrower triangle of a curved face is not used to determine the plane
+  onPlane: number; // a vertex "lies in the shifted plane"
+  weld: number; // vertices closer than this are welded
 }
 
 export function tolerances(...solids: Solid[]): Tolerances {
@@ -45,29 +45,29 @@ export function tolerances(...solids: Solid[]): Tolerances {
       hi[i % 3] = Math.max(hi[i % 3], s.positions[i]);
     }
   }
-  // Přesnost float32 klesá se vzdáleností od počátku. Model daleko od počátku proto dostane
-  // tolerance podle největší souřadnice, ne jen podle svého rozměru.
+  // The precision of float32 drops with the distance from the origin. A model far from the origin
+  // therefore gets tolerances by its largest coordinate, not only by its size.
   const D = Math.max(len(sub(hi, lo)), 2 * Math.max(...lo.map(Math.abs), ...hi.map(Math.abs)));
   return { tol: D * 1e-5, overlap: D * 4e-5, sliver: D * 8e-5, onPlane: D * 5e-6, weld: D * 1e-6 };
 }
 
 export interface FaceTriangle {
   v: [V3, V3, V3];
-  n: V3; // neznormovaná normála
+  n: V3; // unnormalised normal
 }
 
 export interface FittedFace {
   id: number;
-  n: V3; // jednotková normála proložené roviny
-  d: number; // rovina n·x = d
+  n: V3; // unit normal of the fitted plane
+  d: number; // the plane n·x = d
   planar: boolean;
-  width: number; // šířka nejširšího trojúhelníku
+  width: number; // width of the widest triangle
   tris: FaceTriangle[];
 }
 
-// Proloží rovinu každé stěně (podle čísla stěny). Rovinná je stěna, jejíž vrcholy leží do `tol`
-// od proložené roviny. Podle normál jednotlivých trojúhelníků se rozhodovat nesmí: úzký trojúhelník
-// vzniklý booleanem má normálu nespolehlivou a celou stěnu by označil za nerovinnou.
+// Fits a plane to each face (by the face number). A face is planar when its vertices lie within
+// `tol` of the fitted plane. The decision must not go by the normals of the single triangles: a narrow
+// triangle made by a boolean has an unreliable normal and would mark the whole face as not planar.
 export function fitFaces(s: Solid, tol: number): Map<number, FittedFace> {
   const groups = new Map<number, { tris: FaceTriangle[]; sum: V3 }>();
   for (let t = 0; t < triangleCount(s); t++) {
@@ -95,7 +95,7 @@ export function fitFaces(s: Solid, tol: number): Map<number, FittedFace> {
     d /= area;
     let deviation = 0;
     for (const tri of g.tris) for (const p of tri.v) deviation = Math.max(deviation, Math.abs(dot(n, p) - d));
-    // Stěna složená jen z úzkých zbytků nemá spolehlivou normálu; proto se vrací i `width`.
+    // A face made only of narrow remains has no reliable normal; that is why `width` is returned too.
     out.set(id, { id, n, d, planar: deviation <= tol, width, tris: g.tris });
   }
   return out;

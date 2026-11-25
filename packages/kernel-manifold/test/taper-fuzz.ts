@@ -172,7 +172,7 @@ export function checkTapered(seed: number, rejected?: { count: number }): string
     out = runTapered(c);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    if (rejected && /není uzavřená plocha|přeložený trojúhelník/.test(message)) {
+    if (rejected && /not a closed surface|folded triangle/.test(message)) {
       rejected.count++;
       return [];
     }

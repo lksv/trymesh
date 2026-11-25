@@ -607,7 +607,7 @@ Where the curves of a sketch cross, and why its profile is invalid, was a functi
 | `packages/app/src/sketch-tools/trim.ts`, `extend.ts`, `split.ts`, what they share in `cut.ts`, and three lines of `SKETCH_TOOL_UI` in `sketch-tools/index.ts` (6a, part 4) | the three tools of the sketch bar with their panels |
 | `packages/app/src/queries/sketch-contacts.ts` and a line of `QUERY_VIEWS`; `packages/app/src/sketch-mode.ts`, `panels/sketch.ts` | the view of the query; the marks of the open sketch and what the panel says of an invalid profile, both from the query |
 | `packages/scenarios/test/` | the part of scenario 15 (calls.ts) and the measured cases as regressions |
-| `docs/architecture/sketch.md` ("Sketch tools", "Profily a oblasti"), `naming.md` (regions after a cut), `ai.md` (the two input kinds, the query), `docs/ui/sketch.md`, `verification.md`, `backlog.md` | the tools, the face rule, the query, the UI rows, the tests; the backlog row of trim and extend closed with what is deferred |
+| `docs/architecture/sketch.md` ("Sketch tools", "Profiles and regions"), `naming.md` (regions after a cut), `ai.md` (the two input kinds, the query), `docs/ui/sketch.md`, `verification.md`, `backlog.md` | the tools, the face rule, the query, the UI rows, the tests; the backlog row of trim and extend closed with what is deferred |
 
 ## The app and MCP
 

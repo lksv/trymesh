@@ -4,8 +4,8 @@ import { polyline } from '../sketch-view';
 import { type SketchPlaceTool, anchor, drawn } from './spec';
 
 export const circle: SketchPlaceTool<undefined> = {
-  label: 'Kružnice',
-  hint: 'Klikněte na střed a pak na bod obvodu.',
+  label: 'Circle',
+  hint: 'Click the centre and then a point of the rim.',
   clicks: 2,
   click: (host, m, places, context) => {
     drawn(host, m, circleCommands(m.id, context.view, anchor(places[0]), anchor(places[1]), host.newId));

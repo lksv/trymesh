@@ -2,35 +2,35 @@
 
 Part of [architecture.md](../architecture.md), the design as implemented. The two histories, the types of the document, parameters and expressions.
 
-## Dvě různé historie
+## Two different histories
 
-- **Časová osa (feature log)** je recept na model: uspořádaný seznam features (`Plane`, `Sketch`, `Extrude`, `Pattern`). Je součástí dokumentu. Úprava feature uprostřed vyvolá přepočet.
-- **Historie příkazů** je záznam uživatelských úprav dokumentu kvůli undo/redo. Není receptem na model.
+- **The timeline (feature log)** is the recipe of the model: an ordered list of features (`Plane`, `Sketch`, `Extrude`, `Pattern`). It is part of the document. Editing a feature in the middle triggers a recompute.
+- **The command history** is a record of the user's edits of the document, for undo/redo. It is not a recipe of the model.
 
-Skica je **jedna feature** na časové ose. Její obsah (body, křivky, vazby) je stav, ne log. Přidání úsečky do skici je příkaz (jde vrátit přes undo), ale není to nová položka časové osy.
+A sketch is **one feature** on the timeline. Its content (points, curves, constraints) is state, not a log. Adding a line to a sketch is a command (it can be undone), but it is not a new entry of the timeline.
 
 
-## Dokument
+## Document
 
-Dokument je neměnná (immutable) datová struktura serializovatelná do JSON. Každý příkaz vrací nový dokument, nezměněné části se sdílejí.
+The document is an immutable data structure serializable to JSON. Every command returns a new document; the unchanged parts are shared.
 
-- **Undo/redo** je zásobník předchozích dokumentů.
-- **Cache přepočtu** je memoizace podle identity objektů (viz Přepočet).
-- **Round-trip**: dokument je jediný zdroj pravdy.
+- **Undo/redo** is a stack of previous documents.
+- **The cache of the recompute** is memoisation by the identity of objects (see Recompute).
+- **Round-trip**: the document is the only source of truth.
 
 ```ts
-type Id = string;                    // trvalé, nikdy se nerecykluje
+type Id = string;                    // permanent, never reused
 type Vec3 = [number, number, number];
 
 interface Document {
   schemaVersion: number;
   schemaSteps?: string[];       // only from a build of a branch, see `load`
   settings: {
-    chordTolerance: number;               // dělení oblouků na segmenty
+    chordTolerance: number;               // division of arcs into segments
   };
   parameters: Parameter[];                // named parameters, see Parameters and expressions
   checks: Check[];                        // expressions that are supposed to hold
-  features: Feature[];                    // časová osa
+  features: Feature[];                    // the timeline
   bodyProperties: Record<Id, BodyProperties>;   // a section of the document, see Body properties (D48)
   mechanism: Mechanism;                          // a section of the document, see The mechanism (D49)
   meshes: Record<Id, StoredMesh>;                // a section of the document, see Stored meshes (D55)
@@ -44,7 +44,7 @@ interface FeatureBase { id: Id; name: string; suppressed: boolean; expressions?:
 interface PlaneFeature extends FeatureBase {
   type: 'plane';
   base: PlaneRef;
-  offset: number;                   // posun ve směru normály základu
+  offset: number;                   // offset along the normal of the base
   midplaneWith?: PlaneRef;          // D60: the midplane of the base and this plane
   tilt?: { axis: AxisRef; angle: number };   // D60: the plane through the axis turned by the angle; numeric field `tilt/angle`
 }                                   // built in the order base, midplane, tilt, offset: naming.md, "The plane feature (D60)"
@@ -52,17 +52,17 @@ interface PlaneFeature extends FeatureBase {
 interface SketchFeature extends FeatureBase {
   type: 'sketch';
   plane: PlaneRef;
-  points: Record<Id, { x: number; y: number }>;   // řešené proměnné: polohy bodů
-  radii: Record<Id, number>;                      // řešené proměnné: poloměry kružnic
+  points: Record<Id, { x: number; y: number }>;   // solved variables: positions of points
+  radii: Record<Id, number>;                      // solved variables: radii of circles
   curves: Record<Id, Curve>;
   constraints: Record<Id, Constraint>;
-  external: Record<Id, ExternalRef>;              // promítnutá geometrie
-  solved: SolveStamp;                             // pro jaké vstupy uložené proměnné platí
+  external: Record<Id, ExternalRef>;              // projected geometry
+  solved: SolveStamp;                             // for which inputs the stored variables hold
 }
 
 interface SolveStamp {
-  inputs: string;                         // otisk křivek, vazeb a hodnot promítnuté geometrie; počítá engine
-  external: Record<Id, Projected>;        // poslední platné hodnoty promítnuté geometrie
+  inputs: string;                         // fingerprint of the curves, constraints and values of projected geometry; computed by the engine
+  external: Record<Id, Projected>;        // the last valid values of projected geometry
 }
 
 type Projected =
@@ -70,32 +70,32 @@ type Projected =
   | { kind: 'circle'; center: [number, number]; radius: number };
 
 type Curve = { construction?: boolean } & (
-  | { type: 'line';   a: Id; b: Id }                       // ID bodů
-  | { type: 'circle'; center: Id }                         // poloměr je v `radii`
-  | { type: 'arc';    center: Id; start: Id; end: Id }     // proti směru hodin
+  | { type: 'line';   a: Id; b: Id }                       // point IDs
+  | { type: 'circle'; center: Id }                         // the radius is in `radii`
+  | { type: 'arc';    center: Id; start: Id; end: Id }     // counter-clockwise
 );
 
-type ExternalRef = { type: 'edge'; body: Id; edge: EdgeName; kind: 'line' | 'circle' };   // kind: jako co se hrana promítá
+type ExternalRef = { type: 'edge'; body: Id; edge: EdgeName; kind: 'line' | 'circle' };   // kind: what the edge is projected as
 
-// Každá varianta má pojmenované operandy s pevným významem.
+// Every variant has named operands with a fixed meaning.
 type Constraint = GeometricConstraint | Dimension;
 
 type GeometricConstraint =
-  | { type: 'coincident';   a: Id; b: Id }            // bod, bod
+  | { type: 'coincident';   a: Id; b: Id }            // point, point
   | { type: 'pointOnCurve'; point: Id; curve: Id }
   | { type: 'horizontal' | 'vertical'; line: Id }
-  | { type: 'parallel' | 'perpendicular' | 'equalLength'; a: Id; b: Id }  // úsečky
-  | { type: 'tangent';      a: Id; b: Id }            // úsečka–kružnice/oblouk, nebo dvě kružnice/oblouky
-  | { type: 'symmetric';    a: Id; b: Id; line: Id }  // body a, b souměrně podle přímky úsečky (osy)
-  | { type: 'midpoint';     point: Id; line: Id }     // bod ve středu úsečky
+  | { type: 'parallel' | 'perpendicular' | 'equalLength'; a: Id; b: Id }  // lines
+  | { type: 'tangent';      a: Id; b: Id }            // line–circle/arc, or two circles/arcs
+  | { type: 'symmetric';    a: Id; b: Id; line: Id }  // points a, b symmetric about the infinite line of the line (axis)
+  | { type: 'midpoint';     point: Id; line: Id }     // a point at the midpoint of a line
   | { type: 'equalRadius';  a: Id; b: Id }            // two circles or arcs, in any combination (D35, point 6)
   | { type: 'fixed';        point: Id; x: number; y: number };  // an own point at coordinates of the sketch; x, y are numeric fields
 
 type Dimension = { value: number; driving: boolean } & (
-  | { type: 'distance';           a: Id; b: Id }      // bod–bod (délka úsečky = její koncové body)
+  | { type: 'distance';           a: Id; b: Id }      // point–point (length of a line = its end points)
   | { type: 'distancePointLine';  point: Id; line: Id }
-  | { type: 'horizontalDistance' | 'verticalDistance'; a: Id; b: Id }   // bod, bod; orientovaná: b.x − a.x, resp. b.y − a.y
-  | { type: 'angle';              a: Id; b: Id }      // úsečky; úhel od směru `a` ke směru `b`, proti směru hodin, radiány
+  | { type: 'horizontalDistance' | 'verticalDistance'; a: Id; b: Id }   // point, point; signed: b.x − a.x, or b.y − a.y respectively
+  | { type: 'angle';              a: Id; b: Id }      // lines; the angle from the direction of `a` to the direction of `b`, counter-clockwise, radians
   | { type: 'radius' | 'diameter'; curve: Id }
 );
 
@@ -106,8 +106,8 @@ type PlaneRef =
 
 interface ExtrudeFeature extends FeatureBase {
   type: 'extrude';
-  profile: ProfileSource;           // odkud se bere průřez
-  extent: Extent;                   // odkud kam se vysouvá
+  profile: ProfileSource;           // where the cross-section comes from
+  extent: Extent;                   // from where to where it is extruded
   operation: 'new' | 'add' | 'cut';
   targets?: Id[];                   // target bodies: none for new, exactly one for add, one or more for cut
 }
@@ -123,8 +123,8 @@ type ProfileSource =
       params: Record<string, number | boolean | string>;   // numbers are numeric fields
       refs?: Record<string, Id> };                         // earlier features by catalog name
 
-// `start` je posun začátku od roviny skici, `distance` se měří od začátku; obojí podél normály
-// roviny skici, kladné ve směru normály. Těleso vyplní interval [start, start + distance].
+// `start` is the offset of the start from the plane of the sketch, `distance` is measured from the start;
+// both along the normal of the sketch plane, positive along the normal. The body fills [start, start + distance].
 // `throughAll` (a cut only): the tool passes through all targets; see Extrude, Extent and targets.
 type Extent =
   | { type: 'distance'; start: number; distance: number }
@@ -133,21 +133,21 @@ type Extent =
 
 The profile source and the extent are variants distinguished by the field `type`. Each has two (D35, points 2 and 3); the extent "up to a face" comes later. A generated profile with another `generator` counts as another variant as well.
 
-ID tělesa je ID feature, která ho založila (`operation: 'new'`). Obecně má ID tělesa tvar `<feature>` nebo `<feature>/<místní jméno>`: část před prvním lomítkem je feature, která těleso vytvořila, a tu validace i pořadí na časové ose berou jako cíl odkazu (`bodyOwner`). An extrusion creates only a body without a local name; a pattern of a body creates the bodies `<pattern>/<number>` (D35, point 4). Délky jsou v milimetrech, úhly v radiánech.
+The ID of a body is the ID of the feature that created it (`operation: 'new'`). In general a body ID has the form `<feature>` or `<feature>/<local name>`: the part before the first slash is the feature that created the body, and validation as well as the order on the timeline take it as the target of a reference (`bodyOwner`). An extrusion creates only a body without a local name; a pattern of a body creates the bodies `<pattern>/<number>` (D35, point 4). Lengths are in millimetres, angles in radians.
 
 **The registry of feature types** (`FEATURE_TYPES` in `features/index.ts`) holds a module per type (`FeatureModule` in `features/module.ts`): the validation and the canonical form, the references to other features with the place inside the feature where each lies, whether the feature creates a body and names faces, whether it leaves a tool that a pattern can repeat (`producesTool`), the generator of its profile (`generator`), whether a failed expression is only a warning (`keepsLastValidValues`, the sketch), which fields `updateFeature` may change, and the step of the recompute. Validation of references, the order on the timeline, `moveFeature`, the recompute and the description of the API for the AI all read the registry. A new feature type is its interface and one member of `Feature` and of `FeaturePatch` in `types.ts`, a module in `features/` and one line of the registry. The registry is a mapped type over `Feature['type']` and an entry needs a step, so it is the one guard of completeness (until D37 a `switch` in `evaluate.ts` was the second). The public part of the registry is `FEATURE_TYPE_INFO`; the engine also exports `producesTool(feature)` and `generatorOf(feature)`, which the app uses to offer the sources of a pattern and the mates of a generated profile. It also lists the numeric fields of each type (`fields`); validators read them through the field reader described in Parameters and expressions.
 
-Konvence:
-- **ID** generuje volající a posílá je v příkazech (viz API). Musí být v dokumentu jedinečná, nesmí obsahovat znak `/` (ten je vyhrazený pro odvozená ID promítnuté geometrie) a nesmí být `origin`.
-- **Směr úsečky** je od bodu `a` k bodu `b`. Úhel kóty `angle` je orientovaný a leží v intervalu (−π, π].
-- **Pořadí** tam, kde se mluví o seřazených nebo kanonicky uspořádaných ID a jménech, je lexikografické pořadí řetězců. Jméno stěny se pro porovnání zapíše jako `feature/role/curve`.
-- **Základní roviny** mají pevné pravotočivé souřadné systémy (osa X skici, osa Y skici, normála): XY = (+X, +Y, +Z), XZ = (+X, +Z, −Y), YZ = (+Y, +Z, +X).
-- **Znaménko kót.** `horizontalDistance` a `verticalDistance` jsou orientované (b − a) a smějí být záporné; UI volí pořadí bodů tak, aby hodnota při vytvoření vyšla kladná. Orientace brání tomu, aby se bod při řešení překlopil na druhou stranu. `distance` a `distancePointLine` jsou neorientované a nezáporné, `radius` a `diameter` kladné.
-- **Tolerance enginu** jsou pevné konstanty: délková 1e-6 mm (splněná `coincident`, dotyk křivek při detekci profilu) a úhlová 1e-4 rad (stěny v téže rovině při určování druhu hrany). Tolerance booleanů jsou věcí jádra, engine je nezná.
-- **Razítko** `solved.inputs` počítá engine jako otisk kanonického zápisu vstupů (klíče seřazené podle konvence výše). Volající ho nevyplňuje: v `addFeature` posílá skicu s prázdným razítkem (`inputs: ''`, `external: {}`), nebo ho vynechá (D73), a engine ho po prvním řešení přepíše.
+Conventions:
+- **IDs** are generated by the caller and sent in commands (see API). They must be unique in the document, must not contain the character `/` (it is reserved for the derived IDs of projected geometry) and must not be `origin`.
+- **The direction of a line** is from the point `a` to the point `b`. The angle of the dimension `angle` is signed and lies in the interval (−π, π].
+- **Order**, where sorted or canonically ordered IDs and names are spoken of, is the lexicographic order of strings. For comparison a face name is written as `feature/role/curve`.
+- **The base planes** have fixed right-handed coordinate systems (the X axis of the sketch, the Y axis of the sketch, the normal): XY = (+X, +Y, +Z), XZ = (+X, +Z, −Y), YZ = (+Y, +Z, +X).
+- **The sign of dimensions.** `horizontalDistance` and `verticalDistance` are signed (b − a) and may be negative; the UI chooses the order of the points so that the value comes out positive when it is created. The sign keeps a point from flipping to the other side while solving. `distance` and `distancePointLine` are unsigned and non-negative, `radius` and `diameter` positive.
+- **The tolerances of the engine** are fixed constants: a length tolerance of 1e-6 mm (a satisfied `coincident`, curves touching in profile detection) and an angular one of 1e-4 rad (faces in the same plane when the kind of an edge is determined). The tolerances of booleans are the kernel's business; the engine does not know them.
+- **The stamp** `solved.inputs` is computed by the engine as a fingerprint of the canonical form of the inputs (keys sorted by the convention above). The caller does not fill it in: in `addFeature` it sends the sketch with an empty stamp (`inputs: ''`, `external: {}`), or leaves it out (D73), and the engine overwrites it after the first solve.
+- **Extent of an extrusion** is a distance with a start offset, or "through all" for a cut (see Extrude, Extent and targets). A hole dimensioned by a fixed distance stops going through when the body gets thicker; a hole through all keeps going through.
 
 **The defaults of a new feature (D73).** `addFeature` takes `NewFeature`: the input form in which `name` (the ID when left out) and `suppressed` (false) may be left out for every type, and a sketch may leave out `points`, `radii`, `curves`, `constraints`, `external` and `solved`, which start empty, so `{ id, type: 'sketch', plane }` is a new sketch. `applyCommand` fills them in (`newFeature` of `document.ts`) before the validator of the type, so the app, MCP and the engine see one rule; the stored feature has every field and a load still asks for them, so no schema step is needed (an older build reads every document this one writes).
-- **Extent of an extrusion** is a distance with a start offset, or "through all" for a cut (see Extrude, Extent and targets). A hole dimensioned by a fixed distance stops going through when the body gets thicker; a hole through all keeps going through.
 
 ### Parameters and expressions (D35, point 1)
 

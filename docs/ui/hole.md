@@ -18,7 +18,7 @@ Part of [ui.md](../ui.md); how to read the tables is said there. The form of the
 | Change any of it | `updateFeature` | |
 | Show the depth of the hole and of its head | | `evaluation.features[id].facts` |
 
-The button *Hole* on the toolbar opens the form (after *Vysunutí*); a hole on the timeline is edited by a double click like every other feature. A new hole takes the sketch selected on the timeline or the latest one, a plain hole of 3 mm through all backward, and as its target the body the sketch stands on (otherwise the latest body); without a sketch or a body the button says what is missing. Top to bottom:
+The button *Hole* on the toolbar opens the form (after *Extrude*); a hole on the timeline is edited by a double click like every other feature. A new hole takes the sketch selected on the timeline or the latest one, a plain hole of 3 mm through all backward, and as its target the body the sketch stands on (otherwise the latest body); without a sketch or a body the button says what is missing. Top to bottom:
 
 - **Sketch** is a select with the sketches before the hole; another sketch drops the ticked points.
 - **Points** has one checkbox per own point of the sketch and its origin, in the order of the sketch; a point that is no longer there stays listed as missing, so that it can be unticked. Points of projected geometry are not offered (the engine refuses them; a point with a `coincident` to one follows it). With no point ticked there is nothing to compute and OK is disabled. The view picks sketch points only inside the sketch mode, so the points are ticked here.

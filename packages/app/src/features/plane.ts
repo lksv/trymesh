@@ -27,7 +27,7 @@ function newTilt(normal: Vec3 | undefined): TiltDraft {
 
 // A plane reference as the forms show it: a base plane, a plane feature, or a face of a body.
 export const planeText = (host: PanelHost, ref: PlaneRef | Input<PlaneRef>): string =>
-  ref.kind === 'base' ? `rovina ${ref.plane}` : ref.kind === 'plane' ? `rovina „${host.nameOf(ref.feature)}“` : `stěna ${faceLabel(ref.face as FaceName, host.featureNames)} (${host.bodyName(ref.body)})`;
+  ref.kind === 'base' ? `plane ${ref.plane}` : ref.kind === 'plane' ? `plane "${host.nameOf(ref.feature)}"` : `face ${faceLabel(ref.face as FaceName, host.featureNames)} (${host.bodyName(ref.body)})`;
 
 // The sketches the axis of a tilt may go through: those before the plane.
 const sketchesBefore = (host: PanelHost, index: number) => host.doc.features.slice(0, index).filter((f) => f.type === 'sketch').map((f) => f.id);
@@ -43,9 +43,9 @@ function planePanel(m: PlaneMode, host: PanelHost): HTMLElement[] {
   const button = (text: string, onclick: () => void) => h('button', { textContent: text, onclick });
   const { midplaneWith, tilt } = m.draft;
   const out: (HTMLElement | null)[] = [
-    h('h2', {}, m.editing ? `Úprava: ${m.draft.name}` : 'Nová rovina'),
-    h('p', {}, `Základ: ${label}`),
-    h('p', { className: 'hint' }, m.extra.picking ? 'A click in the view picks what the armed button asks for.' : 'Jiný základ zvolíte kliknutím na rovinu nebo rovinnou stěnu v pohledu.'),
+    h('h2', {}, m.editing ? `Edit: ${m.draft.name}` : 'New plane'),
+    h('p', {}, `Base: ${label}`),
+    h('p', { className: 'hint' }, m.extra.picking ? 'A click in the view picks what the armed button asks for.' : 'Click a plane or a planar face in the view to choose another base.'),
     // the midplane of the base and a second plane
     midplaneWith ? h('p', {}, `Midplane with: ${planeText(host, midplaneWith)}`) : null,
     h(
@@ -120,9 +120,9 @@ function planePanel(m: PlaneMode, host: PanelHost): HTMLElement[] {
 
 const form: FeatureForm<PlaneFeature, Extra> = {
   draft(host, at) {
-    if (!at.plane) return { problem: 'Vyberte rovinu nebo rovinnou stěnu.' };
+    if (!at.plane) return { problem: 'Select a plane or a planar face.' };
     const id = host.newId('r');
-    return { draft: { id, name: `Rovina ${id.slice(1)}`, suppressed: false, type: 'plane', base: at.plane, offset: 10 }, extra: {}, say: 'Zadejte posun; kliknutím v pohledu lze změnit základ.' };
+    return { draft: { id, name: `Plane ${id.slice(1)}`, suppressed: false, type: 'plane', base: at.plane, offset: 10 }, extra: {}, say: 'Enter the offset; a click in the view changes the base.' };
   },
   command: draftCommand,
   panel: planePanel,
@@ -141,7 +141,7 @@ const form: FeatureForm<PlaneFeature, Extra> = {
       return;
     }
     const ref = host.planeRefOf(pick);
-    if (!ref) return host.say(m.extra.picking === 'midplaneWith' ? 'The second plane of a midplane is a plane or a planar face.' : 'Základem roviny může být rovina nebo rovinná stěna.', true);
+    if (!ref) return host.say(m.extra.picking === 'midplaneWith' ? 'The second plane of a midplane is a plane or a planar face.' : 'The base of a plane can be a plane or a planar face.', true);
     if (m.extra.picking === 'midplaneWith') {
       m.draft = { ...m.draft, midplaneWith: ref };
       m.extra.picking = undefined;
@@ -169,15 +169,15 @@ const form: FeatureForm<PlaneFeature, Extra> = {
 };
 
 export const plane: FeatureUi<PlaneFeature, Extra> = {
-  button: { label: 'Rovina', title: 'Rovina posunutá od roviny nebo rovinné stěny' },
+  button: { label: 'Plane', title: 'A plane offset from a plane or a planar face' },
   // the plane picked first is the base of the draft
-  create: { plane: { header: 'Nová rovina' }, run: (host, at) => startDraft(host, form, at) },
+  create: { plane: { header: 'New plane' }, run: (host, at) => startDraft(host, form, at) },
   edit: (host, feature) => editDraft(host, form, feature, {}),
   summary: (host, f) => [
     h(
       'p',
       { className: 'hint' },
-      `Posun ${shownValue(f, 'offset', f.offset)} mm.${f.midplaneWith ? ` Midplane with ${planeText(host, f.midplaneWith)}.` : ''}${f.tilt ? ` Tilted by ${shownDegrees(f, 'tilt/angle', f.tilt.angle)} about ${axisLabel(host, f.tilt.axis)}.` : ''}`,
+      `Offset ${shownValue(f, 'offset', f.offset)} mm.${f.midplaneWith ? ` Midplane with ${planeText(host, f.midplaneWith)}.` : ''}${f.tilt ? ` Tilted by ${shownDegrees(f, 'tilt/angle', f.tilt.angle)} about ${axisLabel(host, f.tilt.axis)}.` : ''}`,
     ),
   ],
   hideable: () => true,

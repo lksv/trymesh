@@ -4,21 +4,21 @@ Part of [ui.md](../ui.md); how to read the tables is said there. The form of the
 
 ## Extrude
 
-| Funkce | Příkaz / volání | Čte |
+| Function | Command / call | Reads |
 |---|---|---|
-| Vybrat oblasti skici | | `sketch.regions` |
+| Pick the regions of a sketch | | `sketch.regions` |
 | Move the outline of the picked regions by an offset | UI logic (`changeExtrude`) | |
 | Choose the curves of a wall in the view and its thickness | UI logic (`changeExtrude`) | own curves of the sketch |
 | Choose the profile source and fill in a generator's operands, parameters and references | UI logic (`changeExtrude`) | `GENERATORS`; entities of the sketch; earlier extrusions |
 | Show what the generator built | | `evaluation.features[id].facts` |
-| Navrhnout výchozí operaci a cílové těleso | logika UI | `document` (rovina skici), `bodies` |
+| Propose the default operation and the target body | UI logic | `document` (the plane of the sketch), `bodies` |
 | Choose the extent: a distance with a start, or through all with a side | UI logic (`changeExtrude`) | |
 | Taper the sides of a distance extent | UI logic (`changeExtrude`) | |
 | End the extrusion in a plane or a planar face picked in the view | UI logic (`changeExtrude`) | the plane of a pick; `facts` of the preview |
 | Start the extent at a plane or a planar face picked in the view (D66), or at the sketch plane again | UI logic (`changeExtrude`) | the plane of a pick in the state before the feature; `facts.startLevel` of the preview |
 | Choose the targets: one body for an addition, several for a cut | UI logic (`changeExtrude`) | `bodies` before the feature |
-| Náhled při změně hodnot | `preview(addFeature)` | |
-| Potvrdit | `addFeature` (extrude) | |
+| Preview while the values change | `preview(addFeature)` | |
+| Confirm | `addFeature` (extrude) | |
 | Change the extent, the operation, the regions, the targets | `updateFeature` | |
 
 The form (D35, points 2 and 3; D44), top to bottom: profile, sketch, regions with their offset or the curves of a wall with its thickness or the generator's fields, operation, extent, targets.

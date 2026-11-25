@@ -1,5 +1,5 @@
-// MCP server: nástroje nad enginem pro AI. Engine je buď vlastní (dokument ze souboru), nebo engine
-// běžící aplikace připojené přes most; nástroje jsou v obou případech tytéž.
+// MCP server: tools over the engine for the AI. The engine is either its own (a document from a file), or
+// the engine of the running app connected through the bridge; the tools are the same in both cases.
 import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, dirname, resolve } from 'node:path';
@@ -13,14 +13,14 @@ import { HOST_OPERATIONS, type HostOperationSet, hostOperationProblems, isHostOp
 import { type Json, type JsonSchema, OUTLINE_BRIDGE_TOOL, type ToolAnswer, type ToolOutcome, ToolError, argumentProblem, callTool, storedDocument, tools } from './tools';
 
 export interface TrymeshServerOptions {
-  engine: Engine; // vlastní engine serveru; použije se, když není připojená aplikace
+  engine: Engine; // the server's own engine; used when no app is connected
   bridge?: Bridge;
   // Why the bridge could not be opened at the start (D73), and how to try again: the server then
   // tries at session_status and at a tool call at most every BRIDGE_RETRY_MS, and takes the bridge
   // once the port is free.
   bridgeFailure?: BridgeFailure;
   reopenBridge?: () => Promise<{ bridge: Bridge } | { failure: BridgeFailure }>;
-  file?: string; // soubor, ze kterého je dokument vlastního enginu
+  file?: string; // the file the document of the own engine comes from
   operations?: HostOperationSet; // the operations of the app offered as tools; the registry by default (tests give their own)
 }
 
@@ -42,12 +42,12 @@ const FILE_WORDING: Wording = {
   sameName: (first, second) => `nothing was written, the files "${first}" and "${second}" have names that differ only in the case of letters`,
 };
 
-const COMPACT_FROM = 20_000; // znaků
+const COMPACT_FROM = 20_000; // characters
 export const BRIDGE_RETRY_MS = 10_000;
 
-// An app that does not know an internal tool: as this build says it, or as an app built before the
-// texts of the server were English said it.
-const unknownTool = (error: string, name: string): boolean => error === `unknown tool "${name}"` || error === `neznámý nástroj "${name}"`;
+// The refusal of a tool the connected app does not know; an app built before the English texts
+// answers in Czech.
+const unknownTool = (error: string, tool: string): boolean => error === `unknown tool "${tool}"` || error === `neznámý nástroj "${tool}"`;
 
 const rounded = (value: unknown): unknown =>
   typeof value === 'number' ? Math.round(value * 1e6) / 1e6 + 0 : Array.isArray(value) ? value.map(rounded) : typeof value === 'object' && value !== null ? Object.fromEntries(Object.entries(value).map(([key, item]) => [key, rounded(item)])) : value;
@@ -86,14 +86,14 @@ export function createTrymeshServer(options: TrymeshServerOptions): Server {
         : `The bridge cannot listen on 127.0.0.1:${failure.port}. `) + `Until then the tools work on the own document of this server; it tries the port again at session_status and at a tool call every ${BRIDGE_RETRY_MS / 1000} s.`,
   });
   const operations = options.operations ?? HOST_OPERATIONS;
-  // Každý dokument má svůj soubor: vlastní dokument serveru jeden, dokument v aplikaci druhý.
-  // Soubor aplikace platí jen po dobu jednoho připojení a jen pro dokument, který v ní byl
-  // otevřený, když se do souboru ukládalo nebo z něj načítalo: po Nový nebo Otevřít v aplikaci
-  // už neplatí. Uložení bez cesty tak nikdy nezapíše jeden dokument přes soubor jiného.
+  // Each document has its own file: one for the server's own document, another for the document in the app.
+  // The app's file holds only for the duration of one connection and only for the document that was open
+  // in it when it was saved to the file or loaded from it: after New or Open in the app it no longer
+  // holds. A save without a path thus never writes one document over the file of another.
   let serverFile = options.file === undefined ? undefined : resolve(options.file);
   let appFile: { session: number; document: number | undefined; path: string } | undefined;
-  // Číslo dokumentu aplikace je tak čerstvé jako její poslední odpověď; kdo ho potřebuje přesně,
-  // zavolá předtím nástroj aplikace (_save, _ping).
+  // The app's document number is as fresh as its last answer; whoever needs it exactly
+  // calls a tool of the app first (_save, _ping).
   const fileOf = (session: number | undefined): string | undefined =>
     session === undefined ? serverFile : appFile?.session === session && appFile.document === bridge?.document() ? appFile.path : undefined;
   const forget = (session: number | undefined) => {
@@ -105,9 +105,9 @@ export function createTrymeshServer(options: TrymeshServerOptions): Server {
     else appFile = { session, document: bridge?.document(), path };
   };
 
-  // Nástroj se provede nad enginem aplikace, je-li připojená, jinak nad vlastním. `session` je
-  // připojení zjištěné na začátku nástroje: nástroj složený z více kroků tak pracuje celý nad
-  // jedním enginem, i kdyby se aplikace mezitím připojila nebo odpojila.
+  // A tool runs over the app's engine when it is connected, otherwise over the own one. `session` is
+  // the connection found at the start of the tool: a tool made of several steps thus works wholly over
+  // one engine, even if the app connected or disconnected in the meantime.
   const call = (session: number | undefined, name: string, args: Record<string, unknown> = {}): Promise<ToolOutcome> => {
     if (session === undefined) return Promise.resolve(callTool(engine, name, args));
     if (!bridge || bridge.session() !== session) return Promise.resolve({ ok: false, error: 'the app disconnected during the tool' });
@@ -121,7 +121,7 @@ export function createTrymeshServer(options: TrymeshServerOptions): Server {
   const path = (args: Record<string, unknown>, required: boolean): string | undefined => {
     const value = args.path;
     if ((value === undefined || value === null) && !required) return undefined; // null counts as not given, as for every other argument
-    if (typeof value !== 'string' || value === '') throw new Failure('argument "path": a path of a file is expected');
+    if (typeof value !== 'string' || value === '') throw new Failure('argument "path": a file path is expected');
     return resolve(value === '~' || value.startsWith('~/') ? homedir() + value.slice(1) : value);
   };
   const PATH = (description: string, required = true): JsonSchema => ({ type: 'object', properties: { path: { type: 'string', description } }, required: required ? ['path'] : [], additionalProperties: false });
@@ -139,11 +139,11 @@ export function createTrymeshServer(options: TrymeshServerOptions): Server {
   const fileTools: FileTool[] = [
     {
       name: 'session_status',
-      description: 'What the tools work on: the running app (the user sees the changes at once), or the own engine of the server with a document from a file.',
+      description: 'What the tools work on: the running app (the user sees the changes at once), or the server\'s own engine with a document from a file.',
       inputSchema: { type: 'object', properties: {}, additionalProperties: false },
       run: async () => {
         const session = bridge?.session();
-        if (session !== undefined) await call(session, '_ping'); // aplikace mohla mezitím dokument vyměnit
+        if (session !== undefined) await call(session, '_ping'); // the app may have replaced the document in the meantime
         return {
           engine: session === undefined ? 'server' : 'app',
           file: fileOf(session) ?? null,
@@ -151,14 +151,14 @@ export function createTrymeshServer(options: TrymeshServerOptions): Server {
           ...(!bridge && bridgeFailure ? { bridgeError: bridgeError(bridgeFailure) } : {}),
           note:
             session !== undefined
-              ? 'The tools work on the document open in the app. `file` is the file this server opened into the app or saved from it.'
-              : `No app is connected; the tools work on the own document of the server${bridge ? ' (the app connects by its button AI)' : bridgeFailure ? ' (the bridge is not open: see bridgeError)' : ''}. open_document opens a document from a file.`,
+              ? 'The tools work with the document open in the app. `file` is the file that was opened into the app or saved from it by this server.'
+              : `No app is connected; the tools work with the server's own document${bridge ? ' (in the app the connection is switched on by the button AI)' : bridgeFailure ? ' (the bridge is not open: see bridgeError)' : ''}. open_document opens a document from a file.`,
         };
       },
     },
     {
       name: 'open_document',
-      description: 'Loads a document from a file (JSON saved by the app or by save_document). It replaces the open document and its undo history.',
+      description: 'Loads a document from a file (JSON saved by the app or by save_document). It replaces the document open now and its undo history.',
       inputSchema: PATH('path of the .json file'),
       run: async (args) => {
         const session = bridge?.session();
@@ -178,7 +178,7 @@ export function createTrymeshServer(options: TrymeshServerOptions): Server {
     {
       name: 'save_document',
       description:
-        'Saves the document into a file; a file that exists is overwritten. Without a path into the file this document was opened from or last saved to. ' +
+        'Saves the document to a file; an existing file is overwritten. Without a path, to the file this document was opened from or last saved to. ' +
         'With `stored` (the ID of a stored document, `kit/bearing` inside another one) it writes that stored document to `path` as a document of its own, to be opened, changed and brought back by insert_document with `replace`.',
       inputSchema: {
         type: 'object',
@@ -203,8 +203,8 @@ export function createTrymeshServer(options: TrymeshServerOptions): Server {
           await writeFile(given, part);
           return { file: given, stored: args.stored, bytes: Buffer.byteLength(part) } as Json;
         }
-        // Nejdřív dokument, pak soubor: s dokumentem přijde i to, jestli je to pořád ten, kterému
-        // zapamatovaný soubor patří.
+        // The document first, then the file: the document comes with whether it is still the one the
+        // remembered file belongs to.
         const json = (await must(session, '_save')) as string;
         const target = given ?? fileOf(session);
         if (target === undefined) throw new Failure('the document has no file; give "path"');
@@ -468,7 +468,7 @@ export function createTrymeshServer(options: TrymeshServerOptions): Server {
   if (shadowed.length) throw new Error(`createTrymeshServer: ${shadowed.join('; ')}`);
 
   const server = new Server({ name: 'trymesh', version: '0.0.0' }, { capabilities: { tools: {} } });
-  // Malý výsledek se vypíše s odsazením (čte se líp), velký úsporně.
+  // A small result is printed with indentation (it reads better), a large one compactly.
   const print = (value: Json): string => {
     if (typeof value === 'string') return value;
     const compact = JSON.stringify(value);

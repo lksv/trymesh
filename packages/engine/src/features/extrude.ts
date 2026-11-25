@@ -27,7 +27,7 @@ function extrudeFeature(o: Dict, what: string, context: ValidationContext): Extr
     operation,
   };
   if (operation === 'new') {
-    if (o.targets !== undefined) fail(`${what}.targets: nové těleso nemá cíl`);
+    if (o.targets !== undefined) fail(`${what}.targets: a new body has no target`);
     return feature;
   }
   // Adding to several bodies would merge them; a cut may go through several (a screw hole through
@@ -41,8 +41,8 @@ function extrudeFeature(o: Dict, what: string, context: ValidationContext): Extr
   return { ...feature, targets };
 }
 
-// Vysunutí má tři části: profil (odkud se bere tvar), nástroj (síť a nové stěny) a použití
-// (nové těleso, nebo booleovská operace s cílem).
+// An extrusion has three parts: the profile (where the shape comes from), the tool (the mesh and
+// the new faces) and the use (a new body, or a boolean operation with a target).
 function step(feature: ExtrudeFeature, { state, settings, deps, done: finish, failed }: StepContext): Step {
   const profile = resolveProfile(feature.id, feature.profile, state, settings.chordTolerance);
   // a generator, an offset and a wall explain their failure themselves; the general text of the code is about sketch curves
@@ -123,9 +123,9 @@ function step(feature: ExtrudeFeature, { state, settings, deps, done: finish, fa
 
 export const extrude: FeatureModule<ExtrudeFeature> = {
   info: {
-    title: 'Vysunutí',
+    title: 'Extrude',
     summary:
-      'Vysune profil ve směru normály roviny skici: nové těleso, přidání k tělesu, nebo odebrání z tělesa. A cut may have several target bodies and may go through all of them (extent throughAll). ' +
+      'Extrudes a profile along the normal of the sketch plane: a new body, an addition to a body, or a removal from a body. A cut may have several target bodies and may go through all of them (extent throughAll). ' +
       'The profile is a set of regions of a sketch (optionally moved by an offset), a wall along curves of a sketch that close no region (a rib, a ring), or comes from a profile generator (see Profile generators). ' +
       'An extent of a distance may taper (extent/taper): the sides tilt by the angle, lines give tilted planes and arcs and circles cones. ' +
       'An extent upTo ends in a plane (a planar face, a plane feature or a base plane), tilted or not, on whichever side of the start it lies; the result tells the lengths in facts. ' +
@@ -144,7 +144,7 @@ export const extrude: FeatureModule<ExtrudeFeature> = {
   generator: (f) => (f.profile.type === 'generated' ? f.profile.generator : undefined),
   patch: {
     fields: ['profile', 'extent', 'operation', 'targets'],
-    // změna na nové těleso ruší cíle, pokud je změna sama neuvádí
+    // a change to a new body clears the targets unless the change itself gives them
     normalize: (merged, patch) => {
       if (merged.operation === 'new' && !has(patch, 'targets')) delete merged.targets;
     },

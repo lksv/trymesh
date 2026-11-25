@@ -2,19 +2,19 @@
 
 Part of [architecture.md](../architecture.md), the design as implemented. The design against the scenarios, and the results of the spikes of both libraries.
 
-## Ověření proti scénářům
+## Verification against the scenarios
 
-| Scénář | Jak ho návrh pokrývá |
+| Scenario | How the design covers it |
 |---|---|
-| 1 Základní průchod | Změna kóty → nový dokument → přepočet od první skici. Výřez odkazuje na `endCap` extrude E1, jméno přežije. Díra okótovaná k promítnuté hraně se posune s okrajem. |
-| 2a Přidání díry | Oblast ji získá automaticky, žádné ID se neposune, pozdější reference platí. |
-| 2b Smazání úsečky obdélníku | Profil se rozpadne, první extrude skončí v chybě `noProfile`. Těleso nevznikne, takže vše, co na něm závisí, skončí v chybě `brokenReference`. |
-| 2c Nahrazení úsečky jinou | Úsečka L3 se smaže a mezi stejné body se nakreslí L9. Oblast z původních křivek zanikla, extrude skončí v chybě `noProfile`. Uživatel vybere profil znovu a extrude projde. Víka si jméno nechají, skici na nich platí dál; pokud mají promítnutou hranu k zaniklé stěně z L3, dostanou varování `brokenProjection` a hrana zůstane zmrazená. Skica přímo na stěně „side E1/L3" skončí v chybě `brokenReference` a uživatel vybere novou stěnu. |
-| 3 Solver | `SolveResult` nese stupně volnosti a konfliktní vazby. Konfliktní skica má stav `warning` a model nezmizí. Tažení přes `preview` s `drag`. |
-| 4 Round-trip | Dokument je jediný zdroj pravdy, `evaluate` je čistá deterministická funkce. Po načtení se skici neřeší znovu, protože razítko odpovídá. Dokument s feature v chybě se načte také: odkaz na smazanou feature validaci neporušuje. |
-| 5 Časová osa a undo | Vlastní rovina je feature jako každá jiná. Vložení, potlačení a přesun jsou příkazy nad seznamem features, validace hlídá pořadí závislostí. Undo vrací předchozí dokument. |
+| 1 Basic pass | A dimension change → a new document → a recompute from the first sketch. The cut refers to `endCap` of extrude E1; the name survives. A hole dimensioned to a projected edge moves with the rim. |
+| 2a Adding a hole | The region gets it automatically, no ID shifts, later references stay valid. |
+| 2b Deleting a line of a rectangle | The profile falls apart, the first extrude ends in the error `noProfile`. The body is not made, so everything that depends on it ends in the error `brokenReference`. |
+| 2c Replacing a line by another | Line L3 is deleted and L9 is drawn between the same points. The region from the original curves has gone, the extrude ends in the error `noProfile`. The user chooses the profile again and the extrude passes. The caps keep their names, the sketches on them stay valid; when they have a projected edge to the vanished face from L3, they get the warning `brokenProjection` and the edge stays frozen. A sketch directly on the face "side E1/L3" ends in the error `brokenReference` and the user chooses a new face. |
+| 3 Solver | `SolveResult` carries the degrees of freedom and the conflicting constraints. A sketch in conflict has the status `warning` and the model does not disappear. A drag through `preview` with `drag`. |
+| 4 Round-trip | The document is the only source of truth, `evaluate` is a pure deterministic function. After loading, sketches are not solved again because the stamp matches. A document with a feature in error loads too: a reference to a deleted feature does not break validation. |
+| 5 Timeline and undo | A plane of its own is a feature like any other. Inserting, suppressing and moving are commands over the list of features; validation guards the order of dependencies. Undo returns the previous document. |
 | 9 Robot joint (in progress) | As far as point 3 of D35 reaches (`packages/scenarios/test/scenario9.test.ts`): parameters, checks, pitch circles dimensioned by expressions, save and load (parts a, k); the sun gear, one planet and the ring gear in mesh without overlap (part b); the plate, the sun flange and the housing with holes through all, one of them through two bodies (parts d, e, f without patterns and pockets); the change of the ratio to 4 and to 6 with everything recomputed and in mesh (part i). A parameter change recomputes the joint so far in about 0.6 s. The rest follows with points 4 to 7. |
-| 6 Navazování geometrie | Promítnutá kružnice dává pevný střed, soustředná díra ho sleduje. Lícující nálitek nechá obě stěny a hranu druhu `coplanar`, i když je jeho bok vedle roviny o chybu float32. Další operace na zbytku posunuté stěny funguje díky návratu do roviny v adaptéru. Po odříznutém nálitku nezůstanou zbytky jeho stěn, takže reference na ně se rozbijí. |
+| 6 Building on geometry | A projected circle gives a fixed centre, and a concentric hole follows it. A flush boss leaves both faces and an edge of the kind `coplanar`, even when its side is off the plane by a float32 error. A further operation on the remainder of a shifted face works thanks to the move back into the plane in the adapter. A boss that is cut off leaves no remains of its faces, so references to them break. |
 
 
 ## The offset of a profile and a wall (D44)
@@ -293,7 +293,7 @@ What the design left to verify, as found:
 - `packages/scenarios/test/origin-axes.test.ts`, against the real adapters: `entityOf` of both axes (a line that is not own) and of a far point (none), `referenceEntities` without them; the list of curves and the geometry of the state with the axes and the far points in a sketch whose constraints name none, not in its solver's input and not in its result; under the key `origin` in the solver once a constraint names one, still once in the list; a point on each axis 500 and 700 from the origin, two points symmetric about each, a circle tangent to the X axis, lines parallel and perpendicular to it, an angle from it and a distance to the Y axis, all solved; the refusals (two fixed operands, with the text naming the axes; an axis as a curve of a wall, named as an axis; a midpoint of an axis, the origin as a symmetric point, a far point, `setCurvePoint` of an axis) and a reference angle between the two axes; the stamp unchanged without a constraint on an axis and changed with one, the first reference dimension to an axis changing it once and a second not; the stored documents of the tests (`fixtures/v1-plate.json` and the entries of `d52-saved-by-master.json` saved without a conflict) loading with their stamps; `solvedCurves` equal to the curves and the geometry of the state for a sketch with an edge projection, with and without a constraint on an axis, and without a result; `lineExtent` of an axis, an own and a projected line, a circle; a linear pattern along `origin/y` and a circular one about `origin/x`; a plane tilted about `origin/x`; a snap of the rectangle tool to each axis 500 from the origin on both sides, the point held on the axis; the fillet of a corner held on an axis.
 - `packages/scenarios/test/scenario15.test.ts`: validation scenario 15, step 1, the stand-in board of `docs/d36/6a2-origin-axes/calls.ts` (drawn by `standInBoard` of `board-kit.ts`, which later packages import): no freedom and no redundant constraint (the solver's list and the diagnosis), symmetric about both axes, its volume against the hand formula; the width to 62 and back; one parameter at a time from the drawn state (the width 30 to 120, the height 20 to 120, the radius 0.2 and 8); a reference dimension from a hole centre to `origin/y` (26.5); a ring revolved about `origin/x` of a sketch that names no axis; the refusals; `solvedCurves` and `lineExtent` on the board, and a point the result lacks read from the sketch.
 - `packages/mcp/test/tools.test.ts`: the axes in the text of `describe_api` (the conventions and the comment of `types.ts`), a rectangle centred on `origin/y` and standing on `origin/x` through `execute`, `get_sketch` without them, a snap of `sketch_tool` to `origin/x`.
-- `packages/app/test/origin-axes.test.ts`: the view (two curves that are not own, held by `origin`, whole lines; no far point), the hit test far from the origin, a click near an axis away from the origin snapped to it and held there, the offers (point on curve, symmetric, parallel, the distance of a point to an axis, the angle; not `equalLength`, `midpoint` or the length of an axis; nothing of fixed operands alone, and *Vodorovně* of a line and an axis making the line horizontal), the label of a dimension to an axis beside the point it measures, the labels of the axes in the selects of lines, a delete of an axis doing nothing, the pickers (`lineIds`, the axis picker of a sketch without lines starting at `origin/x`), the scene (the bucket `axes`, thin in the colour of a plane, hovered and selected marked, no axis among the lines of the sketch), and `stretchInView` (a square and a skewed view, a zoom out to 5e8, a view that misses the line). `packages/app/test/sketch-tools.test.ts` and `sketch-tool-table.test.ts` now expect the X axis where a pick past the end of a line or near y = 0 found nothing before.
+- `packages/app/test/origin-axes.test.ts`: the view (two curves that are not own, held by `origin`, whole lines; no far point), the hit test far from the origin, a click near an axis away from the origin snapped to it and held there, the offers (point on curve, symmetric, parallel, the distance of a point to an axis, the angle; not `equalLength`, `midpoint` or the length of an axis; nothing of fixed operands alone, and *Horizontal* of a line and an axis making the line horizontal), the label of a dimension to an axis beside the point it measures, the labels of the axes in the selects of lines, a delete of an axis doing nothing, the pickers (`lineIds`, the axis picker of a sketch without lines starting at `origin/x`), the scene (the bucket `axes`, thin in the colour of a plane, hovered and selected marked, no axis among the lines of the sketch), and `stretchInView` (a square and a skewed view, a zoom out to 5e8, a view that misses the line). `packages/app/test/sketch-tools.test.ts` and `sketch-tool-table.test.ts` now expect the X axis where a pick past the end of a line or near y = 0 found nothing before.
 - The snapshots of the app (`packages/app/test/snapshots/`): the two axes in every scene with an open sketch, and `origin/x`, `origin/y` in the select of the line of a sketch in the revolve form. The chain of lines and the construction line of the test of the sketch were moved off the axes (from y = 0 to y = 10, from x = 0 to x = 10), which a click there now snaps to, so the steps still test the inference of a horizontal and a vertical line.
 - The real view by hand (2026-11-24): a new sketch on XY shows both axes from edge to edge of the view, without an error in the console. Not tried: an orbit and a zoom.
 
@@ -327,108 +327,108 @@ What the design left to verify, as found:
 - `packages/scenarios/test/scenario15.test.ts`, the part of 6d: the lid with a spline grip on each flank (the half solved with no freedom and no redundant constraint, mirrored into one region, where the grip runs), the lid (the prism of its polygon, within the allowance of the value by hand, at the grip 4 and 6; the flanks swept with four edges `other`; the section at half the thickness as DXF, one loop and no circle), what it refuses (the offset with both splines in `refs`, every chamfer of the rim, the commands, 6e's tools, a projection of the grip), a sixth control point by a batch, and the second notch with the grip flank in.
 - `packages/mcp/test/tools.test.ts`: `describe_api` shows the curve; `get_sketch` lists the grip's `through` and `box`, and in a sketch in conflict at the positions `at` shows; the query of the contacts over a self-crossing spline. `packages/app/test/sketch-spline.test.ts`: the tool by clicks, Enter and the closing click, its refusals (a point picked twice refused at the click, the places before it kept), the inferred extension (not behind the end, not through a coincident), the control polygon, no snap of a drawing tool to a spline, the Select tool with no offer of a constraint.
 
-## Výsledky spiků
+## Results of the spikes
 
-Provedeno 2026-11-13 v Node 25. Skripty ověřující samotné knihovny jsou ve složce `spikes/` a jdou spustit znovu (`npm install`, pak `node <skript>`). Adaptéry, které ze spiků vzešly, jsou od 2026-11-14 v balíčcích `kernel-manifold` a `solver-planegcs` a jejich případy běží jako testy.
+Run on 2026-11-13 in Node 25. The scripts that test the libraries alone are in the folder `spikes/` and can be run again (`npm install`, then `node <script>`). The adapters that came out of the spikes have been in the packages `kernel-manifold` and `solver-planegcs` since 2026-11-14, and their cases run as tests.
 
 ### Manifold (`manifold-3d` 3.5.5)
 
-Skripty: `manifold-spike.mjs`, `manifold-ghost.mjs`, `manifold-determinism.mjs`. Každý případ běžel v osově zarovnané i v obecně natočené poloze.
+Scripts: `manifold-spike.mjs`, `manifold-ghost.mjs`, `manifold-determinism.mjs`. Every case ran both axis-aligned and in a generally turned position.
 
-| Předpoklad | Výsledek |
+| Assumption | Result |
 |---|---|
-| `faceID` ze vstupu přežije booleany | Platí. Čísla stěn obou operandů jsou ve výstupu zachovaná. |
-| Válcová plocha zůstane jednou stěnou, normály míří ven z materiálu | Platí. |
-| Rozdělená stěna si nechá číslo v obou částech | Platí. |
-| Stěny v jedné rovině s různými čísly nesplynou | Platí. |
-| Výstup je uzavřené těleso, objem odpovídá | Platí ve všech případech. |
-| Koplanární plochy, osově | Bez potíží i bez přesahu. |
-| Koplanární plochy, šikmo | **Neplatí bez úprav.** Nálitek bez přesahu zůstal oddělený vnitřní stěnou; kapsa s bokem v rovině boku tělesa nechala v ústí blánu. Přesah 0,01 obojí odstranil. Nastavení tolerance ani `simplify` nepomáhá. Vedlo k záruce č. 3 a úpravě v adaptéru (D19). |
-| Přesnost | Vstup i výstup jen `Float32Array`, API pro float64 neexistuje. Vedlo k rozhodnutí D20. |
-| `triangulate` v JS API | Platí, včetně polygonu s dírou. |
-| Determinismus | Opakovaný boolean dá bitově stejný výstup. |
-| Běh v Node | Platí. |
+| `faceID` from the input survives booleans | Holds. The face numbers of both operands are kept in the output. |
+| A cylindrical surface stays one face, the normals point out of the material | Holds. |
+| A divided face keeps its number in both parts | Holds. |
+| Faces in one plane with different numbers do not merge | Holds. |
+| The output is a closed body, the volume matches | Holds in all cases. |
+| Coplanar faces, axis-aligned | No trouble, even without an overlap. |
+| Coplanar faces, tilted | **Does not hold without adjustments.** A boss without an overlap stayed separated by an inner face; a pocket with its side in the plane of a side of the body left a membrane at its mouth. An overlap of 0.01 removed both. Neither setting the tolerance nor `simplify` helps. Led to guarantee no. 3 and the adjustment in the adapter (D19). |
+| Precision | Input and output only `Float32Array`; there is no API for float64. Led to decision D20. |
+| `triangulate` in the JS API | Holds, including a polygon with a hole. |
+| Determinism | A repeated boolean gives the same output bit for bit. |
+| Running in Node | Holds. |
 
-Úzké trojúhelníky se objevily jen v jednom případě (dva v šikmém sjednocení lícujících těles).
+Thin triangles appeared in one case only (two in a tilted union of flush bodies).
 
-### Koplanární stěny v adaptéru
+### Coplanar faces in the adapter
 
-Adaptér: `packages/kernel-manifold/src` (`coplanar.ts` posun a návrat stěn, `clean.ts` čištění sítě, `geometry.ts` roviny a tolerance). Testy: `test/coplanar.test.ts` (jednotlivé případy), `test/fuzz.test.ts` (náhodné) a `test/review.test.ts` (případy z revize). Ověřují, že záruku č. 3 jde splnit uvnitř adaptéru jen ze sítě a čísel stěn, bez znalosti jmen a bez zásahu do core. Nástroje jsou postavené přesně, bez ručního přesahu.
+The adapter: `packages/kernel-manifold/src` (`coplanar.ts` the shift and the move back of faces, `clean.ts` the cleaning of the mesh, `geometry.ts` planes and tolerances). Tests: `test/coplanar.test.ts` (single cases), `test/fuzz.test.ts` (random ones) and `test/review.test.ts` (cases from the review). They check that guarantee no. 3 can be kept inside the adapter from the mesh and the face numbers alone, without knowing the names and without touching the core. The tools are built exactly, without a manual overlap.
 
-Jednotlivé případy, každý osově i šikmo: nálitek a kapsa přesně na stěně, kapsa s bokem v rovině boku tělesa, výřez přesně na tloušťku, válcová díra a válcový čep, bok kapsy vychýlený o ±3e-6 (napodobuje přichycení na bod s přesností float32), bok 0,05 od roviny (posunout se nesmí), nástroj dosedající zvenku, lícující sjednocení, stupňovité těleso, částečný překryv, stejná rovina bez překryvu.
+Single cases, each axis-aligned and tilted: a boss and a pocket exactly on a face, a pocket with its side in the plane of a side of the body, a cut-out exactly through the thickness, a cylindrical hole and a cylindrical pin, the side of a pocket off by ±3e-6 (imitating a snap to a point with float32 precision), a side 0.05 from the plane (it must not be shifted), a tool resting from outside, a flush union, a stepped body, a partial overlap, the same plane without an overlap.
 
-Řetězené případy, každý osově i šikmo: nálitek zavěšený na stropě tunelu a kapsa do téhož stropu (strop je zbytek posunuté stěny), blok pod převisem nálitku, který přesahuje okraj stěny.
+Chained cases, each axis-aligned and tilted: a boss hung on the ceiling of a tunnel and a pocket into the same ceiling (the ceiling is the remainder of a shifted face), a block under the overhang of a boss that reaches past the edge of the face.
 
-Případy ze čtvrté revize, každý osově i šikmo:
-- schod přidaný sjednocením a zase celý odříznutý (jeho boky lícují s boky kvádru),
-- nálitek s bokem lícujícím s bokem kvádru a s odchylkou ±3e-6, potom kapsa do horní stěny,
-- válcový výřez pod schodem, kde dva vrcholy válce leží v rovině boku schodu (čtyři roviny v jednom vrcholu),
-- blok pod převisem, jehož horní stěna zároveň lícuje s horní stěnou kvádru,
-- drážka do nálitku od jeho spodku nástrojem, který zároveň leží na horní stěně kvádru.
+Cases from the fourth review, each axis-aligned and tilted:
+- a step added by a union and then cut off whole (its sides are flush with the sides of the box),
+- a boss with a side flush with a side of the box and off by ±3e-6, then a pocket into the top face,
+- a cylindrical cut-out under a step, where two vertices of the cylinder lie in the plane of a side of the step (four planes at one vertex),
+- a block under an overhang whose top face is at the same time flush with the top face of the box,
+- a groove into a boss from its underside by a tool that at the same time lies on the top face of the box.
 
-Každý případ kontroluje čísla stěn, objem, uzavřenost sítě a to, že žádná rovinná stěna nemá přeložený trojúhelník.
+Every case checks the face numbers, the volume, that the mesh is closed, and that no planar face has a folded triangle.
 
-| Varianta adaptéru | Prošlo |
+| Variant of the adapter | Passed |
 |---|---|
-| Posun před booleanem, přesný návrat a vyčištění sítě po něm | 46 z 46 |
-| Verze po třetí revizi (vracel se jen zbytek posunuté stěny, lícující stěny u sjednocení se neposouvaly) | případy ze čtvrté revize selhaly: po odříznutém schodu zůstaly proužky jeho boků, lícující nálitek šikmo zneplatnil rovinnost horní stěny a další kapsa nechala blánu, strop válcového výřezu ležel 9,999988 až 10,000244 |
-| Jen posun, bez návratu (první verze) | řetězené případy selhaly: nálitek na stropě tunelu byl samostatná komponenta |
-| Bez úprav | selhává většina šikmých případů |
+| Shift before the boolean, exact move back and cleaning of the mesh after it | 46 of 46 |
+| The version after the third review (only the remainder of a shifted face was moved back, flush faces of a union were not shifted) | the cases from the fourth review failed: strips of its sides remained after the cut-off step, a flush boss on a tilt made the top face non-planar and a further pocket left a membrane, the ceiling of a cylindrical cut-out lay at 9.999988 to 10.000244 |
+| Shift only, without a move back (the first version) | the chained cases failed: the boss on the ceiling of the tunnel was a separate component |
+| Without adjustments | most tilted cases fail |
 
-S návratem leží strop tunelu přesně na zadané výšce (bez něj o 0,002 až 0,003 výš).
+With the move back, the ceiling of the tunnel lies exactly at the given height (without it 0.002 to 0.003 higher).
 
-**Náhodné testy.** Generátor skládá na kvádr 40 × 30 × 10 jednu až čtyři operace (sjednocení nebo rozdíl) s kvádry, trojbokými hranoly a válci. Rozměry bere z hrubé mřížky, takže stěny často lícují, dosedají nebo se překrývají zčásti; 80 % případů běží v náhodně natočené a posunuté soustavě a 30 % kvádrů má bok vychýlený: o ±3e-6 (napodobuje přichycení na bod s přesností float32), nebo o ±3e-5 (pásmo mezi přesností float32 a tolerancí, mimo návrhový rozsah). Výsledek se porovnává se dvěma orákuly nezávislými na adaptéru:
-- mřížkový model (případy jen z kvádrů): přesný objem a pro každé číslo stěny rozsah plochy, kterou smí mít,
-- řezy po vrstvách přes 2D booleany: objem a povrch (všechny případy),
-- u případů s válci a šikmými stěnami navíc shoda čísel stěn s během téhož případu v osové poloze.
+**Random tests.** The generator stacks one to four operations (a union or a difference) with boxes, triangular prisms and cylinders on a 40 × 30 × 10 box. It takes the dimensions from a coarse grid, so faces are often flush, rest on each other or partly overlap; 80 % of the cases run in a randomly turned and shifted frame, and 30 % of the boxes have a side tilted: by ±3e-6 (imitating a snap to a point with float32 precision), or by ±3e-5 (the band between float32 precision and the tolerance, outside the design range). The result is compared with two oracles independent of the adapter:
+- a grid model (cases of boxes only): the exact volume and, for every face number, the range of area it may have,
+- slices by layers through 2D booleans: volume and surface (all cases),
+- for cases with cylinders and tilted faces, in addition, agreement of the face numbers with a run of the same case in the axis-aligned position.
 
-Každý výsledek musí být uzavřený, bez přeloženého trojúhelníku a jádro ho musí načíst se stejným objemem. Adaptér smí případ odmítnout vlastní chybou (neuzavřená nebo přeložená síť); odmítnutí se počítají zvlášť a test hlídá, že jsou vzácná.
+Every result must be closed, without a folded triangle, and the kernel must load it with the same volume. The adapter may refuse a case with its own error (a mesh not closed or folded); refusals are counted separately and the test guards that they are rare.
 
-Poslední běh (2026-11-14, po opravách z revize): 30 000 případů, žádný vadný výsledek. Tři případy adaptér odmítl chybou: jeden v návrhovém rozsahu (válec, kvádry s odchylkou 3e-6) a dva s odchylkou boku 3e-5. Tisíc případů běží při každém `pnpm test`; rozsah jde změnit proměnnými `FUZZ_COUNT` a `FUZZ_FIRST`.
+The last run (2026-11-14, after the fixes from the review): 30,000 cases, no faulty result. The adapter refused three cases with an error: one in the design range (a cylinder, boxes off by 3e-6) and two with a side off by 3e-5. A thousand cases run at every `pnpm test`; the range can be changed by the variables `FUZZ_COUNT` and `FUZZ_FIRST`.
 
-Vedle toho běží případy z revize (`test/review.test.ts`), každý v desítkách náhodných poloh: mezera a průnik pod rozlišením adaptéru, dotyk hranou následovaný dalšími operacemi, model 450 a 1300 mm od počátku.
+Besides that the cases from the review run (`test/review.test.ts`), each in tens of random positions: a gap and an overlap below the resolution of the adapter, a touch along an edge followed by further operations, a model 450 and 1300 mm from the origin.
 
-Co náhodné testy našly a pevné případy ne:
-- Jádro síť, která není uzavřenou plochou, načte bez chyby, část trojúhelníků zahodí a změní objem. Stav knihovny zůstane `NoError`. Proto adaptér uzavřenost kontroluje sám.
-- Vrácení posunutých vrcholů „do roviny" nechávalo průsečíky natočených hran o zlomek přesahu vedle; pozdější nástroj se stěnou přesně v tom místě síť přeložil. Návrat se proto počítá z původní geometrie.
-- Kde se nástroj tělesa dotkne jen hranou a nic se neposouvá, nechává jádro nulové trojúhelníky s číslem stěny nástroje. Čistí se proto vždy.
-- Sloučení vrcholů podle polohy vytvoří v místě, kde se těleso samo sebe dotýká hranou, hranu se čtyřmi trojúhelníky; dělit jen koncové vrcholy nestačilo.
-- Průsečík hrany, která rovinu protíná pod malým úhlem, vyšel 1e-4 vedle skutečného vrcholu a vznikl přeložený trojúhelník. Bod blízko konce hrany se bere jako ten konec.
-- Jehlové trojúhelníky se při čištění zahazovaly jako nulové (14 případů z 30 000, všechny v natočené poloze s válci). Opraveno přísnějším určením nulového trojúhelníku; po revizi se navíc dělí jen hrany bez protějšku.
+What the random tests found and the fixed cases did not:
+- The kernel loads a mesh that is not a closed surface without an error, drops part of the triangles and changes the volume. The state of the library stays `NoError`. That is why the adapter checks closedness itself.
+- Moving shifted vertices back "into the plane" left the intersections of turned edges a fraction of the overlap beside; a later tool with a face exactly at that place folded the mesh. So the move back is computed from the original geometry.
+- Where the tool touches the body only along an edge and nothing is shifted, the kernel leaves null triangles with the face number of the tool. So it always cleans.
+- Merging vertices by position makes, where the body touches itself along an edge, an edge with four triangles; splitting only the end vertices was not enough.
+- The intersection of an edge that crosses the plane at a small angle came out 1e-4 beside the real vertex, and a folded triangle was made. A point near the end of an edge is taken as that end.
+- Needle triangles were dropped as null in the cleaning (14 cases of 30,000, all in a turned position with cylinders). Fixed by a stricter definition of a null triangle; after the review, moreover, only edges without a counterpart are split.
 
-Adaptér má asi 900 řádků TypeScriptu; zhruba třetinu tvoří čištění sítě.
+The adapter has about 900 lines of TypeScript; roughly a third of them is the cleaning of the mesh.
 
 ### planegcs (`@salusoft89/planegcs` 1.3.0)
 
-Skript: `planegcs-spike.mjs`. Prošlo 36 z 37 kontrol; neprošlá je kontrola referenčních kót, viz tabulka.
+Script: `planegcs-spike.mjs`. 36 of 37 checks passed; the one that failed is the check of reference dimensions, see the table.
 
-| Předpoklad | Výsledek |
+| Assumption | Result |
 |---|---|
-| Stupně volnosti | Platí (`dof()`). |
-| Konfliktní vazby | Platí. Vrací celou skupinu vazeb v konfliktu, ne jen tu naposled přidanou. Stav řešení je pak většinou `Failed`, ale ne vždy: konflikt se objevil i se stavem `Success`. Adaptér proto rozhoduje podle seznamu konfliktních vazeb. |
-| Nadbytečné vazby | Platí. |
-| Pevné body | Platí (`fixed: true`), nepohnou se ani o bit. |
-| Pevný poloměr promítnuté kružnice | Platí přes vazbu `circle_radius`; soustředná díra i tečna k pevné kružnici fungují. |
-| Podmínky oblouku | Platí přes `arc_rules`. Adaptér musí dopočítat poloměr a úhly z bodů, planegcs je chce na vstupu. |
-| Mapování variant vazeb | Všechny varianty mají protějšek (24 kombinací vazby a druhu křivky v testech adaptéru). `horizontalDistance` a `verticalDistance` se mapují na vazbu `difference` nad souřadnicemi bodů. |
-| Znaménka | Ověřeno testy adaptéru: `difference` dává b − a včetně záporných hodnot, `l2l_angle_ll` měří od první úsečky ke druhé proti směru hodin. |
-| Splněný vstup se vrátí beze změny | Platí bitově, pro plně určenou i podurčenou skicu. |
-| Determinismus | Platí bitově. |
-| Tažení přes dočasné vazby | Platí. 30 kroků, vazby drží, bod sleduje cíl ve volném směru, žádné skoky. Ověřeno navazujícími kroky i bezstavově, kdy každý krok začíná z uložených poloh a cíl se vzdaluje (tak to volá `preview`). |
-| Referenční kóty | **Neplatí.** Neřídicí kóta přidala stupeň volnosti a vrátila nesmyslnou hodnotu. Engine je proto solveru neposílá. |
-| Vazba jen mezi pevnými entitami | **Solver ji tiše ignoruje.** Šikmá pevná úsečka s vazbou `horizontal` skončí úspěchem bez konfliktu. Takovou vazbu proto odmítá validace příkazů. |
-| Diagnostika konfliktu | Mezi konfliktními vazbami se vracejí i pomocné vazby adaptéru; `dof()` při konfliktu nemá význam (pozorováno −1 i 0 až 2). Adaptér pomocné vazby odfiltruje a vrací 0. |
-| Běh v Node | Platí. |
+| Degrees of freedom | Holds (`dof()`). |
+| Conflicting constraints | Holds. It returns the whole group of constraints in conflict, not just the one added last. The state of the solve is then mostly `Failed`, but not always: a conflict appeared with the state `Success` too. So the adapter decides by the list of conflicting constraints. |
+| Redundant constraints | Holds. |
+| Fixed points | Holds (`fixed: true`); they do not move by a single bit. |
+| Fixed radius of a projected circle | Holds through the constraint `circle_radius`; a concentric hole and a tangent to a fixed circle both work. |
+| Conditions of an arc | Hold through `arc_rules`. The adapter has to compute the radius and the angles from the points; planegcs wants them in the input. |
+| Mapping of the constraint variants | Every variant has a counterpart (24 combinations of a constraint and a kind of curve in the adapter's tests). `horizontalDistance` and `verticalDistance` are mapped to the constraint `difference` over the coordinates of points. |
+| Signs | Verified by the adapter's tests: `difference` gives b − a including negative values, `l2l_angle_ll` measures from the first line to the second counter-clockwise. |
+| A satisfied input is returned unchanged | Holds bit for bit, for a fully constrained and for an underconstrained sketch. |
+| Determinism | Holds bit for bit. |
+| Dragging through temporary constraints | Holds. 30 steps, the constraints hold, the point follows the target in the free direction, no jumps. Verified with consecutive steps and statelessly, each step starting from the stored positions and the target moving away (that is how `preview` calls it). |
+| Reference dimensions | **Does not hold.** A non-driving dimension added a degree of freedom and returned a nonsensical value. So the engine does not send them to the solver. |
+| A constraint only between fixed entities | **The solver silently ignores it.** A tilted fixed line with a `horizontal` constraint ends in success without a conflict. So validation of commands refuses such a constraint. |
+| Diagnosis of a conflict | The adapter's auxiliary constraints are returned among the conflicting constraints too; `dof()` has no meaning on a conflict (observed −1 as well as 0 to 2). The adapter filters out the auxiliary constraints and returns 0. |
+| Running in Node | Holds. |
 
-Poznámky pro adaptér:
-- Solver při hledání nadbytečných vazeb vypisuje ladicí text na standardní výstup. Vypíná se nastavením `debug_mode` na `DebugMode.NoDebug` (ověřeno).
-- Úspěšné řešení hlásí knihovna stavem `Success` nebo `Converged`. `Converged` ale znamená jen to, že vazba, kterou knihovna vyhodnotila jako nadbytečnou, nebyla ve výchozím odhadu splněná; nikdo neověří, že je splněná ve výsledku. Adaptér proto řeší znovu z výsledku, dokud nedostane `Success`.
-- Paměť WASM se uvolňuje ručně (`destroy_gcs_module`).
-- Tečnost s obloukem (`tangent_la`, `tangent_ca`, `tangent_aa`), bod na oblouku (`point_on_arc`) a kóty oblouku jsou ověřené až testy adaptéru (`packages/solver-planegcs/test`), ve spiku nebyly.
+Notes for the adapter:
+- While looking for redundant constraints the solver prints debug text to standard output. It is switched off by setting `debug_mode` to `DebugMode.NoDebug` (verified).
+- The library reports a successful solve by the state `Success` or `Converged`. `Converged`, though, only means that a constraint the library judged redundant was not satisfied in the initial estimate; nobody checks that it is satisfied in the result. So the adapter solves again from the result until it gets `Success`.
+- WASM memory is freed by hand (`destroy_gcs_module`).
+- Tangency with an arc (`tangent_la`, `tangent_ca`, `tangent_aa`), a point on an arc (`point_on_arc`) and the dimensions of an arc were verified only by the adapter's tests (`packages/solver-planegcs/test`); they were not in the spike.
 
-Známá omezení solveru, která adaptér neřeší (z revize 2026-11-14, náhodné skici proti nezávislé kontrole zbytků vazeb):
-- Nadbytečná vazba, která ve výchozím odhadu není splněná, může skončit konfliktem, i když řešení existuje (nepřesně nakreslený obdélník a k němu rovnoběžnost protějších stran). Z přesnějšího odhadu projde. Není to obecné: kolmost nebo druhá kóta ze stejného odhadu projdou.
-- Kóta vzdálenosti mezi dvěma body, které ve výchozím odhadu leží na sobě, skončí konfliktem.
-- Oblouk se může překlopit na svůj doplněk (konce si vymění strany) a výsledek je přesto řešením vazeb. Port o rozsahu oblouku nic neříká; engine to zatím nekontroluje.
-- U tečnosti dvou kružnic drží knihovna vnější nebo vnitřní dotyk podle výchozího odhadu. Kde druhá varianta vede k zápornému poloměru, vrací adaptér `failed`.
-- Výchozí algoritmus selhal (`failed`, bez seznamu vazeb) asi u 4 % náhodných skic. Záložní Levenberg–Marquardt z nich vyřeší asi desetinu; zbytek zůstává `failed`.
+Known limits of the solver that the adapter does not handle (from the review of 2026-11-14, random sketches against an independent check of the residuals of the constraints):
+- A redundant constraint that is not satisfied in the initial estimate can end in a conflict even though a solution exists (an inexactly drawn rectangle and the parallelism of its opposite sides added to it). From a more exact estimate it passes. This is not general: a perpendicularity or a second dimension from the same estimate pass.
+- A distance dimension between two points that lie on each other in the initial estimate ends in a conflict.
+- An arc can flip to its complement (the ends swap sides) and the result is still a solution of the constraints. The port says nothing about the extent of an arc; the engine does not check it yet.
+- For a tangency of two circles the library keeps the outer or the inner touch according to the initial estimate. Where the other variant leads to a negative radius, the adapter returns `failed`.
+- The default algorithm failed (`failed`, without a list of constraints) for about 4 % of random sketches. The fallback Levenberg–Marquardt solves about a tenth of them; the rest stay `failed`.

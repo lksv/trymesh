@@ -307,7 +307,7 @@ describe('a circular pattern of features', () => {
     state = run(engine, { type: 'updateFeature', id: 'H', patch: { targets: ['A', 'C'] } });
     expect(status(state)).toMatchObject({ H: 'warning:noEffect', P: 'error:emptyResult' });
     expect(state.evaluation.features.P.error?.refs).toEqual([{ copy: 2, feature: 'H' }, 'C']);
-    expect(state.evaluation.features.P.error?.message).toBe('Operace by odebrala celé těleso.'); // the copy is named by refs only
+    expect(state.evaluation.features.P.error?.message).toBe('The operation would remove the whole body.'); // the copy is named by refs only
     near(volumeOf(state, 'A'), 1000);
     near(volumeOf(state, 'C'), disc(1.5) * 5);
     expect(names(state, 'A', 'H')).toEqual([]);

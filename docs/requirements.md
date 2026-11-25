@@ -1,184 +1,184 @@
-# Požadavky
+# Requirements
 
-Živý dokument. Popisuje, co má PoC umět a co ne. Důvody jednotlivých voleb jsou v [decisions.md](decisions.md).
+A living document. It describes what the PoC must do and what not. The reasons for the individual choices are in [decisions.md](decisions.md).
 
-Poslední úprava: 2026-11-14
+Last change: 2026-11-14
 
-## Cíl
+## Goal
 
-PoC jednoduchého parametrického 3D editoru ve stylu Autodesk Fusion. Těžištěm je návrh a engine, ne GUI.
+A PoC of a simple parametric 3D editor in the style of Autodesk Fusion. The weight is on the design and the engine, not the GUI.
 
-Od 2026-11-14 má PoC navíc dojít tak daleko, aby v něm šel navrhnout a vytisknout konkrétní díl: robotický kloub s planetovou převodovkou (viz Rozšíření pro robotický kloub a validační scénář 9). Kloub je ukázkový příklad postupu, který má nástroj zvládnout, ne zakázka na dodání konkrétního dílu (upřesnění vlastníka 2026-11-14). Cílem je nástroj, ve kterém takový díl jde navrhnout až k tisku; rozšíření se proto mají volit tak, aby sloužila i jiným konstrukcím.
+Since 2026-11-14 the PoC is also to get far enough that a concrete part can be designed and printed in it: a robotic joint with a planetary gearbox (see Extensions for the robotic joint and validation scenario 9). The joint is an example of a workflow the tool must manage, not an order to deliver a concrete part (the owner's clarification, 2026-11-14). The goal is a tool in which such a part can be designed all the way to printing; the extensions are therefore to be chosen so that they serve other designs as well.
 
-Ke kloubu vedou dva milníky (D35):
+Two milestones lead to the joint (D35):
 
-1. **Model kloubu v editoru.** Validační scénář 9: všechny díly s osovým uspořádáním, bez kolizí, parametricky měnitelný převod, export po dílech. Ověřuje funkce editoru.
-2. **Fyzický prototyp (volitelný).** Kloub, který jde vytisknout, smontovat a protočit: uložení a osové zajištění unašeče a satelitů, držák magnetu enkodéru, prostor pro desku a kabely, tiskové vůle. Kloub je ukázkový příklad, ne dodávka, takže o tomto milníku se rozhodne až po prvním: podle toho, jestli má nástroj prověřit i skutečný výtisk. Práci na editoru neblokuje; validační scénář 10 se doplní, jen pokud se milník bude dělat.
+1. **A model of the joint in the editor.** Validation scenario 9: all parts with their axial layout, without collisions, a parametrically changeable ratio, export per part. It verifies the functions of the editor.
+2. **A physical prototype (optional).** A joint that can be printed, assembled and turned: the bearings and axial retention of the carrier and the planets, a holder for the encoder magnet, room for the board and the cables, print clearances. The joint is an example, not a delivery, so this milestone is decided only after the first one: by whether the tool should also be proven by a real print. It does not block the work on the editor; validation scenario 10 is filled in only if the milestone is taken up.
 
-## Základní principy
+## Basic principles
 
-1. **Engine je oddělený od rendereru.** Engine nic nekreslí a nezávisí na žádné vykreslovací knihovně. Jde spustit a testovat bez browseru (Node).
-2. **Běží v browseru.** Engine je v TypeScriptu. Knihovny třetích stran (i WASM) jsou přípustné, ale každou schvaluje vlastník projektu jednotlivě a každá je schovaná za vlastním rozhraním.
-3. **Dokument je log operací.** I když uživatel model „nakliká", ukládá se posloupnost operací se záměrem (reference + parametry), ne výsledná geometrie. Geometrie je vždy odvozená přehráním logu.
-4. **Log jde zpětně upravovat.** Změna operace uprostřed logu vyvolá přepočet všeho, co na ní závisí.
-5. **Skici řeší constraint solver.** Uživatel kreslí přibližně a geometrii určují vazby a kóty.
-6. **Tělesa jsou mesh, ne B-rep.** Uvnitř enginu je těleso uzavřená trojúhelníková síť. Přesné plochy se nevedou.
+1. **The engine is separate from the renderer.** The engine draws nothing and depends on no rendering library. It can be run and tested without a browser (Node).
+2. **It runs in the browser.** The engine is in TypeScript. Third-party libraries (WASM too) are allowed, but the owner of the project approves each one individually and each is hidden behind an interface of its own.
+3. **The document is a log of operations.** Even when the user "clicks" the model together, what is stored is a sequence of operations with their intent (references + parameters), not the resulting geometry. Geometry is always derived by replaying the log.
+4. **The log can be edited afterwards.** A change of an operation in the middle of the log triggers a recompute of everything that depends on it.
+5. **Sketches are solved by a constraint solver.** The user draws approximately and constraints and dimensions determine the geometry.
+6. **Bodies are meshes, not B-rep.** Inside the engine a body is a closed triangle mesh. Exact surfaces are not kept.
 
-## Funkce PoC
+## Functions of the PoC
 
-### Dokument a historie
+### Document and history
 
-- Log operací (features) s parametry a referencemi na entity.
-- Úprava parametru libovolné operace a přepočet od ní dál.
-- Vložení, smazání a potlačení operace uprostřed logu.
-- Chybové stavy: operace s rozbitou referencí se označí jako chybná, přepočet se nezhroutí a referenci jde opravit.
+- A log of operations (features) with parameters and references to entities.
+- Editing a parameter of any operation and a recompute from it onwards.
+- Inserting, deleting and suppressing an operation in the middle of the log.
+- Error states: an operation with a broken reference is marked as failed, the recompute does not crash and the reference can be repaired.
 - Undo/redo.
-- Serializace dokumentu do JSON a zpět.
+- Serialization of the document to JSON and back.
 
-### Skica (2D)
+### Sketch (2D)
 
-- Entity: bod, úsečka, kružnice, oblouk.
-- Pevný počátek skici, ke kterému jde geometrii vázat a kótovat.
-- Geometrické vazby: totožnost, vodorovnost, svislost, rovnoběžnost, kolmost, tečnost, shodná délka, bod na křivce, souměrnost dvou bodů podle úsečky (osy) a bod ve středu úsečky.
-- Kóty: vzdálenost bod–bod, bod–úsečka, vodorovná a svislá vzdálenost, úhel, poloměr/průměr.
-- Stav skici: plně určená, podurčená, přeurčená (včetně označení konfliktních vazeb).
-- Diagnostika skici na vyžádání: které vazby jsou navíc (duplicitní i plynoucí z ostatních) a ze kterých vazeb plynou, kterou sadu jde odebrat, a které body a poloměry se ještě mohou hýbat. Stejnou řídicí vazbu nejde přidat dvakrát.
-- Tažení podurčené geometrie, při kterém solver drží vazby.
-- Konstrukční geometrie (pomocné křivky, které netvoří profil).
-- Promítnutí hrany tělesa do skici jako referenční geometrie, ke které jde vázat a kótovat: přímá hrana jako úsečka, kruhová hrana do rovnoběžné roviny jako kružnice. Při změně tělesa se skica přepočítá, takže například díra drží vzdálenost od okraje nebo soustřednost s válcem.
-- Detekce uzavřených profilů pro extrude.
+- Entities: point, line, circle, arc.
+- A fixed origin of the sketch, to which geometry can be constrained and dimensioned.
+- Geometric constraints: coincidence, horizontal, vertical, parallel, perpendicular, tangent, equal length, point on curve, symmetry of two points about a line (axis) and a point at the midpoint of a line.
+- Dimensions: point–point distance, point–line distance, horizontal and vertical distance, angle, radius/diameter.
+- State of the sketch: fully determined, underconstrained, overconstrained (including marking the conflicting constraints).
+- Diagnosis of the sketch on request: which constraints are redundant (duplicates as well as those that follow from the others) and which constraints they follow from, which set can be removed, and which points and radii can still move. The same driving constraint cannot be added twice.
+- Dragging underconstrained geometry, during which the solver keeps the constraints.
+- Construction geometry (auxiliary curves that do not form a profile).
+- Projection of an edge of a body into the sketch as reference geometry, to which one can constrain and dimension: a straight edge as a line, a circular edge onto a parallel plane as a circle. When the body changes, the sketch is recomputed, so that for example a hole keeps its distance from the rim or its concentricity with a cylinder.
+- Detection of closed profiles for extrude.
 
 ### 3D
 
-- Základní roviny (XY, XZ, YZ).
-- Vlastní rovina definovaná posunem od základní roviny, od rovinné stěny tělesa nebo od jiné vlastní roviny.
-- Skica na základní rovině, na vlastní rovině a na rovinné stěně tělesa.
-- Extrude: nové těleso, přidání k tělesu, odebrání z tělesa. Kladná vzdálenost u skici na stěně míří ven z tělesa.
-- Stabilní pojmenování stěn a hran, které přežije přepočet. Na stěny i hrany jde odkazovat z pozdějších operací.
+- Base planes (XY, XZ, YZ).
+- A custom plane defined by an offset from a base plane, from a planar face of a body or from another custom plane.
+- A sketch on a base plane, on a custom plane and on a planar face of a body.
+- Extrude: a new body, adding to a body, removing from a body. A positive distance for a sketch on a face points out of the body.
+- Stable naming of faces and edges that survives a recompute. Both faces and edges can be referenced from later operations.
 
-### Výstup
+### Output
 
-- Geometrie pro renderer: trojúhelníky s mapováním trojúhelník → ID stěny (kvůli výběru myší), hrany k vykreslení.
-- Export do STL.
+- Geometry for the renderer: triangles with a mapping triangle → face ID (for picking with the mouse), edges to draw.
+- Export to STL.
 
-### Rozhraní pro AI
+### Interface for AI
 
-- MCP server (`packages/mcp`), přes který AI model čte a mění dokument: přehled modelu, skica včetně diagnostiky („proč má skica dva stupně volnosti"), tělesa se jmény stěn a hran, provedení a náhled příkazů, undo a redo, soubory (otevřít, uložit, export STL).
-- Dva režimy se stejnými nástroji: nad dokumentem ze souboru (engine běží v serveru) a nad dokumentem otevřeným v běžící aplikaci (změny od AI uživatel hned vidí a může je vrátit).
-- Nástroje jsou obecné a jejich popis se generuje ze zdrojů enginu (typy příkazů a dokumentu, katalog vazeb). Nová vazba nebo příkaz v enginu se v rozhraní objeví bez zásahu do serveru.
+- An MCP server (`packages/mcp`) through which an AI model reads and changes the document: an overview of the model, a sketch including its diagnosis ("why does the sketch have two degrees of freedom"), bodies with the names of faces and edges, running and previewing commands, undo and redo, files (open, save, export STL).
+- Two modes with the same tools: over a document from a file (the engine runs in the server) and over a document open in the running app (the user sees the changes of the AI at once and can undo them).
+- The tools are generic and their description is generated from the sources of the engine (the types of commands and of the document, the catalog of constraints). A new constraint or command in the engine shows up in the interface without a change to the server.
 
-### Rozšíření pro robotický kloub (D35)
+### Extensions for the robotic joint (D35)
 
-Status: **implemented** (2026-11-14): all seven points. Číslování je pořadí implementace. Ukázkový díl je planetová převodovka s převodem 4 až 6 jako robotický kloub: uvnitř je celý motor Eaglepower LA8308, za motorem se montuje řídicí jednotka MKS XDrive Mini. Rozměry dílů, které návrh potřebuje, nese validační scénář 9.
+Status: **implemented** (2026-11-14): all seven points. The numbering is the order of implementation. The example part is a planetary gearbox with a ratio of 4 to 6 as a robotic joint: inside is the whole Eaglepower LA8308 motor, and the MKS XDrive Mini controller is mounted behind the motor. Validation scenario 9 carries the sizes of the parts that the design needs.
 
-U každého bodu platí levná varianta, navržená tak, aby šla později rozšířit na plnou; kde malé rozšíření dá obecnější nástroj, má přednost. Co do PoC nepatří, je v budoucích funkcích; důvody a návrh provedení jsou v D35. Každá funkce má být dostupná z aplikace i přes MCP.
+For each point the cheap variant applies, designed so that it can later be extended to the full one; where a small extension gives a more general tool, it takes precedence. What does not belong in the PoC is in the future functions; the reasons and the proposed implementation are in D35. Every function is to be reachable from the app and through MCP.
 
-1. **Pojmenované parametry a výrazy.** Tabulka parametrů v dokumentu. Výraz nad parametry jde zadat do každého číselného pole feature a do hodnoty každé kóty (vzdálenost vysunutí, posun roviny, počet zubů, počet kopií, úhly), například `Zr = Zs + 2 * Zp`. Která pole to jsou a jakou mají jednotku a pravidlo, říká katalog číselných polí; nové pole je položka katalogu a výrazy i popis pro AI ho převezmou. Úhly jsou v radiánech v čísle i ve výrazu; stupně se píšou funkcí `deg()`. Aplikace ukazuje a přijímá ve stupních čísla; výraz nechává beze změny a ukáže k němu výslednou hodnotu ve stupních. Změna parametru přepočítá model od první feature, která ho používá. Neznámé jméno, cyklus, neplatný výraz, hodnota mimo rozsah pole a necelý počet jsou chyby, které přepočet neshodí a jdou opravit; skica s chybným výrazem kóty zůstane vidět a počítá s poslední platnou hodnotou. Vedle parametrů nese dokument kontroly: výrazy, které mají platit (například `Zs % 3 == 0`); nesplněná kontrola je varování, které vidí uživatel i AI.
-2. **Rozsah vysunutí.** Vzdálenost s posunem začátku od roviny skici (jedna skica tak poslouží features v různých výškách a vysunutí na obě strany roviny je jen záporný začátek), nebo „skrz vše" (dopředu, dozadu, oběma směry): výřez, který po změně tloušťky tělesa dál prochází celým tělesem. Výřez smí mít víc cílových těles (díra skrz dva sešroubované díly).
-3. **Ozubené kolo.** Vysunutí bere profil buď z oblastí skici, nebo z generátoru. Generátory jsou položky katalogu (potřebné entity skici, parametry, odkazy), takže další profil je nová položka bez změny tvaru dokumentu. Ozubené kolo je první generátor, nad kružnicí skici (i konstrukční), která je roztečnou kružnicí kola. Zadává se počet zubů, úhel záběru, vůle, natočení a zda je ozubení vnější, nebo vnitřní; modul plyne z průměru kružnice a počtu zubů. Operace, cíl a rozsah jsou stejné jako u každého vysunutí: vnější ozubení jako nové těleso nebo přidání k tělesu, korunové kolo jako výřez vnitřním profilem, výřez vnějším profilem dá drážkované spojení. Správnou osovou vzdálenost kol drží tečnost roztečných kružnic ve skice. Natočení zubů se zadává číslem, nebo se dopočítá z odkazu na kolo, se kterým je kolo v záběru.
-4. **Pole.** Feature, která zdroj opakuje podle seznamu transformací; první druh je kruhové pole kolem osy (bod skici s normálou její roviny, nebo základní osa). Zdrojem je seznam features (výřezy a přidání: díra se zapuštěním na roztečné kružnici), nebo hotové těleso (tři satelity). Počet zahrnuje originál; kopie jdou po celém kruhu, nebo v zadaném úhlu mezi první a poslední. Kopie tělesa je těleso jako každé jiné: jde na ni kreslit, řezat do ní a promítat její hrany. Obecně smí feature vytvořit víc těles. Pole uvnitř skici ne.
-5. **Práce s více díly.** Export STL po jednotlivých tělesech. Dotazy nad tělesy: kolize (objem průniku dvojic těles; dvojice, kterou se nepodařilo spočítat, se ohlásí zvlášť), objem a obálka tělesa.
-6. **Vazby.** Stejný poloměr kružnic a oblouků. Pevný bod: vazba drží bod na zadaných souřadnicích skici; souřadnice mohou být výraz a diagnostika s ní pracuje jako s každou jinou vazbou.
-7. **Nástroje skici.** Sdílený modul nástrojů, které z několika údajů složí dávku příkazů; používá ho aplikace i MCP. Patří do něj stávající obdélník a nový pravidelný mnohoúhelník z úseček a vazeb. Hlavní použití mnohoúhelníku je zapuštění matice: šestiúhelník s kótou přes plochy (rozměr klíče) a výřez do hloubky.
+1. **Named parameters and expressions.** A table of parameters in the document. An expression over the parameters can be entered into every numeric field of a feature and into the value of every dimension (the extrusion distance, the plane offset, the number of teeth, the number of copies, angles), for example `Zr = Zs + 2 * Zp`. Which fields these are and what unit and rule they have is said by the catalog of numeric fields; a new field is an entry of the catalog and the expressions and the description for the AI take it over. Angles are in radians in a number as well as in an expression; degrees are written with the function `deg()`. The app shows and accepts numbers in degrees; it leaves an expression unchanged and shows its resulting value in degrees beside it. A change of a parameter recomputes the model from the first feature that uses it. An unknown name, a cycle, an invalid expression, a value out of the range of the field and a non-integer count are errors that do not bring the recompute down and can be repaired; a sketch with a wrong expression in a dimension stays visible and computes with the last valid value. Beside the parameters the document carries checks: expressions that are to hold (for example `Zs % 3 == 0`); a check that does not hold is a warning that the user and the AI both see.
+2. **Extent of an extrusion.** A distance with an offset of the start from the plane of the sketch (so one sketch serves features at different heights, and an extrusion to both sides of the plane is just a negative start), or "through all" (forward, backward, both directions): a cut that keeps going through the whole body after a change of the body's thickness. A cut may have several target bodies (a hole through two parts screwed together).
+3. **Gear.** An extrusion takes its profile either from the regions of a sketch or from a generator. Generators are entries of a catalog (the entities of the sketch they need, parameters, references), so another profile is a new entry without a change of the shape of the document. The gear is the first generator, over a circle of the sketch (construction too) which is the pitch circle of the gear. One enters the number of teeth, the pressure angle, the backlash, the rotation and whether the teeth are external or internal; the module follows from the diameter of the circle and the number of teeth. The operation, the target and the extent are the same as for every extrusion: external teeth as a new body or added to a body, a ring gear as a cut with the internal profile, a cut with the external profile gives a spline joint. The right centre distance of the gears is held by tangency of the pitch circles in the sketch. The rotation of the teeth is entered as a number, or is derived from a reference to the gear this gear meshes with.
+4. **Pattern.** A feature that repeats its source by a list of transforms; the first kind is a circular pattern about an axis (a point of a sketch with the normal of its plane, or a base axis). The source is a list of features (cuts and additions: a hole with a counterbore on a pitch circle), or a finished body (three planets). The count includes the original; the copies go round the whole circle, or within a given angle between the first and the last. A copy of a body is a body like any other: one can draw on it, cut into it and project its edges. In general a feature may create several bodies. No pattern inside a sketch.
+5. **Working with several parts.** STL export per body. Queries over bodies: collisions (the volume of the intersection of pairs of bodies; a pair that could not be computed is reported separately), the volume and the bounding box of a body.
+6. **Constraints.** Equal radius of circles and arcs. Fixed point: a constraint holds a point at given coordinates of the sketch; the coordinates may be expressions and the diagnosis treats it like any other constraint.
+7. **Sketch tools.** A shared module of tools that compose a batch of commands from a few inputs; the app and MCP both use it. It holds the existing rectangle and a new regular polygon of lines and constraints. The main use of the polygon is a nut pocket: a hexagon with a dimension across the flats (the wrench size) and a cut to a depth.
 
-## Budoucí funkce (mimo PoC, návrh je nemá znemožnit)
+## Future functions (outside the PoC, the design must not prevent them)
 
-- Vlastní rovina nakloněná pod úhlem kolem hrany tělesa. Předpoklad (stabilní reference na hrany) je součástí PoC.
-- Vlastní rovina nakloněná kolem úsečky skici a rovina třemi body.
-- Promítnutí kruhové hrany do šikmé roviny (elipsa). Architektura s tím počítá od začátku, viz architecture.md.
-- Promítnutí vrcholů tělesa do skici.
-- Export do 3MF.
-- Rozsah extrude „po stěnu". („Skrz vše" a posun začátku, který pokrývá i vysunutí na obě strany, jsou součástí rozšíření pro robotický kloub; rozsah je tam varianta, další druhy se přidají bez změny tvaru dokumentu.)
+- A custom plane tilted by an angle about an edge of a body. The prerequisite (stable references to edges) is part of the PoC.
+- A custom plane tilted about a line of a sketch, and a plane through three points.
+- Projection of a circular edge onto an oblique plane (an ellipse). The architecture counts with it from the start, see architecture.md.
+- Projection of vertices of a body into a sketch.
+- Export to 3MF.
+- The extrude extent "up to a face". ("Through all" and the offset of the start, which also covers an extrusion to both sides, are part of the extensions for the robotic joint; the extent there is a variant, further kinds are added without a change of the shape of the document.)
 - Revolve.
-- Zaoblení a zkosení hran (na meshi obtížné).
-- Splajny ve skice.
-- Ozubení jako generovaný blok uvnitř skici (v PoC je ozubené kolo generátor profilu pro vysunutí). Posunutí profilu ozubení.
-- Jména referenčních kót ve výrazech.
-- Posuvné pole a zrcadlení features a těles (další druhy transformací pole).
-- Pole a zrcadlení uvnitř skici.
-- Sestavy s vazbami mezi díly a pohybem. Vyžadovaly by druhý, prostorový constraint solver. Opakované použití dílu řeší v PoC pole těles.
-- Řez modelem v pohledu.
-- 3D skici.
-- Import souborů. Importovaná síť nemá pojmenované stěny, takže by na ni nešlo kreslit ani ji promítat; STEP bez výměny jádra nejde.
-- Kolaborace.
-- Přesná geometrie (B-rep) a STEP export. Vyžadovalo by výměnu geometrického jádra.
+- Fillets and chamfers of edges (hard on a mesh).
+- Splines in a sketch.
+- Gear teeth as a generated block inside a sketch (in the PoC the gear is a profile generator for an extrusion). Profile shift of gear teeth.
+- Names of reference dimensions in expressions.
+- A linear pattern and a mirror of features and bodies (further kinds of pattern transforms).
+- Pattern and mirror inside a sketch.
+- Assemblies with mates between parts and motion. They would need a second, spatial constraint solver. In the PoC the repeated use of a part is handled by a pattern of bodies.
+- A section through the model in the view.
+- 3D sketches.
+- Import of files. An imported mesh has no named faces, so one could neither draw on it nor project it; STEP is not possible without replacing the kernel.
+- Collaboration.
+- Exact geometry (B-rep) and STEP export. It would need a replacement of the geometric kernel.
 
-Pracovní rozbor kandidátů na další milníky (co každý potřebuje a proč ho současný návrh neznemožňuje) je v [backlog.md](backlog.md).
+A working analysis of the candidates for further milestones (what each one needs and why the current design does not prevent it) is in [backlog.md](backlog.md).
 
 Intended use and order after D35 (owner, 2026-11-14): the tool is meant for designing parts for a 3D printer and tinkering, with brackets and boxes as the base and most parts for a robotic arm and similar mechanisms; models are mostly built together with an AI through MCP. The order in which the features above and the candidates of backlog.md are taken up after D35 is decided in D36 ([decisions/D36-order-after-d35.md](decisions/D36-order-after-d35.md)); the working plan is [d36/README.md](d36/README.md). Three items of the list above change with it: an assembly with mates is replaced by a mechanism description, 3D sketches by a path through points, and import is planned as a mesh used as a reference body.
 
-## Validační scénáře
+## Validation scenarios
 
-Slouží k ověření návrhu (architektura, moduly, kontrakty) a později jako akceptační testy.
+They serve to verify the design (architecture, modules, contracts) and later as acceptance tests.
 
-1. **Základní průchod.** Skica na rovině (obdélník, kružnice, kóty) → extrude → skica na stěně tělesa s dírou okótovanou k promítnuté hraně → výřez → změna kóty v první skice. Vše se přepočítá včetně výřezu a díra drží vzdálenost od okraje.
-2. **Změna topologie.** Pozdější reference buď vydrží, nebo se čistě ohlásí jako rozbité. Nikdy tiše neukážou na jinou entitu.
-   - a) Do první skici se přidá další díra: vše platí dál.
-   - b) Z obdélníku se smaže úsečka: profil se rozpadne, první extrude skončí v chybě a s ním vše, co na něm závisí.
-   - c) Úsečka obdélníku se nahradí jinou mezi stejnými body: extrude ohlásí chybějící profil. Po novém výběru profilu projde, skici na víkách platí dál, ale skica na stěně vzniklé z původní úsečky ohlásí rozbitou referenci.
-3. **Solver.** Podurčená skica, tažení bodu, přidání konfliktní vazby. Engine vrátí srozumitelnou diagnostiku a zbytek modelu zůstane zobrazený.
-4. **Round-trip.** Uložit dokument, načíst, přepočítat, exportovat. Výsledek je identický s původním. Platí i pro dokument s chybou: po smazání zdrojové skici jde dokument uložit a načíst, extrude je v chybě a po výběru jiné skici projde se stejným ID.
-5. **Časová osa a undo.** Vlastní rovina s posunem, skica na ní a extrude. Potlačení dřívějšího výřezu, vložení nové feature doprostřed logu, přesun feature. Po každém kroku undo a redo vrátí přesně předchozí a následující stav.
-6. **Navazování geometrie.**
-   - a) Válec mimo počátek, skica na jeho víku s promítnutou kružnicí a soustřednou dírou. Po posunu válce v původní skice díra zůstane soustředná.
-   - b) Nálitek, jehož bok lícuje s bokem tělesa: výsledkem je jedno těleso, obě stěny zůstanou pojmenované a horní stěna tělesa zůstane použitelná pro další skicu. Platí i tehdy, když je bok nálitku přichycený na krajní bod promítnuté hrany.
-   - c) Výřez, jehož stěna lícuje se stěnou tělesa jen zčásti, a další operace na nově vzniklé stěně: výsledkem je jedno těleso bez mezer.
-   - d) Výřez, který těleso mine, a výřez, který by ho odebral celé: model zůstane, feature ohlásí varování, respektive chybu.
-   - e) Nálitek se stejným půdorysem se zase celý odřízne: po jeho stěnách nezůstane nic a skica na některé z nich ohlásí rozbitou referenci.
-7. **Skica krok za krokem s diagnostikou.** Obrys úhelníku od ruky, pak směry stran, rozměry a ukotvení. Po každém kroku diagnostika řekne, kolik volnosti zbývá a které body se hýbou; u určeného tvaru bez ukotvení ukáže, že volná je jen poloha. Vazby navíc označí, vysvětlí, z čeho plynou, a navrhne sadu k odebrání; po jejím odebrání se geometrie nezmění. Přesnou duplicitu engine odmítne.
-8. **Souměrný díl s konstrukční osou.** Konstrukční svislá osa z počátku, lichoběžník souměrný podle ní a díra ve středu osy. Souměrnost ubere každé dvojici bodů dva stupně volnosti a diagnostika to ukáže. Po změně šířky a výšky zůstane díl souměrný a díra uprostřed; bez kóty šířky jde rohem táhnout a protější roh ho zrcadlí. Vodorovnost základny přidaná navíc se označí jako plynoucí ze souměrnosti a svislosti osy. Dokument s novými vazbami se uloží a načte beze změny.
-9. **Robotický kloub s planetovou převodovkou** (tested in `packages/scenarios/test/scenario9.test.ts`, all parts a to k; ověřuje rozšíření z D35). Planetová převodovka s převodem 4 až 6, uvnitř pouzdra je celý motor, za motorem je deska pro řídicí jednotku. Rozměry dílů, kolem kterých se kloub staví:
+1. **Basic pass.** A sketch on a plane (a rectangle, a circle, dimensions) → extrude → a sketch on a face of the body with a hole dimensioned to a projected edge → a cut → a change of a dimension in the first sketch. Everything is recomputed including the cut, and the hole keeps its distance from the rim.
+2. **Change of topology.** Later references either survive or are cleanly reported as broken. They never silently point at another entity.
+   - a) Another hole is added to the first sketch: everything still holds.
+   - b) A line is deleted from the rectangle: the profile falls apart, the first extrude ends in an error and with it everything that depends on it.
+   - c) A line of the rectangle is replaced by another between the same points: the extrude reports a missing profile. After a new choice of the profile it passes, the sketches on the caps still hold, but a sketch on the face that came from the original line reports a broken reference.
+3. **Solver.** An underconstrained sketch, dragging a point, adding a conflicting constraint. The engine returns an understandable diagnosis and the rest of the model stays displayed.
+4. **Round-trip.** Save the document, load, recompute, export. The result is identical to the original. This also holds for a document with an error: after the source sketch is deleted, the document can be saved and loaded, the extrude is in error, and after another sketch is chosen it passes with the same ID.
+5. **Timeline and undo.** A custom plane with an offset, a sketch on it and an extrude. Suppressing an earlier cut, inserting a new feature in the middle of the log, moving a feature. After each step undo and redo return exactly the previous and the following state.
+6. **Building on geometry.**
+   - a) A cylinder off the origin, a sketch on its cap with a projected circle and a concentric hole. After the cylinder is moved in the original sketch the hole stays concentric.
+   - b) A boss whose side is flush with the side of the body: the result is one body, both faces stay named and the top face of the body stays usable for another sketch. This holds even when the side of the boss is snapped to an end point of a projected edge.
+   - c) A cut whose face is flush with a face of the body only in part, and a further operation on the newly created face: the result is one body without gaps.
+   - d) A cut that misses the body, and a cut that would remove all of it: the model stays, the feature reports a warning and an error respectively.
+   - e) A boss with the same footprint is cut off again entirely: nothing remains of its faces and a sketch on one of them reports a broken reference.
+7. **A sketch step by step with the diagnosis.** The outline of an angle bracket drawn freehand, then the directions of the sides, the sizes and the anchoring. After each step the diagnosis says how much freedom remains and which points move; for a determined shape without anchoring it shows that only the position is free. It marks redundant constraints, explains what they follow from and proposes a set to remove; after it is removed the geometry does not change. An exact duplicate is refused by the engine.
+8. **A symmetric part with a construction axis.** A construction vertical axis from the origin, a trapezoid symmetric about it and a hole at the midpoint of the axis. Symmetry takes two degrees of freedom from each pair of points and the diagnosis shows it. After a change of the width and the height the part stays symmetric and the hole in the middle; without the width dimension a corner can be dragged and the opposite corner mirrors it. A horizontal constraint of the base added on top is marked as following from the symmetry and the verticality of the axis. The document with the new constraints saves and loads unchanged.
+9. **A robotic joint with a planetary gearbox** (tested in `packages/scenarios/test/scenario9.test.ts`, all parts a to k; it verifies the extensions of D35). A planetary gearbox with a ratio of 4 to 6, the whole motor inside the housing, behind the motor a plate for the controller. The sizes of the parts around which the joint is built:
 
-   | Díl | Rozměr |
+   | Part | Size |
    |---|---|
-   | Motor Eaglepower LA8308, obálka | průměr 90 mm, délka 26,5 mm; plášť se točí s rotorem |
-   | Motor, strana statoru (pevná) | 4 závity M4 na roztečné kružnici 40 mm, po 90° |
-   | Motor, strana rotoru (výstup) | 4 závity M3 na roztečné kružnici 31 mm, po 90° |
-   | Motor, středicí čep | průměr 3 mm, délka 6 mm, v ose; strana rotoru je předpoklad |
-   | Řídicí jednotka MKS XDrive Mini, deska | 63 × 58 mm |
-   | Řídicí jednotka, montážní díry | 6 děr průměru 3,3 mm; středy vůči středu desky: x = ±28,3 mm, y = 25,75, 1,75 a −25,75 mm (rozteče 56,6, 24 a 27,5 mm jsou z výkresu; svislá poloha vůči středu předpokládá řadu děr vystředěnou na desce) |
-   | Řídicí jednotka, enkodér | ve středu desky; musí ležet v ose motoru |
-   | Šroub M3 s válcovou hlavou | průměr hlavy 5,5 mm |
-   | Matice M3 | rozměr přes plochy 5,5 mm |
+   | Motor Eaglepower LA8308, envelope | diameter 90 mm, length 26.5 mm; the shell turns with the rotor |
+   | Motor, stator side (fixed) | 4 M4 threads on a pitch circle of 40 mm, 90° apart |
+   | Motor, rotor side (output) | 4 M3 threads on a pitch circle of 31 mm, 90° apart |
+   | Motor, centring pin | diameter 3 mm, length 6 mm, on the axis; the rotor side is an assumption |
+   | Controller MKS XDrive Mini, board | 63 × 58 mm |
+   | Controller, mounting holes | 6 holes of diameter 3.3 mm; centres relative to the centre of the board: x = ±28.3 mm, y = 25.75, 1.75 and −25.75 mm (the pitches 56.6, 24 and 27.5 mm are from the drawing; the vertical position relative to the centre assumes the row of holes is centred on the board) |
+   | Controller, encoder | at the centre of the board; must lie on the axis of the motor |
+   | M3 socket head screw | head diameter 5.5 mm |
+   | M3 nut | size across flats 5.5 mm |
 
-   Kloub má sedm tištěných dílů: centrální kolo s přírubou, tři satelity, pouzdro s korunovým kolem, zadní desku a unašeč. Motor je v modelu jako zjednodušené těleso. Uložení a osové zajištění unašeče a satelitů scénář neřeší; patří do druhého milníku (scénář 10). Důvody uspořádání jsou v D35, Upřesnění scénáře 9.
+   The joint has seven printed parts: the sun gear with a flange, three planets, the housing with the ring gear, the back plate and the carrier. The motor is in the model as a simplified body. The scenario does not handle the bearings and axial retention of the carrier and the planets; they belong to the second milestone (scenario 10). The reasons for the layout are in D35, Clarification of scenario 9.
 
-   Osové uspořádání. Osa je osa motoru, nula leží na dosedací ploše statoru a kladný směr míří k rotoru:
+   Axial layout. The axis is the axis of the motor, zero lies on the seating face of the stator and the positive direction points to the rotor:
 
-   | Díl | Rozsah v ose (mm) |
+   | Part | Range along the axis (mm) |
    |---|---|
-   | Zadní deska | −5 až 0 |
-   | Motor | 0 až 26,5 |
-   | Pouzdro | 0 až 46; vybrání pro motor 0 až 28, plný materiál s korunovým kolem 28 až 46 |
-   | Centrální kolo, příruba průměru 40 mm | 26,5 až 30,5 |
-   | Centrální kolo, ozubení | 30,5 až 46 |
-   | Satelity | 34 až 46 (nad hlavami šroubů M3 v přírubě, které sahají do 33,5) |
-   | Unašeč, čepy průměru 5 mm (díra v satelitu 5,3 mm) | 34 až 46,5 |
-   | Unašeč, kotouč průměru 60 mm | 46,5 až 51,5 |
-   | Zapuštění matic v čele pouzdra | 43 až 46 |
+   | Back plate | −5 to 0 |
+   | Motor | 0 to 26.5 |
+   | Housing | 0 to 46; the recess for the motor 0 to 28, solid material with the ring gear 28 to 46 |
+   | Sun gear, flange of diameter 40 mm | 26.5 to 30.5 |
+   | Sun gear, teeth | 30.5 to 46 |
+   | Planets | 34 to 46 (above the heads of the M3 screws in the flange, which reach to 33.5) |
+   | Carrier, pins of diameter 5 mm (hole in the planet 5.3 mm) | 34 to 46.5 |
+   | Carrier, disc of diameter 60 mm | 46.5 to 51.5 |
+   | Nut pockets in the front face of the housing | 43 to 46 |
 
-   Ozubená kola i čepy unašeče vycházejí z jedné skici roztečných kružnic v rovině nula; do své výšky je dostane posun začátku rozsahu vysunutí.
+   The gears and the pins of the carrier all come from one sketch of pitch circles in the plane zero; the offset of the start of the extrusion's extent brings each to its height.
 
-   - a) Parametry `modul = 0,9`, `Zs = 18`, `Zp = 27` a `Zr = Zs + 2 * Zp`. Skica roztečných kružnic, všechny tři konstrukční (dotýkající se běžné kružnice by zneplatnily profil skici): centrální kolo v počátku, satelit tečně k němu se středem na vodorovné přímce počátkem (bez toho by mohl kolem centrálního kola obíhat), korunové kolo soustředné s centrálním; průměry jsou výrazy `modul * Zs`, `modul * Zp`, `modul * Zr`. Že se korunové kolo satelitu dotýká, plyne z parametrů. Dokument má kontroly `modul * (Zs / 2 + 1) < 12.75` (šrouby do rotoru jdou zasunout podél ozubení), `Zs % 3 == 0` a `Zr % 3 == 0` (tuhé kopie satelitu zůstanou v záběru) a kontrolu, že se sousední satelity nepotkají.
-   - b) Ozubená kola z těchto kružnic: centrální kolo a satelit jako tělesa, korunové jako výřez vnitřním profilem do pouzdra. Natočení satelitu se dopočítá ze záběru s centrálním kolem, natočení korunového ze záběru se satelitem.
-   - c) Satelit dostane díru pro čep a jako hotové těleso se kruhovým polem zopakuje třikrát.
-   - d) Centrální kolo má přírubu se čtyřmi dírami pro šrouby M3 na roztečné kružnici 31 mm (do rotoru motoru): jedna díra vyříznutá skrz vše a zopakovaná polem. V ose má díru pro středicí čep motoru. Šrouby se zasouvají podél ozubení, takže hlavový poloměr centrálního kola `modul * (Zs / 2 + 1)` musí zůstat pod 12,75 mm (15,5 mm mínus polovina hlavy šroubu). Proto je modul 0,9: při `Zs = 24` vychází 11,7 mm, při modulu 1 by to bylo 13 mm.
-   - e) Pouzdro je válec průměru 110 mm otevřený na straně motoru. Zezadu má vybrání průměru 92 mm na délku motoru (motor průměru 90 mm se v něm točí s vůlí); nad vybráním zůstává plný materiál a do něj je skrz vše vyříznuté korunové kolo z bodu b. Hlavová kružnice korunového kola (63 mm) je menší než motor, takže motor se vkládá zezadu a dno pouzdra je samostatný díl, zadní deska. Šest děr pro šrouby M3 na roztečné kružnici 101 mm prochází zadní deskou i stěnou pouzdra: jeden výřez skrz vše do obou těles. Na čele pouzdra u korunového kola má každá díra šestihranné zapuštění pro matici s rozměrem přes plochy 5,5 mm. Díra a zapuštění se nakreslí jednou a zopakují společně jedním polem.
-   - f) Zadní deska je kotouč průměru 110 mm se středem v ose motoru. Uzavírá pouzdro a nese motor i řídicí jednotku:
-     - čtyři díry pro šrouby M4 na roztečné kružnici 40 mm (do statoru), jedna díra a pole;
-     - šest děr na roztečné kružnici 101 mm vzniká společným výřezem s pouzdrem (bod e);
-     - středový otvor průměru 20 mm, kterým magnet na hřídeli míří na enkodér;
-     - šest děr průměru 3,3 mm pro řídicí jednotku v polohách z tabulky. Mají stejný poloměr, levou trojici drží pevné body na souřadnicích z tabulky a pravá je k ní souměrná podle svislé osy. Skica je plně určená.
-   - g) Unašeč je kotouč se třemi čepy pro satelity. Čep leží na kružnici o poloměru osové vzdálenosti `modul * (Zs + Zp) / 2`; jeden čep vznikne přidáním k tělesu a zopakuje se polem. Čep prochází dírou satelitu s vůlí.
-   - h) Motor je zjednodušené těleso: válec průměru 90 mm a délky 26,5 mm mezi zadní deskou a přírubou centrálního kola.
-   - i) Změna převodu. Po každé z obou změn se vše přepočítá bez chyby, roztečné kružnice zůstanou tečné, zuby v záběru, čepy unašeče v dírách satelitů, díry dál procházejí a kontrola kolizí z bodu j nic nenajde:
-     - převod 5 → 4 se stejnou korunou: `Zs` z 18 na 24 a `Zp` z 27 na 24, `Zr` zůstává 72;
-     - převod 5 → 6 s větší korunou: z výchozího stavu `Zp` z 27 na 36, `Zr` vyjde 90. Roztečný průměr koruny vzroste z 64,8 na 81 mm a koruna se dál vejde do pouzdra;
-     - kontroly parametrů v obou stavech platí. Po změně `modul` na 1 při `Zs = 24` kontrola hlavového poloměru ohlásí varování a model se dál přepočítá.
-   - j) Kontrola kolizí nenajde průnik mezi koly v záběru (s nenulovou vůlí), mezi motorem a pouzdrem, mezi čepy a satelity ani mezi dalšími tělesy, která se nemají prolínat; po záměrně příliš velkém satelitu průnik ohlásí.
-   - k) Každé těleso jde exportovat do vlastního STL. Dokument se uloží a načte beze změny.
+   - a) Parameters `modul = 0.9`, `Zs = 18`, `Zp = 27` and `Zr = Zs + 2 * Zp`. A sketch of the pitch circles, all three construction (touching regular circles would make the profile of the sketch invalid): the sun gear at the origin, a planet tangent to it with its centre on the horizontal line through the origin (without that it could orbit the sun gear), the ring gear concentric with the sun gear; the diameters are the expressions `modul * Zs`, `modul * Zp`, `modul * Zr`. That the ring gear touches the planet follows from the parameters. The document has the checks `modul * (Zs / 2 + 1) < 12.75` (the screws into the rotor can be slid in along the teeth), `Zs % 3 == 0` and `Zr % 3 == 0` (rigid copies of the planet stay in mesh) and a check that neighbouring planets do not meet.
+   - b) Gears from these circles: the sun gear and a planet as bodies, the ring gear as a cut with the internal profile into the housing. The rotation of the planet is derived from its mesh with the sun gear, the rotation of the ring gear from its mesh with the planet.
+   - c) The planet gets a hole for the pin and, as a finished body, is repeated three times by a circular pattern.
+   - d) The sun gear has a flange with four holes for M3 screws on a pitch circle of 31 mm (into the rotor of the motor): one hole cut through all and repeated by a pattern. On the axis it has a hole for the centring pin of the motor. The screws are slid in along the teeth, so the tip radius of the sun gear `modul * (Zs / 2 + 1)` must stay below 12.75 mm (15.5 mm minus half the screw head). That is why the module is 0.9: at `Zs = 24` it comes out at 11.7 mm, with a module of 1 it would be 13 mm.
+   - e) The housing is a cylinder of diameter 110 mm open on the side of the motor. From the back it has a recess of diameter 92 mm over the length of the motor (the motor of diameter 90 mm turns in it with a clearance); above the recess solid material remains, and the ring gear of point b is cut through all into it. The tip circle of the ring gear (63 mm) is smaller than the motor, so the motor is inserted from the back and the bottom of the housing is a separate part, the back plate. Six holes for M3 screws on a pitch circle of 101 mm go through the back plate and the wall of the housing: one cut through all into both bodies. On the front face of the housing at the ring gear each hole has a hexagonal pocket for a nut with a size across flats of 5.5 mm. The hole and the pocket are drawn once and repeated together by one pattern.
+   - f) The back plate is a disc of diameter 110 mm with its centre on the axis of the motor. It closes the housing and carries the motor and the controller:
+     - four holes for M4 screws on a pitch circle of 40 mm (into the stator), one hole and a pattern;
+     - six holes on a pitch circle of 101 mm come from the cut shared with the housing (point e);
+     - a central opening of diameter 20 mm through which the magnet on the shaft points at the encoder;
+     - six holes of diameter 3.3 mm for the controller at the positions from the table. They have an equal radius, the left three are held by fixed points at the coordinates from the table and the right three are symmetric to them about the vertical axis. The sketch is fully determined.
+   - g) The carrier is a disc with three pins for the planets. A pin lies on a circle whose radius is the centre distance `modul * (Zs + Zp) / 2`; one pin is made by adding to the body and repeated by a pattern. The pin goes through the hole of the planet with a clearance.
+   - h) The motor is a simplified body: a cylinder of diameter 90 mm and length 26.5 mm between the back plate and the flange of the sun gear.
+   - i) A change of the ratio. After each of the two changes everything is recomputed without an error, the pitch circles stay tangent, the teeth in mesh, the pins of the carrier in the holes of the planets, the holes still go through and the collision check of point j finds nothing:
+     - ratio 5 → 4 with the same ring: `Zs` from 18 to 24 and `Zp` from 27 to 24, `Zr` stays 72;
+     - ratio 5 → 6 with a larger ring: from the initial state `Zp` from 27 to 36, `Zr` comes out at 90. The pitch diameter of the ring grows from 64.8 to 81 mm and the ring still fits in the housing;
+     - the checks of the parameters hold in both states. After `modul` is changed to 1 at `Zs = 24` the check of the tip radius reports a warning and the model is still recomputed.
+   - j) The collision check finds no intersection between gears in mesh (with a non-zero backlash), between the motor and the housing, between the pins and the planets, nor between other bodies that are not to overlap; after a deliberately too large planet it reports the intersection.
+   - k) Every body can be exported to an STL of its own. The document saves and loads unchanged.
    - l) *Profile shift (5d, D61): done* (`packages/scenarios/test/scenario9.test.ts`, from [d36/5d-generators/calls.ts](d36/5d-generators/calls.ts)). The ratio 7 with a sun of 12 teeth (`Zs = 12`, `Zp = 30`, `Zr` stays 72): without a shift every planet reports `gearInterference` (its tip 14.4 above the limit 14.2379); with a parameter `shift = 0.3` on the sun and `-shift` on the planets and the ring the warnings are gone, the centre distances are those of the pitch circles, the sun's tip diameter is 13.14 and the planet's 28.26, the checks of the parameters hold and the collision check finds nothing. Shifts that do not balance (the ring left at 0) are the warning `gearMesh` naming the difference. The document saves and loads unchanged.
-10. **Fyzický prototyp kloubu** (druhý milník, volitelný, zatím nespecifikováno). Doplní se po dokončení scénáře 9, pokud se milník bude dělat. Má pokrýt, co scénář 9 vynechává: uložení a osové zajištění unašeče a satelitů, držák magnetu a jeho vzdálenost od enkodéru, prostor pro desku řídicí jednotky a kabely, tiskové vůle čepů, šroubů a matic. Tři údaje o motoru je před tím potřeba ověřit na skutečném dílu: stranu středicího čepu, konec hřídele na straně statoru a hloubku závitů.
+10. **A physical prototype of the joint** (the second milestone, optional, not specified yet). It is filled in after scenario 9 is finished, if the milestone is taken up. It is to cover what scenario 9 leaves out: the bearings and axial retention of the carrier and the planets, the holder of the magnet and its distance from the encoder, room for the board of the controller and the cables, print clearances of the pins, screws and nuts. Three facts about the motor have to be verified on the real part before that: the side of the centring pin, the end of the shaft on the stator side and the depth of the threads.
 11. **Queries about the robot joint** (D36, step 1; tested in `packages/scenarios/test/scenario11.test.ts`, which builds the joint of scenario 9 from `packages/scenarios/test/joint.ts`). The queries that let an AI see and measure a model are asked about the joint; each package of track A adds its part.
     - *Measuring (1b, D39), done.* The wall between the root circle of the ring gear and a bolt hole: the ring gear is a face of gear teeth with no exact form, so the pair has no exact distance and gets the smallest distance on the mesh, 15.2837 mm with an accuracy of 0.020055 mm; the same wall exactly is 15.275 mm (the distance of the axis of the gear from the axis of the hole, less the radius of the hole and the root radius the generator publishes), and the two agree within the accuracy. Also exact: the pitch of two bolt holes of the pattern (50.5 mm between their axes), the floor above the motor recess (two planar faces that look away from each other, 18 mm), and the mouth of a bolt hole as the circle of its two surfaces, which the description of the body carries as well. A face that is not in the state asked about is refused with the path of its argument.
     - *Section (1a, D38), the query done.* Across the axis at z = 40 the plane cuts the sun, the three planets, the housing and the carrier in 19 loops of one span each: 14 whole circles and the five faces of gear teeth as curves of 270, 405 and 720 points. A planet has 431.379 mm², its volume over its height. The housing reads as its outer wall (a circle of radius 55), six bolt holes of radius 1.7 whose centres are 50.5 from the axis, and the ring gear. The default budget of 500 lists the 19 spans and the teeth of the sun (289 of 2224 items); a budget of 30 still gives every body its outline. Along the axis (the base plane XZ) the 92 spans are all lines. A plane in the front face of the housing shows that face from inside (6028.838 mm², with the bodies that end in the plane named) and nothing from outside; 1.5 mm into the body it goes through the six hexagonal nut pockets.

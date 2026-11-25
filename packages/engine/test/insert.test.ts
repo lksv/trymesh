@@ -76,14 +76,14 @@ describe('the section documents and its commands', () => {
     expect(doc.documents.bearing.document).toEqual(validateDocument(part()));
     expect(doc.documents.bearing.document.schemaVersion).toBe(SCHEMA_VERSION);
     refused(doc, { type: 'addDocument', id: 'bearing', document: part() }, /addDocument\.id: the document has a stored document "bearing" already/);
-    refused(doc, { type: 'addDocument', id: 'a/b', document: part() }, /addDocument\.id: ID "a\/b"/);
+    refused(doc, { type: 'addDocument', id: 'a/b', document: part() }, /addDocument\.id: the ID "a\/b"/);
     refused(doc, { type: 'addDocument', id: 'x', document: part(), name: ' padded' }, /addDocument\.name/);
   });
 
   it('a document that does not load is the message of the load, with its path and without an expression of the host', () => {
     refused(emptyDocument(), { type: 'addDocument', id: 'broken', document: { schemaVersion: 1, features: 'none' } as never }, /^addDocument\.document/);
     refused(emptyDocument(), { type: 'addDocument', id: 'x', document: { ...part(), schemaVersion: 99 } }, /^addDocument\.document: the schema version 99 is newer than this build reads/);
-    refused(emptyDocument(), { type: 'addDocument', id: 'x', document: { ...part(), settings: { chordTolerance: 0 } } }, /^addDocument\.document\.settings\.chordTolerance: musí být kladná/);
+    refused(emptyDocument(), { type: 'addDocument', id: 'x', document: { ...part(), settings: { chordTolerance: 0 } } }, /^addDocument\.document\.settings\.chordTolerance: must be positive/);
     refused(emptyDocument(), { type: 'addDocument', id: 'x', document: { ...part(), features: [{ id: 'q' } as never] } }, /^addDocument\.document\.features\[0\]\.type/);
     // a parameter of a stored document is no parameter of the host: the error has no `expression`
     const error = refused(emptyDocument(), { type: 'addDocument', id: 'x', document: { ...part(), parameters: [{ name: 'D', expr: '2 +' }] } }, /^addDocument\.document\.parameters\[0\]\.expr/);
@@ -102,7 +102,7 @@ describe('the section documents and its commands', () => {
     strict.documents.bearing.source = '/tmp/608.json';
     expect(() => validateDocument(strict)).toThrow(/^document\.documents\.bearing\.source: a stored document has no such field/);
     // the host keeps its old texts
-    expect(() => validateDocument({ ...emptyDocument(), settings: { chordTolerance: -1 } })).toThrow(/^dokument\.settings\.chordTolerance: musí být kladná/);
+    expect(() => validateDocument({ ...emptyDocument(), settings: { chordTolerance: -1 } })).toThrow(/^document\.settings\.chordTolerance: must be positive/);
   });
 
   it('documents inside documents down to 8 levels below the host, on a load and by a command', () => {
@@ -310,10 +310,10 @@ describe('the names of the faces of an insertion', () => {
     expect(featureRefs(doc.features.at(-1) as never)).toEqual(['b1']);
     // the owner a feature that names faces but no insertion; an insertion after the referring feature
     const plain = run(doc, { type: 'addFeature', feature: emptySketch('S2', 'S2', XY) }, { type: 'addFeature', feature: { id: 'upper', name: 'upper', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 'S2', regions: [{ outerLoop: ['x'] }] }, extent: { type: 'distance', start: 0, distance: 1 }, operation: 'new' } });
-    refused(plain, { type: 'addFeature', feature: emptySketch('x', 'x', { kind: 'face', body: 'upper', face: { feature: 'upper/side', role: 'endCap' } }) }, /feature "upper" není an inserted document/);
-    refused(doc, { type: 'addFeature', feature: emptySketch('x', 'x', { kind: 'face', body: 'b1/ring', face: { feature: 'b9/ring', role: 'endCap' } }) }, /feature "b9" neexistuje/);
-    refused(doc, { type: 'addFeature', feature: emptySketch('x', 'x', { kind: 'face', body: 'b1/ring', face: { feature: 'b1/ring', role: 'endCap' } }), index: 0 }, /musí ležet před odkazující feature/);
-    refused(doc, { type: 'moveFeature', id: 'onRing', index: 0 }, /onRing" by se dostala před feature "b1"/);
+    refused(plain, { type: 'addFeature', feature: emptySketch('x', 'x', { kind: 'face', body: 'upper', face: { feature: 'upper/side', role: 'endCap' } }) }, /feature "upper" is not an inserted document/);
+    refused(doc, { type: 'addFeature', feature: emptySketch('x', 'x', { kind: 'face', body: 'b1/ring', face: { feature: 'b9/ring', role: 'endCap' } }) }, /feature "b9" does not exist/);
+    refused(doc, { type: 'addFeature', feature: emptySketch('x', 'x', { kind: 'face', body: 'b1/ring', face: { feature: 'b1/ring', role: 'endCap' } }), index: 0 }, /must lie before the referring feature/);
+    refused(doc, { type: 'moveFeature', id: 'onRing', index: 0 }, /onRing" would get before the feature "b1"/);
   });
 
   it('a face is found by its key and then compared: a name that reads like a copy of a real one is no reference to it', () => {

@@ -1,5 +1,5 @@
-// Adaptér portu SolidKernel nad Manifoldem (CSG nad trojúhelníkovými sítěmi ve WASM).
-// Kontrakt portu je v docs/architecture.md, sekce SolidKernel.
+// Adapter of the port SolidKernel over Manifold (CSG over triangle meshes in WASM).
+// The contract of the port is in docs/architecture/ports.md, section SolidKernel.
 import Module from 'manifold-3d';
 import type { Manifold, ManifoldToplevel } from 'manifold-3d';
 import type { BooleanOp, Solid, SolidKernel } from '@trymesh/engine';
@@ -8,20 +8,20 @@ import { prepareTool, restoreShifted } from './coplanar';
 import { type Tolerances, tolerances } from './geometry';
 
 export interface ManifoldKernelOptions {
-  // Kde najít manifold.wasm (v browseru); v Node se najde sám.
+  // Where to find manifold.wasm (in the browser); in Node it is found on its own.
   locateFile?: (file: string) => string;
 }
 
-// Vypnutí kroků adaptéru; jen pro testy, které ukazují, proč jsou potřeba.
+// Turning off steps of the adapter; only for the tests that show why they are needed.
 export interface BooleanOptions {
-  prepare?: boolean; // posun stěn v jedné rovině před booleanem
-  restore?: boolean; // návrat posunutých stěn po booleanu
+  prepare?: boolean; // the shift of faces in one plane before the boolean
+  restore?: boolean; // the restore of the shifted faces after the boolean
   second?: boolean; // the second cleaning of an intersection the first one leaves open or folded (D51)
 }
 
 export interface ManifoldKernel extends SolidKernel {
   boolean(op: BooleanOp, a: Solid, b: Solid, options?: BooleanOptions): Solid;
-  // Přístup ke knihovně pro testy (průřezy, rozklad na komponenty).
+  // Access to the library for tests (cross-sections, decomposition into components).
   readonly wasm: ManifoldToplevel;
   toManifold(s: Solid): Manifold;
   // How often `boolean` ran the second cleaning (D51), for the tests that show which operations reach it.
@@ -33,7 +33,7 @@ export async function createManifoldKernel(options: ManifoldKernelOptions = {}):
   const wasm = await Module(locateFile ? { locateFile: () => locateFile('manifold.wasm') } : undefined);
   wasm.setup();
 
-  // Objekty knihovny žijí v paměti WASM a uvolňují se ručně.
+  // Objects of the library live in WASM memory and are freed by hand.
   const toManifold = (s: Solid): Manifold =>
     new wasm.Manifold(new wasm.Mesh({ numProp: 3, vertProperties: Float32Array.from(s.positions), triVerts: s.triangles, faceID: s.faceIds }));
 
@@ -44,23 +44,24 @@ export async function createManifoldKernel(options: ManifoldKernelOptions = {}):
       return m;
     };
     try {
-      // Vstup se ověřuje před předáním knihovně. Ta vadnou síť odmítne výjimkou, ale objekt, který
-      // přitom zahodí, neuvolní; a obrácenou orientaci nebo čísla stěn od 2^31 přijme potichu.
+      // The input is checked before it is handed to the library. The library refuses a faulty mesh
+      // with an exception but does not free the object it drops in doing so; and it silently takes
+      // an inverted orientation or face numbers from 2^31.
       const load = (name: string, s: Solid): Manifold => {
         const problem = inputProblem(s);
-        if (problem) throw new Error(`jádro nepřijalo vstup (${name}): ${problem}`);
+        if (problem) throw new Error(`the kernel did not accept the input (${name}): ${problem}`);
         try {
           return keep(toManifold(s));
         } catch (error) {
-          throw new Error(`jádro nepřijalo vstup (${name}): ${error instanceof Error ? error.message : String(error)}`);
+          throw new Error(`the kernel did not accept the input (${name}): ${error instanceof Error ? error.message : String(error)}`);
         }
       };
-      const A = load('těleso', a);
-      const B = load('nástroj', b);
+      const A = load('body', a);
+      const B = load('tool', b);
       const result = keep(op === 'union' ? A.add(B) : op === 'difference' ? A.subtract(B) : A.intersect(B));
-      if (result.status() !== 'NoError') throw new Error(`boolean selhal: ${result.status()}`);
+      if (result.status() !== 'NoError') throw new Error(`the boolean failed: ${result.status()}`);
       const mesh = result.getMesh();
-      // kopie: pole z knihovny mohou ukazovat do paměti WASM
+      // copies: the arrays from the library may point into WASM memory
       return { positions: Float32Array.from(mesh.vertProperties), triangles: Uint32Array.from(mesh.triVerts), faceIds: Uint32Array.from(mesh.faceID) };
     } finally {
       for (const m of owned) m.delete();
@@ -88,8 +89,9 @@ export async function createManifoldKernel(options: ManifoldKernelOptions = {}):
       const t = tolerances(a, b);
       const { tool, shifts } = prepareTool(op, a, b, t);
       const raw = rawBoolean(op, a, tool);
-      // Síť se čistí vždy, i když se nic neposouvalo: kde se nástroj tělesa jen dotkne hranou,
-      // nechává jádro nulové trojúhelníky s číslem stěny nástroje a stěna by se tvářila, že existuje.
+      // The mesh is always cleaned, even when nothing was shifted: where the tool touches the body
+      // only at an edge, the kernel leaves null triangles with the face number of the tool, and the
+      // face would look as if it existed.
       const out = restore && shifts.size > 0 ? restoreShifted(raw, shifts, b, tool, a, t) : clean(raw, t.weld);
       const refusal = verify(out, t);
       if (!refusal) return out;
@@ -116,15 +118,16 @@ export async function createManifoldKernel(options: ManifoldKernelOptions = {}):
       return { unverified: mesh };
     },
 
-    // Vnější smyčka proti směru hodin, díry po směru; trojúhelníky pak vycházejí proti směru hodin.
+    // The outer loop counter-clockwise, holes clockwise; the triangles then come out counter-clockwise.
     triangulate(loops) {
       if (loops.length === 0) return new Uint32Array(0);
       for (const loop of loops) {
-        if (loop.length % 2 !== 0 || loop.length < 6) throw new Error('triangulace: smyčka potřebuje aspoň tři body (dvojice x, y)');
-        if (!loop.every(Number.isFinite)) throw new Error('triangulace: souřadnice musí být konečná čísla');
+        if (loop.length % 2 !== 0 || loop.length < 6) throw new Error('triangulation: a loop needs at least three points (pairs x, y)');
+        if (!loop.every(Number.isFinite)) throw new Error('triangulation: coordinates must be finite numbers');
       }
-      // Obalová funkce knihovny neuvolňuje vektor s výsledkem ani dočasné vektory smyček (u velké
-      // smyčky kilobajty na volání). Volá se proto funkce pod ní a vše se uvolní zde.
+      // The wrapper function of the library frees neither the vector with the result nor the
+      // temporary vectors of the loops (kilobytes per call for a large loop). The function beneath it
+      // is therefore called, and everything is freed here.
       const raw = wasm as unknown as RawTriangulate;
       const outer = new raw.Vector2_vec2();
       const inner: EmbindVector[] = [];
@@ -156,14 +159,15 @@ export async function createManifoldKernel(options: ManifoldKernelOptions = {}):
 
 // The two checks of a cleaned result; the message of the refusal, or undefined when it passes.
 function verify(out: Solid, t: Tolerances): string | undefined {
-  if (!isClosed(out)) return 'výsledek booleanu není uzavřená plocha (těleso se nejspíš samo sebe dotýká jen hranou nebo vrcholem)';
-  // Detail menší než přesah (asi 1e-4 rozměru modelu) těsně u lícujících stěn návrat nezvládne:
-  // vrcholy se při něm předběhnou a trojúhelník se otočí. Lepší chyba než potichu vadná síť.
-  if (isFolded(out, t) || isFolded(out, tolerances(out))) return 'výsledek booleanu má přeložený trojúhelník (detail menší než tolerance jádra u lícujících stěn)';
+  if (!isClosed(out)) return 'the result of the boolean is not a closed surface (the body most likely touches itself only at an edge or a vertex)';
+  // A detail smaller than the overlap (about 1e-4 of the size of the model) right next to flush
+  // faces is beyond the restore: the vertices overtake each other in it and a triangle turns over.
+  // An error is better than a silently faulty mesh.
+  if (isFolded(out, t) || isFolded(out, tolerances(out))) return 'the result of the boolean has a folded triangle (a detail smaller than the kernel tolerance at flush faces)';
   return undefined;
 }
 
-// Vnitřní rozhraní knihovny (embind), které její typy nepopisují.
+// The inner interface of the library (embind), which its types do not describe.
 interface EmbindVector {
   push_back(value: unknown): void;
   size(): number;
@@ -183,16 +187,16 @@ function sharedFace(a: Solid, b: Solid): number | undefined {
   return undefined;
 }
 
-// Proč vstupní těleso nejde použít; undefined = v pořádku. Prázdné těleso je v pořádku.
+// Why the input body cannot be used; undefined = fine. An empty body is fine.
 function inputProblem(s: Solid): string | undefined {
   const count = s.triangles.length / 3;
-  if (!Number.isInteger(count) || s.positions.length % 3 !== 0) return 'délka polí neodpovídá trojicím';
-  if (s.faceIds.length !== count) return 'počet čísel stěn neodpovídá počtu trojúhelníků';
-  for (const id of s.faceIds) if (id >= 0x80000000) return 'číslo stěny je mimo rozsah jádra';
-  if (!s.positions.every(Number.isFinite)) return 'souřadnice nejsou konečná čísla';
+  if (!Number.isInteger(count) || s.positions.length % 3 !== 0) return 'the length of the arrays does not match triples';
+  if (s.faceIds.length !== count) return 'the count of face numbers does not match the count of triangles';
+  for (const id of s.faceIds) if (id >= 0x80000000) return 'a face number is outside the range of the kernel';
+  if (!s.positions.every(Number.isFinite)) return 'the coordinates are not finite numbers';
   const vertexCount = s.positions.length / 3;
-  for (const i of s.triangles) if (i >= vertexCount) return 'index vrcholu mimo rozsah';
-  if (!isClosed(s)) return 'síť není uzavřená plocha';
+  for (const i of s.triangles) if (i >= vertexCount) return 'a vertex index is out of range';
+  if (!isClosed(s)) return 'the mesh is not a closed surface';
   let volume = 0;
   for (let t = 0; t < count; t++) {
     const [a, b, c] = [0, 1, 2].map((k) => 3 * s.triangles[3 * t + k]);
@@ -200,6 +204,6 @@ function inputProblem(s: Solid): string | undefined {
     volume +=
       p[a] * (p[b + 1] * p[c + 2] - p[b + 2] * p[c + 1]) + p[a + 1] * (p[b + 2] * p[c] - p[b] * p[c + 2]) + p[a + 2] * (p[b] * p[c + 1] - p[b + 1] * p[c]);
   }
-  if (volume < 0) return 'síť je orientovaná dovnitř';
+  if (volume < 0) return 'the mesh is oriented inwards';
   return undefined;
 }

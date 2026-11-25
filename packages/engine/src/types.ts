@@ -1,9 +1,9 @@
-// Veřejné typy enginu: dokument, porty, výsledek přepočtu a API.
-// Zdrojem pravdy je docs/architecture.md; typy se s ním mají shodovat.
+// Public types of the engine: the document, the ports, the result of the recompute and the API.
+// The source of truth is docs/architecture/ (docs/architecture.md says which file holds what); the types are to agree with it.
 import type { ExportFormat, ExportOptions } from './export/spec';
 import type { QueryArgs, QueryName, QueryResult } from './query/spec';
 
-export type Id = string; // trvalé, nikdy se nerecykluje
+export type Id = string; // permanent, never recycled
 export type Vec2 = [number, number];
 export type Vec3 = [number, number, number];
 export interface Point2 {
@@ -11,17 +11,17 @@ export interface Point2 {
   y: number;
 }
 
-// ---------------------------------------------------------------- dokument
+// ---------------------------------------------------------------- document
 
 export interface Document {
   schemaVersion: number; // 3; `load` upgrades an older document
   schemaSteps?: string[]; // written only by a build of a branch that is not merged yet; never send it
   settings: {
-    chordTolerance: number; // dělení oblouků na segmenty
+    chordTolerance: number; // division of arcs into segments
   };
   parameters: Parameter[]; // named parameters; the order is for display only
   checks: Check[]; // checks: expressions that are supposed to hold
-  features: Feature[]; // časová osa
+  features: Feature[]; // the timeline
   // Properties of bodies by body ID (D48), also of a derived one (`<pattern>/<number>`): always
   // present, `{}` when nothing is set. Not part of the timeline: a change of a property recomputes
   // no geometry. An entry whose body no state has stays (the feature was removed or suppressed,
@@ -290,7 +290,7 @@ export interface FeatureBase {
 export interface PlaneFeature extends FeatureBase {
   type: 'plane';
   base: PlaneRef;
-  offset: number; // posun ve směru normály základu
+  offset: number; // shift along the normal of the base
   midplaneWith?: PlaneRef;
   tilt?: { axis: AxisRef; angle: number };
 }
@@ -300,17 +300,17 @@ export interface PlaneFeature extends FeatureBase {
 export interface SketchFeature extends FeatureBase {
   type: 'sketch';
   plane: PlaneRef;
-  points: Record<Id, Point2>; // řešené proměnné: polohy bodů
-  radii: Record<Id, number>; // řešené proměnné: poloměry kružnic
+  points: Record<Id, Point2>; // solved variables: positions of points
+  radii: Record<Id, number>; // solved variables: radii of circles
   curves: Record<Id, Curve>;
   constraints: Record<Id, Constraint>;
-  external: Record<Id, ExternalRef>; // promítnutá geometrie
-  solved: SolveStamp; // pro jaké vstupy uložené proměnné platí
+  external: Record<Id, ExternalRef>; // projected geometry
+  solved: SolveStamp; // which inputs the stored variables hold for
 }
 
 export interface SolveStamp {
-  inputs: string; // otisk křivek, vazeb a hodnot promítnuté geometrie; počítá engine
-  external: Record<Id, StoredValue>; // poslední platné hodnoty promítnuté geometrie
+  inputs: string; // fingerprint of the curves, constraints and values of projected geometry; computed by the engine
+  external: Record<Id, StoredValue>; // last valid values of projected geometry
 }
 
 // What `solved.external` holds per entry of reference geometry: positions (`Projected`), or the
@@ -339,9 +339,9 @@ export type Projected =
   | { kind: 'arc'; center: Vec2; start: Vec2; end: Vec2 };
 
 export type CurveShape =
-  | { type: 'line'; a: Id; b: Id } // ID bodů
-  | { type: 'circle'; center: Id } // poloměr je v `radii`
-  | { type: 'arc'; center: Id; start: Id; end: Id } // proti směru hodin
+  | { type: 'line'; a: Id; b: Id } // IDs of points
+  | { type: 'circle'; center: Id } // the radius is in `radii`
+  | { type: 'arc'; center: Id; start: Id; end: Id } // counter-clockwise
   // A spline: a smooth curve over control points (D70).
   // - `points`: the control points in order, own points of the sketch or `origin`, 3 to 64. The
   //   curve starts at the first and ends at the last; the points between pull it and lie off it in
@@ -413,7 +413,7 @@ export type ExternalRef = EdgeProjection | SketchPattern | SketchProjection | Sk
 // expressions, and the flag `regions` of a projection from a sketch may be left out (false).
 export type ExternalInput = Input<EdgeProjection> | Input<SketchPattern> | (Omit<SketchProjection, 'regions'> & { regions?: boolean }) | OutlineInput;
 
-// The projection of an edge of a body into the sketch. kind: jako co se hrana promítá
+// The projection of an edge of a body into the sketch. kind: what the edge is projected as
 export interface EdgeProjection {
   type: 'edge';
   body: Id;
@@ -638,19 +638,19 @@ export type SketchTransform =
   | { type: 'linear'; direction: Id; count: number; span: LinearSpan; second?: { direction: Id; count: number; span: LinearSpan } }
   | { type: 'circular'; center: Id; count: number; span: { type: 'full' } | { type: 'angle'; angle: number } };
 
-// Každá varianta má pojmenované operandy s pevným významem.
+// Every variant has named operands with a fixed meaning.
 // A line operand may be an axis of the origin, `origin/x` or `origin/y` (a driving constraint needs
 // at least one own operand, as for any fixed entity), except in `midpoint` and `equalLength`.
 export type Constraint = GeometricConstraint | Dimension;
 
 export type GeometricConstraint =
-  | { type: 'coincident'; a: Id; b: Id } // bod, bod
+  | { type: 'coincident'; a: Id; b: Id } // point, point
   | { type: 'pointOnCurve'; point: Id; curve: Id }
   | { type: 'horizontal' | 'vertical'; line: Id }
-  | { type: 'parallel' | 'perpendicular' | 'equalLength'; a: Id; b: Id } // úsečky
-  | { type: 'tangent'; a: Id; b: Id } // úsečka–kružnice/oblouk, nebo dvě kružnice/oblouky
-  | { type: 'symmetric'; a: Id; b: Id; line: Id } // body a, b souměrně podle přímky úsečky (osy)
-  | { type: 'midpoint'; point: Id; line: Id } // bod ve středu úsečky
+  | { type: 'parallel' | 'perpendicular' | 'equalLength'; a: Id; b: Id } // lines
+  | { type: 'tangent'; a: Id; b: Id } // line–circle/arc, or two circles/arcs
+  | { type: 'symmetric'; a: Id; b: Id; line: Id } // points a, b symmetric about the infinite line of the line (the axis)
+  | { type: 'midpoint'; point: Id; line: Id } // a point at the middle of the line
   | { type: 'equalRadius'; a: Id; b: Id } // circles or arcs
   // The point lies at the coordinates of the sketch. `x` and `y` are numeric fields
   // (`constraints/<id>/x`, `constraints/<id>/y`), so they may be expressions and the point moves
@@ -661,10 +661,10 @@ export type GeometricConstraint =
 export type FixedInput = { type: 'fixed'; point: Id; x?: number | Expr; y?: number | Expr };
 
 export type DimensionShape =
-  | { type: 'distance'; a: Id; b: Id } // bod–bod
+  | { type: 'distance'; a: Id; b: Id } // point–point
   | { type: 'distancePointLine'; point: Id; line: Id }
-  | { type: 'horizontalDistance' | 'verticalDistance'; a: Id; b: Id } // orientovaná: b − a
-  | { type: 'angle'; a: Id; b: Id } // úsečky; od směru `a` ke směru `b`, proti směru hodin, radiány
+  | { type: 'horizontalDistance' | 'verticalDistance'; a: Id; b: Id } // oriented: b − a
+  | { type: 'angle'; a: Id; b: Id } // lines; from the direction of `a` to the direction of `b`, counter-clockwise, radians
   | { type: 'radius' | 'diameter'; curve: Id };
 
 export type Dimension = { value: number; driving: boolean } & DimensionShape;
@@ -1179,8 +1179,8 @@ export type AxisRef =
   | { kind: 'sketchLine'; sketch: Id; line: Id }
   | { kind: 'face'; body: Id; face: FaceName };
 
-// Rozsah vysunutí. `start` je posun začátku od roviny skici ve směru její normály; `distance` se
-// měří od začátku, kladná míří ve směru normály a nesmí být nula.
+// The extent of an extrusion. `start` is the shift of the start from the sketch plane along its normal;
+// `distance` is measured from the start, a positive one points along the normal, and it must not be zero.
 // `throughAll` is for a cut only: the tool passes through all targets. `forward` is along the normal
 // of the sketch plane, `backward` against it, `both` on both sides; for a sketch on a face the
 // normal points out of the body, so an ordinary hole is `backward`. The length is taken from the
@@ -1253,7 +1253,7 @@ export type Extent =
   | { type: 'throughAll'; side: 'forward' | 'backward' | 'both'; from?: PlaneRef }
   | { type: 'upTo'; from?: PlaneRef; plane: PlaneRef; start: number; gap?: number };
 
-// ---------------------------------------------------------------- jména
+// ---------------------------------------------------------------- names
 
 // `curve` of a side face is the ID of the sketch curve it came from; for a generated profile it is
 // the name of the side from the generator catalog (a gear: `teeth`).
@@ -1294,9 +1294,9 @@ export type Extent =
 // The owner of a prefixed ID (the part before the first slash) must be an insertion before the
 // referring feature; whether the face is there is the recompute's question, as for every face.
 export type FaceName = (
-  | { feature: Id; role: 'side'; curve: Id } // z křivky skici
-  | { feature: Id; role: 'startCap' } // víko na začátku rozsahu (při nulovém posunu v rovině skici); of a revolve: the profile at the start of a partial turn
-  | { feature: Id; role: 'endCap' } // protější víko
+  | { feature: Id; role: 'side'; curve: Id } // from a curve of the sketch
+  | { feature: Id; role: 'startCap' } // the cap at the start of the extent (in the sketch plane when the shift is zero); of a revolve: the profile at the start of a partial turn
+  | { feature: Id; role: 'endCap' } // the opposite cap
   | { feature: Id; role: 'wallSide'; curve: Id; side: 'left' | 'right' }
   | { feature: Id; role: 'wallEnd'; point: Id }
   | { feature: Id; role: 'holeBore'; point: Id }
@@ -1316,29 +1316,29 @@ export interface CopyTag {
   index: number;
 }
 
-// a < b v lexikografickém pořadí zápisu feature/role/curve (with `@pattern:index` appended for every copy tag)
+// a < b in the lexicographic order of the notation feature/role/curve (with `@pattern:index` appended for every copy tag)
 export interface EdgeName {
   a: FaceName;
   b: FaceName;
 }
 
-// ID křivek na vnější hranici oblasti, seřazená
+// IDs of the curves on the outer boundary of the region, sorted
 export interface RegionRef {
   outerLoop: Id[];
 }
 
-// ---------------------------------------------------------------- porty
+// ---------------------------------------------------------------- ports
 
 export interface SketchSolver {
   solve(input: SolveInput): SolveResult;
 }
 
 export interface SolveInput {
-  points: Record<Id, Point2>; // počáteční odhad
-  radii: Record<Id, number>; // počáteční odhad poloměrů kružnic
-  curves: Record<Id, Curve>; // včetně promítnutých křivek
+  points: Record<Id, Point2>; // initial guess
+  radii: Record<Id, number>; // initial guess of the radii of circles
+  curves: Record<Id, Curve>; // including projected curves
   constraints: Record<Id, Constraint>;
-  fixed: Id[]; // body, které se nehýbou, a kružnice s pevným poloměrem
+  fixed: Id[]; // points that do not move, and circles with a fixed radius
   drag?: { point: Id; target: Point2 };
 }
 
@@ -1346,15 +1346,15 @@ export interface SolveResult {
   status: 'solved' | 'conflict' | 'failed';
   points: Record<Id, Point2>;
   radii: Record<Id, number>;
-  degreesOfFreedom: number; // 0 = plně určená; při konfliktu bez významu
-  conflicting: Id[]; // vazby v konfliktu
+  degreesOfFreedom: number; // 0 = fully constrained; meaningless in a conflict
+  conflicting: Id[]; // constraints in conflict
   redundant: Id[];
 }
 
 export interface Solid {
   positions: Float32Array; // xyz
-  triangles: Uint32Array; // indexy vrcholů
-  faceIds: Uint32Array; // číslo stěny pro každý trojúhelník
+  triangles: Uint32Array; // indices of vertices
+  faceIds: Uint32Array; // face number of every triangle
 }
 
 export type BooleanOp = 'union' | 'difference' | 'intersection';
@@ -1367,11 +1367,11 @@ export interface ComputedMesh {
 }
 
 export interface SolidKernel {
-  // Vyhodí výjimku, když výsledek není uzavřené těleso; engine ji ohlásí jako `kernelFailure`.
+  // Throws when the result is not a closed solid; the engine reports it as `kernelFailure`.
   // A union and a difference take operands that share no face number (D56); an implementation
   // throws for such operands. An intersection may share them.
   boolean(op: BooleanOp, a: Solid, b: Solid): Solid;
-  // 2D polygon s dírami; vrací trojice indexů do vrcholů všech smyček za sebou
+  // A 2D polygon with holes; returns triples of indices into the vertices of all loops in sequence
   triangulate(loops: Float64Array[]): Uint32Array;
   // What two solids share as the kernel computes it, for measuring only (D50): the collisions ask
   // it when `boolean('intersection', a, b)` threw, and it may only clear a pair. What an
@@ -1415,7 +1415,7 @@ export interface Deflater {
   deflate(bytes: Uint8Array): Uint8Array;
 }
 
-// ---------------------------------------------------------------- přepočet
+// ---------------------------------------------------------------- recompute
 
 export interface Frame {
   origin: Vec3;
@@ -1449,8 +1449,8 @@ export type Surface =
 
 export interface Evaluation {
   features: Record<Id, FeatureResult>;
-  bodies: Record<Id, BodyResult>; // stav po poslední vyhodnocené feature
-  faceNames: FaceName[]; // společná tabulka, index = číslo stěny
+  bodies: Record<Id, BodyResult>; // the state after the last evaluated feature
+  faceNames: FaceName[]; // a shared table, index = number of the face
   faceSurfaces: Surface[]; // the surface of every face, index = number of the face, like `faceNames`
   parameters: Record<string, ParameterResult>; // values and errors of parameters
   checks: Record<string, CheckResult>; // check results by name
@@ -1602,8 +1602,8 @@ export type EdgeKind = 'line' | 'circle' | 'coplanar' | 'other';
 
 export interface BodyResult {
   solid: Solid;
-  faces: { id: number; planar: boolean }[]; // stěny, které těleso má
-  edges: { name: EdgeName; kind: EdgeKind; segments: Float64Array }[]; // segments: úsečky, 6 čísel na úsečku
+  faces: { id: number; planar: boolean }[]; // the faces the body has
+  edges: { name: EdgeName; kind: EdgeKind; segments: Float64Array }[]; // segments: line segments, 6 numbers per segment
   volume: number; // mm³
   bounds: { min: Vec3; max: Vec3 }; // the box of the body along the axes of the model
 }
@@ -1839,9 +1839,9 @@ export interface SketchResult {
   degreesOfFreedom: number;
   conflicting: Id[];
   redundant: Id[];
-  measurements: Record<Id, number>; // hodnoty referenčních kót
+  measurements: Record<Id, number>; // values of reference dimensions
   valid: boolean; // false: the profile is invalid (curves cross or touch away from common points, or another reason); the query `sketchContacts` says where and why, and the sketch tool `split` without a curve repairs what can be cut
-  regions: { ref: RegionRef; loops: Float64Array[] }[]; // pro vykreslení a výběr
+  regions: { ref: RegionRef; loops: Float64Array[] }[]; // for drawing and selection
   // Present when ends of copies of a mirror or pattern, or of projections that form regions, stayed
   // open: why such an outline did not close (OpenEnds). An open chain is a legitimate sketch, so
   // this is no warning.
@@ -1870,33 +1870,33 @@ export interface OpenEnd {
   distance: number;
 }
 
-// Diagnostika skici na vyžádání (Engine.diagnoseSketch). Počítá se z vyřešeného stavu.
+// Diagnosis of a sketch on request (Engine.diagnoseSketch). Computed from the solved state.
 export interface SketchDiagnosis {
-  // unavailable: skica se nevyhodnotila (potlačená, chybná rovina); zbylá pole jsou pak prázdná
+  // unavailable: the sketch was not evaluated (suppressed, a faulty plane); the other fields are then empty
   status: 'solved' | 'conflict' | 'failed' | 'unavailable';
-  degreesOfFreedom: number; // při jiném stavu než solved bez významu
+  degreesOfFreedom: number; // meaningless in a status other than solved
   conflicting: Id[];
-  duplicates: Id[][]; // skupiny řídicích vazeb se stejným typem a stejnými operandy
-  redundant: Id[]; // vazby, které plynou z ostatních: po odebrání kterékoli z nich se volnost nezmění
-  removable: Id[]; // jedna sada, kterou jde odebrat celou naráz beze změny volnosti; starší vazby v ní nejsou
-  free: FreeEntity[]; // jen entity, které se ještě mohou hýbat
+  duplicates: Id[][]; // groups of driving constraints with the same type and the same operands
+  redundant: Id[]; // constraints that follow from the others: removing any one of them does not change the freedom
+  removable: Id[]; // one set that can be removed whole at once without changing the freedom; older constraints are not in it
+  free: FreeEntity[]; // only the entities that can still move
 }
 
-// Bod má volnost 1 (pohyb po křivce) nebo 2, poloměr kružnice 1. `id` je bod nebo kružnice.
+// A point has freedom 1 (motion along a curve) or 2, the radius of a circle 1. `id` is a point or a circle.
 export interface FreeEntity {
   id: Id;
   kind: 'point' | 'radius';
-  freedom: number; // o kolik klesne volnost skici, když se entita zafixuje
+  freedom: number; // by how much the freedom of the sketch drops when the entity is fixed
 }
 
 export interface ConstraintExplanation {
   redundant: boolean;
-  impliedBy: Id[]; // sada ostatních vazeb, ze kterých vazba plyne a ze které nejde nic ubrat; u nenadbytečné prázdná
+  impliedBy: Id[]; // the set of other constraints the constraint follows from, from which nothing can be removed; empty for a non-redundant one
 }
 
 export interface FeatureResult {
   status: 'ok' | 'warning' | 'suppressed' | 'error';
-  error?: Issue; // jen při status 'error'
+  error?: Issue; // only with status 'error'
   warnings: Issue[];
   // Bodies the feature created: an extrusion with the operation `new` and a split their own, a
   // pattern of a body its copies in the order of their numbers. A caller does not have to compose derived IDs.
@@ -1967,21 +1967,21 @@ export type NewFeature = Input<Feature> extends infer F
 export type Loose<T, K extends PropertyKey> = Omit<T, K> & { [P in K & keyof T]?: T[P] };
 
 export type Command =
-  // časová osa
+  // timeline
   | { type: 'addFeature'; feature: NewFeature; index?: number } // without an index at the end
   | { type: 'removeFeature'; id: Id }
   | { type: 'moveFeature'; id: Id; index: number }
   | { type: 'renameFeature'; id: Id; name: string }
   | { type: 'setSuppressed'; id: Id; suppressed: boolean }
-  // Změna roviny, vysunutí nebo pole (a pattern); obsah skici mění příkazy skici. Změna se s feature slučuje:
-  // - varianta (objekt s `type`: zdroj profilu, rozsah) se stejným `type` se slučuje po polích,
-  //   s jiným `type` dosavadní nahradí a musí být úplná;
-  // - odkaz (objekt s `kind`: rovina, osa pole) a seznam se nahrazují celé; `null` odebere nepovinné pole;
+  // A change of a plane, an extrusion or a pattern; the content of a sketch is changed by sketch commands. The change merges with the feature:
+  // - a variant (an object with `type`: the profile source, the extent) with the same `type` merges field by field,
+  //   with another `type` it replaces the current one and must be complete;
+  // - a reference (an object with `kind`: a plane, the axis of a pattern) and a list are replaced whole; `null` removes an optional field;
   // - a generated profile with another `generator` is another variant as well; its dictionaries
   //   (`operands`, `params`, `refs`) merge by entry, and `null` removes one entry: a parameter then
   //   returns to its default and loses its expression (a parameter without a default cannot be
   //   removed), a reference ceases to exist;
-  // - změna na `operation: 'new'` odebere `targets` sama;
+  // - a change to `operation: 'new'` removes `targets` by itself;
   // - only references the feature did not have before are verified (a repeated broken reference passes);
   // - a number in a field with an expression removes the expression, a string sets one; fields the
   //   patch does not mention keep theirs. Whoever sends the whole feature starts from its input form
@@ -1999,11 +1999,11 @@ export type Command =
   | { type: 'setCheck'; name: string; expr: Expr; index?: number }
   | { type: 'renameCheck'; name: string; to: string }
   | { type: 'removeCheck'; name: string }
-  // skica
+  // sketch
   | { type: 'setSketchPlane'; sketch: Id; plane: PlaneRef }
   | { type: 'addPoint'; sketch: Id; id: Id; x: number; y: number }
-  | { type: 'addCurve'; sketch: Id; id: Id; curve: Curve; radius?: number } // radius u kružnice
-  | { type: 'removeEntity'; sketch: Id; id: Id } // bod nebo křivka
+  | { type: 'addCurve'; sketch: Id; id: Id; curve: Curve; radius?: number } // radius of a circle
+  | { type: 'removeEntity'; sketch: Id; id: Id } // a point or a curve
   | { type: 'setConstruction'; sketch: Id; id: Id; construction: boolean }
   // One point of an own curve is replaced by another point; the curve keeps its ID, kind,
   // direction, construction flag, radius and every constraint on it (D52).
@@ -2111,7 +2111,7 @@ export type Command =
   | { type: 'addDocument'; id: Id; document: Document; name?: string }
   | { type: 'replaceDocument'; id: Id; document: Document; name?: string | null }
   | { type: 'removeDocument'; id: Id }
-  // složený
+  // composite
   | { type: 'batch'; commands: Command[] };
 
 // The joint of setJoint: the input form of a joint, with `null` for a drive field (removes it).
@@ -2130,7 +2130,7 @@ export interface BodyPropertiesPatch {
   mass?: number | Expr | null;
 }
 
-// Slučovací změna (viz příkaz updateFeature).
+// A merging change (see the command updateFeature).
 export type Patch<T> = T extends number
   ? number | Expr
   : T extends readonly unknown[] | { kind: string }
@@ -2252,16 +2252,16 @@ export interface ExportFile {
 // ---------------------------------------------------------------- engine
 
 export interface Engine {
-  execute(cmd: Command): CommandResult; // změní dokument, jeden krok undo
-  preview(cmd: Command, at?: Id): CommandResult; // spočítá, ale nezapíše; at = jen po danou feature
+  execute(cmd: Command): CommandResult; // changes the document, one undo step
+  preview(cmd: Command, at?: Id): CommandResult; // computes but does not write; at = only up to the given feature
   undo(): void;
   redo(): void;
-  getState(at?: Id): EngineState; // at = stav modelu po dané feature, dál se nepočítá
-  diagnoseSketch(sketch: Id): SketchDiagnosis; // nadbytečné vazby a volnost entit
-  explainConstraint(sketch: Id, constraint: Id): ConstraintExplanation; // ze kterých vazeb daná vazba plyne
+  getState(at?: Id): EngineState; // at = the state of the model after the given feature, nothing further is computed
+  diagnoseSketch(sketch: Id): SketchDiagnosis; // redundant constraints and freedom of entities
+  explainConstraint(sketch: Id, constraint: Id): ConstraintExplanation; // which constraints the given constraint follows from
   load(json: string): CommandResult;
   save(): string;
-  exportMesh(format: 'stl', bodies?: Id[]): Uint8Array; // without a list the printed bodies (use `part`); '3mf' později
+  exportMesh(format: 'stl', bodies?: Id[]): Uint8Array; // without a list the printed bodies (use `part`); '3mf' later
   interference(options?: InterferenceOptions): InterferenceReport; // which bodies share a volume
   // Asks a query of the catalog by its name. Everything new is asked this way; the methods above
   // that are queries stay for their callers. The catalog (names, arguments, what each returns) is

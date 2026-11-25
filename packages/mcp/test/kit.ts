@@ -1,4 +1,4 @@
-// Engine se skutečnými adaptéry a klient MCP propojený se serverem v paměti.
+// An engine with the real adapters and an MCP client linked to the server in memory.
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { createPakoDeflater } from '@trymesh/deflate-pako';
@@ -15,7 +15,7 @@ export const newEngine = (): Engine => createEngine(deps);
 export interface Session {
   engine: Engine;
   client: Client;
-  // Zavolá nástroj a vrátí jeho výsledek; chybu nástroje vrátí jako { error }.
+  // Calls a tool and returns its result; an error of the tool is returned as { error }.
   call(name: string, args?: Record<string, unknown>): Promise<any>;
   text(name: string, args?: Record<string, unknown>): Promise<string>;
   close(): Promise<void>;

@@ -106,9 +106,10 @@ export function sourceChain(doc: Document, body: Id): Id[] {
 // The body the chain of sources of a body starts at (D57); the body itself when it has no source.
 export const sourceRoot = (doc: Document, body: Id): Id => sourceChain(doc, body).at(-1) ?? body;
 
-// Kde odkaz nastavuje příkaz (`before` je index odkazující feature), musí cíl existovat, mít
-// správný druh a ležet před ní. Při načítání dokumentu (`before` není) se ověřuje jen tvar:
-// odkaz na feature, která v dokumentu není, vzniká povoleným smazáním.
+// Where a command sets a reference (`before` is the index of the referring feature), the target
+// must exist, have the right kind and lie before it. When a document is loaded (`before` is absent)
+// only the shape is checked: a reference to a feature that is not in the document arises from an
+// allowed deletion.
 export function requireRef(doc: Document, before: number | undefined, ref: Omit<FeatureRef, 'path'>, what: string): void {
   if (before === undefined) return;
   // a stored mesh (D55) is no feature: the section has it or not, and it has no place on the timeline
@@ -150,7 +151,7 @@ export function requireRef(doc: Document, before: number | undefined, ref: Omit<
   }
   const { feature, local } = ref.kind === 'body' ? bodyOwner(ref.id) : { feature: ref.id, local: undefined };
   const index = doc.features.findIndex((f) => f.id === feature);
-  if (index < 0) fail(`${what}: feature "${ref.id}" neexistuje`);
+  if (index < 0) fail(`${what}: the feature "${ref.id}" does not exist`);
   const target = doc.features[index];
   const spec = specOf(target);
   if (ref.kind === 'generated') {
@@ -169,12 +170,12 @@ export function requireRef(doc: Document, before: number | undefined, ref: Omit<
             : ref.kind === 'insertion'
               ? target.type === 'insert'
               : target.type === ref.kind;
-    if (!accepted) fail(`${what}: feature "${ref.id}" není ${REF_LABEL[ref.kind]}`);
+    if (!accepted) fail(`${what}: feature "${ref.id}" is not ${REF_LABEL[ref.kind]}`);
     // a body of an insertion: the stored document can make it there (D62)
     const inner = ref.kind === 'body' && target.type === 'insert' ? insertedBodyProblem(doc, target, local as Id) : undefined;
     if (inner) fail(`${what}: ${inner}`);
   }
-  if (index >= before) fail(`${what}: feature "${ref.id}" musí ležet před odkazující feature`);
+  if (index >= before) fail(`${what}: feature "${ref.id}" must lie before the referring feature`);
 }
 
 // The context of a validator or of a command that checks a reference: `requireRef` bound to the

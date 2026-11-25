@@ -6,14 +6,14 @@ import { polyline } from '../sketch-view';
 import { type SketchPlaceTool, anchor, drawn } from './spec';
 
 export const line: SketchPlaceTool<undefined> = {
-  label: 'Úsečka',
-  hint: 'Klikejte na konce úseček; řetěz ukončí Esc nebo napojení na existující bod.',
+  label: 'Line',
+  hint: 'Click the ends of the lines; Esc or joining an existing point ends the chain.',
   clicks: 2,
   infer: true,
   click: (host, m, places, context) => {
     const [from, to] = places.map(anchor);
     const made = lineCommands(m.id, context.view, from, to, host.newId, m.infer === 'extension' ? undefined : m.infer);
-    // řetěz pokračuje z konce, dokud se nenapojí na existující bod
+    // the chain goes on from the end until it joins an existing point
     if (made && drawn(host, m, made.commands) && to.snap?.kind !== 'point') return [{ at: to.at, snap: { kind: 'point', id: made.end } }];
   },
   draw: ([first], cursor) => (first ? [polyline({ type: 'line', a: first, b: cursor.at })] : []),

@@ -193,7 +193,7 @@ describe('an operation of the app', () => {
     const unsubscribe = app.subscribe(() => {
       throw new Error('a listener fell over');
     });
-    expect((await session.call('execute', { command: disc })).error).toMatch(/the app failed \(the change may have been made already; check the state\): a listener fell over/);
+    expect((await session.call('execute', { command: disc })).error).toMatch(/an error occurred in the app \(the change may already have been made, check the state\): a listener fell over/);
     unsubscribe();
     connection.stop();
     await until(() => !bridge.connected(), 'the app to disconnect');

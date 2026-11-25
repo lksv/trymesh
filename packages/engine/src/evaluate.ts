@@ -1,4 +1,5 @@
-// Přepočet: přehrání časové osy s memoizací. Pravidla jsou v docs/architecture.md, sekce Přepočet.
+// Recompute: replay of the timeline with memoisation. The rules are in
+// docs/architecture/recompute.md, section "Recompute".
 import { checkNumber } from './catalog';
 import { atPath, fieldsOf, withPath } from './document';
 import { type Environment, evaluateCheck, evaluateNumber, evaluateParameters } from './expression';
@@ -14,8 +15,8 @@ import type { Document, Evaluation, ExpressionError, Feature, FieldPath, Id, Sur
 export type { Deps, DragTarget, Placement, SketchState, ToolRecipe, WriteBack } from './recompute/state';
 
 export interface EvaluateOptions {
-  upTo?: Id; // skončit u této feature
-  drag?: DragTarget; // tažení bodu, viz Řešení skici
+  upTo?: Id; // stop at this feature
+  drag?: DragTarget; // the drag of a point, see "Solving the sketch"
 }
 
 // The state a feature's step started from and led to, for features whose result is written back to
@@ -38,8 +39,9 @@ interface Resolution {
 }
 const RESOLUTIONS_KEPT = 8; // per feature; a preview while typing alternates between a few values
 
-// Přepočet s cache. Stav po každé feature se pamatuje podle identity objektu feature a identity
-// předchozího stavu, takže nezměněný začátek časové osy se nepočítá znovu.
+// Recompute with a cache. The state after each feature is memoised by the identity of the feature
+// object and the identity of the previous state, so an unchanged start of the timeline is not
+// computed again.
 export class Evaluator {
   private readonly memo = new WeakMap<Resolution, WeakMap<State, Remembered>>();
   private readonly resolutions = new WeakMap<Feature, Map<string, Resolution>>();
@@ -114,8 +116,9 @@ export class Evaluator {
     return resolution;
   }
 
-  // Vyhodnocená skica ve svém místě časové osy; undefined, když se nevyhodnotila (potlačená,
-  // chybná rovina). Objekt je pro nezměněný dokument tentýž, hodí se jako klíč cache.
+  // The evaluated sketch at its place in the timeline; undefined when it did not evaluate
+  // (suppressed, a faulty plane). The object is the same for an unchanged document, so it serves as
+  // a cache key.
   sketchState(doc: Document, sketch: Id): SketchState | undefined {
     return lookup(this.run(doc, { upTo: sketch }).state.sketches, sketch);
   }
@@ -140,7 +143,7 @@ export class Evaluator {
       }
       if (step.writeBack || resolution.feature !== feature) {
         writeBacks.set(feature.id, { feature: resolution.feature, ...(step.writeBack ? { solved: step.writeBack } : {}) });
-        trace.set(feature.id, { before: state, after: step.state, ...(input ? { input } : {}) }); // pro převěšení cache po zápisu výsledku
+        trace.set(feature.id, { before: state, after: step.state, ...(input ? { input } : {}) }); // for re-keying the cache after the result is written
       }
       state = step.state;
       if (feature.id === options.upTo) break;
@@ -171,7 +174,7 @@ export class Evaluator {
     const fields = { ...(resolution.values && Object.keys(resolution.values).length ? { values: resolution.values } : {}), ...(errors ? { fieldErrors: errors } : {}) };
     const done: Done = (result, change = {}) => ({ ...state, ...change, features: { ...state.features, [feature.id]: { bodies: [], ...result, ...fields } } });
     const failed: Failed = (code, refs, detail) => ({ state: done({ status: 'error', error: issue(code, refs, detail), warnings: [] }) });
-    // Potlačená feature je prázdná operace; co na ní závisí, skončí v chybě.
+    // A suppressed feature is an empty operation; what depends on it ends in an error.
     if (feature.suppressed) return { state: done({ status: 'suppressed', warnings: [] }) };
     const spec = specOf(feature);
     // A bad expression is an error of the feature. A type that keeps the last valid values (the

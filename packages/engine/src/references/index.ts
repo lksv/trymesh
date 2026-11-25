@@ -113,7 +113,7 @@ export function updateProblem(sketch: SketchFeature, id: Id, before: ExternalRef
   const byOperand = answersEntity(before) || answersEntity(after);
   if (!byOperand) {
     const [was, will] = [kindOf(before).entities(id, before, sketch), kindOf(after).entities(id, after, sketch)];
-    if (Object.keys(will).some((entity) => has(was, entity) && was[entity] !== will[entity])) return 'druh promítnutí změnit nejde';
+    if (Object.keys(will).some((entity) => has(was, entity) && was[entity] !== will[entity])) return 'the kind of a projection cannot be changed';
   }
   const { gone, changed } = updateHolds(sketch, id, before, after);
   if (gone.length > 0) return ENTITY_TAKEN(id, gone);

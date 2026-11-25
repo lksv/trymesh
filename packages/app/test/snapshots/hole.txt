@@ -3,24 +3,24 @@
   document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":10}
   toolbar:
       div.group
-        button title="Prázdný dokument": "Nový"
-        button: "Otevřít"
-        button: "Uložit"
+        button title="Empty document": "New"
+        button: "Open"
+        button: "Save"
         button disabled: "Export STL"
         input type=file hidden
       div.group
-        button title="Propojit s MCP serverem (packages/mcp): AI pak čte a mění dokument otevřený v aplikaci": "AI"
+        button title="Connect to the MCP server (packages/mcp): the AI then reads and changes the document open in the app": "AI"
       div.group
-        button disabled title="Ctrl+Z": "↶ Zpět"
-        button disabled title="Ctrl+Shift+Z": "↷ Znovu"
+        button disabled title="Ctrl+Z": "↶ Undo"
+        button disabled title="Ctrl+Shift+Z": "↷ Redo"
       div.group
-        button title="Nová skica na rovině nebo rovinné stěně": "Skica"
-        button title="Vysunout oblasti skici": "Vysunutí"
+        button title="A new sketch on a plane or a planar face": "Sketch"
+        button title="Extrude regions of a sketch": "Extrude"
         button title="Turn regions of a sketch about an axis in its plane": "Revolve"
         button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
         button title="Chamfer edges of a body by a distance": "Chamfer"
         button title="Round edges of a body by a radius": "Fillet"
-        button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
+        button title="A plane offset from a plane or a planar face": "Plane"
         button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
         button title="Place a stored mesh (a bought part read from an STL file) as a body": "Mesh"
         button title="Insert another document (a part saved as a document file) as a part of this one": "Insert"
@@ -57,15 +57,15 @@
           option value="mjcf" title="The mechanism as a MuJoCo model: a folder with robot.xml and one binary STL per body in metres in the frame of its link. One tree from one root link, welded to the world; the frame of a link at the axis of its joint with the axes of the model; the mass, centre of mass and inertia of each link from its bodies (query mass); a mesh geom per body, the two links of a joint excluded from contact; a motor per joint with an `effort` (with `gearRatio`), `rotorInertia · gearRatio²` as the armature of the joint, and the pose of the document as the keyframe `pose`.": "MJCF (MuJoCo)"
         button disabled title="Check which bodies share a volume": "Collisions"
       div.group
-        button: "Zobrazit vše"
+        button: "Fit all"
         button disabled title="Save a picture of the model as PNG: the bodies that are shown, from the camera of the view and cut as the view is; without the selection, sketches, planes and dimensions": "Save picture"
-        button.active title="Zobrazit nebo skrýt roviny XY, XZ, YZ": "Základní roviny"
+        button.active title="Show or hide the planes XY, XZ, YZ": "Base planes"
   timeline:
-      h2: "Časová osa"
-      p.hint: "Zatím prázdná. Nové prvky se objeví zde."
+      h2: "Timeline"
+      p.hint: "Empty so far. New features will appear here."
   panel:
       h2: "Model"
-      p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
+      p.hint: "The right mouse button orbits, the wheel zooms, the middle button (or Shift + right) pans. On a touchpad: Alt/Option + drag orbits, Alt + Shift + drag pans, two fingers zoom. A feature on the timeline is edited by a double click."
       h2: "Parameters (0)"
       div.constraint
         input.pname value="" placeholder="name"
@@ -90,7 +90,7 @@
   view: fit [-20, -20, -20] .. [20, 20, 20]
 
 === 2. a new hole: the latest sketch, its body the target, a plain hole through all backward, no point ticked yet
-  engine: execute({"type":"batch","commands":[{"type":"addFeature","feature":{"id":"s1","name":"Skica 1","suppressed":false,"type":"sketch","plane":{"kind":"base","plane":"XY"},"points":{},"radii":{},"curves":{},"constraints":{},"external":{},"solved":{"inputs":"","external":{}}},"index":0}]}) -> ok
+  engine: execute({"type":"batch","commands":[{"type":"addFeature","feature":{"id":"s1","name":"Sketch 1","suppressed":false,"type":"sketch","plane":{"kind":"base","plane":"XY"},"points":{},"radii":{},"curves":{},"constraints":{},"external":{},"solved":{"inputs":"","external":{}}},"index":0}]}) -> ok
   engine: getState("s1")
   engine: diagnoseSketch("s1")  (x2)
   engine: getState("s1")
@@ -100,12 +100,12 @@
   engine: execute({"type":"batch","commands":[{"type":"addPoint","sketch":"s1","id":"p1","x":40,"y":0},{"type":"addPoint","sketch":"s1","id":"p2","x":40,"y":30},{"type":"addPoint","sketch":"s1","id":"p3","x":0,"y":30},{"type":"addCurve","sketch":"s1","id":"c1","curve":{"type":"line","a":"origin","b":"p1"}},{"type":"addConstraint","sketch":"s1","id":"k1","constraint":{"type":"horizontal","line":"c1"}},{"type":"addCurve","sketch":"s1","id":"c2","curve":{"type":"line","a":"p1","b":"p2"}},{"type":"addConstraint","sketch":"s1","id":"k2","constraint":{"type":"vertical","line":"c2"}},{"type":"addCurve","sketch":"s1","id":"c3","curve":{"type":"line","a":"p2","b":"p3"}},{"type":"addConstraint","sketch":"s1","id":"k3","constraint":{"type":"horizontal","line":"c3"}},{"type":"addCurve","sketch":"s1","id":"c4","curve":{"type":"line","a":"p3","b":"origin"}},{"type":"addConstraint","sketch":"s1","id":"k4","constraint":{"type":"vertical","line":"c4"}}]}) -> ok
   engine: diagnoseSketch("s1")
   engine: getState("s1")  (x2)
-  engine: preview({"type":"addFeature","feature":{"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"operation":"new"},"index":1}, "e1") -> ok
+  engine: preview({"type":"addFeature","feature":{"id":"e1","name":"Extrude 1","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"operation":"new"},"index":1}, "e1") -> ok
   engine: getState("s1")  (x3)
-  engine: preview({"type":"addFeature","feature":{"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"operation":"new"},"index":1}, "e1") -> ok
+  engine: preview({"type":"addFeature","feature":{"id":"e1","name":"Extrude 1","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"operation":"new"},"index":1}, "e1") -> ok
   engine: getState("s1")  (x4)
-  engine: execute({"type":"addFeature","feature":{"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"operation":"new"},"index":1}) -> ok
-  engine: execute({"type":"batch","commands":[{"type":"addFeature","feature":{"id":"s2","name":"Skica 2","suppressed":false,"type":"sketch","plane":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}},"points":{},"radii":{},"curves":{},"constraints":{},"external":{},"solved":{"inputs":"","external":{}}},"index":2},{"type":"addExternal","sketch":"s2","id":"x1","ref":{"type":"edge","body":"e1","edge":{"a":{"feature":"e1","role":"endCap"},"b":{"feature":"e1","role":"side","curve":"c1"}},"kind":"line"}},{"type":"addExternal","sketch":"s2","id":"x2","ref":{"type":"edge","body":"e1","edge":{"a":{"feature":"e1","role":"endCap"},"b":{"feature":"e1","role":"side","curve":"c2"}},"kind":"line"}},{"type":"addExternal","sketch":"s2","id":"x3","ref":{"type":"edge","body":"e1","edge":{"a":{"feature":"e1","role":"endCap"},"b":{"feature":"e1","role":"side","curve":"c3"}},"kind":"line"}},{"type":"addExternal","sketch":"s2","id":"x4","ref":{"type":"edge","body":"e1","edge":{"a":{"feature":"e1","role":"endCap"},"b":{"feature":"e1","role":"side","curve":"c4"}},"kind":"line"}}]}) -> ok
+  engine: execute({"type":"addFeature","feature":{"id":"e1","name":"Extrude 1","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"operation":"new"},"index":1}) -> ok
+  engine: execute({"type":"batch","commands":[{"type":"addFeature","feature":{"id":"s2","name":"Sketch 2","suppressed":false,"type":"sketch","plane":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}},"points":{},"radii":{},"curves":{},"constraints":{},"external":{},"solved":{"inputs":"","external":{}}},"index":2},{"type":"addExternal","sketch":"s2","id":"x1","ref":{"type":"edge","body":"e1","edge":{"a":{"feature":"e1","role":"endCap"},"b":{"feature":"e1","role":"side","curve":"c1"}},"kind":"line"}},{"type":"addExternal","sketch":"s2","id":"x2","ref":{"type":"edge","body":"e1","edge":{"a":{"feature":"e1","role":"endCap"},"b":{"feature":"e1","role":"side","curve":"c2"}},"kind":"line"}},{"type":"addExternal","sketch":"s2","id":"x3","ref":{"type":"edge","body":"e1","edge":{"a":{"feature":"e1","role":"endCap"},"b":{"feature":"e1","role":"side","curve":"c3"}},"kind":"line"}},{"type":"addExternal","sketch":"s2","id":"x4","ref":{"type":"edge","body":"e1","edge":{"a":{"feature":"e1","role":"endCap"},"b":{"feature":"e1","role":"side","curve":"c4"}},"kind":"line"}}]}) -> ok
   engine: getState("s2")
   engine: diagnoseSketch("s2")  (x2)
   engine: getState("s2")
@@ -120,7 +120,7 @@
   engine: getState("s2")  (x3)
   features: s1, e1, s2
   feature s1:
-      {"id":"s1","name":"Skica 1","suppressed":false,"type":"sketch","plane":{"kind":"base","plane":"XY"}}
+      {"id":"s1","name":"Sketch 1","suppressed":false,"type":"sketch","plane":{"kind":"base","plane":"XY"}}
       point p1: {"x":40,"y":0}
       point p2: {"x":40,"y":30}
       point p3: {"x":0,"y":30}
@@ -133,9 +133,9 @@
       constraint k3: {"type":"horizontal","line":"c3"}
       constraint k4: {"type":"vertical","line":"c4"}
   feature e1:
-      {"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"extent":{"type":"distance","start":0,"distance":10},"operation":"new"}
+      {"id":"e1","name":"Extrude 1","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"extent":{"type":"distance","start":0,"distance":10},"operation":"new"}
   feature s2:
-      {"id":"s2","name":"Skica 2","suppressed":false,"type":"sketch","plane":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}}}
+      {"id":"s2","name":"Sketch 2","suppressed":false,"type":"sketch","plane":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}}}
       point p4: {"x":10,"y":10}
       point p5: {"x":30,"y":10}
       external x1: {"type":"edge","body":"e1","edge":{"a":{"feature":"e1","role":"endCap"},"b":{"feature":"e1","role":"side","curve":"c1"}},"kind":"line"}
@@ -145,13 +145,13 @@
   toolbar:
     +   button: "Export STL"
     -   button disabled: "Export STL"
-    -   button title="Nová skica na rovině nebo rovinné stěně": "Skica"
-    -   button title="Vysunout oblasti skici": "Vysunutí"
+    -   button title="A new sketch on a plane or a planar face": "Sketch"
+    -   button title="Extrude regions of a sketch": "Extrude"
     -   button title="Turn regions of a sketch about an axis in its plane": "Revolve"
     -   button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
     -   button title="Chamfer edges of a body by a distance": "Chamfer"
     -   button title="Round edges of a body by a radius": "Fillet"
-    -   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
+    -   button title="A plane offset from a plane or a planar face": "Plane"
     -   button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
     -   button title="Place a stored mesh (a bought part read from an STL file) as a body": "Mesh"
     -   button title="Insert another document (a part saved as a document file) as a part of this one": "Insert"
@@ -193,33 +193,33 @@
   timeline:
     + div.row.ok
     +   span.dot: "●"
-    +   span.name: "Skica 1"
+    +   span.name: "Sketch 1"
     +   button.icon disabled title="Hide or show": "👁"
-    +   button.icon disabled title="Posunout dřív": "↑"
-    +   button.icon disabled title="Posunout později": "↓"
-    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon disabled title="Move earlier": "↑"
+    +   button.icon disabled title="Move later": "↓"
+    +   button.icon disabled title="Roll the model back to here: further features are inserted after this one": "⇤"
     + div.row.ok
     +   span.dot: "●"
-    +   span.name: "Vysunutí 1"
+    +   span.name: "Extrude 1"
     +   button.icon disabled title="Hide or show": "👁"
-    +   button.icon disabled title="Posunout dřív": "↑"
-    +   button.icon disabled title="Posunout později": "↓"
-    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon disabled title="Move earlier": "↑"
+    +   button.icon disabled title="Move later": "↓"
+    +   button.icon disabled title="Roll the model back to here: further features are inserted after this one": "⇤"
     + div.row.ok.selected
     +   span.dot: "●"
-    +   span.name: "Skica 2"
+    +   span.name: "Sketch 2"
     +   button.icon disabled title="Hide or show": "👁"
-    +   button.icon disabled title="Posunout dřív": "↑"
-    +   button.icon disabled title="Posunout později": "↓"
-    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
-    - p.hint: "Zatím prázdná. Nové prvky se objeví zde."
+    +   button.icon disabled title="Move earlier": "↑"
+    +   button.icon disabled title="Move later": "↓"
+    +   button.icon disabled title="Roll the model back to here: further features are inserted after this one": "⇤"
+    - p.hint: "Empty so far. New features will appear here."
   panel:
     + h2: "New hole"
     + label
     +   "Sketch"
     +   select value="s2"
-    +     option value="s1": "Skica 1"
-    +     option selected value="s2": "Skica 2"
+    +     option value="s1": "Sketch 1"
+    +     option selected value="s2": "Sketch 2"
     + fieldset
     +   legend: "Points"
     +   label.check
@@ -262,7 +262,7 @@
     +   legend: "Target bodies"
     +   label.check
     +     input type=checkbox checked
-    +     "Vysunutí 1"
+    +     "Extrude 1"
     + label
     +   "Label (for people and a parts list; empty = none)"
     +   input value=""
@@ -298,9 +298,9 @@
     + p#draft-problem.issue.error
     + div.buttons
     +   button.primary disabled: "OK"
-    +   button: "Zrušit"
+    +   button: "Cancel"
     - h2: "Model"
-    - p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
+    - p.hint: "The right mouse button orbits, the wheel zooms, the middle button (or Shift + right) pans. On a touchpad: Alt/Option + drag orbits, Alt + Shift + drag pans, two fingers zoom. A feature on the timeline is edited by a double click."
     - h2: "Parameters (0)"
     - div.constraint
     -   input.pname value="" placeholder="name"
@@ -354,7 +354,7 @@
 === 4. a counterbore: the diameter kept, the head empty, the preview asks for it
   engine: preview({"type":"addFeature","feature":{"id":"d1","name":"Hole 1","suppressed":false,"type":"hole","sketch":"s2","points":["p4","p5"],"shape":{"type":"plain","diameter":3},"extent":{"type":"throughAll","side":"backward"},"targets":["e1"]},"index":3}, "d1") -> ok
   engine: getState("s2")
-  engine: preview({"type":"addFeature","feature":{"id":"d1","name":"Hole 1","suppressed":false,"type":"hole","sketch":"s2","points":["p4","p5"],"shape":{"type":"counterbore","diameter":3,"headDiameter":null,"headDepth":null},"extent":{"type":"throughAll","side":"backward"},"targets":["e1"]},"index":3}, "d1") -> invalidCommand: addFeature.feature.shape.headDiameter: čeká se konečné číslo
+  engine: preview({"type":"addFeature","feature":{"id":"d1","name":"Hole 1","suppressed":false,"type":"hole","sketch":"s2","points":["p4","p5"],"shape":{"type":"counterbore","diameter":3,"headDiameter":null,"headDepth":null},"extent":{"type":"throughAll","side":"backward"},"targets":["e1"]},"index":3}, "d1") -> invalidCommand: addFeature.feature.shape.headDiameter: a finite number is expected
   engine: getState("s2")  (x2)
   panel:
     +     input type=checkbox checked
@@ -375,7 +375,7 @@
     +     input value=""
     +     small.computed data-field="shape/headDepth" data-unit="mm"
     + label
-    + p#draft-problem.issue.error: "addFeature.feature.shape.headDiameter: čeká se konečné číslo"
+    + p#draft-problem.issue.error: "addFeature.feature.shape.headDiameter: a finite number is expected"
     - p#draft-problem.issue.warning
   view: 2 scene(s) set
   scene:
@@ -383,7 +383,7 @@
     - line #26303c width 1.5: 408 numbers, sum 14956.204
 
 === 5. the head typed: the preview has the counterbore at both points
-  engine: preview({"type":"addFeature","feature":{"id":"d1","name":"Hole 1","suppressed":false,"type":"hole","sketch":"s2","points":["p4","p5"],"shape":{"type":"counterbore","diameter":3,"headDiameter":6,"headDepth":null},"extent":{"type":"throughAll","side":"backward"},"targets":["e1"]},"index":3}, "d1") -> invalidCommand: addFeature.feature.shape.headDepth: čeká se konečné číslo
+  engine: preview({"type":"addFeature","feature":{"id":"d1","name":"Hole 1","suppressed":false,"type":"hole","sketch":"s2","points":["p4","p5"],"shape":{"type":"counterbore","diameter":3,"headDiameter":6,"headDepth":null},"extent":{"type":"throughAll","side":"backward"},"targets":["e1"]},"index":3}, "d1") -> invalidCommand: addFeature.feature.shape.headDepth: a finite number is expected
   engine: getState("s2")
   engine: preview({"type":"addFeature","feature":{"id":"d1","name":"Hole 1","suppressed":false,"type":"hole","sketch":"s2","points":["p4","p5"],"shape":{"type":"counterbore","diameter":3,"headDiameter":6,"headDepth":3},"extent":{"type":"throughAll","side":"backward"},"targets":["e1"]},"index":3}, "d1") -> ok
   panel:
@@ -392,7 +392,7 @@
     +     input value="3"
     -     input value=""
     + p#draft-problem.issue.warning
-    - p#draft-problem.issue.error: "addFeature.feature.shape.headDiameter: čeká se konečné číslo"
+    - p#draft-problem.issue.error: "addFeature.feature.shape.headDiameter: a finite number is expected"
   view: 2 scene(s) set
   scene:
     + line #26303c width 1.5: 1944 numbers, sum 94197.787
@@ -451,15 +451,15 @@
   feature d1:
       {"id":"d1","name":"Hole 1","suppressed":false,"type":"hole","sketch":"s2","points":["p4","p5"],"shape":{"type":"counterbore","diameter":3,"headDiameter":6,"headDepth":3},"extent":{"type":"distance","start":0,"distance":-6},"targets":["e1"],"label":"M3 socket head cap screw"}
   toolbar:
-    +   button title="Ctrl+Z": "↶ Zpět"
-    -   button disabled title="Ctrl+Z": "↶ Zpět"
-    +   button title="Nová skica na rovině nebo rovinné stěně": "Skica"
-    +   button title="Vysunout oblasti skici": "Vysunutí"
+    +   button title="Ctrl+Z": "↶ Undo"
+    -   button disabled title="Ctrl+Z": "↶ Undo"
+    +   button title="A new sketch on a plane or a planar face": "Sketch"
+    +   button title="Extrude regions of a sketch": "Extrude"
     +   button title="Turn regions of a sketch about an axis in its plane": "Revolve"
     +   button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
     +   button title="Chamfer edges of a body by a distance": "Chamfer"
     +   button title="Round edges of a body by a radius": "Fillet"
-    +   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
+    +   button title="A plane offset from a plane or a planar face": "Plane"
     +   button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
     +   button title="Place a stored mesh (a bought part read from an STL file) as a body": "Mesh"
     +   button title="Insert another document (a part saved as a document file) as a part of this one": "Insert"
@@ -499,36 +499,36 @@
   timeline:
     +   button.icon title="Hide or show": "👁"
     -   button.icon disabled title="Hide or show": "👁"
-    +   button.icon title="Posunout později": "↓"
-    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
-    -   button.icon disabled title="Posunout později": "↓"
-    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon title="Move later": "↓"
+    +   button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
+    -   button.icon disabled title="Move later": "↓"
+    -   button.icon disabled title="Roll the model back to here: further features are inserted after this one": "⇤"
     +   button.icon title="Hide or show": "👁"
-    +   button.icon title="Posunout dřív": "↑"
-    +   button.icon title="Posunout později": "↓"
-    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon title="Move earlier": "↑"
+    +   button.icon title="Move later": "↓"
+    +   button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
     + div.row.ok
     -   button.icon disabled title="Hide or show": "👁"
-    -   button.icon disabled title="Posunout dřív": "↑"
-    -   button.icon disabled title="Posunout později": "↓"
-    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon disabled title="Move earlier": "↑"
+    -   button.icon disabled title="Move later": "↓"
+    -   button.icon disabled title="Roll the model back to here: further features are inserted after this one": "⇤"
     - div.row.ok.selected
     +   button.icon title="Hide or show": "👁"
-    +   button.icon title="Posunout dřív": "↑"
-    +   button.icon title="Posunout později": "↓"
-    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon title="Move earlier": "↑"
+    +   button.icon title="Move later": "↓"
+    +   button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
     + div.row.ok
     +   span.dot: "●"
     +   span.name: "Hole 1"
     +   button.icon disabled title="A body is hidden at the feature that created it": "👁"
-    +   button.icon title="Posunout dřív": "↑"
+    +   button.icon title="Move earlier": "↑"
     -   button.icon disabled title="Hide or show": "👁"
-    -   button.icon disabled title="Posunout dřív": "↑"
-    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
-    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon disabled title="Move earlier": "↑"
+    +   button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
+    -   button.icon disabled title="Roll the model back to here: further features are inserted after this one": "⇤"
   panel:
     + h2: "Model"
-    + p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
+    + p.hint: "The right mouse button orbits, the wheel zooms, the middle button (or Shift + right) pans. On a touchpad: Alt/Option + drag orbits, Alt + Shift + drag pans, two fingers zoom. A feature on the timeline is edited by a double click."
     + h2: "Parameters (0)"
     + div.constraint
     +   input.pname value="" placeholder="name"
@@ -546,8 +546,8 @@
     - label
     -   "Sketch"
     -   select value="s2"
-    -     option value="s1": "Skica 1"
-    -     option selected value="s2": "Skica 2"
+    -     option value="s1": "Sketch 1"
+    -     option selected value="s2": "Sketch 2"
     - fieldset
     -   legend: "Points"
     -   label.check
@@ -606,7 +606,7 @@
     -   legend: "Target bodies"
     -   label.check
     -     input type=checkbox checked
-    -     "Vysunutí 1"
+    -     "Extrude 1"
     - label
     -   "Label (for people and a parts list; empty = none)"
     -   input value=""
@@ -642,8 +642,8 @@
     - p#draft-problem.issue.error: "The dimensions do not make a hole. (the head is 3 mm deep and the hole 2 mm: the head has to be shallower than the hole)"
     - div.buttons
     -   button.primary: "OK"
-    -   button: "Zrušit"
-  status: Hole přidáno.
+    -   button: "Cancel"
+  status: Hole added.
   view: 4 scene(s) set
   scene:
     + line #26303c width 1.5: 1944 numbers, sum 96630.678
@@ -656,16 +656,16 @@
   panel:
     + h2: "Hole"
     + label
-    +   "Název"
+    +   "Feature name"
     +   input value="Hole 1"
     + div.buttons
-    +   button.primary: "Upravit"
-    +   button: "Potlačit"
-    +   button: "Smazat"
-    + p.hint: "M3 socket head cap screw: counterbore ⌀ 3 mm, head ⌀ 6 mm, 3 mm deep; depth -6 mm; 2 points of Skica 2; bodies: Vysunutí 1."
+    +   button.primary: "Edit feature"
+    +   button: "Suppress"
+    +   button: "Delete"
+    + p.hint: "M3 socket head cap screw: counterbore ⌀ 3 mm, head ⌀ 6 mm, 3 mm deep; depth -6 mm; 2 points of Sketch 2; bodies: Extrude 1."
     + p.hint: "The hole is 6 mm deep, its head 3 mm."
     - h2: "Model"
-    - p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
+    - p.hint: "The right mouse button orbits, the wheel zooms, the middle button (or Shift + right) pans. On a touchpad: Alt/Option + drag orbits, Alt + Shift + drag pans, two fingers zoom. A feature on the timeline is edited by a double click."
   view: 1 scene(s) set
   scene:
     + face e1 #7 #f97316 opacity 0.3
@@ -679,15 +679,15 @@
   engine: preview({"type":"updateFeature","id":"d1","patch":{"sketch":"s2","points":["p4","p5"],"shape":{"type":"counterbore","diameter":3,"headDiameter":6,"headDepth":3},"extent":{"type":"distance","start":0,"distance":-6,"from":null},"targets":["e1"],"label":"M3 socket head cap screw"}}, "d1") -> ok
   engine: getState("s2")  (x2)
   toolbar:
-    +   button disabled title="Ctrl+Z": "↶ Zpět"
-    -   button title="Ctrl+Z": "↶ Zpět"
-    -   button title="Nová skica na rovině nebo rovinné stěně": "Skica"
-    -   button title="Vysunout oblasti skici": "Vysunutí"
+    +   button disabled title="Ctrl+Z": "↶ Undo"
+    -   button title="Ctrl+Z": "↶ Undo"
+    -   button title="A new sketch on a plane or a planar face": "Sketch"
+    -   button title="Extrude regions of a sketch": "Extrude"
     -   button title="Turn regions of a sketch about an axis in its plane": "Revolve"
     -   button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
     -   button title="Chamfer edges of a body by a distance": "Chamfer"
     -   button title="Round edges of a body by a radius": "Fillet"
-    -   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
+    -   button title="A plane offset from a plane or a planar face": "Plane"
     -   button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
     -   button title="Place a stored mesh (a bought part read from an STL file) as a body": "Mesh"
     -   button title="Insert another document (a part saved as a document file) as a part of this one": "Insert"
@@ -727,39 +727,39 @@
   timeline:
     +   button.icon disabled title="Hide or show": "👁"
     -   button.icon title="Hide or show": "👁"
-    +   button.icon disabled title="Posunout později": "↓"
-    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
-    -   button.icon title="Posunout později": "↓"
-    -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon disabled title="Move later": "↓"
+    +   button.icon disabled title="Roll the model back to here: further features are inserted after this one": "⇤"
+    -   button.icon title="Move later": "↓"
+    -   button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
     +   button.icon disabled title="Hide or show": "👁"
-    +   button.icon disabled title="Posunout dřív": "↑"
-    +   button.icon disabled title="Posunout později": "↓"
-    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon disabled title="Move earlier": "↑"
+    +   button.icon disabled title="Move later": "↓"
+    +   button.icon disabled title="Roll the model back to here: further features are inserted after this one": "⇤"
     -   button.icon title="Hide or show": "👁"
-    -   button.icon title="Posunout dřív": "↑"
-    -   button.icon title="Posunout později": "↓"
-    -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon title="Move earlier": "↑"
+    -   button.icon title="Move later": "↓"
+    -   button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
     +   button.icon disabled title="Hide or show": "👁"
-    +   button.icon disabled title="Posunout dřív": "↑"
-    +   button.icon disabled title="Posunout později": "↓"
-    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon disabled title="Move earlier": "↑"
+    +   button.icon disabled title="Move later": "↓"
+    +   button.icon disabled title="Roll the model back to here: further features are inserted after this one": "⇤"
     + div.row.ok.selected.editing
     -   button.icon title="Hide or show": "👁"
-    -   button.icon title="Posunout dřív": "↑"
-    -   button.icon title="Posunout později": "↓"
-    -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon title="Move earlier": "↑"
+    -   button.icon title="Move later": "↓"
+    -   button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
     - div.row.ok.selected
-    +   button.icon disabled title="Posunout dřív": "↑"
-    -   button.icon title="Posunout dřív": "↑"
-    +   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
-    -   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon disabled title="Move earlier": "↑"
+    -   button.icon title="Move earlier": "↑"
+    +   button.icon disabled title="Roll the model back to here: further features are inserted after this one": "⇤"
+    -   button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
   panel:
-    + h2: "Úprava: Hole 1"
+    + h2: "Edit: Hole 1"
     + label
     +   "Sketch"
     +   select value="s2"
-    +     option value="s1": "Skica 1"
-    +     option selected value="s2": "Skica 2"
+    +     option value="s1": "Sketch 1"
+    +     option selected value="s2": "Sketch 2"
     + fieldset
     +   legend: "Points"
     +   label.check
@@ -800,7 +800,7 @@
     +     option value="throughAll": "Through all"
     +     option selected value="distance": "Distance"
     + p: "Start at: Sketch plane"
-    -   "Název"
+    -   "Feature name"
     -   input value="Hole 1"
     +   button: "Pick the start"
     + label
@@ -817,7 +817,7 @@
     +   legend: "Target bodies"
     +   label.check
     +     input type=checkbox checked
-    +     "Vysunutí 1"
+    +     "Extrude 1"
     + label
     +   "Label (for people and a parts list; empty = none)"
     +   input value="M3 socket head cap screw"
@@ -850,10 +850,10 @@
     +   div.buttons
     +     button: "Fill from the catalog"
     + p#draft-problem.issue.warning
-    -   button.primary: "Upravit"
-    -   button: "Potlačit"
-    -   button: "Smazat"
-    - p.hint: "M3 socket head cap screw: counterbore ⌀ 3 mm, head ⌀ 6 mm, 3 mm deep; depth -6 mm; 2 points of Skica 2; bodies: Vysunutí 1."
+    -   button.primary: "Edit feature"
+    -   button: "Suppress"
+    -   button: "Delete"
+    - p.hint: "M3 socket head cap screw: counterbore ⌀ 3 mm, head ⌀ 6 mm, 3 mm deep; depth -6 mm; 2 points of Sketch 2; bodies: Extrude 1."
     - p.hint: "The hole is 6 mm deep, its head 3 mm."
     - h2: "Parameters (0)"
     - div.constraint
@@ -869,7 +869,7 @@
     - h2: "Mechanism"
     - p.hint: "Links are bodies that move as one piece; a joint moves its child link against its parent. The model as modelled is the zero of every joint."
     +   button.primary: "OK"
-    +   button: "Zrušit"
+    +   button: "Cancel"
     -   button title="Bodies that move as one piece": "New link"
     -   button disabled title="A joint moves its child link against its parent link": "New joint"
     -   button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
@@ -1012,15 +1012,15 @@
     + {"id":"d1","name":"Hole 1","suppressed":false,"type":"hole","sketch":"s2","points":["p4","p5"],"shape":{"type":"plain","diameter":4.4},"extent":{"type":"distance","start":1,"distance":-5},"targets":["e1"],"expressions":{"shape/diameter":"4.2 + 0.2"}}
     - {"id":"d1","name":"Hole 1","suppressed":false,"type":"hole","sketch":"s2","points":["p4","p5"],"shape":{"type":"counterbore","diameter":3,"headDiameter":6,"headDepth":3},"extent":{"type":"distance","start":0,"distance":-6},"targets":["e1"],"label":"M3 socket head cap screw"}
   toolbar:
-    +   button title="Ctrl+Z": "↶ Zpět"
-    -   button disabled title="Ctrl+Z": "↶ Zpět"
-    +   button title="Nová skica na rovině nebo rovinné stěně": "Skica"
-    +   button title="Vysunout oblasti skici": "Vysunutí"
+    +   button title="Ctrl+Z": "↶ Undo"
+    -   button disabled title="Ctrl+Z": "↶ Undo"
+    +   button title="A new sketch on a plane or a planar face": "Sketch"
+    +   button title="Extrude regions of a sketch": "Extrude"
     +   button title="Turn regions of a sketch about an axis in its plane": "Revolve"
     +   button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
     +   button title="Chamfer edges of a body by a distance": "Chamfer"
     +   button title="Round edges of a body by a radius": "Fillet"
-    +   button title="Rovina posunutá od roviny nebo rovinné stěny": "Rovina"
+    +   button title="A plane offset from a plane or a planar face": "Plane"
     +   button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
     +   button title="Place a stored mesh (a bought part read from an STL file) as a body": "Mesh"
     +   button title="Insert another document (a part saved as a document file) as a part of this one": "Insert"
@@ -1060,35 +1060,35 @@
   timeline:
     +   button.icon title="Hide or show": "👁"
     -   button.icon disabled title="Hide or show": "👁"
-    +   button.icon title="Posunout později": "↓"
-    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
-    -   button.icon disabled title="Posunout později": "↓"
-    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon title="Move later": "↓"
+    +   button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
+    -   button.icon disabled title="Move later": "↓"
+    -   button.icon disabled title="Roll the model back to here: further features are inserted after this one": "⇤"
     +   button.icon title="Hide or show": "👁"
-    +   button.icon title="Posunout dřív": "↑"
-    +   button.icon title="Posunout později": "↓"
-    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon title="Move earlier": "↑"
+    +   button.icon title="Move later": "↓"
+    +   button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
     -   button.icon disabled title="Hide or show": "👁"
-    -   button.icon disabled title="Posunout dřív": "↑"
-    -   button.icon disabled title="Posunout později": "↓"
-    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon disabled title="Move earlier": "↑"
+    -   button.icon disabled title="Move later": "↓"
+    -   button.icon disabled title="Roll the model back to here: further features are inserted after this one": "⇤"
     +   button.icon title="Hide or show": "👁"
-    +   button.icon title="Posunout dřív": "↑"
-    +   button.icon title="Posunout později": "↓"
-    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon title="Move earlier": "↑"
+    +   button.icon title="Move later": "↓"
+    +   button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
     + div.row.ok
     -   button.icon disabled title="Hide or show": "👁"
-    -   button.icon disabled title="Posunout dřív": "↑"
-    -   button.icon disabled title="Posunout později": "↓"
-    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    -   button.icon disabled title="Move earlier": "↑"
+    -   button.icon disabled title="Move later": "↓"
+    -   button.icon disabled title="Roll the model back to here: further features are inserted after this one": "⇤"
     - div.row.ok.selected.editing
-    +   button.icon title="Posunout dřív": "↑"
-    -   button.icon disabled title="Posunout dřív": "↑"
-    +   button.icon title="Vrátit model sem: další prvky se vloží za tento": "⇤"
-    -   button.icon disabled title="Vrátit model sem: další prvky se vloží za tento": "⇤"
+    +   button.icon title="Move earlier": "↑"
+    -   button.icon disabled title="Move earlier": "↑"
+    +   button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
+    -   button.icon disabled title="Roll the model back to here: further features are inserted after this one": "⇤"
   panel:
     + h2: "Model"
-    + p.hint: "Pravé tlačítko myši otáčí, kolečko přibližuje, prostřední tlačítko (nebo Shift + pravé) posouvá. Na touchpadu: Alt/Option + tažení otáčí, Alt + Shift + tažení posouvá, dva prsty přibližují. Prvek na časové ose se upravuje dvojklikem."
+    + p.hint: "The right mouse button orbits, the wheel zooms, the middle button (or Shift + right) pans. On a touchpad: Alt/Option + drag orbits, Alt + Shift + drag pans, two fingers zoom. A feature on the timeline is edited by a double click."
     + h2: "Parameters (0)"
     + div.constraint
     +   input.pname value="" placeholder="name"
@@ -1102,12 +1102,12 @@
     +   button: "Add"
     + h2: "Mechanism"
     + p.hint: "Links are bodies that move as one piece; a joint moves its child link against its parent. The model as modelled is the zero of every joint."
-    - h2: "Úprava: Hole 1"
+    - h2: "Edit: Hole 1"
     - label
     -   "Sketch"
     -   select value="s2"
-    -     option value="s1": "Skica 1"
-    -     option selected value="s2": "Skica 2"
+    -     option value="s1": "Sketch 1"
+    -     option selected value="s2": "Sketch 2"
     - fieldset
     -   legend: "Points"
     -   label.check
@@ -1156,7 +1156,7 @@
     -   legend: "Target bodies"
     -   label.check
     -     input type=checkbox checked
-    -     "Vysunutí 1"
+    -     "Extrude 1"
     - label
     -   "Label (for people and a parts list; empty = none)"
     -   input value="M3x4x4.5 heat-set insert"
@@ -1201,6 +1201,6 @@
     - p#draft-problem.issue.warning
     - div.buttons
     -   button.primary: "OK"
-    -   button: "Zrušit"
-  status: Změna uložena.
+    -   button: "Cancel"
+  status: Change saved.
   view: 4 scene(s) set

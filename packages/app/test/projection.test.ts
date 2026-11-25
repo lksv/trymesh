@@ -124,7 +124,7 @@ describe('the tool From sketch (D69)', () => {
     box.checked = true;
     h.type(box, '', true);
     expect((sketchOf(h, 'dst').external.x1 as SketchProjection).regions).toBe(true);
-    h.press('toolbar', 'Dokončit skicu');
+    h.press('toolbar', 'Finish sketch');
     h.record('the model');
     // outside the sketch mode the circle of the projection is drawn with the sketch (solid: it forms regions)
     const scene = h.view.scene.lines.filter((set) => set.segments.length > 0 && !set.dashed);
@@ -163,7 +163,7 @@ describe('the tool From sketch: the review of the implementation (D69)', () => {
     h.click(at(30, 40.1));
     expect(sketchOf(h, 'dst').external.x1).toEqual({ type: 'sketch', sketch: 'src', entity: 'l2', kind: 'line', regions: true });
     // the projection selected (the select tool), then From sketch: the pick replaces its source
-    h.press('toolbar', 'Výběr');
+    h.press('toolbar', 'Select');
     h.click(at(30, 40.1));
     h.press('toolbar', 'From sketch');
     h.click(at(30, 0.1));
@@ -179,7 +179,7 @@ describe('the tool From sketch: the review of the implementation (D69)', () => {
     doubleClick(h, 'Target2');
     h.press('toolbar', 'From sketch');
     h.choose('From', 'dst');
-    h.press('toolbar', 'Dokončit skicu');
+    h.press('toolbar', 'Finish sketch');
     doubleClick(h, 'Target');
     h.press('toolbar', 'From sketch');
     expect((h.field('From') as HTMLSelectElement).value).toBe('');
@@ -196,7 +196,7 @@ describe('the tool From sketch: the review of the implementation (D69)', () => {
     h.click(at(59.9, 0.1));
     const refs = Object.entries(sketchOf(h, 'dst').external) as [string, SketchProjection][];
     expect(refs.map(([, ref]) => [ref.entity, ref.kind])).toEqual([['kc', 'point'], ['b', 'point']]);
-    h.press('toolbar', 'Výběr');
+    h.press('toolbar', 'Select');
     h.click(at(30, 0.1));
     h.press('toolbar', 'From sketch');
     h.click(at(30, 0.1));
@@ -221,7 +221,7 @@ describe('the tool From sketch: the review of the implementation (D69)', () => {
       const refs = Object.values(sketchOf(h, id).external).filter((ref) => ref.type === 'sketch' && ref.sketch === 'src') as SketchProjection[];
       expect(refs.map((ref) => [ref.entity, ref.kind, ref.regions]), as).toEqual([['l', 'line', as !== 'reference'], ['k', 'circle', as !== 'reference'], ['q', 'point', false]]);
       expect(Object.keys(sketchOf(h, id).curves), as).toEqual([]);
-      h.press('toolbar', 'Dokončit skicu');
+      h.press('toolbar', 'Finish sketch');
     }
   });
 
@@ -244,7 +244,7 @@ describe('the tool From sketch: the review of the implementation (D69)', () => {
     model(h);
     run(h, { type: 'addExternal', sketch: 'dst', id: 'x1', ref: { type: 'sketch', sketch: 'src', entity: 'k', kind: 'circle' } });
     doubleClick(h, 'Target');
-    h.press('toolbar', 'Dokončit skicu');
+    h.press('toolbar', 'Finish sketch');
     // the circle of the source is solid at x = 90 already (an own curve of src): the projection
     // adds a dashed one there, and with the flag no dashed one
     expect(reaches(lines(h, true), 90)).toBe(true);
@@ -252,7 +252,7 @@ describe('the tool From sketch: the review of the implementation (D69)', () => {
     const box = Array.from(h.document.querySelectorAll<HTMLLabelElement>('#panel label.check')).find((label) => label.textContent === 'regions')?.querySelector('input') as HTMLInputElement;
     box.checked = true;
     h.type(box, '', true);
-    h.press('toolbar', 'Dokončit skicu');
+    h.press('toolbar', 'Finish sketch');
     expect(reaches(lines(h, true), 90)).toBe(false);
   });
 

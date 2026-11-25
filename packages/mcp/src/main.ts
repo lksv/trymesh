@@ -1,4 +1,4 @@
-// Spuštění MCP serveru nad standardním vstupem a výstupem.
+// Runs the MCP server over standard input and output.
 //   node dist/server.js [--file model.json] [--port 4517] [--no-bridge]
 import { readFile } from 'node:fs/promises';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
@@ -9,7 +9,7 @@ import { createPlanegcsSolver } from '@trymesh/solver-planegcs';
 import { type Bridge, type BridgeFailure, DEFAULT_BRIDGE_PORT, openBridge } from './bridge';
 import { createTrymeshServer } from './server';
 
-// Standardní výstup patří protokolu; zprávy pro člověka jdou na chybový výstup.
+// Standard output belongs to the protocol; messages for a person go to standard error.
 const log = (message: string) => process.stderr.write(`trymesh-mcp: ${message}\n`);
 const fail = (message: string, usage = true): never => {
   log(message);
@@ -17,7 +17,7 @@ const fail = (message: string, usage = true): never => {
   process.exit(2);
 };
 
-// Volby: `--jméno hodnota` nebo `--jméno=hodnota`; neznámá volba je chyba.
+// Options: `--name value` or `--name=value`; an unknown option is an error.
 const options: { file?: string; port?: string; bridge: boolean } = { bridge: true };
 const args = process.argv.slice(2);
 for (let i = 0; i < args.length; i++) {
@@ -34,7 +34,7 @@ for (let i = 0; i < args.length; i++) {
 }
 const portText = options.port ?? process.env.TRYMESH_BRIDGE_PORT ?? String(DEFAULT_BRIDGE_PORT);
 const port = /^\d+$/.test(portText) ? Number(portText) : NaN;
-if (!(port >= 0 && port <= 65535)) fail(`the port "${portText}" is not a number from 0 to 65535`);
+if (!(port >= 0 && port <= 65535)) fail(`port "${portText}" is not a number from 0 to 65535`);
 
 const engine = createEngine({ solver: await createPlanegcsSolver(), kernel: await createManifoldKernel(), deflater: createPakoDeflater() });
 if (options.file !== undefined) {
@@ -73,8 +73,8 @@ const server = createTrymeshServer({ engine, bridge, file: options.file, ...(opt
 await server.connect(new StdioServerTransport());
 log('ready');
 
-// Konec: signál, nebo klient zavřel vstup. Bez toho by most držel proces i port naživu
-// a aplikace by se připojovala k serveru, se kterým už nikdo nemluví.
+// The end: a signal, or the client closed the input. Without this the bridge would keep the process and the
+// port alive and the app would connect to a server nobody talks to any more.
 let closing = false;
 const shutdown = () => {
   if (closing) return;

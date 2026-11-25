@@ -1,4 +1,4 @@
-// Pomůcky pro testy adaptéru: souřadné soustavy, stavba hranolů, popis výsledku.
+// Helpers for the tests of the adapter: coordinate frames, building prisms, describing the result.
 import type { Solid } from '@trymesh/engine';
 import { type ManifoldKernel, createManifoldKernel } from '../src/index';
 import { type V3, corners, cross, dot, fitFaces, len, sub, tolerances, triWidth, triangleCount, unit } from '../src/geometry';
@@ -13,9 +13,9 @@ export interface TestFrame {
   n: V3;
 }
 export interface PrismIds {
-  start: number; // víko ve výšce w0
-  end: number; // víko ve výšce w1
-  sides: number[]; // bok pro každou hranu obrysu
+  start: number; // the cap at the height w0
+  end: number; // the cap at the height w1
+  sides: number[]; // a side for each edge of the outline
 }
 
 export const IDENTITY: TestFrame = { o: [0, 0, 0], x: [1, 0, 0], y: [0, 1, 0], n: [0, 0, 1] };
@@ -40,7 +40,7 @@ export const rect = (x0: number, y0: number, x1: number, y1: number): Loop => [
 export const circle = (cx: number, cy: number, r: number, n = 32): Loop =>
   Array.from({ length: n }, (_, i): [number, number] => [cx + r * Math.cos((2 * Math.PI * i) / n), cy + r * Math.sin((2 * Math.PI * i) / n)]);
 
-// Hranol nad obrysem `loop` (proti směru hodin) mezi výškami w0 < w1 v soustavě `frame`.
+// A prism over the outline `loop` (counterclockwise) between the heights w0 < w1 in the frame `frame`.
 export function prism(frame: TestFrame, loop: Loop, w0: number, w1: number, ids: PrismIds): Solid {
   const n = loop.length;
   const positions: number[] = [];
@@ -68,15 +68,15 @@ export function prism(frame: TestFrame, loop: Loop, w0: number, w1: number, ids:
 
 export interface FaceInfo {
   area: number;
-  wMin: number; // rozsah výšek nad rovinou soustavy
+  wMin: number; // the range of heights above the plane of the frame
   wMax: number;
 }
 export interface Description {
   faces: Map<number, FaceInfo>;
   volume: number;
   area: number;
-  closed: boolean; // každá hrana právě ve dvou trojúhelnících
-  sound: boolean; // žádná rovinná stěna nemá trojúhelník otočený proti své normále (přeložená síť)
+  closed: boolean; // every edge in exactly two triangles
+  sound: boolean; // no planar face has a triangle turned against its normal (a folded mesh)
 }
 
 export function describe(s: Solid, frame: TestFrame): Description {
@@ -113,7 +113,7 @@ export function describe(s: Solid, frame: TestFrame): Description {
   return { faces, volume, area, closed: [...edges.values()].every((c) => c === 2), sound };
 }
 
-// Sousedí v síti trojúhelníky se stěnami p a q (mají společnou hranu)?
+// Are triangles of the faces p and q adjacent in the mesh (do they share an edge)?
 export function adjacent(s: Solid, p: number, q: number): boolean {
   const byEdge = new Map<string, number[]>();
   for (let t = 0; t < triangleCount(s); t++) {
@@ -131,7 +131,7 @@ export function adjacent(s: Solid, p: number, q: number): boolean {
 export const idsOf = (s: Solid): number[] => [...new Set(s.faceIds)].sort((x, y) => x - y);
 export const sorted = (ids: number[]): number[] => [...ids].sort((x, y) => x - y);
 
-// Počet souvislých částí a objem podle jádra; objekty knihovny se uvolní.
+// The number of connected parts and the volume according to the kernel; the objects of the library are freed.
 export function inspect(s: Solid): { status: string; volume: number; components: number } {
   const m = kernel.toManifold(s);
   try {

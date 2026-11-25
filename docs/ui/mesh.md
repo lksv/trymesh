@@ -4,7 +4,7 @@ Part of [ui.md](../ui.md); how to read the tables is said there. A bought part r
 
 ## Mesh (D55)
 
-| Funkce | Příkaz / volání | Čte |
+| Function | Command / call | Reads |
 |---|---|---|
 | Start (the button *Mesh*) | a draft of a mesh feature on XY with the latest stored mesh; without a stored mesh the form opens with the choice of a file | `document.meshes` |
 | Import a file (*Import a file…* in the form) | `importMesh('stl', bytes, {}, file name)` in the browser, then `addMesh` (one undo step) under an ID from the name of the file; the draft then uses it | `IMPORT_FORMATS`, `importFormatOf`; the report or the refusal in the status line |

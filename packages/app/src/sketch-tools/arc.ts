@@ -4,8 +4,8 @@ import { polyline } from '../sketch-view';
 import { type SketchPlaceTool, anchor, drawn } from './spec';
 
 export const arc: SketchPlaceTool<undefined> = {
-  label: 'Oblouk',
-  hint: 'Klikněte na střed, začátek a konec (proti směru hodin).',
+  label: 'Arc',
+  hint: 'Click the centre, the start and the end (counterclockwise).',
   clicks: 3,
   click: (host, m, places, context) => {
     drawn(host, m, arcCommands(m.id, context.view, anchor(places[0]), anchor(places[1]), anchor(places[2]), host.newId));

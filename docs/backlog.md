@@ -160,6 +160,12 @@ Sketches of a cheap variant for each, in the manner of D35: what the cheap varia
 - *A fillet that later changes turns into something else* (an arc past the end of its line; no message, and on a concave outline or with a radius several times too large a wrong body). It needs the sketch to know which arcs are fillets, or a warning for a line whose direction turned round in a solve.
 - *The features whose region has a filleted corner on the rim of a hole are not named by the tool.* It needs the curves of the holes of a region in the solved sketch.
 
+**Projection from another sketch.** Done as D69 ([d36/6b-sketch-projection/design.md](d36/6b-sketch-projection/design.md)). Not done, and why the design does not block them:
+
+- *A warning passed down a chain of projections.* A sketch that projects a frozen curve of a middle sketch follows it with no warning of its own (its `openEnds` says where the outline opened; the warning is on the middle sketch). It needs a value of `compute` that carries a warning, which the kind's `compute` can return as one more field without a schema step.
+- *`doubled` along a curve.* `projectSketch` with `as: 'own'` draws one own curve per place, and a place is the same segment, circle or arc. The tool's own output after a trim, projected whole as own, gets an own curve over the whole projected side and over its two pieces (no region; pinned in scenario 15). Widening "the same place" to "lying along" (6e's `curveContacts(…).lying`) cures it and leaves out a skeleton line that runs along an outline for part of its length without being asked; the cure today is `entities`.
+- *Taking an existing projection over as own curves*, a planes not parallel (an ellipse or a foreshortened outline), and a sketch of an inserted document (D62) as a source.
+
 Order inside step 2 follows from the dependencies: offset, then taper, then the hole feature; the fillet and the print queries are independent of the three.
 
 ### Proposed order

@@ -122,6 +122,8 @@ Through MCP an AI rarely needs them (it computes end points); the converter and 
 
 ### 6f Import of an outline
 
+*Amended 2026-11-25.* Designed in full (D72, [6f-outline-import/design.md](6f-outline-import/design.md)) and revised after three rounds of review. The owner's answers: the outline is stored in its entry of `external`, not a section of the document, so there is no schema step (37); the MCP tool `import_outline` sends the command itself (38). The paragraphs below are the plan as it was.
+
 **Cheap variant.** A file read into an outline stored in the document (like a stored mesh of D55: inside the document, so it stays self-contained) and placed in a sketch as a kind of reference (a point of the sketch and a turn, both fields). The outline forms regions (a board is extruded from it directly) and its curves can be constrained to and projected. A tool `import_outline` reads a path, like `import_mesh`, and answers with the batch; the app has a button in the sketch panel. A revised file replaces the stored outline; entities keep their IDs only when the file lists them in the same order (matching a revision by geometry is deferred).
 
 *Amended 2026-11-24*, before its design starts (findings 2, 8, 9 and 14 of the review):
@@ -147,6 +149,8 @@ Through MCP an AI rarely needs them (it computes end points); the converter and 
 The backlog already judged the gain small: a generated profile extrudes a gear, and an extrusion with `add` or `cut` combines it with anything else. As a block, the involute flanks would need a curve kind in the sketch (a sampled curve, or splines fitted to it) and an entry of derived geometry (6c's mechanism), and other curves crossing teeth would make fragile regions. If it is wanted later it is one more kind of 6c's entry on top of 6a and 6d. Recommendation: leave it in the backlog (question 7).
 
 ### 6h The Onshape converter on the tools of step 6
+
+*Amended 2026-11-25.* Designed in full ([6h-onshape-converter/design.md](6h-onshape-converter/design.md), no decision number) and revised after three rounds of review. Its recount: 131 of the 380 constraints are lost, not 287 (the report counted only the constraints it wrote; 155 are realised by a shared point); the trial on the tools of step 6 loses 6. The owner's answers: the summaries stay with the dump (39); the angle, horizontal and vertical of two points and the distance of two lines are mapped in 6h (40); the skeleton sketch is copied as a helper (41); exact external identity from Onshape is due before a second model, not in 6h (42). The paragraphs below are the plan as it was.
 
 *Added 2026-11-24 (owner, answer 4; finding 7 of the review).* The measured need behind the step is the conversion: 287 of 380 sketch constraints lost, six sketches split by the converter with their constraints lost, derived sketches copied. No package owned it. 6e proposed the converter's part "if the owner wants it", 6c and 6b describe theirs as possible, 6d says "not in 6d", and the converter (`tools/onshape/sketch.ts`) still skips every constraint with an external operand, every pattern and mirror, and splits by itself. So the step could close with the losses unchanged. This point closes the step, and its acceptance is a number measured again.
 

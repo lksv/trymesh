@@ -2,15 +2,15 @@
 // before the tool (and `origin`) are the sources; a click on a line (the axis, the direction) or on
 // a point (the centre) adds the entry with a fresh ID and opens its form in the panel. With an entry
 // to repair (its row's button), the click replaces its axis, direction or centre instead.
-import { type Expr, type Id, type Input, type SketchPattern, type SketchTransform, entryInput, entityOf, expressionValue } from '@trymesh/engine';
+import { type Expr, type Id, type Input, type SketchPattern, type SketchTransform, analyzeExpression, entryInput, entityOf, expressionValue } from '@trymesh/engine';
 import { h, markProblem } from '../dom';
 import { expressionProblem, fieldText, parseField } from '../fields';
 import type { SketchHost, SketchMode, SketchContext } from '../sketch-mode';
 import { type SketchPlaceTool, anchor } from './spec';
 
 // What the pattern tools remember: the count and the spacing or the angle, a number or an
-// expression. An angle whose value is ±360° (`360`, `2 * pi`, `deg(360)`) is a full turn: the
-// copies spread over the circle, the last one not on the source (`fullTurn`).
+// expression. An angle of ±360° that names no parameter (`360`, `2 * pi`, `deg(360)`) is a full
+// turn: the copies spread over the circle, the last one not on the source (`fullTurn`).
 export interface PatternToolOptions {
   count: number | Expr;
   spacing: number | Expr;
@@ -18,9 +18,15 @@ export interface PatternToolOptions {
 }
 export const DEFAULT_PATTERN_TOOL: PatternToolOptions = { count: 3, spacing: 10, angle: 2 * Math.PI };
 
-// Whether an angle of the options is a full turn, by its value (an expression over the parameters
-// of the document) within 1e-9 rad.
+// Whether an angle of the options is a full turn: a number, or an expression that names no
+// parameter, whose value is ±2π within 1e-9 rad. An expression over parameters is sent as the angle
+// it is, so that the pattern follows the parameter (a `full` span would drop the expression); at
+// ±2π its last copy then lies on the source, which the occupation pass takes out of the regions.
 export const fullTurn = (angle: number | Expr, parameters: SketchHost['doc']['parameters']): boolean => {
+  if (typeof angle !== 'number') {
+    const analyzed = analyzeExpression(angle);
+    if (!analyzed.ok || analyzed.names.length > 0) return false;
+  }
   const value = typeof angle === 'number' ? angle : expressionValue(angle, parameters);
   return value !== undefined && Math.abs(Math.abs(value) - 2 * Math.PI) < 1e-9;
 };
@@ -158,7 +164,7 @@ export const circularPattern: SketchPlaceTool<PatternToolOptions> = {
       h('h2', {}, 'Circular pattern'),
       optionField(host, 'Count', value.count, 'count', (count) => set({ ...value, count })),
       optionField(host, 'Angle', value.angle, 'rad', (angle) => set({ ...value, angle })),
-      h('p', { className: 'hint' }, 'Select the curves and points to copy, then click the point to turn them about. 360° spreads the copies over the full turn; another angle is the angle from the source to the last copy.'),
+      h('p', { className: 'hint' }, 'Select the curves and points to copy, then click the point to turn them about. 360° spreads the copies over the full turn; another angle, or one that names a parameter, is the angle from the source to the last copy.'),
     ],
   },
 };

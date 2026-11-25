@@ -11,7 +11,7 @@ import { FEATURE_UI } from '../src/features/index';
 import type { DraftMode } from '../src/features/draft';
 import type { Command, PatternFeature, SketchFeature } from '@trymesh/engine';
 import type { PanelHost } from '../src/host';
-import { emptyDocument, emptySketch } from '@trymesh/engine';
+import { emptyDocument, emptySketch, entryInput } from '@trymesh/engine';
 import { SKETCH_TOOL_UI, type SketchPlaceTool } from '../src/sketch-tools';
 import { type Harness, client, startApp } from './app-kit';
 
@@ -325,10 +325,15 @@ describe('mirror and pattern in the app: the review of the implementation of 6c 
     expect(direction.some((row) => row.textContent?.includes('is no longer in the sketch'))).toBe(false);
     const gone = axisRows(host, { kind: 'sketchPoint', sketch: 's', point: 'r/70/a' }, ['s'], () => undefined, '', FIRST_DIRECTION);
     expect(gone.some((row) => row.textContent?.includes('is no longer in the sketch'))).toBe(true);
+    // round 2, finding 4: the line of an axis argument of a query did not say how many it left out
+    const form = { host, state: { document: { features: [feature] }, evaluation: { features: { s: {} }, bodies: {} } }, armed: undefined, arm: () => undefined, set: () => undefined, get: () => undefined, title: (_spec: unknown, name: string) => name } as unknown as Form;
+    const queryLines = texts(CONTROLS.axis({ kind: 'axis' }, { kind: 'sketchLine', sketch: 's', line: 'r/40/l' }, ['about'], form, {}));
+    expect(queryLines).toContain('r/40/l (copy)');
+    expect(queryLines).toContain('… 25 more copies of r, not listed [disabled]');
   });
 
   // M6: a full turn given as an expression was sent as an angle, the last copy on the source
-  it('the circular tool takes 2 * pi and deg(360) as a full turn, and another angle as an angle; undo removes the entry', async () => {
+  it('the circular tool takes 2 * pi and deg(360) as a full turn, and another angle as an angle; undo removes the entry; an angle over a parameter follows it', async () => {
     const h = (harness = await startApp());
     run(h, sketch(), ...line(h, 5, 5));
     open(h);
@@ -348,12 +353,24 @@ describe('mirror and pattern in the app: the review of the implementation of 6c 
     }
     expect(fullTurn('2 * pi', [])).toBe(true);
     expect(fullTurn('deg(-360)', [])).toBe(true);
-    expect(fullTurn('turn', [{ name: 'turn', expr: '2 * pi' }])).toBe(true);
     expect(fullTurn('deg(359)', [])).toBe(false);
     // undo after the tool: the last entry goes
     const count = added().length;
     h.key('z', { ctrlKey: true });
     expect(added()).toHaveLength(count - 1);
+    // round 2, nit 3: an angle that names a parameter was made `full`, and lost the parameter; it is
+    // the angle it is, and the pattern follows the parameter
+    expect(fullTurn('turn', [{ name: 'turn', expr: '2 * pi' }])).toBe(false);
+    run(h, { type: 'setParameter', name: 'sweep', expr: '2 * pi' });
+    h.press('toolbar', 'Výběr');
+    h.click(at(15, 5));
+    h.press('toolbar', 'Circular pattern');
+    h.type(h.field('Angle'), 'sweep', true);
+    h.click(at(0.2, 0.1));
+    const entry = Object.keys(sketchOf(h).external).at(-1) as string;
+    expect((entryInput(sketchOf(h), entry) as { transform: unknown }).transform).toMatchObject({ type: 'circular', span: { type: 'angle', angle: 'sweep' } });
+    run(h, { type: 'setParameter', name: 'sweep', expr: 'pi' });
+    expect((sketchOf(h).external[entry] as { transform: { span: { angle: number } } }).transform.span.angle).toBeCloseTo(Math.PI, 12);
   });
 
   // a form change the engine refuses is said with the engine's message

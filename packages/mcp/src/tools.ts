@@ -597,12 +597,19 @@ function regionRows(feature: SketchFeature, solved: SketchResult | undefined): J
 
 // The advice of the open ends of copies (D68): the entries the listed ends belong to, and the cure
 // by the transform of the entry of the first (a row of marks is open on purpose).
-function openEndAdvice(feature: SketchFeature, solved: SketchResult | undefined): string | undefined {
+export function openEndAdvice(feature: SketchFeature, solved: SketchResult | undefined): string | undefined {
   const open = solved?.openEnds;
   if (!open || open.count === 0 || open.ends.length === 0) return undefined;
   const entries = [...new Set(open.ends.map((end) => end.end.split('/')[0]))];
   const first = open.ends[0];
-  const ref = Object.prototype.hasOwnProperty.call(feature.external, entries[0]) ? feature.external[entries[0]] : undefined;
+  const refOf = (entry: Id) => (Object.prototype.hasOwnProperty.call(feature.external, entry) ? feature.external[entry] : undefined);
+  // the ends of a mirror or pattern are ends of copies; those of a projection flagged to form
+  // regions are its own
+  const derived = (entry: Id): boolean => {
+    const ref = refOf(entry);
+    return ref !== undefined && kindOf(ref).source === 'derived';
+  };
+  const ref = refOf(entries[0]);
   const transform = ref?.type === 'pattern' ? ref.transform.type : undefined;
   const cure =
     transform === 'mirror'
@@ -611,14 +618,16 @@ function openEndAdvice(feature: SketchFeature, solved: SketchResult | undefined)
         ? 'choose a count or an angle that brings the copies together, or leave the ring open if that is meant'
         : transform === 'linear'
           ? 'choose a spacing, a length or a count that brings the copies together, or leave them open if that is meant (a row of marks or of open shapes is open on purpose)'
-          : 'move the source so that its end lies on what it should meet';
+          : 'end an own curve at it, or project the edge that continues it';
   const where =
     first.reason === 'twoVertices'
       ? `\`${first.end}\` lands where ${first.near.map((id) => `\`${id}\``).join(' and ')} lie without being joined: join them by \`coincident\`.`
-      : `\`${first.end}\` is ${round(first.distance)} mm from ${first.near.length ? `\`${first.near[0]}\`` : 'every other end'}. Copies close with what lies at their ends within 1e-6 mm: ${cure}.`;
-  const whose = entries.map((entry) => `\`${entry}\``).join(', ');
+      : `\`${first.end}\` is ${round(first.distance)} mm from ${first.near.length ? `\`${first.near[0]}\`` : 'every other end'}. ${derived(entries[0]) ? 'Copies close' : 'Projected curves close'} with what lies at their ends within 1e-6 mm: ${cure}.`;
+  const named = (list: Id[]): string => list.map((entry) => `\`${entry}\``).join(', ');
+  const [copies, projected] = [entries.filter(derived), entries.filter((entry) => !derived(entry))];
+  const whose = [...(copies.length > 0 ? [`copies of ${named(copies)}`] : []), ...(projected.length > 0 ? [named(projected)] : [])].join(' and of ');
   const listed = open.ends.length < open.count ? ` (the first ${open.ends.length} are listed)` : '';
-  return `${open.count} ${open.count === 1 ? 'end' : 'ends'} of copies of ${whose} ${open.count === 1 ? 'is' : 'are'} open (\`openEnds\` of the result${listed}): ${where}`;
+  return `${open.count} ${open.count === 1 ? 'end' : 'ends'} of ${whose} ${open.count === 1 ? 'is' : 'are'} open (\`openEnds\` of the result${listed}): ${where}`;
 }
 
 function sketchDetail(engine: Engine, id: string): unknown {

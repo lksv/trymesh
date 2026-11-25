@@ -1,8 +1,8 @@
 // Regressions from reviews of the MCP package.
 import { describe, expect, it } from 'vitest';
-import { type Command, type Engine, emptySketch } from '@trymesh/engine';
+import { type Command, type Engine, type SketchFeature, type SketchResult, emptySketch } from '@trymesh/engine';
 import { engineTypes } from '../src/api';
-import { callTool } from '../src/tools';
+import { callTool, openEndAdvice } from '../src/tools';
 import { newEngine } from './kit';
 
 describe('regressions from reviews', () => {
@@ -39,6 +39,17 @@ describe('get_sketch of a mirror or pattern: the review of 6c', () => {
     run(engine, { type: 'updateExternal', sketch: 's', id: 'r', ref: { type: 'pattern', sources: ['mk'], transform: { type: 'circular', center: 'origin', count: 3, span: { type: 'full' } } } });
     const ring = ok(engine, 'get_sketch', { sketch: 's' }).advice.find((text: string) => text.includes('open (`openEnds`'));
     expect(ring).toContain('choose a count or an angle that brings the copies together');
+  });
+
+  // round 2, nit 4: the open ends of a projection that forms regions were called ends of copies
+  it('the advice of open ends calls the ends of a projection its own, and names copies as copies', () => {
+    const feature = { ...emptySketch('s', 's', { kind: 'base', plane: 'XY' }), external: { e1: { type: 'edge', body: 'b', edge: { a: { feature: 'x', role: 'endCap' }, b: { feature: 'x', role: 'side', curve: 'k' } }, kind: 'line' }, m: { type: 'pattern', sources: ['l'], transform: { type: 'mirror', axis: 'origin/y' } } } } as SketchFeature;
+    const result = (ends: string[]) => ({ openEnds: { count: ends.length, ends: ends.map((end) => ({ end, reason: 'apart', near: [], distance: 1 })) } }) as unknown as SketchResult;
+    const projected = openEndAdvice(feature, result(['e1/a']));
+    expect(projected).toMatch(/^1 end of `e1` is open/);
+    expect(projected).toContain('Projected curves close with what lies at their ends within 1e-6 mm: end an own curve at it, or project the edge that continues it.');
+    expect(projected).not.toContain('copies');
+    expect(openEndAdvice(feature, result(['m/1/a', 'e1/b']))).toMatch(/^2 ends of copies of `m` and of `e1` are open/);
   });
 
   // nit: a grid whose first count is 1 had no shift of its first direction (copy 1 is not made)

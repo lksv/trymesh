@@ -266,7 +266,9 @@ export const sameTransform = (sketch: SketchFeature, a: Id, b: Id): boolean => J
 //    first of them in the order of the entries.
 // 4. A point a copy of which something outside the sketch names (`named`: a generator's operand
 //    `m/1/b`, an axis on a copied point) stays copied: when the batch takes it off every curve the
-//    entry lists, it joins the list (the rule of old ends keeps the point itself).
+//    entry lists, it joins the list (the rule of old ends keeps the point itself; `origin` is always
+//    there). The fallback of rule 2 comes after this rule, so an entry that keeps a point does not
+//    keep a removed curve too.
 // `after` is the base of the sketch after the batch, before its entries are patched. Answers the
 // entries whose list changes, the curves that joined (with the listed curves at their two ends,
 // which the rewrite of a stored region by names reads), and the entries left without their axis
@@ -292,7 +294,7 @@ export function entryPatches(before: SketchFeature, after: SketchBase, changes: 
       const now = has(changes.pieces, source) ? changes.pieces[source] : changes.removed.includes(source) ? [] : [source];
       for (const id of now) if (!sources.includes(id)) sources.push(id);
     }
-    lists.set(entry, sources.length > 0 ? sources : [ref.sources[ref.sources.length - 1]]);
+    lists.set(entry, sources);
     const t = ref.transform;
     const lines = t.type === 'mirror' ? [t.axis] : t.type === 'linear' ? [t.direction, ...(t.second ? [t.second.direction] : [])] : [];
     if (lines.some((line) => changes.removed.includes(line))) orphaned.push(entry);
@@ -388,10 +390,15 @@ export function entryPatches(before: SketchFeature, after: SketchBase, changes: 
   for (const text of named) {
     if (!text.includes('/') || entityOf(before, text)?.kind !== 'point') continue;
     const origin = derivedOrigin(before, text);
-    if (!origin || !lists.has(origin.entry) || !has(after.sketch.points, origin.source)) continue;
+    if (!origin || !lists.has(origin.entry) || (origin.source !== ORIGIN && !has(after.sketch.points, origin.source))) continue;
     const list = lists.get(origin.entry) as Id[];
     if (list.includes(origin.source) || list.some((id) => has(own, id) && curvePoints(own[id]).includes(origin.source))) continue;
     lists.set(origin.entry, [...list, origin.source]);
+  }
+  // an entry left with none keeps its last (after rule 4, which may have given it a point)
+  for (const entry of entries) {
+    const sources = (before.external[entry] as SketchPattern).sources;
+    if ((lists.get(entry) as Id[]).length === 0) lists.set(entry, [sources[sources.length - 1]]);
   }
   const patches = entries.filter((entry) => JSON.stringify(lists.get(entry)) !== JSON.stringify((before.external[entry] as SketchPattern).sources)).map((entry) => ({ entry, sources: lists.get(entry) as Id[] }));
   return { patches, joined, orphaned };
@@ -1904,7 +1911,7 @@ interface Reach {
   touch: boolean; // the extension stops where it touches the curve met, and both are cut there
   before: { at: Vec2; with: Id }[];
   passed: { at: Vec2; with: Id }[]; // touches that are no cut, passed before the stop
-  stuck: { at: Vec2; with: Id }[]; // curves that form regions and may not be cut, met before the stop
+  stuck: { at: Vec2; with: Id }[]; // curves that form regions and may not be cut, met before the stop, the nearest first
 }
 function reachOf(world: World, X: Id, end: ExtendInput['end'], withId: Id | undefined, bothCut: boolean): Reach | string {
   const curve = world.sketch.curves[X];
@@ -1999,15 +2006,16 @@ function reachOf(world: World, X: Id, end: ExtendInput['end'], withId: Id | unde
       for (const contact of contactsWith(C)) if (contact.d < stop.d - tol && !(contact.touch && !touchCut(C))) before.push({ at: contact.at, with: C });
     }
   }
-  // curves that form regions and may not be cut, met on the way
-  const stuck: { at: Vec2; with: Id }[] = [];
+  // curves that form regions and may not be cut, met on the way, the nearest first
+  const stuck: { at: Vec2; with: Id; d: number }[] = [];
   if (formsRegions(world, X)) {
     for (const [C, curveC] of world.curves) {
       if (C === X || !world.predicates.formsRegions(curveC) || world.predicates.mayCut(curveC)) continue;
-      for (const contact of contactsWith(C)) if (contact.d <= stop.d + tol) stuck.push({ at: contact.at, with: C });
+      for (const contact of contactsWith(C)) if (contact.d <= stop.d + tol) stuck.push({ at: contact.at, with: C, d: contact.d });
     }
   }
-  return { at: stop.at, target: stop.with, touch: stop.touch, before, passed: passed.filter((p) => p.d < stop.d - tol), stuck };
+  stuck.sort((p, q) => p.d - q.d);
+  return { at: stop.at, target: stop.with, touch: stop.touch, before, passed: passed.filter((p) => p.d < stop.d - tol), stuck: stuck.map(({ at, with: C }) => ({ at, with: C })) };
 }
 
 // Why the end of X cannot be extended, if it cannot.
@@ -2670,7 +2678,9 @@ function patchBlends(world: World, plan: Plan, changes: CurveChanges, afterDoc: 
 // - `shortened`: sketches that project an edge of a side face of a changed curve (a circle that
 //   became an arc included), not in `moved`.
 // - `broken`: features and sections that name a removed curve or a face of it, an axis on it, a
-//   removed point (a section), or the straight end of a wall whose chain no longer ends there.
+//   point (a `sketchPoint`, a generator's operand) that is no longer an entity of the sketch (an
+//   own point removed, a copy no entry makes now), or the straight end of a wall whose chain no
+//   longer ends there.
 // Features in the order of the timeline; `broken` then the IDs of section entries.
 // `before` is the sketch before the batch (the sketch of `document` when left out): a copy reads as
 // its source only when an entry of it lists the source, as it was before the batch (D68).
@@ -2683,10 +2693,22 @@ export function readersOf(document: Document, sketch: Id, changes: CurveChanges,
   const after = document.features.find((f) => f.id === sketch);
   const listing = before ?? (after?.type === 'sketch' ? after : undefined);
   // a copy of a mirror or pattern reads as its source (D68): a face on the side of a copy of
-  // a changed line, an axis on a copy of a removed one, a point of a copy of a removed point
+  // a changed line, an axis on a copy of a removed one
   const sourceOf = (id: Id): Id => (listing && id.includes('/') ? (derivedOrigin(listing, id)?.source ?? id) : id);
   const onSide = (face: FaceName, curves: readonly Id[]): boolean => (face.role === 'side' || face.role === 'wallSide') && curves.includes(sourceOf(face.curve));
   const planeOnSide = (plane: PlaneRef, curves: readonly Id[]): boolean => plane.kind === 'face' && onSide(plane.face, curves);
+  // a named point the batch removes, or a named entity that was one of the sketch before the batch
+  // and is not one of the sketch of `document` (an own point removed, a copy whose source its entry
+  // no longer copies). The rule of old ends and the fourth rule of the entries keep what is named
+  // so; this names any gap they leave. (The fillet passes the document before its batch, where
+  // nothing is lost; it removes no point.)
+  const known = new Map<Id, boolean>();
+  const lost = (id: Id): boolean => {
+    if (changes.removedPoints.includes(id)) return true;
+    if (!listing || after?.type !== 'sketch') return false;
+    if (!known.has(id)) known.set(id, entityOf(listing, id) !== undefined && entityOf(after, id) === undefined);
+    return known.get(id) as boolean;
+  };
   for (const feature of document.features) {
     if (feature.id === sketch) continue;
     if ((feature.type === 'sketch' && planeOnSide(feature.plane, changes.restarted)) || (feature.type === 'plane' && planeOnSide(feature.base, changes.restarted))) moved.push(feature.id);
@@ -2696,11 +2718,11 @@ export function readersOf(document: Document, sketch: Id, changes: CurveChanges,
     // says which blend stays broken: patchBlends)
     const read = feature.type === 'sketch' ? Object.values(feature.external).flatMap((ref) => kindOf(ref).faces(ref)) : feature.type === 'chamfer' || feature.type === 'fillet' ? [] : facesIn(feature);
     const faces = feature.type === 'sketch' ? [...facesIn(feature.plane), ...read] : read;
-    // the points it names: an axis `sketchPoint`, an operand of a generated profile (the rule of old
-    // ends keeps a point named so, its copies' sources too; this is what is left if it did not)
+    // the entities it names by ID: every `sketchPoint` (an axis, a frame), an operand of a generated
+    // profile
     const source = profileSourceOf(feature);
     const points = [...sketchPointsIn(feature, sketch), ...(source?.type === 'generated' && source.sketch === sketch ? Object.values(source.operands) : [])];
-    if (faces.some((face) => onSide(face, [...removed])) || sketchLinesIn(feature, sketch).some((line) => removed.has(sourceOf(line))) || points.some((p) => changes.removedPoints.includes(sourceOf(p))) || (after?.type === 'sketch' && wallEndBroken(document, after, changes, faces))) {
+    if (faces.some((face) => onSide(face, [...removed])) || sketchLinesIn(feature, sketch).some((line) => removed.has(sourceOf(line))) || points.some(lost) || (after?.type === 'sketch' && wallEndBroken(document, after, changes, faces))) {
       broken.push(feature.id);
       continue;
     }
@@ -2714,7 +2736,7 @@ export function readersOf(document: Document, sketch: Id, changes: CurveChanges,
     for (const group of Object.values(section as Record<string, unknown>)) {
       if (typeof group !== 'object' || group === null || Array.isArray(group)) continue;
       for (const [key, entry] of Object.entries(group as Record<string, unknown>)) {
-        if (sketchLinesIn(entry, sketch).some((line) => removed.has(sourceOf(line))) || sketchPointsIn(entry, sketch).some((p) => changes.removedPoints.includes(sourceOf(p))) || facesIn(entry).some((face) => onSide(face, [...removed]))) entries.push(key);
+        if (sketchLinesIn(entry, sketch).some((line) => removed.has(sourceOf(line))) || sketchPointsIn(entry, sketch).some(lost) || facesIn(entry).some((face) => onSide(face, [...removed]))) entries.push(key);
       }
     }
   }

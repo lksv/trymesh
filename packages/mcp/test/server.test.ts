@@ -62,9 +62,13 @@ describe('MCP server', () => {
     // vnitřní nástroje zvenku volat nejdou
     expect(await session.call('_load', { json: '{}' })).toEqual({ error: 'neznámý nástroj "_load"' });
     expect(await session.call('nic')).toEqual({ error: 'neznámý nástroj "nic"' });
-    const api = await session.text('describe_api');
+    // the index, and each section within what one answer of a tool can carry (D73)
+    const index = await session.text('describe_api');
+    expect(index).toContain('## Sections');
+    const api = await session.text('describe_api', { section: 'constraints' });
     for (const type of Object.keys(CONSTRAINTS)) expect(api, type).toContain(`- ${type} (`);
-    expect(api).toContain('```ts');
+    expect(await session.text('describe_api', { section: 'types-commands' })).toContain('```ts');
+    expect(await session.call('describe_api', { section: 'nope' })).toEqual({ error: expect.stringMatching(/^there is no section "nope"; the sections are: conventions, modelling, /) });
     await session.close();
   });
 

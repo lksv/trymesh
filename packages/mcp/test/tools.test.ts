@@ -4,7 +4,7 @@ import { CONSTRAINTS, FEATURE_TYPE_INFO, GENERATORS, SKETCH_TOOLS, type Command,
 import { createManifoldKernel } from '@trymesh/kernel-manifold';
 import { createPlanegcsSolver } from '@trymesh/solver-planegcs';
 import { describe, expect, it } from 'vitest';
-import { apiDescription, apiText, constraintCatalog, engineTypes, sketchToolCatalog } from '../src/api';
+import { apiDescription, apiIndex, apiSections, apiText, commandTypes, constraintCatalog, engineTypes, sketchToolCatalog } from '../src/api';
 import { MUTATING, callTool, changesDocument, tools } from '../src/tools';
 import { newEngine } from './kit';
 
@@ -90,16 +90,18 @@ describe('popis API', () => {
   });
 
   it('describe_api vrací konvence, katalog a typy; seznam nástrojů neukazuje vnitřní nástroje', () => {
-    const description: string = ok(newEngine(), 'describe_api');
-    expect(description).toBe(apiText());
-    expect(description).toMatch(/^# Konvence\n- Délky jsou v milimetrech/);
+    // without arguments the index; the whole text is the sections one after another (D73)
+    expect(ok(newEngine(), 'describe_api')).toBe(apiIndex());
+    const description = apiText();
+    expect(description).toBe(apiSections().map((entry) => ok(newEngine(), 'describe_api', { section: entry.key })).join('\n\n'));
+    expect(description).toMatch(/^# Conventions\n- Lengths are in millimetres/);
     expect(description).toContain('export type Command =');
     for (const [type, spec] of Object.entries(CONSTRAINTS)) expect(description, type).toContain(`- ${type} (${spec.title}) {`);
     expect(description).toContain('- distance (Vzdálenost) { a: point, b: point; value: non-negative, mm }');
     // typy features jsou z registru enginu
     for (const [type, info] of Object.entries(FEATURE_TYPE_INFO)) expect(description, type).toContain(`- ${type} (${info.title}): `);
-    expect(description).toContain('updateFeature mění pole: profile, extent, operation, targets.');
-    expect(description).toMatch(/- sketch \(Skica\): .* Obsah mění vlastní příkazy, ne updateFeature\./);
+    expect(description).toContain('updateFeature changes the fields: profile, extent, operation, targets.');
+    expect(description).toMatch(/- sketch \(Skica\): .* Its content is changed by its own commands, not by updateFeature\./);
     // D56: the two types of the boolean of bodies, their role and their error reach the AI from the registry and types.ts
     expect(description).toContain('export interface CombineFeature extends FeatureBase');
     expect(description).toContain('export interface SplitFeature extends FeatureBase');
@@ -134,6 +136,60 @@ describe('popis API', () => {
     // popis execute vyjmenuje vazby z katalogu
     const executeTool = tools().find((tool) => tool.name === 'execute')!;
     for (const type of Object.keys(CONSTRAINTS)) expect(executeTool.description).toContain(type);
+  });
+});
+
+// D73: the description is too large for one answer, so describe_api answers with an index and
+// a section, a command, a type, a query or a sketch tool on request.
+describe('describe_api in sections (D73)', () => {
+  // an answer of a tool well within what a client takes in one piece
+  const LIMIT = 50_000;
+  it('the index lists every section with its size; every section is within the limit and the sections make the whole text', () => {
+    const index: string = ok(newEngine(), 'describe_api');
+    expect(index.length).toBeLessThan(8_000);
+    const sections = apiSections();
+    expect(new Set(sections.map((entry) => entry.key)).size).toBe(sections.length);
+    for (const entry of sections) {
+      expect(entry.text.length, entry.key).toBeLessThan(LIMIT);
+      expect(index).toContain(`- ${entry.key} (${entry.text.length}): ${entry.summary}`);
+      // by key and by title, as the conventions name sections by their titles
+      expect(ok(newEngine(), 'describe_api', { section: entry.key })).toBe(entry.text);
+      expect(ok(newEngine(), 'describe_api', { section: entry.title })).toBe(entry.text);
+    }
+    // the types of every marker of types.ts are in a section of their own, but the ports
+    expect(sections.filter((entry) => entry.key.startsWith('types-')).map((entry) => entry.key)).toEqual(['types-document', 'types-features', 'types-sketch', 'types-extrusion', 'types-revolve', 'types-placement', 'types-names', 'types-results', 'types-commands', 'types-queries', 'types-engine']);
+    expect(apiText()).not.toContain('interface SolidKernel');
+    expect(apiText()).toContain('The interfaces of the solver and of the geometric kernel are left out');
+  });
+
+  it('a command, a type, a query and a sketch tool by name; an unknown name lists the names there are', () => {
+    const engine = newEngine();
+    const add: string = ok(engine, 'describe_api', { command: 'addFeature' });
+    expect(add).toContain("| { type: 'addFeature';");
+    expect(add).toMatch(/Types it names \(describe_api \{ type \}\): .*Feature/);
+    // a command of a group gets the comment that leads the group
+    const material: string = ok(engine, 'describe_api', { command: 'setBodyMaterial' });
+    expect(material).toContain('// - setBodyMaterial takes the row `material` of the catalog `materials`');
+    expect(material).toContain("| { type: 'setBodyMaterial'; body: Id; material: string }");
+    expect(material).not.toContain("type: 'removeBodyProperties'");
+    // every command of the union is found
+    for (const type of commandTypes()) expect(ok(engine, 'describe_api', { command: type }), type).toContain(`{ type: '${type}';`);
+    expect(commandTypes()).toContain('batch');
+    const extrude: string = ok(engine, 'describe_api', { type: 'ExtrudeFeature' });
+    expect(extrude).toMatch(/^# The type ExtrudeFeature \(section types-extrusion\)/);
+    expect(extrude).toContain('export interface ExtrudeFeature extends FeatureBase {');
+    expect(extrude).toContain('Types it names: FeatureBase, ProfileSource, Extent, Id');
+    // the comment above a declaration is part of it, the comment of the next one is not
+    const joint: string = ok(engine, 'describe_api', { type: 'Joint' });
+    expect(joint).toContain('// A joint moves its child link');
+    expect(joint).not.toContain('export interface JointBase');
+    expect(ok(engine, 'describe_api', { query: 'mass' })).toMatch(/^- mass \(/);
+    expect(ok(engine, 'describe_api', { tool: 'rectangle' })).toMatch(/^- rectangle \(Rectangle\)/);
+    expect(callTool(engine, 'describe_api', { command: 'addFeatur' })).toEqual({ ok: false, error: expect.stringMatching(/^there is no command "addFeatur"; the commands are: addFeature, removeFeature, /) });
+    expect(callTool(engine, 'describe_api', { type: 'Nope' })).toEqual({ ok: false, error: expect.stringMatching(/^there is no declared type "Nope"; the types are: .*ExtrudeFeature/) });
+    expect(callTool(engine, 'describe_api', { query: 'nope' })).toEqual({ ok: false, error: expect.stringMatching(/^there is no query "nope"; the queries are: .*mass/) });
+    expect(callTool(engine, 'describe_api', { tool: 'nope' })).toEqual({ ok: false, error: expect.stringMatching(/^there is no sketch tool "nope"; the tools are: rectangle, /) });
+    expect(callTool(engine, 'describe_api', { section: 'queries', query: 'mass' })).toEqual({ ok: false, error: 'give one of section, command, type, query, tool; given: section, query' });
   });
 });
 
@@ -574,9 +630,9 @@ describe('dotazy na skicu', () => {
 
   it('the axes of the origin (D71): named by describe_api, a constraint on one through execute, not listed by get_sketch', () => {
     const engine = newEngine();
-    const description: string = ok(engine, 'describe_api');
+    const description: string = ok(engine, 'describe_api', { section: 'conventions' });
     expect(description).toContain('Every sketch has the lines `origin/x` and `origin/y` through its origin along its X and Y');
-    expect(description).toContain('every sketch has the lines `origin/x` and `origin/y` through its origin along');
+    expect(apiText()).toContain('every sketch has the lines `origin/x` and `origin/y` through its origin along');
     rectangle(engine, false);
     // the rectangle centred on the Y axis and standing on the X axis
     const result = execute(engine, {
@@ -1270,7 +1326,7 @@ describe('model, tělesa a příkazy', () => {
 describe('a spline over MCP (D70)', () => {
   const points = (list: [string, number, number][]): Command[] => list.map(([id, x, y]) => ({ type: 'addPoint', sketch: 's', id, x, y }));
   it('describe_api names the curve and says where it runs', () => {
-    const description: string = ok(newEngine(), 'describe_api');
+    const description = apiText();
     expect(description).toContain("{ type: 'spline'; points: Id[] }");
     expect(description).toContain('`get_sketch` says where the curve');
   });

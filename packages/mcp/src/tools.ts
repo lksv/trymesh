@@ -69,7 +69,7 @@ import {
   sketchTool,
   takenOver,
 } from '@trymesh/engine';
-import { apiText } from './api';
+import { apiLookup } from './api';
 
 export type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 export type JsonSchema = { [key: string]: unknown };
@@ -1150,7 +1150,7 @@ export function outlineSaid(answer: unknown): { text: string; error: boolean } |
 const NONE: JsonSchema = { type: 'object', properties: {}, additionalProperties: false };
 const COMMAND: JsonSchema = {
   type: 'object',
-  properties: { command: { type: 'object', description: 'Příkaz enginu, objekt s polem `type`. Tvary všech příkazů vrací describe_api.', required: ['type'] } },
+  properties: { command: { type: 'object', description: 'A command of the engine, an object with the field `type`. describe_api { command: "<type>" } gives the shape of one command; the section types-commands has them all.', required: ['type'] } },
   required: ['command'],
   additionalProperties: false,
 };
@@ -1166,9 +1166,23 @@ export function tools(): Tool[] {
     {
       name: 'describe_api',
       description:
-        'Popis toho, co engine umí: konvence, tvary dokumentu a příkazů (typy v TypeScriptu) a katalog vazeb s operandy. Zavolej před prvním execute nebo preview; popis se generuje ze zdrojů enginu, takže platí pro tuto verzi.',
-      inputSchema: NONE,
-      run: () => apiText(),
+        'What the engine can do, generated from its sources, so valid for this build. Without arguments it returns the index: the essential conventions and the list of sections with their size. Then ask for what you need: `section` (a key of the index, such as "conventions", "queries", "types-commands"), `command` (the shape of one command, such as "addFeature"), `type` (one declaration of the types, such as "ExtrudeFeature"), `query` (one query of the tool query) or `tool` (one sketch tool). Read the index and the section conventions before the first execute or preview.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          section: { type: 'string', description: 'The key of a section, as the index lists it (its title works too).' },
+          command: { type: 'string', description: 'The `type` of a command: its shape with its comment and the types it names.' },
+          type: { type: 'string', description: 'The name of a type declared in the types of the engine.' },
+          query: { type: 'string', description: 'The name of a query of the tool query.' },
+          tool: { type: 'string', description: 'The name of a sketch tool of sketch_tool.' },
+        },
+        additionalProperties: false,
+      },
+      run: (_engine, args) => {
+        const answer = apiLookup(args as Parameters<typeof apiLookup>[0]);
+        if (!answer.ok) throw new ToolError(answer.error);
+        return answer.text;
+      },
     },
     {
       name: 'get_model',
@@ -1283,7 +1297,7 @@ export function tools(): Tool[] {
     {
       name: 'query',
       description:
-        `Asks a query of the engine's catalog about the model: ${Object.keys(QUERIES).join(', ')}. The arguments of each query and what it returns are in describe_api, section Queries. ` +
+        `Asks a query of the engine's catalog about the model: ${Object.keys(QUERIES).join(', ')}. The arguments of each query and what it returns are in describe_api, section queries, or describe_api { query: "<name>" } for one. ` +
         'Without `at` and `after` the answer is for the current model. `at` asks about the state after that feature. `after` is a command: the answer is for the model the document would have after it, and nothing is written, ' +
         'so a parameter can be stepped and each step asked about (a pose: `after: { type: "setPose", values: { ... } }`). With both, the document after the command is evaluated up to `at`. Numbers in the answer are rounded to six decimal places. ' +
         'The answer is for the pose of the mechanism (also with `at`); when a link is moved, `pose` beside the answer names the joints that are not at zero. `geometry: "modelled"` asks about the model as modelled instead.',
@@ -1318,7 +1332,7 @@ export function tools(): Tool[] {
     },
     {
       name: 'execute',
-      description: `Provede příkaz enginu a zapíše ho do dokumentu (jeden krok undo). Víc příkazů naráz jde složit příkazem batch. Neplatný příkaz dokument nezmění a vrátí důvod. Typy vazeb: ${constraintTypes}. Přesné tvary příkazů vrací describe_api.`,
+      description: `Provede příkaz enginu a zapíše ho do dokumentu (jeden krok undo). Víc příkazů naráz jde složit příkazem batch. Neplatný příkaz dokument nezmění a vrátí důvod. Typy vazeb: ${constraintTypes}. The shape of a command: describe_api { command: "<type>" }.`,
       inputSchema: COMMAND,
       // `takenOver`: the IDs of features and sketch entities the command added while a section of
       // the document (body properties) still named them; a body made under such an ID takes the
@@ -1339,7 +1353,7 @@ export function tools(): Tool[] {
     },
     {
       name: 'sketch_tool',
-      description: `Draws a whole shape into a sketch with its constraints from a few inputs, or cuts the curves of a sketch (trim, extend, split), and returns the IDs of what it made or changed (\`ids\`). The tools are ${Object.keys(SKETCH_TOOLS).join(', ')}; their inputs and the IDs they return are in describe_api, section Sketch tools. The shape is written as one command, so one undo takes it back; with \`preview: true\` it is only computed, as the tool preview does for a command. The IDs are generated so that the document does not have them: \`<prefix><kind><number>\` with the kinds p (point), c (curve) and k (constraint).`,
+      description: `Draws a whole shape into a sketch with its constraints from a few inputs, or cuts the curves of a sketch (trim, extend, split), and returns the IDs of what it made or changed (\`ids\`). The tools are ${Object.keys(SKETCH_TOOLS).join(', ')}; their inputs and the IDs they return are in describe_api, sections sketch-tools and sketch-cuts, or describe_api { tool: "<name>" } for one. The shape is written as one command, so one undo takes it back; with \`preview: true\` it is only computed, as the tool preview does for a command. The IDs are generated so that the document does not have them: \`<prefix><kind><number>\` with the kinds p (point), c (curve) and k (constraint).`,
       inputSchema: {
         type: 'object',
         properties: {

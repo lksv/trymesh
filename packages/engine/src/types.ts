@@ -233,6 +233,8 @@ export interface Check {
   expr: Expr;
 }
 
+// ---------------------------------------------------------------- features
+
 export type Feature = PlaneFeature | SketchFeature | ExtrudeFeature | PatternFeature | HoleFeature | MeshFeature | CombineFeature | SplitFeature | RevolveFeature | ChamferFeature | FilletFeature | InsertFeature;
 
 export interface FeatureBase {
@@ -292,6 +294,8 @@ export interface PlaneFeature extends FeatureBase {
   midplaneWith?: PlaneRef;
   tilt?: { axis: AxisRef; angle: number };
 }
+
+// ---------------------------------------------------------------- sketch
 
 export interface SketchFeature extends FeatureBase {
   type: 'sketch';
@@ -665,6 +669,8 @@ export type DimensionShape =
 
 export type Dimension = { value: number; driving: boolean } & DimensionShape;
 
+// ---------------------------------------------------------------- extrusion
+
 export type PlaneRef =
   | { kind: 'base'; plane: 'XY' | 'XZ' | 'YZ' }
   | { kind: 'plane'; feature: Id } // PlaneFeature
@@ -849,6 +855,8 @@ export interface SplitFeature extends FeatureBase {
   plane: PlaneRef;
   side: 'forward' | 'backward';
 }
+
+// ---------------------------------------------------------------- revolve
 
 // A revolve (D58): a profile of a sketch turned about an axis that lies in the plane of the sketch.
 // - `profile`: regions of the sketch (with an optional offset) or a wall along curves, as an
@@ -1071,6 +1079,8 @@ export interface InsertFeature extends FeatureBase {
   parameters?: Record<string, number>;
   bodies?: Id[];
 }
+
+// ---------------------------------------------------------------- placement
 
 // A directed frame of the model: a plane as a sketch refers to one (a base plane: XY is (+X, +Y,
 // +Z), XZ is (+X, +Z, −Y), YZ is (+Y, +Z, +X); a plane feature; a planar face of a body, with the

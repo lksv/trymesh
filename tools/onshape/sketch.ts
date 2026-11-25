@@ -4,8 +4,9 @@ import type { Command, Engine, Id, PlaneRef, RegionRef } from '../../packages/en
 import { type SketchToolResult, constraintKey, emptySketch, freshIds, sketchTool, solvedCurves } from '../../packages/engine/src/index';
 import { type Report, type V2, type V3, dot, exec, expression, sane } from './common';
 import { type Expected, type Pair, TOLERANCE, impliedConstraints, impliedLines, ladder, probeSketch, sketchChanges, strip } from './check';
-import { type ExternalResolver, type MapContext, knownOperand, mapConstraints, numberConstraints, onshapeKind, params, twiceByMeaning } from './constraints';
+import { type ExternalResolver, type MapContext, instanceRows, knownOperand, mapConstraints, numberConstraints, onshapeKind, params, twiceByMeaning } from './constraints';
 import { type Cause, type ConstraintRecord, FATES, type Fate, type SketchSummary, finalFate, sketchLines } from './fates';
+import { type EntryPlan, copiesMatch, planEntries } from './derived';
 import { type Candidate, type IdClass, ORIGIN_ID, type StudioOperations, classText, decode, edgeCandidates, fitting, pickCandidate, sketchCandidates } from './operands';
 
 // The frame of an Onshape sketch (world, mm) and the base plane of trymesh it is drawn on.
@@ -67,15 +68,18 @@ export interface SketchPlace {
 // Points of Onshape within this distance of each other, in chains, are one point of trymesh.
 export const WELD = 1e-6;
 
-export function convertSketch(engine: Engine, report: Report, id: Id, name: string, plane: PlaneRef, frame: SketchFrame, feature: any, geom: any, place: SketchPlace): Converted | undefined {
+export function convertSketch(engine: Engine, report: Report, id: Id, name: string, plane: PlaneRef, frame: SketchFrame, feature: any, geom: any, place: SketchPlace, forbidden = new Set<number>()): Converted | undefined {
   const P = (s: string) => `${id}.${sane(s)}`; // entity IDs are unique in the whole document
+  // The patterns and mirrors that become entries (derived.ts): their images are not made.
+  const plans = planEntries(feature, geom, forbidden, (x) => { const k = knownOperand(x, frame); return !!k && !('lost' in k) && k.ext === 'axis'; });
+  const copies = new Set<string>(plans.filter((x) => !x.why).flatMap((x) => [...x.images]));
   // Onshape gives every curve its own end points, held together by coincident constraints; points
   // at one place become one point (that is what trymesh needs to close a region).
-  const welded = weldPoints((geom.entities as any[]).filter((e) => e.sketchEntityType === 'skPoint').map((e) => ({ src: e.sketchEntityId as string, id: P(e.sketchEntityId), at: toBase(frame, [e.position2d.x * 1000, e.position2d.y * 1000]) })));
+  const welded = weldPoints((geom.entities as any[]).filter((e) => e.sketchEntityType === 'skPoint' && !copies.has(e.sketchEntityId)).map((e) => ({ src: e.sketchEntityId as string, id: P(e.sketchEntityId), at: toBase(frame, [e.position2d.x * 1000, e.position2d.y * 1000]) })));
   const { pos, rep } = welded;
   for (const w of welded.wide) report.later('Welds', `${place.studio}, ${name}: a cluster of welded points wider than ${WELD} mm: ${w}`);
   const kind = new Map<string, 'point' | 'line' | 'circle' | 'arc'>();
-  for (const e of geom.entities) if (e.sketchEntityType === 'skPoint') kind.set(e.sketchEntityId, 'point');
+  for (const e of geom.entities) if (e.sketchEntityType === 'skPoint' && !copies.has(e.sketchEntityId)) kind.set(e.sketchEntityId, 'point');
   const curves: C[] = [];
   const skipped: Record<string, number> = {};
   // An exact duplicate (the same kind over the same points with the same construction flag; a
@@ -84,6 +88,7 @@ export function convertSketch(engine: Engine, report: Report, id: Id, name: stri
   const curveOf = new Map<string, { id: Id; reversed: boolean }>();
   const same = (c: C, x: C) => c.construction === x.construction && (c.line && x.line ? (c.line[0] === x.line[0] && c.line[1] === x.line[1]) || (c.line[0] === x.line[1] && c.line[1] === x.line[0]) : c.circle && x.circle ? c.circle.c === x.circle.c && Math.abs(c.circle.r - x.circle.r) <= WELD : c.arc && x.arc ? c.arc.join() === x.arc.join() : false);
   for (const e of geom.entities) {
+    if (copies.has(e.sketchEntityId)) continue;
     const cid = P(e.sketchEntityId);
     let c: C | undefined;
     if (e.sketchEntityType === 'skLineSegment') {
@@ -123,6 +128,26 @@ export function convertSketch(engine: Engine, report: Report, id: Id, name: stri
     })),
   ];
   const conv: Converted = { id, frame, kind, rep };
+  // the entries: the sources are the seed curves, and seed points no seed curve has
+  const entryOf = new Map<EntryPlan, Id>();
+  const curveId = (v: string) => curveOf.get(v)?.id ?? P(v);
+  for (const plan of plans) {
+    if (plan.why) continue;
+    const xid = `${id}.pattern${entryOf.size}`;
+    const seedPoints = new Set(plan.seeds.flatMap((v) => (geom.entities as any[]).filter((e) => e.sketchEntityId === v && e.sketchEntityType !== 'skPoint').flatMap((e) => [e.startPointId, e.endPointId, e.centerId].filter(Boolean))));
+    const sources = [...new Set(plan.seeds.map((v) => (kind.get(v) === 'point' ? (seedPoints.has(v) ? undefined : rep.get(v)) : curveId(v))).filter(Boolean) as Id[])];
+    let transform: any;
+    if (plan.type === 'pattern') {
+      const center = plan.pivot ? rep.get(plan.pivot) : (() => { const k = plan.pivotExternal ? knownOperand(plan.pivotExternal, frame) : undefined; return k && !('lost' in k) && k.k === 'point' ? k.id : undefined; })();
+      if (!center) { plan.why = 'the pivot is not a point of the sketch or the origin'; continue; }
+      transform = { type: 'circular', center, count: plan.count, span: { type: 'full' } };
+    } else {
+      const axis = plan.axisExternal ? (knownOperand(plan.axis!, frame) as any).id : curveId(plan.axis!);
+      transform = { type: 'mirror', axis };
+    }
+    entryOf.set(plan, xid);
+    base.push({ type: 'addExternal', sketch: id, id: xid, ref: { type: 'pattern', sources, transform } } as Command);
+  }
   const entityType = new Map<string, string>((geom.entities as any[]).map((e) => [e.sketchEntityId, onshapeKind(e)]));
   // An external operand: the origin, a default plane; else what the decode says (an entity of
   // another sketch, an edge of a body), found by geometry among the candidates the decode allows,
@@ -158,7 +183,7 @@ export function convertSketch(engine: Engine, report: Report, id: Id, name: stri
     const entity = c.sub ? `${xid}/${c.sub}` : xid;
     return { k: c.kind, id: entity, ext: c.ref.type === 'edge' ? 'edge' : 'sketch', at: c.at, ends: c.ends, center: c.center, radius: c.radius };
   };
-  const ctx: MapContext = { studio: place.studio, sketch: id, name, helper: place.helper, kind, rep, pos, curves, curveOf, entityType, split: new Set(), ops: place.ops, frame, parameters: engine.getState().document.parameters, resolve };
+  const ctx: MapContext = { studio: place.studio, sketch: id, name, helper: place.helper, kind, rep, pos, curves, curveOf, entityType, split: new Set(), ops: place.ops, frame, parameters: engine.getState().document.parameters, resolve, plans, spokes: new Set(), entities: new Map((geom.entities as any[]).map((e) => [e.sketchEntityId, e])) };
   const { records } = mapConstraints(ctx, feature.constraints ?? []);
   report.records.push(...records);
   twiceByMeaning(records, engine.getState().document.parameters);
@@ -170,13 +195,36 @@ export function convertSketch(engine: Engine, report: Report, id: Id, name: stri
   const promises = report.promisesOf(place.studio);
   const pairs: Pair[] = [];
   for (const u of units) for (const c of u.commands as any[]) {
-    if (c.zero) promises.notChanged.push(`${id} ${c.id}`);
+    if (c.zero || c.spoke) promises.notChanged.push(`${id} ${c.id}`);
     if (c.pair) pairs.push({ a: c.pair[0], b: c.pair[1], label: `${u.what} (${c.id})`, record: u, command: c });
   }
+  const saved = entryOf.size ? engine.save() : undefined;
+  // an entry that rule 5 or 6 blames is dropped and the sketch is built again from the entities
+  const again = (plan: EntryPlan, why: string) => {
+    report.note(`${name}: the entry of ${plan.constraint.constraintType} #${plan.index} is dropped (${why}); the sketch is built again with its instances as own curves`);
+    engine.load(saved!);
+    report.records.splice(report.records.length - records.length, records.length);
+    promises.notChanged.splice(0, promises.notChanged.length, ...promises.notChanged.filter((x) => !x.startsWith(`${id} `)));
+    return convertSketch(engine, report, id, name, plane, frame, feature, geom, place, new Set([...forbidden, plan.index]));
+  };
   const lad = ladder(engine, id, base, units, expected);
   if (!exec(engine, report, { type: 'batch', commands: [...base, ...lad.commands] }, name)) return undefined;
+  // rule 5: the copies are Onshape's images, both ways
+  for (const [plan, xid] of entryOf) {
+    const why = copiesMatch(engine, id, xid, plan, geom, (p) => toBase(frame, p));
+    if (why) return again(plan, `rule 5: ${why}`);
+  }
   // Crossing curves: the sketch tool `split` once, its batch checked before it stays.
   const cut = cutSketch(engine, report, id, name, base, units.filter((u) => u.fate === 'written'), expected, skipped, place.onshapeRegions);
+  // rule 6: the engine accepts the contacts of the copies
+  if (entryOf.size) {
+    const st = engine.getState().evaluation.features[id]?.sketch;
+    const contacts: any = engine.query('sketchContacts', { sketch: id, max: 200 } as any);
+    for (const [plan, xid] of entryOf) {
+      const named = contacts.ok ? (contacts.result.contacts as any[]).filter((c) => c.curves.some((k: Id) => k.startsWith(`${xid}/`))) : [];
+      if (!st?.valid && named.length) return again(plan, `rule 6: ${named.length} contact(s) of its copies`);
+    }
+  }
   // A distance of two lines keeps them parallel in Onshape, one point–line distance does not: the
   // sketch's probe asks whether they stay parallel, and a pair that parts gets `parallel` in its unit.
   const livePairs = pairs.filter((x) => x.record.fate === 'written' && x.record.ids.includes(x.command.id));
@@ -197,7 +245,9 @@ export function convertSketch(engine: Engine, report: Report, id: Id, name: stri
   const implied = impliedConstraints(engine, id, records.filter((r) => r.fate === 'written'), expected, { notChanged: new Set(promises.notChanged), pairs: livePairs });
   for (const r of implied.removed) report.promisesOf(place.studio).removed.push({ sketch: id, id: r.id, constraint: (records.flatMap((x) => x.commands as any[]).find((c) => c.id === r.id) as any).constraint });
   for (const line of impliedLines(`${place.studio}, ${name}`, implied)) report.later('Redundant constraints', line);
-  finishSketch(engine, report, conv, name, place, geom, feature, records, cut.step ?? lad.step, pos.size, curves.length, { drift: { before: lad.drift, after: cut.drift }, cut: cut.info, probe: implied });
+  const entrySummary = plans.map((x) => ({ constraint: `${place.studio}/${id}#${x.index}`, type: x.type, entry: entryOf.has(x), ...(x.why ? { why: x.why } : {}) }));
+  for (const e of entrySummary) report.later('Entries', `${place.studio}, ${name}: ${e.type} #${e.constraint.split('#')[1]}: ${e.entry ? 'an entry' : `no entry: ${e.why}`}`);
+  finishSketch(engine, report, conv, name, place, geom, feature, records, cut.step ?? lad.step, pos.size, curves.length, { drift: { before: lad.drift, after: cut.drift }, cut: cut.info, probe: implied, entries: entrySummary });
   return conv;
 }
 
@@ -414,13 +464,6 @@ function finishSketch(engine: Engine, report: Report, conv: Converted, name: str
     const rows = instanceRows(c).filter((r) => r && isPoint(r[0])).map((r) => r.map((v) => conv.rep.get(v) ?? ''));
     pr.patterns.push({ sketch: id, constraint: `${place.studio}/${id}#${index}`, pivot, count, rows });
   }
-}
-
-// The rows of an Onshape pattern: rows[i][j] is entity i of instance j (0 the seed).
-export function instanceRows(c: any): string[][] {
-  const rows: string[][] = [];
-  for (const q of c.parameters) { const m = /^localInstance(\d+),(\d+)$/.exec(q.parameterId); if (m) (rows[+m[1]] ??= [])[+m[2]] = q.value; }
-  return rows.filter(Boolean);
 }
 
 // The places where the converter made one point of several Onshape points, and whether a constraint

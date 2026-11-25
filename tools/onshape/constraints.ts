@@ -5,6 +5,7 @@ import { expression, numberOr, sane, type V2 } from './common';
 import { CAUSES, type Category, type Cause, type ConstraintRecord, type OperandRecord } from './fates';
 import { DEFAULT_PLANES, ORIGIN_ID, type StudioOperations, categoryOf, classText } from './operands';
 import { namesIn } from './probe';
+import type { EntryPlan } from './derived';
 import type { SketchFrame } from './sketch';
 
 // What the mapping needs of the sketch being converted.
@@ -24,6 +25,9 @@ export interface MapContext {
   frame: SketchFrame;
   parameters: readonly { name: string; expr: string }[];
   resolve: ExternalResolver;
+  plans: EntryPlan[]; // the patterns and mirrors of curves, and which are entries
+  spokes: Set<Id>; // the spokes made so far
+  entities: Map<string, any>; // the Onshape entities of the geometry endpoint
 }
 
 // An Onshape entity as Onshape has it: a point, a line, a circle, an arc or something else.
@@ -32,6 +36,13 @@ export const onshapeKind = (e: any): 'point' | 'line' | 'circle' | 'arc' | 'othe
 
 export const params = (c: any): Record<string, any> => Object.fromEntries(c.parameters.map((q: any) => [q.parameterId, q]));
 const externalIds = (q: any): string[] => (q?.queries ?? []).flatMap((x: any) => x.deterministicIds ?? []);
+
+// The rows of an Onshape pattern: rows[i][j] is entity i of instance j (0 the seed).
+export function instanceRows(c: any): string[][] {
+  const rows: string[][] = [];
+  for (const q of c.parameters) { const m = /^localInstance(\d+),(\d+)$/.exec(q.parameterId); if (m) (rows[+m[1]] ??= [])[+m[2]] = q.value; }
+  return rows.filter(Boolean);
+}
 
 // The Onshape type with its form, as the tables count it.
 export function whatOf(c: any, entityType: Map<string, string>): string {
@@ -129,18 +140,26 @@ export function mapConstraints(ctx: MapContext, list: any[]): { records: Constra
     out.push(cmd);
     rec.commands.push(cmd as any);
   };
+  const lose = (detail?: string, extraCause?: Cause) => {
+    const { cause, category } = causeOf(rec, extraCause === 'mirror');
+    const chosen = extraCause && extraCause !== 'mirror' && CAUSES.indexOf(extraCause) < CAUSES.indexOf(cause) ? extraCause : cause;
+    Object.assign(rec, { fate: 'lost', cause: chosen, ...(category ? { category } : {}), ...(detail ? { detail } : {}) });
+  };
   list.forEach((c, index) => {
     const p = params(c);
     const t: string = c.constraintType;
     rec = { key: `${ctx.studio}/${ctx.sketch}#${index}`, studio: ctx.studio, sketch: ctx.sketch, sketchName: ctx.name, helper: ctx.helper, index, type: t, what: whatOf(c, ctx.entityType), operands: operandsOf(c, ctx), commands: [], ids: [] };
     records.push(rec);
-    const lose = (detail?: string, extraCause?: Cause) => {
-      const { cause, category } = causeOf(rec, extraCause === 'mirror');
-      const chosen = extraCause && extraCause !== 'mirror' && CAUSES.indexOf(extraCause) < CAUSES.indexOf(cause) ? extraCause : cause;
-      Object.assign(rec, { fate: 'lost', cause: chosen, ...(category ? { category } : {}), ...(detail ? { detail } : {}) });
-    };
-    // a pattern: point 6
-    if (/PATTERN/.test(t)) return lose();
+    // a pattern or a mirror written as an entry, and what its copies realise
+    const plan = ctx.plans.find((x) => x.constraint === c);
+    if (plan && !plan.why) return void Object.assign(rec, { fate: 'entry', detail: plan.type });
+    if (ctx.plans.some((x) => !x.why && x.exempt.has(c))) return void Object.assign(rec, { fate: 'shared', detail: 'by copies' });
+    if (plan?.why) rec.extra = { ...(rec.extra ?? {}), entry: plan.why };
+    // a pattern that is no entry: by spokes
+    if (/PATTERN/.test(t)) {
+      if (!plan || c.constraintType !== 'CIRCULAR_PATTERN' || p.openPattern?.value) return lose(plan?.why);
+      return spokes(plan);
+    }
     // the operands, local first, then the external ones resolved against them
     const slot = (name: string): Operand | undefined | { lost: Cause; detail: string } => {
       const q = p[`local${name}`];
@@ -203,6 +222,9 @@ export function mapConstraints(ctx: MapContext, list: any[]): { records: Constra
       if (A.id !== B.id && !onAxis(A) && !onAxis(B)) add({ type: 'symmetric', a: A.id, b: B.id, line: M.id });
       else if (onAxis(A) || onAxis(B)) return void Object.assign(rec, { fate: 'shared', detail: M.ext === 'axis' ? 'the origin on the mirror axis' : 'an end of the mirror line' });
       else add({ type: 'pointOnCurve', point: A.id, curve: M.id });
+    } else if (t === 'MIRROR' && A && B && A.k !== 'point' && B.k !== 'point' && M?.k === 'line') {
+      // a mirror of two curves that is no entry: the symmetry of their points
+      if (!mirror(A, B, M)) return;
     } else if (t === 'MIRROR') return lose(undefined, M?.ext === 'axis' ? 'plane' : 'mirror');
     else if (t === 'DISTANCE' && A?.k === 'point' && B?.k === 'point' && direction === 'MINIMUM') {
       add({ type: 'distance', a: A.id, b: B.id, value: value(p.length), driving: true }, Math.hypot(A.at![0] - B.at![0], A.at![1] - B.at![1]));
@@ -225,6 +247,102 @@ export function mapConstraints(ctx: MapContext, list: any[]): { records: Constra
     else if (t === 'FIX' && A?.k === 'point' && !A.ext) add({ type: 'fixed', point: A.id, x: A.at![0], y: A.at![1] });
     if (out.length === before) lose();
   });
+  // A mirror of two curves as the symmetry of their points: the ends of two lines paired by
+  // reflecting the positions, the centres of two circles with equalRadius, the centre and the
+  // swapped ends of two arcs. A pair that is one point is on the mirror line: nothing when it is an
+  // end of that line or the origin on an axis, else pointOnCurve. A pair whose positions do not
+  // mirror refuses the unit.
+  function mirror(A: Operand, B: Operand, M: Operand): boolean {
+    const [a, b] = M.ends!;
+    const reflect = ([x, y]: V2): V2 => { const [dx, dy] = [b[0] - a[0], b[1] - a[1]]; const t = ((x - a[0]) * dx + (y - a[1]) * dy) / (dx * dx + dy * dy); return [2 * (a[0] + t * dx) - x, 2 * (a[1] + t * dy) - y]; };
+    const near = (u: V2, v: V2) => Math.hypot(u[0] - v[0], u[1] - v[1]) <= 1e-6;
+    let bad = false;
+    const pair = (p: Id, q: Id) => {
+      if (p === q) {
+        if ((M.own ?? []).includes(p) || (M.ext === 'axis' && p === 'origin')) return;
+        if (!near(reflect(P(p)), P(p))) { bad = true; return; }
+        add({ type: 'pointOnCurve', point: p, curve: M.id });
+        return;
+      }
+      if (!near(reflect(P(p)), P(q))) { bad = true; return; }
+      add({ type: 'symmetric', a: p, b: q, line: M.id });
+    };
+    if (A.k === 'line' && B.k === 'line') {
+      const straight = near(reflect(P(A.own![0])), P(B.own![0]));
+      pair(A.own![0], straight ? B.own![0] : B.own![1]);
+      pair(A.own![1], straight ? B.own![1] : B.own![0]);
+    } else if (A.k === 'circle' && B.k === 'circle') {
+      pair(A.own![0], B.own![0]);
+      add({ type: 'equalRadius', a: A.id, b: B.id });
+    } else if (A.k === 'arc' && B.k === 'arc') {
+      pair(A.own![0], B.own![0]);
+      pair(A.own![1], B.own![2]);
+      pair(A.own![2], B.own![1]);
+    } else bad = true;
+    if (bad) { rec.commands = []; Object.assign(rec, { fate: 'lost', cause: 'refused', detail: 'the positions do not mirror' }); return false; }
+    rec.detail = 'by symmetric';
+    return true;
+  }
+
+  // A circular pattern that is no entry, by spokes: a construction line from the pivot to every
+  // point Onshape lists in an instance; the spoke of an image point has equalLength with the spoke
+  // of its seed point and an angle of 2π/n to the spoke of the instance before (the angles tie the
+  // spokes as a tree, never as a ring); an image circle has equalRadius with its seed. The sense is
+  // read off the written positions; the count is a number.
+  function spokes(plan: EntryPlan) {
+    const E = ctx.entities;
+    const p = params(plan.constraint);
+    const isPoint = (v: string) => E.get(v)?.sketchEntityType === 'skPoint';
+    let pivot: Id | undefined = plan.pivot ? ctx.rep.get(plan.pivot) : undefined;
+    if (!pivot && plan.pivotExternal) { const k = knownOperand(plan.pivotExternal, ctx.frame); if (k && !('lost' in k) && k.k === 'point') pivot = k.id; }
+    if (!pivot) return lose(`${plan.why}; the pivot is not a point of the sketch or the origin`);
+    let n = typeof plan.count === 'number' ? plan.count : expressionValue(String(plan.count), ctx.parameters as any);
+    if (n === undefined || !Number.isInteger(n) || n < 2) return lose(`${plan.why}; the count ${plan.count} is no whole number of at least 2`);
+    if (typeof plan.count === 'string') (rec.numbers ??= []).push(`the count \`${plan.count}\` of the pattern as ${n}: a pattern by spokes cannot be counted again`);
+    // the rows of points: as Onshape lists them, or the points of the curve rows in the order start, end, centre
+    let rows = plan.rows.filter((r) => isPoint(r[0]));
+    if (!rows.length) rows = plan.rows.flatMap((r) => ['startPointId', 'endPointId', 'centerId'].map((k) => r.map((v) => E.get(v)?.[k])).filter((x) => x.every(Boolean)));
+    const pts = rows.map((r) => r.map((v) => ctx.rep.get(v)));
+    if (pts.some((r) => r.some((v) => !v))) return lose(`${plan.why}; a point of an instance is not in the sketch`);
+    const O = P(pivot);
+    const step = (2 * Math.PI) / n;
+    const spoke = (q: Id): Id | undefined => {
+      if (q === pivot) return undefined; // a point of an instance at the pivot is the same in every instance
+      const sid = `${ctx.sketch}.spoke.${q.slice(ctx.sketch.length + 1)}`;
+      if (!ctx.spokes.has(sid)) { ctx.spokes.add(sid); rec.commands.push({ type: 'addCurve', sketch: ctx.sketch, id: sid, curve: { type: 'line', a: pivot, b: q, construction: true } } as any); }
+      return sid;
+    };
+    const parent = new Map<Id, Id>();
+    const root = (x: Id): Id => { while (parent.has(x)) x = parent.get(x)!; return x; };
+    let sense = 0;
+    for (const row of pts as Id[][]) {
+      const s0 = spoke(row[0]);
+      if (!s0) continue;
+      for (let j = 1; j < row.length; j++) {
+        const [qa, qb] = [row[j - 1], row[j]];
+        const [sa, sb] = [spoke(qa), spoke(qb)];
+        if (!sa || !sb || sa === sb || root(sa) === root(sb)) continue;
+        const [da, db] = [sub2(P(qa), O), sub2(P(qb), O)];
+        const th = Math.atan2(da[0] * db[1] - da[1] * db[0], da[0] * db[0] + da[1] * db[1]);
+        const s = n === 2 ? 1 : Math.sign(th);
+        if (Math.abs(Math.abs(th) - step) > 1e-6) { rec.commands = []; return lose(`${plan.why}; a point of instance ${j} does not land on its seed turned`); }
+        sense ||= s;
+        parent.set(root(sa), root(sb));
+        if (sb !== s0) add({ type: 'equalLength', a: s0, b: sb });
+        const value = n === 2 ? 'pi' : s > 0 ? `2 * pi / ${n}` : `-(2 * pi / ${n})`;
+        add({ type: 'angle', a: sa, b: sb, value, driving: true }, n === 2 ? Math.PI : s * step, { spoke: true });
+      }
+    }
+    // the image circles have the radius of their seeds
+    for (const r of plan.rows) {
+      const s0 = local(r[0]);
+      if (s0?.k !== 'circle' && s0?.k !== 'arc') continue;
+      for (let j = 1; j < r.length; j++) { const im = local(r[j]); if (im && (im.k === 'circle' || im.k === 'arc')) add({ type: 'equalRadius', a: s0.id, b: im.id }); }
+    }
+    rec.detail = 'by spokes';
+    rec.extra = { ...(rec.extra ?? {}), count: n, sense };
+  }
+
   // an angle of two lines: trymesh measures from the direction of `a` to that of `b`,
   // counter-clockwise, in (−π, π]; Onshape gives an unsigned value and three flags. Of the forms
   // `e`, `-(e)`, `pi - (e)`, `(e) - pi` those whose value is the measured angle fit.

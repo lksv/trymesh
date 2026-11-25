@@ -48,7 +48,7 @@ describe('export formats', () => {
     expect(run('one', undefined, formats)).toMatchObject({ ok: true });
     expect(run('one', { size: 3 }, formats)).toMatchObject({ ok: true });
     expect(seen).toEqual([{ size: 2 }, { size: 2 }, { size: 3 }]); // the defaults are filled in before the format runs
-    expect(run('one', { sizes: 3 }, formats)).toEqual({ ok: false, error: { code: 'invalidArguments', message: 'one: sizes: there is no such argument', arg: ['sizes'] } });
+    expect(run('one', { sizes: 3 }, formats)).toEqual({ ok: false, error: { code: 'invalidArguments', message: 'one: sizes: there is no argument "sizes"; the arguments are: size', arg: ['sizes'] } });
     expect(run('one', { size: '3' }, formats)).toEqual({ ok: false, error: { code: 'invalidArguments', message: 'one: size: a number is expected', arg: ['size'] } });
     expect(run('two', {}, formats)).toEqual({ ok: false, error: { code: 'invalidArguments', message: 'there is no export format "two"; the formats are one, failing', arg: ['format'] } });
     expect(run('constructor', {}, formats)).toMatchObject({ ok: false, error: { code: 'invalidArguments', arg: ['format'] } });

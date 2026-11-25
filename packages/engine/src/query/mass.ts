@@ -13,7 +13,9 @@ import { type QueryContext, QueryFailure, type QuerySpec } from './spec';
 const DENSITY = BODY_DENSITY;
 
 // - `bodies`: the bodies taken as one rigid piece (a link of a mechanism); one body is a list of
-//   one. A body named twice counts once.
+//   one. A body named twice counts once. Without it every body of the state, as the query
+//   interference takes them (D73): the auxiliary ones are skipped as when they are listed, and a
+//   reference part counts with its mass, since a bought motor weighs in an assembly.
 // - `densities`: the density of single bodies, by body ID. It wins over everything but the use
 //   `auxiliary` (also over a density or a mass of the properties that cannot be evaluated) and is
 //   taken as it is (an effective density).
@@ -29,7 +31,7 @@ const DENSITY = BODY_DENSITY;
 // - `about`: an axis (`AxisRef`); the answer then also has the moment of inertia about it. The
 //   infinite line, whatever the kind; the axis of a round face is in the pose with its body.
 export const MASS_ARGS = {
-  bodies: { kind: 'list', of: { kind: 'body' }, min: 1, title: 'Bodies', summary: 'Taken together as one rigid piece.' },
+  bodies: { kind: 'list', of: { kind: 'body' }, min: 1, title: 'Bodies', summary: 'Taken together as one rigid piece; without it every body of the state (an auxiliary one is skipped, a reference part counts with its mass).', optional: true },
   density: { kind: 'number', title: 'Density', summary: 'Of every listed body whose properties state neither a density nor a mass.', optional: true, spec: DENSITY },
   densities: { kind: 'record', keys: 'body', of: { kind: 'number', spec: DENSITY }, title: 'Density by body', summary: 'Of single bodies; taken as it is, before `density`.', optional: true },
   fill: {
@@ -196,7 +198,7 @@ const GRAMS_PER_MM3 = 1e-3; // a density in g/cm3 times this is in g/mm3
 export const mass: QuerySpec<typeof MASS_ARGS, MassProperties> = {
   title: 'Mass properties',
   summary:
-    'Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.',
+    'Mass, centre of mass and inertia of one body or of several taken as one rigid piece (all bodies of the state without `bodies`). A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.',
   returns:
     '`mass` (g), `volume` (mm3), `centerOfMass` (mm, model coordinates), `inertia` (g·mm2; the tensor about the centre of mass in the axes of the model, three rows; off the diagonal the negative products of inertia, as URDF writes them; 1 g·mm2 = 1e-9 kg·m2), ' +
     '`about` (with an axis: `moment` in g·mm2 and `distance`, the perpendicular distance of the centre of mass from the axis in mm; not the lever of the weight, which depends on the direction of gravity), ' +
@@ -209,7 +211,9 @@ export const mass: QuerySpec<typeof MASS_ARGS, MassProperties> = {
     const bodies: MassProperties['bodies'] = [];
     // a body named twice counts once
     const skipped: Id[] = [];
-    for (const id of new Set(args.bodies)) {
+    const listed = args.bodies ?? Object.keys(context.bodies);
+    if (listed.length === 0) throw new QueryFailure('failed', 'bodies: the state asked about has no body', ['bodies']);
+    for (const id of new Set(listed)) {
       // an auxiliary body adds nothing and is listed apart, also when `densities` names it
       const properties = context.state.evaluation.bodyProperties;
       if (has(properties, id) && properties[id].use === 'auxiliary') {
@@ -219,7 +223,7 @@ export const mass: QuerySpec<typeof MASS_ARGS, MassProperties> = {
       const solid = context.bodies[id].solid; // from the context: the same code answers for a pose
       // one pass over the triangles, remembered by the mesh
       const unit = context.memo([solid], 'integrals', () => massIntegrals(solid));
-      if (!(unit.volume > 0)) throw new QueryFailure('failed', `bodies: the body "${id}" has no volume`, ['bodies', args.bodies.indexOf(id)]); // the place in the argument, not in the set
+      if (!(unit.volume > 0)) throw new QueryFailure('failed', `bodies: the body "${id}" has no volume`, args.bodies ? ['bodies', args.bodies.indexOf(id)] : ['bodies']); // the place in the argument, not in the set
       // Whose density: the call's by body, then the body's own, then the call's for all. An own
       // key of the record only: a body may have an ID that every object has by inheritance.
       // A density the call names wins over the properties, also over one in error.
@@ -236,7 +240,7 @@ export const mass: QuerySpec<typeof MASS_ARGS, MassProperties> = {
       pieces.push({ unit, perVolume });
       bodies.push({ body: id, mass: perVolume * unit.volume, volume: unit.volume, density, fill, from, centerOfMass: [...unit.centroid] });
     }
-    if (pieces.length === 0) throw new QueryFailure('failed', `bodies: every listed body is auxiliary and has no mass (${skipped.join(', ')})`, ['bodies']);
+    if (pieces.length === 0) throw new QueryFailure('failed', `bodies: every ${args.bodies ? 'listed ' : ''}body is auxiliary and has no mass (${skipped.join(', ')})`, ['bodies']);
     // a fill factor that reached no body was meant for something: say so instead of ignoring it
     if (args.fill !== 1 && bodies.every((body) => body.fill === 1)) {
       throw new QueryFailure('invalidArguments', 'fill: the fill factor applies to the bodies that take `density`, and none of the listed bodies does: give their densities as effective ones', ['fill']);

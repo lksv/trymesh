@@ -3,7 +3,8 @@
 // derives, and does not check them again.
 //
 // Two kinds of problem, both with the path of the argument:
-// - `invalidArguments`: the shape or the range is wrong, or there is no such argument.
+// - `invalidArguments`: the shape or the range is wrong, or there is no such argument (the message
+//   lists the arguments there are).
 // - `notAvailable`: something named is not in the state asked about. One rule for every ID wherever
 //   it sits: a body, a face, an edge is looked up in the bodies of the state; a feature, a sketch,
 //   a constraint, a sketch point among the features the state evaluated. A sketch that did not
@@ -102,7 +103,10 @@ class Checker {
   // A record of named values: the top level of the arguments and the kind `fields`.
   fields(specs: { readonly [name: string]: ArgKind & { optional?: boolean } }, value: unknown, path: ArgPath): Record<string, unknown> {
     if (!isObject(value)) return invalid(path.length ? path : ['arguments'], 'an object with the named arguments is expected');
-    for (const name of Object.keys(value)) if (!has(specs, name) && value[name] !== undefined) invalid([...path, name], 'there is no such argument');
+    // the names there are, so that a caller can correct a name without reading the description (D73)
+    const known = Object.keys(specs);
+    const what = path.length ? 'field' : 'argument';
+    for (const name of Object.keys(value)) if (!has(specs, name) && value[name] !== undefined) invalid([...path, name], `there is no ${what} "${name}"; ${known.length ? `the ${what}s are: ${known.join(', ')}` : `there are no ${what}s`}`);
     const out: Record<string, unknown> = {};
     for (const [name, spec] of Object.entries(specs)) {
       const given = has(value, name) ? value[name] : undefined;

@@ -60,8 +60,8 @@ describe('MCP server', () => {
       expect(tool.inputSchema.type).toBe('object');
     }
     // vnitřní nástroje zvenku volat nejdou
-    expect(await session.call('_load', { json: '{}' })).toEqual({ error: 'neznámý nástroj "_load"' });
-    expect(await session.call('nic')).toEqual({ error: 'neznámý nástroj "nic"' });
+    expect(await session.call('_load', { json: '{}' })).toEqual({ error: 'unknown tool "_load"' });
+    expect(await session.call('nic')).toEqual({ error: 'unknown tool "nic"' });
     // the index, and each section within what one answer of a tool can carry (D73)
     const index = await session.text('describe_api');
     expect(index).toContain('## Sections');
@@ -104,12 +104,12 @@ describe('MCP server', () => {
     // 2. „proč má skica dva stupně volnosti?"
     let sketch = await session.call('get_sketch', { sketch: 's1' });
     expect(sketch.diagnosis.degreesOfFreedom).toBe(2);
-    expect(sketch.advice.join(' ')).toMatch(/určení polohy jednoho z bodů a, b, c, d/);
+    expect(sketch.advice.join(' ')).toMatch(/Setting the position of one of the points a, b, c, d determines the sketch/);
 
     // 3. ukotvení podle rady
     expect(await session.call('execute', { command: { type: 'addConstraint', sketch: 's1', id: 'fix', constraint: { type: 'coincident', a: 'a', b: 'origin' } } })).toMatchObject({ ok: true, sketches: [{ degreesOfFreedom: 0 }] });
     sketch = await session.call('get_sketch', { sketch: 's1' });
-    expect(sketch.advice).toEqual(['Skica je plně určená.']);
+    expect(sketch.advice).toEqual(['The sketch is fully determined.']);
 
     // 4. vysunutí oblasti, kterou get_sketch nabídl
     expect(await session.call('execute', { command: { type: 'addFeature', feature: { id: 'e1', name: 'Deska', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 's1', regions: [sketch.regions[0].ref] }, extent: { type: 'distance', start: 0, distance: 8 }, operation: 'new' } } })).toMatchObject({ ok: true, bodies: ['e1'], problems: [] });
@@ -149,7 +149,7 @@ describe('MCP server', () => {
 
     // 7. uložení, export a otevření v jiném serveru
     const file = join(dir, 'deska.json');
-    expect(await session.call('save_document')).toEqual({ error: 'dokument nemá soubor; zadejte "path"' });
+    expect(await session.call('save_document')).toEqual({ error: 'the document has no file; give "path"' });
     expect(await session.call('save_document', { path: file })).toMatchObject({ file });
     expect(await session.call('save_document')).toMatchObject({ file }); // podruhé už bez cesty
     expect(await session.call('save_document', { path: null })).toMatchObject({ file }); // null counts as not given
@@ -164,7 +164,7 @@ describe('MCP server', () => {
     expect(await other.call('export_stl', { path: join(dir, 'nic.stl') })).toEqual({ error: 'the model has no body to export' });
     expect((await other.call('open_document', { path: file })).model.bodies).toEqual((await session.call('get_model')).bodies);
     expect(await other.call('get_document')).toEqual(JSON.parse(await readFile(file, 'utf8')));
-    expect(await other.call('open_document', { path: join(dir, 'chybi.json') })).toEqual({ error: expect.stringMatching(/soubor nejde přečíst/) });
+    expect(await other.call('open_document', { path: join(dir, 'chybi.json') })).toEqual({ error: expect.stringMatching(/the file cannot be read/) });
     expect(await other.call('open_document', { path: stl.file })).toEqual({ error: expect.any(String) }); // není to dokument
     expect((await other.call('get_model')).bodies).toHaveLength(1); // neúspěšné otevření dokument nezměnilo
     await Promise.all([session.close(), other.close()]);
@@ -207,7 +207,7 @@ describe('MCP server: bodies', () => {
     expect(await session.call('check_interference', { bodies: ['base', 'base'] })).toEqual({ error: expect.stringContaining('at least two different bodies') });
     expect(await session.call('check_interference', { bodies: [] })).toEqual({ error: expect.stringContaining('at least two different bodies') });
     // an argument the tool does not have is refused, not ignored (it would check all bodies instead)
-    expect(await session.call('check_interference', { body: 'base' })).toEqual({ error: 'unknown argument "body"; the tool takes bodies, threshold, at' });
+    expect(await session.call('check_interference', { body: 'base' })).toEqual({ error: 'unknown argument "body"; the tool takes bodies, threshold, at, after' });
     expect(await session.call('check_interference', { threshold: '0.5' })).toEqual({ error: 'argument "threshold": a number is expected' });
     expect(await session.call('check_interference', { bodies: { 0: 'base' } })).toEqual({ error: 'argument "bodies": a list is expected' });
     expect(await session.call('execute', { command: 'undo' })).toEqual({ error: 'argument "command": an object is expected' });
@@ -354,7 +354,7 @@ describe('MCP server: bodies', () => {
     expect(await session.call('export', { format: 'stl', path: nowhere, options: ['perBody'] })).toEqual({ error: 'argument "options": an object is expected' });
     expect(await session.call('export', { format: 'stl', path: nowhere, overwrite: 'yes' })).toEqual({ error: 'argument "overwrite": true or false is expected' });
     expect(await session.call('export', { format: 'step', path: nowhere })).toEqual({ error: 'invalidArguments: there is no export format "step"; the formats are stl, 3mf, dxf, svg, partsCsv, urdf, mjcf' });
-    expect(await session.call('export', { format: 'stl', path: nowhere, options: { perbody: true } })).toEqual({ error: 'invalidArguments: stl: perbody: there is no such argument' });
+    expect(await session.call('export', { format: 'stl', path: nowhere, options: { perbody: true } })).toEqual({ error: 'invalidArguments: stl: perbody: there is no argument "perbody"; the arguments are: bodies, perBody' });
     expect(await session.call('export', { format: 'stl', path: nowhere, options: { bodies: ['nic'] } })).toEqual({ error: 'notAvailable: stl: bodies[0]: the body "nic" is not in the state asked about' });
     expect(await session.call('export', { format: 'stl', path: nowhere, at: 'nic' })).toEqual({ error: 'notAvailable: stl: `at`: the feature "nic" is not in the document' });
     expect(await session.call('export', { format: 'stl', path: nowhere, after: { type: 'removeFeature', id: 'nic' } })).toEqual({ error: expect.stringMatching(/^after: /) });
@@ -581,7 +581,7 @@ describe('MCP server: chyby a soubory', () => {
     await writeFile(join(dir, 'empty.json'), '  \n');
     const other = await connect();
     expect((await other.call('open_document', { path: saved })).model.features).toHaveLength(1);
-    expect(await other.call('open_document', { path: join(dir, 'empty.json') })).toEqual({ error: 'soubor je prázdný' });
+    expect(await other.call('open_document', { path: join(dir, 'empty.json') })).toEqual({ error: 'the file is empty' });
     await Promise.all([session.close(), other.close()]);
   });
 
@@ -622,7 +622,7 @@ describe('most do běžící aplikace', () => {
     expect(notified).toBe(1);
     expect(seen).toEqual(['_ping', 'execute']); // _ping: dotaz serveru na dokument při session_status
     // chyba nástroje a výsledek dotazu projdou mostem beze změny
-    expect(await session.call('get_sketch', { sketch: 'nic' })).toEqual({ error: 'skica "nic" v dokumentu není' });
+    expect(await session.call('get_sketch', { sketch: 'nic' })).toEqual({ error: 'the document has no sketch "nic"' });
     expect((await session.call('get_model')).features).toEqual([expect.objectContaining({ id: 's', status: 'ok' })]);
     // soubory: dokument aplikace se uloží serverem
     const file = join(dir, 'z-aplikace.json');
@@ -668,7 +668,7 @@ describe('most do běžící aplikace', () => {
     let connection = connectBridge(app, { url: `http://127.0.0.1:${bridge.port}`, retryMs: 20, onStatus: (next) => (status = next) });
     await until(() => status === 'connected' && bridge.connected(), 'připojení aplikace');
     expect(await session.call('session_status')).toMatchObject({ engine: 'app', file: null });
-    expect(await session.call('save_document')).toEqual({ error: 'dokument nemá soubor; zadejte "path"' });
+    expect(await session.call('save_document')).toEqual({ error: 'the document has no file; give "path"' });
     expect(await ids(serverPath)).toEqual(['server_only']);
     // dokument aplikace dostane vlastní soubor
     await session.call('save_document', { path: appPath });
@@ -712,7 +712,7 @@ describe('most do běžící aplikace', () => {
     expect(app.load(JSON.stringify({ ...app.getState().document, features: [] })).ok).toBe(true);
     connection.documentReplaced();
     await session.call('execute', { command: emptySketch('b', { kind: 'base', plane: 'XY' }) });
-    expect(await session.call('save_document')).toEqual({ error: 'dokument nemá soubor; zadejte "path"' });
+    expect(await session.call('save_document')).toEqual({ error: 'the document has no file; give "path"' });
     expect(await session.call('session_status')).toMatchObject({ engine: 'app', file: null });
     expect(await ids(first)).toEqual(['a']);
     // nový dokument dostane vlastní soubor a ukládání bez cesty pak patří jemu
@@ -778,7 +778,7 @@ describe('most do běžící aplikace', () => {
       throw new Error('posluchač spadl');
     });
     const failed = await session.call('execute', { command: emptySketch('s3', { kind: 'base', plane: 'XY' }) });
-    expect(failed.error).toMatch(/v aplikaci nastala chyba \(změna už mohla být provedena, ověř stav\): posluchač spadl/);
+    expect(failed.error).toMatch(/the app failed \(the change may have been made already; check the state\): posluchač spadl/);
     unsubscribe();
     expect((await session.call('get_model')).features).toHaveLength(3);
     connection.stop();

@@ -524,8 +524,8 @@ describe('dotazy na skicu', () => {
     expect(detail.curves[0]).toEqual({ id: 'ab', type: 'line', a: 'a', b: 'b' });
     expect(detail.constraints.find((c: { id: string }) => c.id === 'w')).toEqual({ id: 'w', label: 'Vodorovná vzdálenost (a, b)', type: 'horizontalDistance', a: 'a', b: 'b', value: 40, driving: true });
     expect(detail.regions).toEqual([{ ref: { outerLoop: ['ab', 'bc', 'cd', 'da'] }, area: expect.closeTo(1200, 4), holes: 0 }]);
-    expect(detail.advice.join(' ')).toMatch(/2 stupně volnosti/);
-    expect(detail.advice.join(' ')).toMatch(/určení polohy jednoho z bodů a, b, c, d \(například vodorovnou a svislou kótou od počátku\)/);
+    expect(detail.advice.join(' ')).toMatch(/2 degrees of freedom/);
+    expect(detail.advice.join(' ')).toMatch(/Setting the position of one of the points a, b, c, d determines the sketch \(for example by a horizontal and a vertical dimension from the origin\)/);
   });
 
   it('rada při jednom stupni volnosti nenavrhuje totožnost, která by skončila konfliktem', () => {
@@ -535,9 +535,9 @@ describe('dotazy na skicu', () => {
     const detail = ok(engine, 'get_sketch', { sketch: 's' });
     expect(detail.diagnosis.degreesOfFreedom).toBe(1);
     const advice = detail.advice.join(' ');
-    expect(advice).toMatch(/1 stupeň volnosti/);
-    expect(advice).toMatch(/určení polohy jednoho z bodů c, d \(jednou kótou nebo vazbou/);
-    expect(advice).not.toMatch(/například vazbou coincident/);
+    expect(advice).toMatch(/1 degree of freedom/);
+    expect(advice).toMatch(/one of the points c, d determines the sketch \(by one dimension or constraint/);
+    expect(advice).not.toMatch(/coincident constraint/);
     // totožnost s počátkem je opravdu konflikt, jedna kóta skicu určí
     expect(ok(engine, 'preview', { command: constrain('bad', { type: 'coincident', a: 'c', b: 'origin' }) }).sketches[0]).toMatchObject({ solved: false });
     expect(execute(engine, constrain('fixed', { type: 'verticalDistance', a: 'origin', b: 'c', value: 30, driving: true })).sketches[0]).toEqual({ id: 's', solved: true, degreesOfFreedom: 0, profileValid: true, regions: 1 });
@@ -546,17 +546,17 @@ describe('dotazy na skicu', () => {
   it('počet stupňů volnosti se skloňuje', () => {
     const engine = newEngine();
     execute(engine, { type: 'batch', commands: [sketch('s'), { type: 'addPoint', sketch: 's', id: 'p', x: 1, y: 1 }, { type: 'addPoint', sketch: 's', id: 'q', x: 5, y: 1 }, { type: 'addPoint', sketch: 's', id: 'r', x: 9, y: 4 }] });
-    expect(ok(engine, 'get_sketch', { sketch: 's' }).advice[0]).toMatch(/^Skica má 6 stupňů volnosti/);
+    expect(ok(engine, 'get_sketch', { sketch: 's' }).advice[0]).toMatch(/^The sketch has 6 degrees of freedom/);
   });
 
   it('po ukotvení je skica určená; vazba navíc se označí a explain_constraint ji vysvětlí', () => {
     const engine = newEngine();
     rectangle(engine, true);
-    expect(ok(engine, 'get_sketch', { sketch: 's' }).advice).toEqual(['Skica je plně určená.']);
+    expect(ok(engine, 'get_sketch', { sketch: 's' }).advice).toEqual(['The sketch is fully determined.']);
     execute(engine, constrain('par', { type: 'parallel', a: 'ab', b: 'cd' }));
     const detail = ok(engine, 'get_sketch', { sketch: 's' });
     expect(detail.constraints.find((c: { id: string }) => c.id === 'par')).toMatchObject({ surplus: true, label: 'Rovnoběžně (ab, cd)' });
-    expect(detail.advice.join(' ')).toMatch(/Vazby navíc: par\./);
+    expect(detail.advice.join(' ')).toMatch(/Redundant constraints: par\./);
     expect(ok(engine, 'explain_constraint', { sketch: 's', constraint: 'par' })).toEqual({
       constraint: { id: 'par', label: 'Rovnoběžně (ab, cd)' },
       redundant: true,
@@ -564,7 +564,7 @@ describe('dotazy na skicu', () => {
         { id: 'h1', label: 'Vodorovně (ab)', removableInstead: true },
         { id: 'h2', label: 'Vodorovně (cd)', removableInstead: true },
       ],
-      note: 'Odebrat jde vazba sama nebo kterákoli z vazeb v impliedBy; geometrie se nezmění.',
+      note: 'The constraint itself or any of the constraints in impliedBy can be removed; the geometry does not change.',
     });
     expect(ok(engine, 'explain_constraint', { sketch: 's', constraint: 'w' })).toMatchObject({ redundant: false, impliedBy: [] });
   });
@@ -619,7 +619,7 @@ describe('dotazy na skicu', () => {
     const before = freedom();
     const explained = ok(engine, 'explain_constraint', { sketch: 's', constraint: 'on' });
     expect(explained).toMatchObject({ redundant: true, impliedBy: [{ id: 'mid', removableInstead: false }] });
-    expect(explained.note).toBe('Odebrat jde jen vazba sama; geometrie se nezmění. Vazby v impliedBy odebrat nejde: určují víc než tuhle vazbu a skica by se uvolnila.');
+    expect(explained.note).toBe('Only the constraint itself can be removed; the geometry does not change. The constraints in impliedBy cannot be removed: they set more than this constraint and the sketch would come loose.');
     // rada platí: bez `on` se volnost nezmění, bez `mid` vzroste
     expect(ok(engine, 'preview', { command: { type: 'removeConstraint', sketch: 's', id: 'on' } }).sketches[0].degreesOfFreedom).toBe(before);
     expect(ok(engine, 'preview', { command: { type: 'removeConstraint', sketch: 's', id: 'mid' } }).sketches[0].degreesOfFreedom).toBe(before + 1);
@@ -643,7 +643,7 @@ describe('dotazy na skicu', () => {
     expect(ok(engine, 'get_model').features[0]).toMatchObject({ id: 's', solved: false });
     expect(ok(engine, 'get_model').features[0]).not.toHaveProperty('degreesOfFreedom');
     expect(detail.constraints.find((c: { id: string }) => c.id === 'bad').conflicting).toBe(true);
-    expect(detail.advice[0]).toMatch(/konfliktu/);
+    expect(detail.advice[0]).toMatch(/in conflict/);
   });
 
   it('the axes of the origin (D71): named by describe_api, a constraint on one through execute, not listed by get_sketch', () => {
@@ -1244,7 +1244,7 @@ describe('model, tělesa a příkazy', () => {
     expect(callTool(engine, 'execute', { command: constrain('h1', { type: 'vertical', line: 'ab' }) })).toEqual({ ok: false, error: 'invalidCommand: addConstraint.id: ID "h1" už v dokumentu je' });
     expect(callTool(engine, 'execute', { command: { type: 'batch', commands: [constrain('x', { type: 'parallel', a: 'ab', b: 'cd' }), constrain('y', { type: 'nic', a: 'ab' } as never)] } })).toEqual({
       ok: false,
-      error: expect.stringMatching(/^invalidCommand: .*neznámá vazba "nic" \(příkaz dávky s indexem 1\)$/),
+      error: expect.stringMatching(/^invalidCommand: .*neznámá vazba "nic" \(the command of the batch at the index 1\)$/),
     });
     expect(callTool(engine, 'preview', { command: { type: 'nic' } })).toMatchObject({ ok: false, error: expect.stringMatching(/^invalidCommand: /) });
     expect(ok(engine, 'preview', { command: { type: 'setConstraintValue', sketch: 's', id: 'w', value: 55 } })).toMatchObject({ ok: true });
@@ -1324,18 +1324,18 @@ describe('model, tělesa a příkazy', () => {
       expect(outcome.ok, name).toBe(false);
       return outcome.ok ? '' : outcome.error;
     };
-    expect(error('nic')).toMatch(/neznámý nástroj/);
+    expect(error('nic')).toMatch(/unknown tool/);
     expect(error('get_sketch', {})).toMatch(/argument "sketch"/);
-    expect(error('get_sketch', { sketch: 'nic' })).toMatch(/skica "nic"/);
-    expect(error('get_sketch', { sketch: 'constructor' })).toMatch(/skica "constructor"/);
-    expect(error('explain_constraint', { sketch: 's', constraint: 'toString' })).toMatch(/vazba "toString"/);
+    expect(error('get_sketch', { sketch: 'nic' })).toMatch(/sketch "nic"/);
+    expect(error('get_sketch', { sketch: 'constructor' })).toMatch(/sketch "constructor"/);
+    expect(error('explain_constraint', { sketch: 's', constraint: 'toString' })).toMatch(/constraint "toString"/);
     expect(error('get_body', { body: 'e' })).toMatch(/the body "e"/);
     expect(error('get_model', { at: 'nic' })).toMatch(/feature "nic"/);
     expect(error('get_document', { feature: 'nic' })).toMatch(/feature "nic"/);
     expect(error('execute', {})).toMatch(/argument "command"/);
     expect(error('execute', { command: 'addPoint' })).toMatch(/argument "command"/);
-    expect(callTool(newEngine(), 'undo')).toEqual({ ok: false, error: 'není co vracet' });
-    expect(callTool(newEngine(), 'redo')).toEqual({ ok: false, error: 'není co opakovat' });
+    expect(callTool(newEngine(), 'undo')).toEqual({ ok: false, error: 'there is nothing to undo' });
+    expect(callTool(newEngine(), 'redo')).toEqual({ ok: false, error: 'there is nothing to redo' });
   });
 });
 

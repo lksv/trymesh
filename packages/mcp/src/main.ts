@@ -13,7 +13,7 @@ import { createTrymeshServer } from './server';
 const log = (message: string) => process.stderr.write(`trymesh-mcp: ${message}\n`);
 const fail = (message: string, usage = true): never => {
   log(message);
-  if (usage) log('použití: node server.js [--file model.json] [--port 4517] [--no-bridge]');
+  if (usage) log('usage: node server.js [--file model.json] [--port 4517] [--no-bridge]');
   process.exit(2);
 };
 
@@ -24,17 +24,17 @@ for (let i = 0; i < args.length; i++) {
   const [name, inline] = args[i].split(/=(.*)/s, 2) as [string, string | undefined];
   const value = (): string => {
     const next = inline ?? args[++i];
-    if (next === undefined || (inline === undefined && next.startsWith('--'))) fail(`volba ${name} potřebuje hodnotu`);
+    if (next === undefined || (inline === undefined && next.startsWith('--'))) fail(`the option ${name} needs a value`);
     return next;
   };
   if (name === '--file') options.file = value();
   else if (name === '--port') options.port = value();
   else if (name === '--no-bridge' && inline === undefined) options.bridge = false;
-  else fail(`neznámá volba ${args[i]}`);
+  else fail(`unknown option ${args[i]}`);
 }
 const portText = options.port ?? process.env.TRYMESH_BRIDGE_PORT ?? String(DEFAULT_BRIDGE_PORT);
 const port = /^\d+$/.test(portText) ? Number(portText) : NaN;
-if (!(port >= 0 && port <= 65535)) fail(`port "${portText}" není číslo od 0 do 65535`);
+if (!(port >= 0 && port <= 65535)) fail(`the port "${portText}" is not a number from 0 to 65535`);
 
 const engine = createEngine({ solver: await createPlanegcsSolver(), kernel: await createManifoldKernel(), deflater: createPakoDeflater() });
 if (options.file !== undefined) {
@@ -42,17 +42,17 @@ if (options.file !== undefined) {
   try {
     json = (await readFile(options.file, 'utf8')).replace(/^\uFEFF/, '');
   } catch (error) {
-    json = fail(`soubor ${options.file} nejde přečíst: ${error instanceof Error ? error.message : String(error)}`, false);
+    json = fail(`the file ${options.file} cannot be read: ${error instanceof Error ? error.message : String(error)}`, false);
   }
   const result = engine.load(json);
-  if (!result.ok) fail(`soubor ${options.file} nejde načíst: ${result.error.message}`, false);
+  if (!result.ok) fail(`the file ${options.file} cannot be loaded: ${result.error.message}`, false);
 }
 
 let bridge: Bridge | undefined;
 if (options.bridge) {
   try {
     bridge = await startBridge(port);
-    log(`most pro aplikaci poslouchá na http://127.0.0.1:${bridge.port}`);
+    log(`the bridge for the app listens on http://127.0.0.1:${bridge.port}`);
   } catch (error) {
     // Port drží jiný MCP server. Tento poběží jen nad vlastním dokumentem.
     log(`most na portu ${port} nejde otevřít (${error instanceof Error ? error.message : String(error)}); server pracuje jen se soubory`);
@@ -61,7 +61,7 @@ if (options.bridge) {
 
 const server = createTrymeshServer({ engine, bridge, file: options.file });
 await server.connect(new StdioServerTransport());
-log('připraven');
+log('ready');
 
 // Konec: signál, nebo klient zavřel vstup. Bez toho by most držel proces i port naživu
 // a aplikace by se připojovala k serveru, se kterým už nikdo nemluví.

@@ -1846,7 +1846,7 @@ describe('the app, driven as a user drives it', () => {
       h.record('a load that fails: the form and the rest of the app are as they were');
       expect(await ai('_load', { json: JSON.stringify(emptyDocument()) })).toBe('ok');
       h.record('a load: the app starts over with the new document');
-      expect(await ai('undo', {})).toBe('není co vracet');
+      expect(await ai('undo', {})).toBe('there is nothing to undo');
       h.record('undo by the AI after a load has nothing to undo, and says so');
       expect(await ai('execute', { command: { type: 'setParameter', name: 'a', expr: '1' } })).toBe('ok');
       expect(await ai('undo', {})).toBe('ok');

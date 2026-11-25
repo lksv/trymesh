@@ -1480,3 +1480,61 @@ describe('new_document (D73)', () => {
     expect(engine.save()).toBe(before);
   });
 });
+
+// D73: what the session that built a gearbox asked about the answers of MCP
+describe('edges, one feature of get_model, and the facts in the answer of execute (D73)', () => {
+  const box = (engine: Engine) => {
+    ok(engine, 'execute', { command: { type: 'addFeature', feature: { id: 's', type: 'sketch', plane: { kind: 'base', plane: 'XY' } } } });
+    ok(engine, 'sketch_tool', { sketch: 's', tool: 'rectangle', input: { center: { at: [0, 0], snap: { kind: 'point', id: 'origin' } }, width: 40, height: 30 } });
+    return ok(engine, 'execute', { command: { type: 'addFeature', feature: { id: 'E', type: 'extrude', profile: { type: 'regions', sketch: 's', regions: [{ outerLoop: ['c1', 'c2', 'c3', 'c4'] }] }, extent: { type: 'distance', start: 0, distance: 10 }, operation: 'new' } } });
+  };
+
+  it('an edge is taken with its two faces in either order and stored in one order', () => {
+    const engine = newEngine();
+    box(engine);
+    const [cap, side] = [{ feature: 'E', role: 'endCap' }, { feature: 'E', role: 'side', curve: 'c1' }];
+    const chamfer = (id: string, a: object, b: object) => ok(engine, 'preview', { command: { type: 'addFeature', feature: { id, type: 'chamfer', body: 'E', edges: [{ a, b }], distance: 1 } } });
+    expect(chamfer('ch1', cap, side)).toMatchObject({ problems: [] });
+    expect(chamfer('ch1', side, cap)).toMatchObject({ problems: [] });
+    ok(engine, 'execute', { command: { type: 'addFeature', feature: { id: 'ch', type: 'chamfer', body: 'E', edges: [{ a: side, b: cap }], distance: 1 } } });
+    const stored = ok(engine, 'get_document', { feature: 'ch' }).edges;
+    ok(engine, 'undo');
+    ok(engine, 'execute', { command: { type: 'addFeature', feature: { id: 'ch', type: 'chamfer', body: 'E', edges: [{ a: cap, b: side }], distance: 1 } } });
+    expect(ok(engine, 'get_document', { feature: 'ch' }).edges).toEqual(stored);
+    // a projected edge and a query take either order as well
+    const projected = (edge: object) => {
+      ok(engine, 'execute', { command: { type: 'batch', commands: [{ type: 'addFeature', feature: { id: 'top', type: 'sketch', plane: { kind: 'plane', feature: 'pl' } }, index: 3 }, { type: 'addExternal', sketch: 'top', id: 'x', ref: { type: 'edge', body: 'E', edge, kind: 'line' } }] } });
+      const entry = ok(engine, 'get_document', { feature: 'top' }).external.x;
+      ok(engine, 'undo');
+      return entry;
+    };
+    ok(engine, 'execute', { command: { type: 'addFeature', feature: { id: 'pl', type: 'plane', base: { kind: 'base', plane: 'XY' }, offset: 15 }, index: 2 } });
+    expect(projected({ a: side, b: cap })).toEqual(projected({ a: cap, b: side }));
+    const measure = (edge: object) => ok(engine, 'query', { query: 'measure', args: { from: { kind: 'edge', body: 'E', edge }, to: { kind: 'face', body: 'E', face: { feature: 'E', role: 'startCap' } } }, at: 'E', geometry: 'modelled' });
+    expect(measure({ a: side, b: cap })).toEqual(measure({ a: cap, b: side }));
+  });
+
+  it('get_model of some features; the facts of the features a command added or changed in its answer', () => {
+    const engine = newEngine();
+    box(engine);
+    ok(engine, 'execute', { command: { type: 'addFeature', feature: { id: 'gs', type: 'sketch', plane: { kind: 'base', plane: 'XY' } } } });
+    ok(engine, 'execute', { command: { type: 'addCurve', sketch: 'gs', id: 'pitch', curve: { type: 'circle', center: 'origin', construction: true }, radius: 9 } });
+    const gear = { type: 'addFeature', feature: { id: 'g', type: 'extrude', profile: { type: 'generated', generator: 'involuteGear', sketch: 'gs', operands: { circle: 'pitch' }, params: { teeth: 18 } }, extent: { type: 'distance', start: 20, distance: 5 }, operation: 'new' } };
+    // only the feature the command added, with its facts; the box it did not touch has none
+    const made = ok(engine, 'execute', { command: gear });
+    expect(Object.keys(made.facts)).toEqual(['g']);
+    expect(made.facts.g).toMatchObject({ module: 1, teeth: 18, pitchDiameter: 18 });
+    expect(made.factsNotListed).toBeUndefined();
+    expect(ok(engine, 'preview', { command: { type: 'setField', feature: 'g', path: 'profile/params/teeth', value: 20 } }).facts.g).toMatchObject({ teeth: 20 });
+    // a command that touches no feature with facts says none
+    expect(ok(engine, 'execute', { command: { type: 'setParameter', name: 'p', expr: '1' } })).not.toHaveProperty('facts');
+    // one feature of the model, with the bodies it makes
+    const one = ok(engine, 'get_model', { features: ['g'] });
+    expect(Object.keys(one)).toEqual(['features', 'bodies']);
+    expect(one.features).toEqual([ok(engine, 'get_model').features.find((f: { id: string }) => f.id === 'g')]);
+    expect(one.bodies.map((body: { id: string }) => body.id)).toEqual(['g']);
+    expect(ok(engine, 'get_model', { features: ['s', 'E'] }).features.map((f: { id: string }) => f.id)).toEqual(['s', 'E']);
+    expect(callTool(engine, 'get_model', { features: ['g'], at: 'E' })).toEqual({ ok: false, error: 'argument "features": the state has no feature "g"; it has s, E' });
+    expect(callTool(engine, 'get_model', { features: [] })).toEqual({ ok: false, error: 'argument "features": a list of feature IDs that is not empty is expected' });
+  });
+});

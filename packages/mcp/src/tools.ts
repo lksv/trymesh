@@ -444,6 +444,23 @@ function modelSummary(state: EngineState, whole = true): unknown {
   };
 }
 
+// The rows of some features of get_model (D73), and the bodies they create, as the whole model
+// lists them; an ID that is not a feature of the state is an error that names the features there are.
+const has = (record: object, key: string): boolean => Object.prototype.hasOwnProperty.call(record, key);
+function featuresSummary(state: EngineState, ids: unknown): unknown {
+  if (!Array.isArray(ids) || ids.length === 0 || !ids.every((id) => typeof id === 'string')) throw new ToolError('argument "features": a list of feature IDs that is not empty is expected');
+  const { document, evaluation } = state;
+  const known = document.features.filter((feature) => has(evaluation.features, feature.id));
+  const missing = ids.filter((id) => !known.some((feature) => feature.id === id));
+  if (missing.length) throw new ToolError(`argument "features": the state has no feature ${missing.map((id) => `"${id}"`).join(', ')}; it has ${known.map((feature) => feature.id).join(', ') || 'none'}`);
+  const listed = known.filter((feature) => ids.includes(feature.id));
+  const bodies = listed.flatMap((feature) => evaluation.features[feature.id]?.bodies ?? []).filter((id) => has(evaluation.bodies, id));
+  return {
+    features: listed.map((feature) => featureSummary(feature, evaluation.features[feature.id])),
+    bodies: bodies.map((id) => ({ id, ...solidInfo(evaluation.bodies[id]), faces: evaluation.bodies[id].faces.length, edges: evaluation.bodies[id].edges.length, ...propertiesInfo(state, id) })),
+  };
+}
+
 // A body as `get_body` prints it. The tool keeps its own check that the body exists and its own
 // text; the volume, the bounds, the faces and the edges come from the query `body` of the engine,
 // which computes them in the pose of the document (D49), so one answer is not half posed.
@@ -859,7 +876,21 @@ function commandProblem(result: Extract<CommandResult, { ok: false }>): string {
   return `${code}: ${message}${where}${commandIndex === undefined ? '' : ` (the command of the batch at the index ${commandIndex})`}`;
 }
 
-function outcome(result: CommandResult): unknown {
+// The facts of the features a command added or changed (D73): a feature of the document after it
+// that is not the object it was before, with facts of its result. So the answer of a command that
+// builds a gear says its module and diameters, and a batch that touches many features says no more
+// than FACTS_LISTED of them.
+export const FACTS_LISTED = 20;
+function touchedFacts(before: Document, state: EngineState): { facts?: Json; factsNotListed?: number } {
+  const old = new Map(before.features.map((feature) => [feature.id, feature]));
+  const touched = state.document.features.filter((feature) => old.get(feature.id) !== feature && state.evaluation.features[feature.id]?.facts);
+  if (touched.length === 0) return {};
+  const listed = touched.slice(0, FACTS_LISTED);
+  return { facts: Object.fromEntries(listed.map((feature) => [feature.id, factsInfo(state.evaluation.features[feature.id]).facts as Json])), ...(touched.length > listed.length ? { factsNotListed: touched.length - listed.length } : {}) };
+}
+
+// `before`: the document the command was applied to, for the facts of what it touched.
+function outcome(result: CommandResult, before?: Document): unknown {
   // Neplatný příkaz dokument nezměnil: je to chyba volání, ne výsledek.
   if (!result.ok) throw new ToolError(commandProblem(result));
   const { document, evaluation } = result.state;
@@ -875,6 +906,7 @@ function outcome(result: CommandResult): unknown {
     sketches: document.features
       .filter((feature) => feature.type === 'sketch' && evaluation.features[feature.id]?.sketch)
       .map((feature) => ({ id: feature.id, ...sketchBrief(evaluation.features[feature.id]) })),
+    ...(before ? touchedFacts(before, result.state) : {}),
   };
 }
 
@@ -1233,11 +1265,20 @@ export function tools(): Tool[] {
       name: 'get_model',
       description:
         'Model overview: features on the timeline with their state, errors and field expressions, bodies with volume and size (as modelled, whatever the pose) and what their body properties state (name, colour, material, use, density, mass in g, the body a copy takes after), the mechanism when it has a link (links with their bodies, joints with type, parent, child, axis, numbers and expressions, the roots when there are several), the stored meshes when there are any (ID, name, triangles, size of the bounds, the features that place each in `usedBy`), parameter values, checks that fail, and what is in error (`bodyPropertyErrors`: a density or a mass that cannot be evaluated). ' +
-        'Without `at` also `bodyPropertiesWithoutBody` (entries of body properties whose body is gone, which a body made again under that ID takes over), `jointErrors`, `jointDriveErrors` (a field of the drive of a joint whose expression fails: it blocks no pose, the export of a robot refuses it), `linksMissingBodies` and `bodiesInNoLink`. `at` = the state after the given feature.',
-      inputSchema: { type: 'object', properties: { at: { type: 'string', description: 'Feature ID; the model is evaluated up to it' } }, additionalProperties: false },
+        'Without `at` also `bodyPropertiesWithoutBody` (entries of body properties whose body is gone, which a body made again under that ID takes over), `jointErrors`, `jointDriveErrors` (a field of the drive of a joint whose expression fails: it blocks no pose, the export of a robot refuses it), `linksMissingBodies` and `bodiesInNoLink`. `at` = the state after the given feature. `features` (a list of feature IDs) answers with those features alone and the bodies they create, in the shape of the whole model.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          at: { type: 'string', description: 'Feature ID; the model is evaluated up to it' },
+          features: { type: 'array', items: { type: 'string' }, description: 'Feature IDs: only these features, with the bodies they create, instead of the whole model' },
+        },
+        additionalProperties: false,
+      },
       run: (engine, args) => {
         const at = optionalText(args, 'at');
-        return modelSummary(stateAt(engine, at), at === undefined);
+        const state = stateAt(engine, at);
+        if (args.features === undefined || args.features === null) return modelSummary(state, at === undefined);
+        return featuresSummary(state, args.features);
       },
     },
     {
@@ -1386,7 +1427,7 @@ export function tools(): Tool[] {
     },
     {
       name: 'execute',
-      description: `Runs a command of the engine and writes it into the document (one undo step). Several commands at once are composed by the command batch. An invalid command leaves the document as it was and returns the reason. The constraint types: ${constraintTypes}. The shape of a command: describe_api { command: "<type>" }.`,
+      description: `Runs a command of the engine and writes it into the document (one undo step). Several commands at once are composed by the command batch. An invalid command leaves the document as it was and returns the reason. The answer sums up what is not in order, says for every sketch whether it is solved, and gives in \`facts\` the facts of the features the command added or changed (the module and diameters of a gear; at most ${FACTS_LISTED}, the rest counted in \`factsNotListed\`). The constraint types: ${constraintTypes}. The shape of a command: describe_api { command: "<type>" }.`,
       inputSchema: COMMAND,
       // `takenOver`: the IDs of features and sketch entities the command added while a section of
       // the document (body properties) still named them; a body made under such an ID takes the
@@ -1394,7 +1435,7 @@ export function tools(): Tool[] {
       run: (engine, args) => {
         const before = engine.getState().document;
         const given = command(args);
-        const answer = outcome(engine.execute(given)) as Record<string, unknown>;
+        const answer = outcome(engine.execute(given), before) as Record<string, unknown>;
         const taken = takenOver(before, given);
         return taken.length ? { ...answer, takenOver: taken } : answer;
       },
@@ -1403,7 +1444,7 @@ export function tools(): Tool[] {
       name: 'preview',
       description: 'Computes the result of a command without writing it into the document. Good for trying a change out.',
       inputSchema: COMMAND,
-      run: (engine, args) => outcome(engine.preview(command(args))),
+      run: (engine, args) => outcome(engine.preview(command(args)), engine.getState().document),
     },
     {
       name: 'sketch_tool',
@@ -1422,7 +1463,8 @@ export function tools(): Tool[] {
       },
       run: (engine, args) => {
         const { command, ids } = sketchToolBatch(engine, args);
-        return { ids, ...(outcome(args.preview === true ? engine.preview(command) : engine.execute(command)) as object) };
+        const before = engine.getState().document;
+        return { ids, ...(outcome(args.preview === true ? engine.preview(command) : engine.execute(command), before) as object) };
       },
     },
     {

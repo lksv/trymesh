@@ -38,6 +38,24 @@ describe('what a picture draws', () => {
     expect(model.clip).toBeUndefined();
   });
 
+  // D73: `colors: 'model'`
+  it('with the colours of the model: a body in the colour of its properties, the others in that of the palette, and the legend says which', () => {
+    const state = stateOf(3);
+    (state.evaluation as { bodyProperties: object }).bodyProperties = { b0: { name: 'b0', use: 'part', color: '#ff0000' }, b1: { name: 'b1', use: 'part' }, b2: { name: 'b2', use: 'part', color: '#101010' } };
+    const { model, bodies } = pictureModel(request({ state, colors: 'model' }));
+    expect(model.bodies.map((body) => body.color)).toEqual([0xff0000, PALETTE[1].color, 0x101010]);
+    expect(bodies).toEqual([
+      { body: 'b0', color: '#ff0000', colorName: 'red', colorFrom: 'model' },
+      { body: 'b1', color: '#f28e2b', colorName: 'orange', colorFrom: 'palette' },
+      { body: 'b2', color: '#101010', colorName: 'black', colorFrom: 'model' },
+    ]);
+    // the cut of a body is a darker shade of the colour it is drawn in
+    const section = pictureModel(request({ state, colors: 'model', cut: { frame: FRAME, regions: [{ body: 'b0', loops: [[0, 0, 1, 0, 1, 1]] }] } }));
+    expect(section.bodies[0]).toEqual({ body: 'b0', color: '#ff0000', colorName: 'red', cutColor: '#b30000', colorFrom: 'model' });
+    // without it the palette, whatever the properties say
+    expect(pictureModel(request({ state })).bodies.map((entry) => entry.color)).toEqual(['#4e79a7', '#f28e2b', '#e15759']);
+  });
+
   it('only the bodies asked for, in the order of the state, each with the colour it has among all', () => {
     const { model, bodies } = pictureModel(request({ bodies: ['b2', 'b0', 'nope'] }));
     expect(bodies.map((entry) => [entry.body, entry.colorName])).toEqual([['b0', 'blue'], ['b2', 'red']]);

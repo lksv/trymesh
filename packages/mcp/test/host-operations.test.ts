@@ -16,11 +16,11 @@ import { connect, newEngine } from './kit';
 // The test checks them against the description; the operation itself needs the app to run, so
 // its package tests it there (`view_image`: view-image.test.ts).
 const FIXTURES: { [N in HostOperationName]: HostOperationArgs<N> } = {
-  view_image: { view: 'top', bodies: ['disc'], section: { plane: { kind: 'base', plane: 'XY' }, offset: 5, flip: true }, width: 640, height: 480 },
+  view_image: { view: 'top', bodies: ['disc'], section: { plane: { kind: 'base', plane: 'XY' }, offset: 5, flip: true }, width: 640, height: 480, colors: 'model' },
 };
 // Every argument of every operation and whether a caller may leave it out, as the type says.
 const ARGUMENTS: { [N in HostOperationName]: { [K in keyof Required<HostOperationArgs<N>>]: {} extends Pick<HostOperationArgs<N>, K> ? 'optional' : 'required' } } = {
-  view_image: { view: 'optional', bodies: 'optional', section: 'optional', width: 'optional', height: 'optional' },
+  view_image: { view: 'optional', bodies: 'optional', section: 'optional', width: 'optional', height: 'optional', colors: 'optional' },
 };
 const ENTRIES = Object.entries(HOST_OPERATIONS as Record<string, AnyHostOperation>);
 

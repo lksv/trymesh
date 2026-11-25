@@ -1,6 +1,6 @@
 // Nástroje pro AI nad skutečným enginem: popis API vychází ze zdrojů enginu, dotazy na model
 // a skicu vracejí to, co engine spočítal, a příkazy procházejí beze změny.
-import { CONSTRAINTS, FEATURE_TYPE_INFO, GENERATORS, SKETCH_TOOLS, type Command, type Constraint, type Engine, type SolidKernel, createEngine } from '@trymesh/engine';
+import { CONSTRAINTS, FEATURE_TYPE_INFO, GENERATORS, SKETCH_TOOLS, type Command, type Constraint, type Engine, type SolidKernel, createEngine, importMesh } from '@trymesh/engine';
 import { createManifoldKernel } from '@trymesh/kernel-manifold';
 import { createPlanegcsSolver } from '@trymesh/solver-planegcs';
 import { describe, expect, it } from 'vitest';
@@ -132,7 +132,7 @@ describe('popis API', () => {
     expect(description).toMatch(/- chamfer \(Chamfer\):.*run out past a round face it crosses at 10° or more/);
     expect(description).toContain('// - Run-outs (D67): an edge may also end at a round face C');
     const listed = tools().filter((tool) => !tool.hidden).map((tool) => tool.name);
-    expect(listed).toEqual(['describe_api', 'get_model', 'get_document', 'get_sketch', 'get_parameters', 'explain_constraint', 'get_body', 'check_interference', 'query', 'execute', 'preview', 'sketch_tool', 'undo', 'redo']);
+    expect(listed).toEqual(['describe_api', 'get_model', 'get_document', 'get_sketch', 'get_parameters', 'explain_constraint', 'get_body', 'check_interference', 'query', 'execute', 'preview', 'sketch_tool', 'new_document', 'undo', 'redo']);
     // popis execute vyjmenuje vazby z katalogu
     const executeTool = tools().find((tool) => tool.name === 'execute')!;
     for (const type of Object.keys(CONSTRAINTS)) expect(executeTool.description).toContain(type);
@@ -480,7 +480,7 @@ describe('sketch tools', () => {
     expect(changesDocument(engine, 'execute', { command: sketch('other'), extra: 1 })).toBe(false);
     expect(changesDocument(engine, 'sketch_tool', { sketch: 's', tool: 'polygon', input: hexagon, dryRun: true })).toBe(false);
     expect(changesDocument(engine, 'undo', { steps: 2 })).toBe(false);
-    expect(MUTATING).toEqual(['execute', 'sketch_tool', 'undo', 'redo', '_load', '_outline']);
+    expect(MUTATING).toEqual(['execute', 'sketch_tool', 'undo', 'redo', 'new_document', '_load', '_outline']);
     expect(engine.save()).toBe(before);
   });
 
@@ -1440,5 +1440,43 @@ describe('a spline over MCP (D70)', () => {
     expect(answer.contacts).toHaveLength(1);
     expect(answer.contacts[0]).toMatchObject({ kind: 'crossing', curves: ['k', 'k'], fix: 'none' });
     expect(answer.reason).toMatch(/the spline "k" crosses or touches itself/);
+  });
+});
+
+describe('new_document (D73)', () => {
+  it('empties a document with a stored mesh and a stored document placed by features; changesDocument says when it changes', () => {
+    const part = newEngine();
+    const disc: Command = {
+      type: 'batch',
+      commands: [
+        { type: 'addFeature', feature: { id: 's', type: 'sketch', plane: { kind: 'base', plane: 'XY' } } },
+        { type: 'addCurve', sketch: 's', id: 'k', curve: { type: 'circle', center: 'origin' }, radius: 5 },
+        { type: 'addFeature', feature: { id: 'a', type: 'extrude', profile: { type: 'regions', sketch: 's', regions: [{ outerLoop: ['k'] }] }, extent: { type: 'distance', start: 0, distance: 3 }, operation: 'new' } },
+      ],
+    };
+    expect(part.execute(disc).ok).toBe(true);
+    const imported = importMesh('stl', part.exportMesh('stl', ['a']));
+    if (!imported.ok) throw new Error(imported.error.message);
+    const engine = newEngine();
+    expect(changesDocument(engine, 'new_document', { discard: true })).toBe(false);
+    const placement = { frame: { kind: 'base', plane: 'XY' } };
+    ok(engine, 'execute', {
+      command: {
+        type: 'batch',
+        commands: [
+          { type: 'addMesh', id: 'm', mesh: imported.mesh },
+          { type: 'addDocument', id: 'd', document: JSON.parse(part.save()) },
+          { type: 'addFeature', feature: { id: 'mf', type: 'mesh', mesh: 'm', placement } },
+          { type: 'addFeature', feature: { id: 'ins', type: 'insert', document: 'd', placement } },
+        ],
+      },
+    });
+    expect(changesDocument(engine, 'new_document', {})).toBe(false);
+    expect(changesDocument(engine, 'new_document', { discard: true })).toBe(true);
+    const before = engine.save();
+    expect(ok(engine, 'new_document', { discard: true })).toMatchObject({ discarded: { features: 2, meshes: 1, documents: 1 }, note: 'Discarded 2 features, 1 mesh, 1 document; undo brings them back.' });
+    expect(JSON.parse(engine.save())).toEqual(JSON.parse(newEngine().save()));
+    ok(engine, 'undo');
+    expect(engine.save()).toBe(before);
   });
 });

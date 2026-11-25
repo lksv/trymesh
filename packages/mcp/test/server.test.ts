@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { CONSTRAINTS, type Command } from '@trymesh/engine';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { readZip } from '../../engine/test/zip-reader';
-import { type Bridge, startBridge } from '../src/bridge';
+import { type Bridge, openBridge, startBridge } from '../src/bridge';
 import { type BridgeStatus, connectBridge } from '../src/bridge-client';
 import { connect, newEngine } from './kit';
 
@@ -54,7 +54,7 @@ describe('MCP server', () => {
   it('seznam nástrojů: obecné nástroje enginu a nástroje pro soubory, se schématem vstupu', async () => {
     const session = await connect();
     const { tools } = await session.client.listTools();
-    expect(tools.map((tool) => tool.name)).toEqual(['describe_api', 'get_model', 'get_document', 'get_sketch', 'get_parameters', 'explain_constraint', 'get_body', 'check_interference', 'query', 'execute', 'preview', 'sketch_tool', 'undo', 'redo', 'session_status', 'open_document', 'save_document', 'import_outline', 'import_mesh', 'insert_document', 'export_stl', 'export', 'view_image']); // the last: the operations of the app
+    expect(tools.map((tool) => tool.name)).toEqual(['describe_api', 'get_model', 'get_document', 'get_sketch', 'get_parameters', 'explain_constraint', 'get_body', 'check_interference', 'query', 'execute', 'preview', 'sketch_tool', 'new_document', 'undo', 'redo', 'session_status', 'open_document', 'save_document', 'import_outline', 'import_mesh', 'insert_document', 'export_stl', 'export', 'view_image']); // the last: the operations of the app
     for (const tool of tools) {
       expect(tool.description, tool.name).not.toBe('');
       expect(tool.inputSchema.type).toBe('object');
@@ -847,5 +847,74 @@ describe('most do běžící aplikace', () => {
 
   it('obsazený port: most se neotevře a server může běžet bez něj', async () => {
     await expect(startBridge(bridge.port)).rejects.toThrow();
+  });
+});
+
+// D73: a port held by another server is said, and taken once it is free; an empty document
+describe('the bridge and the document (D73)', () => {
+  it('a bridge that cannot listen: session_status says why and what to do, and the server takes the port once it is free', async () => {
+    const holder = await startBridge(0);
+    const port = holder.port;
+    const opened = await openBridge(port);
+    expect(opened).toEqual({ failure: { port, code: 'EADDRINUSE', message: expect.stringContaining('EADDRINUSE') } });
+    let tries = 0;
+    const session = await connect({
+      bridgeFailure: 'failure' in opened ? opened.failure : undefined,
+      reopenBridge: () => {
+        tries++;
+        return openBridge(port);
+      },
+    });
+    const held = await session.call('session_status');
+    expect(held).toMatchObject({ engine: 'server', bridge: null, bridgeError: { port, code: 'EADDRINUSE', advice: expect.stringContaining(`Another program holds 127.0.0.1:${port}, most likely another trymesh MCP server`) } });
+    expect(held.bridgeError.advice).toContain('--port or TRYMESH_BRIDGE_PORT');
+    expect(held.note).toContain('see bridgeError');
+    // another tool does not try again before BRIDGE_RETRY_MS
+    await session.call('get_model');
+    expect(tries).toBe(1);
+    await holder.close();
+    const free = await session.call('session_status');
+    expect(tries).toBe(2);
+    expect(free).toMatchObject({ engine: 'server', bridge: { port, appConnected: false } });
+    expect(free.bridgeError).toBeUndefined();
+    // the bridge it took is a working one
+    const status = await fetch(`http://127.0.0.1:${port}/status`);
+    expect(await status.json()).toEqual({ service: 'trymesh-mcp-bridge', connected: false });
+    await session.close();
+  });
+
+  it('new_document: refused while the document holds anything unless discard; one undo brings it back; the file is forgotten', async () => {
+    const session = await connect();
+    expect(await session.call('new_document')).toEqual({ ok: true, discarded: {}, note: 'The document is empty already; nothing changed.' });
+    await session.call('execute', {
+      command: {
+        type: 'batch',
+        commands: [
+          { type: 'setParameter', name: 'w', expr: '20' },
+          { type: 'addFeature', feature: { id: 's', type: 'sketch', plane: { kind: 'base', plane: 'XY' } } },
+          { type: 'addCurve', sketch: 's', id: 'k', curve: { type: 'circle', center: 'origin' }, radius: 5 },
+          { type: 'addFeature', feature: { id: 'a', type: 'extrude', profile: { type: 'regions', sketch: 's', regions: [{ outerLoop: ['k'] }] }, extent: { type: 'distance', start: 0, distance: 'w' }, operation: 'new' } },
+          { type: 'setBodyProperties', body: 'a', patch: { color: '#ff0000' } },
+          { type: 'setLink', id: 'base', bodies: [] },
+          { type: 'setLink', id: 'arm', bodies: ['a'] },
+          { type: 'setJoint', id: 'j', joint: { type: 'revolute', parent: 'base', child: 'arm', axis: { kind: 'sketchPoint', sketch: 's', point: 'origin' }, value: 0, lower: -1, upper: 1 } },
+          { type: 'setCheck', name: 'wide', expr: 'w > 1' },
+        ],
+      },
+    });
+    const file = join(dir, 'new-document.json');
+    await session.call('save_document', { path: file });
+    const saved = session.engine.save();
+    expect(await session.call('new_document')).toEqual({ error: 'the document is not empty, it holds 2 features, 1 parameter, 1 check, 1 entry of body properties, 2 links, 1 joint; new_document with `discard: true` replaces it with an empty one (one undo step brings it back), or save it first with save_document' });
+    expect(session.engine.save()).toBe(saved);
+    const emptied = await session.call('new_document', { discard: true });
+    expect(emptied).toMatchObject({ ok: true, features: 0, bodies: [], problems: [], discarded: { features: 2, parameters: 1, checks: 1, bodyProperties: 1, links: 2, joints: 1 } });
+    // the document is an empty one with the settings it had
+    expect(JSON.parse(session.engine.save())).toEqual(JSON.parse(newEngine().save()));
+    // the file of the old document is not the file of this one
+    expect(await session.call('save_document')).toEqual({ error: 'the document has no file; give "path"' });
+    await session.call('undo');
+    expect(session.engine.save()).toBe(saved);
+    await session.close();
   });
 });

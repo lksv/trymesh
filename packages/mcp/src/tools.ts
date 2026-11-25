@@ -905,6 +905,50 @@ function sketchToolBatch(engine: Engine, args: Record<string, unknown>): { comma
   return { command: { type: 'batch', commands: made.commands }, ids: made.ids };
 }
 
+// The one command that empties a document (D73, the tool new_document), and what it holds by
+// kind, the kinds it holds none of left out. The joints go before their links, the features from
+// the last before the stored meshes and documents they place, so every command of the batch is
+// valid; the settings stay (no command changes them). One command, so one undo step brings the
+// document back.
+export function emptying(document: Document): { command: Command; holds: Record<string, number> } {
+  const { mechanism, bodyProperties, meshes, documents, features, parameters, checks } = document;
+  const commands: Command[] = [
+    ...Object.keys(mechanism.joints).map((id): Command => ({ type: 'removeJoint', id })),
+    ...Object.keys(mechanism.links).map((id): Command => ({ type: 'removeLink', id })),
+    ...Object.keys(bodyProperties).map((body): Command => ({ type: 'removeBodyProperties', body })),
+    ...[...features].reverse().map((feature): Command => ({ type: 'removeFeature', id: feature.id })),
+    ...Object.keys(meshes).map((id): Command => ({ type: 'removeMesh', id })),
+    ...Object.keys(documents ?? {}).map((id): Command => ({ type: 'removeDocument', id })),
+    ...parameters.map((parameter): Command => ({ type: 'removeParameter', name: parameter.name })),
+    ...checks.map((check): Command => ({ type: 'removeCheck', name: check.name })),
+  ];
+  const counts: [string, number][] = [
+    ['features', features.length],
+    ['parameters', parameters.length],
+    ['checks', checks.length],
+    ['bodyProperties', Object.keys(bodyProperties).length],
+    ['links', Object.keys(mechanism.links).length],
+    ['joints', Object.keys(mechanism.joints).length],
+    ['meshes', Object.keys(meshes).length],
+    ['documents', Object.keys(documents ?? {}).length],
+  ];
+  return { command: { type: 'batch', commands }, holds: Object.fromEntries(counts.filter(([, count]) => count > 0)) };
+}
+const HELD: Record<string, [string, string]> = {
+  features: ['feature', 'features'],
+  parameters: ['parameter', 'parameters'],
+  checks: ['check', 'checks'],
+  bodyProperties: ['entry of body properties', 'entries of body properties'],
+  links: ['link', 'links'],
+  joints: ['joint', 'joints'],
+  meshes: ['mesh', 'meshes'],
+  documents: ['document', 'documents'],
+};
+const holdsText = (holds: Record<string, number>): string =>
+  Object.entries(holds)
+    .map(([kind, count]) => `${count} ${HELD[kind][count === 1 ? 0 : 1]}`)
+    .join(', ');
+
 // Whether the call of a tool from MUTATING would change the document now. The app asks before the
 // call, to cancel an operation in progress only when the document really changes.
 export function changesDocument(engine: Engine, name: string, args: Record<string, unknown>): boolean {
@@ -941,6 +985,7 @@ export function changesDocument(engine: Engine, name: string, args: Record<strin
     );
   };
   if (name === 'undo') return state.canUndo;
+  if (name === 'new_document') return args.discard === true && Object.keys(emptying(state.document).holds).length > 0;
   if (name === 'redo') return state.canRedo;
   if (name === 'execute') return typeof args.command === 'object' && args.command !== null && changes(args.command as Command);
   if (name === OUTLINE_BRIDGE_TOOL) {
@@ -1157,7 +1202,7 @@ const COMMAND: JsonSchema = {
 
 // Nástroje, které mění dokument (včetně vnitřního načtení).
 // (`_export` and `query` preview a command of their caller; they write nothing.)
-export const MUTATING: readonly string[] = ['execute', 'sketch_tool', 'undo', 'redo', '_load', '_outline'];
+export const MUTATING: readonly string[] = ['execute', 'sketch_tool', 'undo', 'redo', 'new_document', '_load', '_outline'];
 
 // Seznam nástrojů. Sestavuje se při každém dotazu, protože popisy vycházejí z katalogu enginu.
 export function tools(): Tool[] {
@@ -1378,6 +1423,18 @@ export function tools(): Tool[] {
       run: (engine, args) => {
         const { command, ids } = sketchToolBatch(engine, args);
         return { ids, ...(outcome(args.preview === true ? engine.preview(command) : engine.execute(command)) as object) };
+      },
+    },
+    {
+      name: 'new_document',
+      description:
+        'Replaces the document with an empty one (D73): one command, so one undo step brings the old document back. A document that holds anything (a feature, a parameter, a check, body properties, a link or a joint, a stored mesh or document) is replaced only with `discard: true`; without it the call is refused and says what the document holds (save it first with save_document if it is worth keeping). The answer says what was discarded. The settings (the chord tolerance) stay. Works on the document the tools work on (see session_status), and the file of that document is forgotten, so save_document then needs a path.',
+      inputSchema: { type: 'object', properties: { discard: { type: 'boolean', description: 'true: discard what the document holds' } }, additionalProperties: false },
+      run: (engine, args) => {
+        const { command, holds } = emptying(engine.getState().document);
+        if (Object.keys(holds).length === 0) return { ok: true, discarded: {}, note: 'The document is empty already; nothing changed.' };
+        if (args.discard !== true) throw new ToolError(`the document is not empty, it holds ${holdsText(holds)}; new_document with \`discard: true\` replaces it with an empty one (one undo step brings it back), or save it first with save_document`);
+        return { ...(outcome(engine.execute(command)) as Record<string, unknown>), discarded: holds, note: `Discarded ${holdsText(holds)}; undo brings them back.` };
       },
     },
     {

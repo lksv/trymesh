@@ -6,7 +6,7 @@ import { createPakoDeflater } from '@trymesh/deflate-pako';
 import { createEngine } from '@trymesh/engine';
 import { createManifoldKernel } from '@trymesh/kernel-manifold';
 import { createPlanegcsSolver } from '@trymesh/solver-planegcs';
-import { type Bridge, DEFAULT_BRIDGE_PORT, startBridge } from './bridge';
+import { type Bridge, type BridgeFailure, DEFAULT_BRIDGE_PORT, openBridge } from './bridge';
 import { createTrymeshServer } from './server';
 
 // Standardní výstup patří protokolu; zprávy pro člověka jdou na chybový výstup.
@@ -49,17 +49,27 @@ if (options.file !== undefined) {
 }
 
 let bridge: Bridge | undefined;
-if (options.bridge) {
-  try {
-    bridge = await startBridge(port);
+let failure: BridgeFailure | undefined;
+// Opens the bridge, at the start and again when a tool finds it closed (D73): another server may
+// have held the port and let it go.
+const reopen = async (): Promise<{ bridge: Bridge } | { failure: BridgeFailure }> => {
+  const opened = await openBridge(port);
+  if ('bridge' in opened) {
+    bridge = opened.bridge;
     log(`the bridge for the app listens on http://127.0.0.1:${bridge.port}`);
-  } catch (error) {
-    // Port drží jiný MCP server. Tento poběží jen nad vlastním dokumentem.
-    log(`most na portu ${port} nejde otevřít (${error instanceof Error ? error.message : String(error)}); server pracuje jen se soubory`);
+  }
+  return opened;
+};
+if (options.bridge) {
+  const opened = await reopen();
+  if ('failure' in opened) {
+    // another MCP server holds the port: this one works on its own document until it gets the port
+    failure = opened.failure;
+    log(`the bridge cannot be opened on the port ${port} (${failure.code ?? failure.message}); the server works on its own document and tries the port again later`);
   }
 }
 
-const server = createTrymeshServer({ engine, bridge, file: options.file });
+const server = createTrymeshServer({ engine, bridge, file: options.file, ...(options.bridge ? { bridgeFailure: failure, reopenBridge: reopen } : {}) });
 await server.connect(new StdioServerTransport());
 log('ready');
 

@@ -40,6 +40,24 @@ function allowedOrigin(origin: string | undefined): string | undefined | false {
   }
 }
 
+// Why the bridge could not be opened (D73): the port, the code of the error (EADDRINUSE when
+// another server holds the port) and its message. session_status reports it.
+export interface BridgeFailure {
+  port: number;
+  code?: string;
+  message: string;
+}
+
+// The bridge, or why it could not be opened; never rejects.
+export async function openBridge(port: number = DEFAULT_BRIDGE_PORT): Promise<{ bridge: Bridge } | { failure: BridgeFailure }> {
+  try {
+    return { bridge: await startBridge(port) };
+  } catch (error) {
+    const code = (error as { code?: unknown }).code;
+    return { failure: { port, ...(typeof code === 'string' ? { code } : {}), message: error instanceof Error ? error.message : String(error) } };
+  }
+}
+
 // port 0 = volný port přidělí systém. Když port otevřít nejde (běží jiný server), slib se zamítne.
 export function startBridge(port: number = DEFAULT_BRIDGE_PORT): Promise<Bridge> {
   let client: { response: ServerResponse; session: number; document: number } | undefined;

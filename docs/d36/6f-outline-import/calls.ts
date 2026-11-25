@@ -6,8 +6,9 @@
 // board imported from a DXF the test writes as a PCB tool would, steps 2 to 6 of the packages before
 // it built on that board in one document (their own tests run them on stand-ins), and the checks of
 // step 7. Then the cases that are 6f's alone: the placement, the flag, a revised file, the rule of
-// an update, the weld, the units and the layers, splines, the engine's own DXF and SVG read back,
-// the limit and the listing of many curves, and the refusals.
+// an update, the weld and its bounds, the units and the layers, splines, the engine's own DXF and
+// SVG read back, a tangency at a corner, the limits and the listing of many curves, and the
+// refusals. Revised after the reviews of the design (design.md, "Reviews").
 //
 // Written against the engine as it is (every package before 6f is implemented), so the calls of
 // the earlier steps use the real commands and sketch tools. The numbers in the comments were
@@ -18,8 +19,8 @@
 import type { Command, CommandResult, Engine, EngineState, Expr, Id, QueryOutcome, SketchResult, SketchToolInputs, Vec2 } from '../../../packages/engine/src/index';
 import { freshIds, sketchTool } from '../../../packages/engine/src/index';
 import type { OutlineAbout } from '../../../packages/engine/src/export/outline';
-import type { CommandAfter, EntryCurvesResult, ImportOutlineAnswer, ImportOutlineArgs, OutlineCurve, OutlineDetail, OutlineInput, OutlineOutcome, OutlineReport, PlacedOutline, SketchFeatureAfter, SketchOutline } from './contract';
-import { ENTITY_TAKEN, OUTLINE_LIMITS, OUTLINE_NOT_CUT, OUTLINE_REFUSALS, importOutline, outlineRevision } from './contract';
+import type { CommandAfter, EntryCurvesResult, ImportOutlineAnswer, ImportOutlineArgs, ImportedCurve, OutlineDetail, OutlineInput, OutlineOutcome, OutlineReport, PlacedOutline, SketchFeatureAfter, SketchOutline } from './contract';
+import { ENTITY_TAKEN, OUTLINE_LIMITS, OUTLINE_NOT_CUT, OUTLINE_REFUSALS, importOutline, outlineRevision, weldOutline } from './contract';
 
 // ---------------------------------------------------------------- the engine with the kind
 
@@ -28,9 +29,11 @@ export interface EngineAfter extends Omit<Engine, 'execute' | 'preview'> {
   preview(command: CommandAfter, at?: Id): CommandResult;
 }
 export declare const engine: EngineAfter;
+// a new document in the engine: the cases that are not steps of the scenario start from one
+export declare function fresh(): void;
 export declare function fail(message: string): never;
 // the query of section 6 of the contract, the MCP tool and get_sketch, as the tests reach them
-export declare function entryCurves(args: { sketch: Id; entry: Id; kind?: OutlineCurve['type']; from?: number; max?: number }): EntryCurvesResult;
+export declare function entryCurves(args: { sketch: Id; entry: Id; kind?: ImportedCurve['type']; from?: number; max?: number }): EntryCurvesResult;
 export declare function importOutlineTool(args: ImportOutlineArgs): ImportOutlineAnswer;
 export declare function getSketch(sketch: Id): { external: (OutlineDetail | { id: Id })[]; advice: string[] };
 
@@ -41,7 +44,8 @@ export const refused = (command: CommandAfter, text: string): boolean => {
   return !result.ok && result.error.message.includes(text);
 };
 export const unwrap = <T>(outcome: QueryOutcome<T>): T => (outcome.ok ? outcome.result : fail(`${outcome.error.code}: ${outcome.error.message}`));
-export const read = (outcome: OutlineOutcome): { curves: Record<Id, OutlineCurve>; report: OutlineReport } => (outcome.ok ? outcome : fail(`${outcome.error.code}: ${outcome.error.message}`));
+export const read = (outcome: OutlineOutcome): { curves: Record<Id, ImportedCurve>; report: OutlineReport } => (outcome.ok ? outcome : fail(`${outcome.error.code}: ${outcome.error.message}`));
+export const unreadable = (outcome: OutlineOutcome): boolean => !outcome.ok && outcome.error.code === 'unreadable';
 export const near = (value: number | undefined, expected: number, tolerance: number): boolean => value !== undefined && Math.abs(value - expected) < tolerance;
 export const same = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
 export const sketchOf = (state: EngineState, id: Id): SketchFeatureAfter => (state.document.features.find((f) => f.id === id) as unknown as SketchFeatureAfter | undefined) ?? fail(`no sketch "${id}"`);
@@ -181,7 +185,9 @@ export function board(): EngineState {
   // the report: 12 curves (4 lines, 4 arcs, 4 circles), nothing welded, nothing open; the layers
   // of the file with what they hold, the courtyard and the text among them
   if (report.curves !== 12 || report.open !== 0 || !same(report.byKind, { line: 4, circle: 4, arc: 4, spline: 0 }) || !same(Object.keys(report.about.layers), ['Edge.Cuts', 'F.CrtYd', 'F.SilkS'])) fail('the report');
-  run(sketch('board', XY), outline('board', 'pcbo', { type: 'outline', name: 'board.dxf', curves, anchor: 'center' }));
+  // `source` is what the file was read with ({ format: 'dxf', layers: ['Edge.Cuts'] }): a
+  // replacement repeats it
+  run(sketch('board', XY), outline('board', 'pcbo', { type: 'outline', name: 'board.dxf', source: report.source, curves, anchor: 'center' }));
   return run(extrude('pcb', 'board', [OUTLINE], '1.6', 'new'));
 }
 // What the board is after step 1: no own geometry, no freedom, one region of the eight outline
@@ -420,13 +426,14 @@ export function notchChecks(state: EngineState): boolean {
 
 // ================================================================ step 7: the checks
 
-// `vents` 7: two more holes of the lid, the cut keeps its regions and its references. 3: the cut is
-// `noProfile` naming the region of copy 3. 5 brings it back.
+// `vents` 7: two more holes of the lid, the cut keeps its regions and its references. 3, executed
+// and not previewed: the cut is `noProfile` naming the region of copy 3, and its feature is as it
+// was. 5 brings it back from that state (the review, codex 15; measured, H4).
 export function ventCount(): boolean {
   const before = engine.getState();
   const cut = before.document.features.find((f) => f.id === 'ventCut');
   const seven = run(set('vents', '7'));
-  const three = done(engine.preview(set('vents', '3')));
+  const three = run(set('vents', '3'));
   const five = run(set('vents', '5'));
   return (
     allOk(seven) &&
@@ -434,7 +441,9 @@ export function ventCount(): boolean {
     near(volumeOf(seven, 'lid') - volumeOf(before, 'lid'), -2 * SLOT * 2, 0.5) &&
     three.evaluation.features.ventCut.error?.code === 'noProfile' &&
     same(three.evaluation.features.ventCut.error?.refs, [{ outerLoop: copyRegion(3) }]) &&
+    same(three.document.features.find((f) => f.id === 'ventCut'), cut) &&
     allOk(five) &&
+    same(five.document.features.find((f) => f.id === 'ventCut'), cut) &&
     near(volumeOf(five, 'lid'), volumeOf(before, 'lid'), 1e-6)
   );
 }
@@ -456,6 +465,8 @@ export function revisedFile(): boolean {
     revision.kept === 12 &&
     revision.added.length === 0 &&
     revision.removed.length === 0 &&
+    revision.renamed.length === 0 &&
+    same(entry.source, { format: 'dxf', layers: ['Edge.Cuts'] }) &&
     entry.anchor === 'center' &&
     entry.name === 'board.dxf' &&
     allOk(state) &&
@@ -508,7 +519,17 @@ export function lidSection(): boolean {
 // the right only (measured: the holes 26.5 and 28.5 from `origin/y`). The three numbers are fields:
 // an expression in the command, `setField`, a rename of the parameter; a turn by a quarter gives
 // the board 40 wide and 62 high and every feature after it follows.
+// On a model of its own: the board of the wider file, the skeleton and the base (steps 1 to 3),
+// which are held on projections of the board alone and so turn with it (measured, B3). Not in the
+// assembled model: the lid and the notch of the floor are dimensioned from the axes of their
+// sketches, which do not turn, and a quarter turn there leaves `baseSk` and `lidSketch` unsolved
+// (the review, codex 11; measured, H6). A cover that turns with its board is not what scenario 15
+// asks for.
 export function placement(): boolean {
+  fresh();
+  const { curves, report } = boardFile(62);
+  run(sketch('board', XY), outline('board', 'pcbo', { type: 'outline', name: 'board.dxf', source: report.source, curves, anchor: 'center' }), extrude('pcb', 'board', [OUTLINE], '1.6', 'new'));
+  skeletonAndBase();
   const byOrigin = run({ type: 'updateExternal', sketch: 'board', id: 'pcbo', ref: { type: 'outline', anchor: 'origin', x: -130, y: -100 } });
   const measured = resultOf(byOrigin, 'frame').measurements;
   run({ type: 'updateExternal', sketch: 'board', id: 'pcbo', ref: { type: 'outline', anchor: 'center', x: 0, y: 0 } });
@@ -533,8 +554,9 @@ export function placement(): boolean {
 // The flag: an own line across the bottom side of an outline that forms regions makes the profile
 // invalid, the query says why and split refuses with the same text. With the flag switched off (the
 // update sends two fields, not the curves) the sketch has no region and the own line is free: a
-// trim with the side as `with` cuts it there, an extend reaches another side. The stored value is
-// kept, so the sketch is not solved again for the flag.
+// trim with the side as `with` cuts it there, an extend reaches another side. The stored value and
+// the stamp are kept by the switch (the positions of the own points are those stored; the solver
+// still runs for the diagnosis, as at every step).
 export function flag(): boolean {
   const { curves } = boardFile(60);
   const before = run(sketch('flagSk', XY), outline('flagSk', 'o', { type: 'outline', curves, anchor: 'center' }), pt('flagSk', 'n1', 0, -25), pt('flagSk', 'n2', 0, -15), ln('flagSk', 'n', 'n1', 'n2'));
@@ -590,12 +612,21 @@ export function updateRule(): boolean {
   const state = run({ type: 'removeConstraint', sketch: 'ruleSk', id: 'k' }, update);
   const later = state.evaluation.features.laterSk;
   const loaded = engine.load(engine.save());
-  return refusedFirst && kind && later.status === 'warning' && later.warnings[0].code === 'brokenProjection' && near(resultOf(state, 'laterSk').points['x1/center'].x, -26.5, 1e-9) && loaded.ok;
+  // What the rule does not cover: a mirror of the same sketch about a line of the outline. The
+  // update that drops the line is accepted, the mirror loses its copies with `brokenCopies`, and
+  // the document loads (the review, fable 6, measured there).
+  run(pt('ruleSk', 'm1', 40, 0), pt('ruleSk', 'm2', 45, 5), ln('ruleSk', 'ml', 'm1', 'm2'), { type: 'addExternal', sketch: 'ruleSk', id: 'mir', ref: { type: 'pattern', sources: ['ml'], transform: { type: 'mirror', axis: 'o/l2' } } });
+  const { l2: _axis, ...noAxis } = fewer;
+  const mirrored = run({ type: 'updateExternal', sketch: 'ruleSk', id: 'o', ref: { type: 'outline', curves: noAxis } });
+  const lost = mirrored.evaluation.features.ruleSk;
+  return refusedFirst && kind && later.status === 'warning' && later.warnings[0].code === 'brokenProjection' && near(resultOf(state, 'laterSk').points['x1/center'].x, -26.5, 1e-9) && loaded.ok && lost.status === 'warning' && lost.warnings.some((w) => w.code === 'brokenCopies') && engine.load(engine.save()).ok;
 }
 
 // The IDs follow the order of the file, not the geometry: a file whose holes are listed in another
 // order gives the same IDs to other holes (measured: `c1` at (103.5, 83.5) and at (156.5, 83.5)).
-// The revision says nothing came or went; what named `c1` now names the other hole. A known limit.
+// The revision says nothing came or went, and that `c1` and `c2` are where each other was (`renamed`,
+// J11): what named `c1` now names the other hole, and the caller is told. A known limit all the same:
+// a curve that moved and changed its place in the file at once is not found.
 export function orderOfTheFile(): boolean {
   const first = boardFile(60).curves;
   // the first two CIRCLE entities swapped
@@ -603,7 +634,7 @@ export function orderOfTheFile(): boolean {
   const swapped = [parts[0], parts[2], parts[1], ...parts.slice(3)].join('0\r\nCIRCLE\r\n');
   const second = read(importOutline('dxf', bytes(swapped), EDGE)).curves;
   const revision = outlineRevision(first, second);
-  return revision.kept === 12 && revision.added.length === 0 && first.c1.type === 'circle' && second.c1.type === 'circle' && first.c1.center[0] !== second.c1.center[0];
+  return revision.kept === 12 && revision.added.length === 0 && same(revision.renamed, [{ id: 'c1', was: 'c2' }, { id: 'c2', was: 'c1' }]) && first.c1.type === 'circle' && second.c1.type === 'circle' && first.c1.center[0] !== second.c1.center[0];
 }
 
 // ================================================================ the readers
@@ -612,23 +643,74 @@ export function orderOfTheFile(): boolean {
 // number, written with fewer and fewer decimals. Measured (A3): with nine decimals the ends of
 // neighbours are 9e-10 mm apart, with six 9e-7, with four 9e-5, with three 9e-4, with two 7e-3.
 // Without a weld the outline of the files of four decimals and fewer does not close (16 open ends,
-// the four discs of the holes the only regions); with the default (0.01 mm) each closes, and every
-// arc keeps its two ends on one radius within 2e-14 mm, so a point is held on it and a line made
+// the four discs of the holes the only regions); with the default (0.01 mm) each closes. The end of
+// a line goes onto the end of the arc beside it (8 ends moved, never an arc), so every arc keeps
+// the digits of the file and its two ends on one radius, and a point is held on it and a line made
 // tangent to it by the solver (A4).
 export declare function skewedBoardDxf(W: number, decimals: number, skew: number): string;
 export function welded(): boolean {
-  const closes = (decimals: number, weld: number): { regions: number; open: number; moved: number } => {
+  const closes = (decimals: number, weld: number): { regions: number; open: number; moved: number; welded: number } => {
     const { curves, report } = read(importOutline('dxf', bytes(skewedBoardDxf(60, decimals, 17)), { ...EDGE, weld }));
     const id = `weld${decimals}_${weld === 0 ? 0 : 1}`;
     const state = run(sketch(id, XY), outline(id, 'o', { type: 'outline', curves }));
-    return { regions: loopsOf(state, id).length, open: resultOf(state, id).openEnds?.count ?? 0, moved: report.moved };
+    return { regions: loopsOf(state, id).length, open: resultOf(state, id).openEnds?.count ?? 0, moved: report.moved, welded: report.welded };
   };
   const exact = closes(4, 0);
   const four = closes(4, 0.01);
   const two = closes(2, 0.01);
   // the report of a file that stays open says which ends have another end near, and how near
   const gaps = read(importOutline('dxf', bytes(skewedBoardDxf(60, 2, 17)), { ...EDGE, weld: 0.001 })).report.gaps;
-  return exact.regions === 4 && exact.open === 16 && four.regions === 5 && four.open === 0 && four.moved < 1e-4 && two.regions === 5 && two.moved < 0.01 && gaps.length === 16 && near(gaps[0].distance, 0.0031, 1e-3);
+  return exact.regions === 4 && exact.open === 16 && four.regions === 5 && four.open === 0 && four.welded === 8 && four.moved < 1e-4 && two.regions === 5 && two.moved < 0.01 && gaps.length === 16 && near(gaps[0].distance, 0.0031, 1e-3);
+}
+
+// The bounds of the weld (the reviews: fable 1, 2, 12; codex 2, 3; agy 6), on curves given to
+// `weldOutline` directly. Measured, J1 to J6.
+export function weldBounds(): boolean {
+  const line = (a: Vec2, b: Vec2): ImportedCurve => ({ type: 'line', a, b });
+  const polar = (c: Vec2, r: number, deg: number): Vec2 => [c[0] + r * Math.cos((deg * Math.PI) / 180), c[1] + r * Math.sin((deg * Math.PI) / 180)];
+  const arc = (c: Vec2, r: number, from: number, to: number): ImportedCurve => ({ type: 'arc', center: c, start: polar(c, r, from), end: polar(c, r, to) });
+  const square: ImportedCurve[] = [line([0, 0], [20, 0]), line([20, 0], [20, 20]), line([20, 20], [0, 20]), line([0, 20], [0, 0])];
+  // a corner of radius 0.5 drawn as 200 lines of 0.0039 mm, whose ends meet: nothing is welded
+  const corner = Array.from({ length: 201 }, (_, i) => polar([19.5, 0.5], 0.5, -90 + (90 * i) / 200));
+  const fine = weldOutline([line([0, 0], corner[0]), ...corner.slice(1).map((p, i) => line(corner[i], p)), line(corner[200], [20, 20]), line([20, 20], [0, 20]), line([0, 20], [0, 0])], 0.01);
+  // three ends at x = 0, 0.009 and 0.018: the second goes onto the first, the third would have to
+  // go 0.018 and stays, counted and listed
+  const chain = weldOutline([line([-5, 0], [0, 0]), line([0.009, 0], [0.009, 5]), line([0.018, 0], [5, 0.018])], 0.01);
+  // a hole written as an arc from 0° to 359.9° (its ends 0.0028 mm apart) is a circle; to 359° an arc
+  const hole = weldOutline([...square, arc([10, 10], 1.6, 0, 359.9)], 0.01);
+  const notHole = weldOutline([...square, arc([10, 10], 1.6, 0, 359)], 0.01);
+  // two quarter arcs of radius 10 that miss each other by 0.005: the later is re-centred, its
+  // centre and radius within the weld (measured: 0.0018 and 0.0013); by 0.02 they stay apart
+  const pair = weldOutline([arc([1.2345, 2.3456], 10, 0, 90), arc([1.2395, 2.3431], 10, 90, 180)], 0.01);
+  const apart = weldOutline([arc([1.2345, 2.3456], 10, 0, 90), arc([1.2545, 2.3356], 10, 90, 180)], 0.01);
+  // an arc of radius 1000 and nearly a whole turn with an arc of radius 30 ending 0.009 from its
+  // end: neither radius changes by more than the weld (measured: 0 and 5e-7)
+  const big = arc([0, 1000], 1000, -90, 269.999);
+  const beside = weldOutline([big, arc([(big as { end: Vec2 }).end[0] + 0.009, (big as { end: Vec2 }).end[1] - 30], 30, 90, 180)], 0.01);
+  const kept = beside.curves[0];
+  // the bottom side a second time, the other way round, and a hole twice
+  const twice = weldOutline([...square, line([20, 0], [0, 0]), { type: 'circle', center: [5, 5], radius: 1 }, { type: 'circle', center: [5, 5], radius: 1 }], 0.01);
+  return (
+    fine.welded === 0 &&
+    fine.curves.every((c) => c !== undefined) &&
+    chain.welded === 1 &&
+    chain.moved <= 0.01 &&
+    chain.blocked === 1 &&
+    chain.open === 4 &&
+    hole.closed === 1 &&
+    hole.curves[4]?.type === 'circle' &&
+    notHole.curves[4]?.type === 'arc' &&
+    notHole.open === 2 &&
+    pair.welded === 1 &&
+    pair.shifted <= 0.01 &&
+    apart.welded === 0 &&
+    kept?.type === 'arc' &&
+    near(Math.hypot(kept.start[0] - kept.center[0], kept.start[1] - kept.center[1]), 1000, 0.01) &&
+    beside.moved <= 0.01 &&
+    twice.duplicates === 2 &&
+    twice.curves[4] === undefined &&
+    twice.curves[6] === undefined
+  );
 }
 
 // Polylines with bulges, both forms, read as the engine writes them (D54: POLYLINE, VERTEX and
@@ -672,33 +754,68 @@ export function unitsAndLayers(): boolean {
   );
 }
 
-// Splines. A cubic SPLINE of three spans becomes three splines of four control points (its Bezier
-// pieces, exactly: 6d's `bsplineBeziers`), `s1` to `s3`, which close with the line into one region;
-// extruded, each is one swept face named by its curve. A rational spline and an ellipse are left
-// out and counted in `skipped`. A spline of an outline is no operand of a constraint and is not
-// projected (its control points are: `o/s1/1`); the whole sketch projected leaves the three out and
-// lists them in `splines` (6b, 6d).
+// Splines. A cubic SPLINE of three spans with even knots is one spline of the sketch over its six
+// control points (6d's spline is the cubic of even, clamped knots: measured, I6b, the same curve to
+// the digit), `s1`, which closes with the line into one region; extruded, it is one swept face
+// named by its curve. With uneven knots it is its Bezier pieces, three splines of four control
+// points (6d's `bsplineBeziers`, exactly; over the same control points a spline of the sketch would
+// run 0.88 mm off). A rational spline and an ellipse are left out and counted in `skipped`. A
+// spline of an outline is no operand of a constraint and is not projected (its control points
+// are: `o/s1/1`, and the query lists where they stand); the whole sketch projected leaves it out
+// and lists it in `splines` (6b, 6d).
+export declare function unevenSplineDxf(): string; // the same file with the knots 0,0,0,0,1,3,4,4,4,4
 export function splines(): boolean {
   const { curves, report } = read(importOutline('dxf', bytes(inchDxf())));
   const state = run(sketch('splSk', XY), outline('splSk', 'o', { type: 'outline', curves }));
-  const body = run(extrude('splBody', 'splSk', [['o/l1', 'o/s1', 'o/s2', 'o/s3']], '2', 'new'));
+  const body = run(extrude('splBody', 'splSk', [['o/l1', 'o/s1']], '2', 'new'));
   run(sketch('splLater', XY));
   const whole = tool('projectSketch', 'splLater', { sketch: 'splSk' }, 'w');
   const s1 = curves.s1;
+  const listed = entryCurves({ sketch: 'splSk', entry: 'o', kind: 'spline' }).curves[0];
+  const pieces = read(importOutline('dxf', bytes(unevenSplineDxf()))).report.byKind;
   return (
-    same(report.byKind, { line: 1, circle: 0, arc: 0, spline: 3 }) &&
+    same(report.byKind, { line: 1, circle: 0, arc: 0, spline: 1 }) &&
     same(report.about.skipped, { 'SPLINE (rational)': 1, ELLIPSE: 1 }) &&
     s1.type === 'spline' &&
-    s1.points.length === 4 &&
-    same(loopsOf(state, 'splSk'), [['o/l1', 'o/s1', 'o/s2', 'o/s3']]) &&
+    s1.points.length === 6 &&
+    same(loopsOf(state, 'splSk'), [['o/l1', 'o/s1']]) &&
     resultOf(state, 'splSk').curves['o/s1'].shape.type === 'spline' &&
     body.evaluation.features.splBody.status === 'ok' &&
+    listed.type === 'spline' &&
+    listed.control.length === 6 &&
+    !listed.closed &&
+    pieces.spline === 3 &&
     refused(constrain('splSk', 'k', { type: 'pointOnCurve', point: 'origin', curve: 'o/s1' }), 'spline') &&
     refused(project('splLater', 'x', 'splSk', 'o/s1', 'line'), 'a spline is not projected') &&
     done(engine.preview(project('splLater', 'x', 'splSk', 'o/s1/1', 'point'))).evaluation.features.splLater.status === 'ok' &&
-    same(whole.splines, ['o/s1', 'o/s2', 'o/s3']) &&
+    same(whole.splines, ['o/s1']) &&
     whole.entries.length === 1
   );
+}
+
+// A closed spline of an outline (its first control point again as its last) bounds a region by
+// itself and has no open end: its two ends are one place (measured before the condition in 6c's
+// stage, J9: the region is there, and `openEnds` lists `o/s1/0` with the distance 0).
+export function closedSpline(): boolean {
+  const state = run(sketch('clSk', XY), outline('clSk', 'o', { type: 'outline', curves: { s1: { type: 'spline', points: [[0, 0], [10, -5], [20, 0], [20, 10], [10, 15], [0, 10], [0, 0]] } } }));
+  return resultOf(state, 'clSk').valid && same(loopsOf(state, 'clSk'), [['o/s1']]) && resultOf(state, 'clSk').openEnds === undefined && getSketch('clSk').advice.every((text) => !text.includes('open'));
+}
+
+// A tangency at a corner of an outline. The end of the bottom line (`o/l1/b`) and the start of
+// the corner arc (`o/a1/start`) are two entities at one place. An own line that starts on either
+// and is tangent to the arc is the tangent at their common end: horizontal, and its far end slides
+// along it. Measured before the adapter took two fixed points at one place for one end (J10): held
+// on `o/a1/start` exactly so; held on `o/l1/b` the solver took the general form at its double
+// root, the far end 4e-5 mm off the line and not moved by a drag.
+export function cornerTangent(): boolean {
+  const { curves } = boardFile(60);
+  return ['o/l1/b', 'o/a1/start'].every((corner, i) => {
+    const s = `tanSk${i}`;
+    run(sketch(s, XY), outline(s, 'o', { type: 'outline', curves, anchor: 'center' }), pt(s, 'p', 26.5, -19.5), pt(s, 'q', 35, -19), ln(s, 'n', 'p', 'q', true), constrain(s, 'k1', { type: 'coincident', a: 'p', b: corner }), constrain(s, 'k2', { type: 'tangent', a: 'n', b: 'o/a1' }));
+    const dragged = run({ type: 'dragPoint', sketch: s, point: 'q', x: 36, y: -12 });
+    const diagnosis = engine.diagnoseSketch(s);
+    return near(resultOf(dragged, s).points.q.y, -20, 1e-9) && near(resultOf(dragged, s).points.q.x, 36, 1e-6) && diagnosis.degreesOfFreedom === 1 && diagnosis.redundant.length === 0;
+  });
 }
 
 // The subset of SVG, as a drawing program writes one: a root of 100 mm × 50 mm over a viewBox of
@@ -734,8 +851,9 @@ export function svgSubset(): boolean {
 // point held on a hole centre and another on a tooth. Measured (C1, F1): 3 ms to read and weld, 61
 // ms for `addExternal`, 40 ms for a drag in the sketch while it forms regions and 7 with the flag
 // off; the solver gets 7 points, not 1503. `get_sketch` lists 50 of its curves (4000 characters, not
-// 79,000) and names the query for the rest; the query pages through them by kind; `get_document`
-// leaves the curves out. 2001 curves are refused.
+// 79,000) and names the query for the rest, and 50 of its 501 regions; the query pages through the
+// curves by kind; `get_document` leaves the curves out, for the feature alone too. 2001 curves are
+// refused.
 export declare function toothedDxf(curves: number): string;
 export function manyCurves(): boolean {
   const { curves } = read(importOutline('dxf', bytes(toothedDxf(1000))));
@@ -758,19 +876,46 @@ export function manyCurves(): boolean {
     circles.curves[0].id === 'o/c451' &&
     !tooMany.ok &&
     tooMany.error.code === 'tooLarge' &&
+    // read too: 8001 curves are refused while they are read, before any weld (measured, I8: 9000
+    // lines in 19 ms), and 501 splines of four control points by the limit of control points
+    !importOutline('dxf', bytes(toothedDxf(8002))).ok &&
+    refused({ type: 'addExternal', sketch: 'bigSk', id: 'o3', ref: { type: 'outline', curves: Object.fromEntries(Array.from({ length: 501 }, (_, i) => [`s${i + 1}`, { type: 'spline', points: [[i, 0], [i + 0.3, 1], [i + 0.6, 1], [i + 1, 0]] } as ImportedCurve])) } }, OUTLINE_REFUSALS.control('addExternal.ref', 2004)) &&
     refused({ type: 'addExternal', sketch: 'bigSk', id: 'o2', ref: { type: 'outline', curves: {} } }, OUTLINE_REFUSALS.count('addExternal.ref', 0))
   );
 }
 
 // ================================================================ the tool of MCP
 
-// `import_outline` without a sketch only reports; with one it places; with `replace` it sends the
-// curves alone, and the answer says what stayed, came and went. No answer holds the curves.
+// `import_outline` without a sketch only reports; with one it places; with `replace` it reads the
+// file with the options the entry stores (here the layer `Edge.Cuts`: no `options` are given) and
+// sends the curves alone, and the answer says what stayed, came, went and was renamed. A
+// replacement that would take away a constrained entity is refused whole, with the report; with
+// `remove` the constraint goes in the same batch, one undo step. No answer holds the curves.
 export function throughMcp(): boolean {
   const look = importOutlineTool({ path: 'board.dxf' });
   const placed = importOutlineTool({ path: 'board.dxf', options: EDGE, sketch: 'mcpSk', id: 'pcbo', anchor: 'center' });
-  const again = importOutlineTool({ path: 'board-rev-b.dxf', options: EDGE, sketch: 'mcpSk', id: 'pcbo', replace: true });
-  return look.entry === undefined && Object.keys(look.report.about.layers).length === 3 && same(placed.entry, { sketch: 'mcpSk', id: 'pcbo' }) && same(placed.ids, { prefix: 'pcbo/', lines: 4, arcs: 4, circles: 4, splines: 0 }) && again.revision?.kept === 12 && !JSON.stringify(placed).includes('"curves":{');
+  const again = importOutlineTool({ path: 'board-rev-b.dxf', sketch: 'mcpSk', id: 'pcbo', replace: true });
+  run(pt('mcpSk', 'p', 5, 5), constrain('mcpSk', 'k', { type: 'coincident', a: 'p', b: 'pcbo/c4/center' }));
+  const held = importOutlineTool({ path: 'board-three-holes.dxf', sketch: 'mcpSk', id: 'pcbo', replace: true });
+  const stillThere = 'k' in sketchOf(engine.getState(), 'mcpSk').constraints;
+  const released = importOutlineTool({ path: 'board-three-holes.dxf', sketch: 'mcpSk', id: 'pcbo', replace: true, remove: ['k'] });
+  return (
+    look.entry === undefined &&
+    Object.keys(look.report.about.layers).length === 3 &&
+    same(placed.entry, { sketch: 'mcpSk', id: 'pcbo' }) &&
+    same(placed.ids, { prefix: 'pcbo/', lines: 4, arcs: 4, circles: 4, splines: 0 }) &&
+    again.revision?.kept === 12 &&
+    again.report.curves === 12 &&
+    same(again.report.source, { format: 'dxf', layers: ['Edge.Cuts'] }) &&
+    held.refused !== undefined &&
+    held.refused.includes('pcbo/c4/center') &&
+    held.report.curves === 11 &&
+    stillThere &&
+    released.refused === undefined &&
+    same(released.revision?.removed, ['c4']) &&
+    !('k' in sketchOf(engine.getState(), 'mcpSk').constraints) &&
+    !JSON.stringify(placed).includes('"curves":{')
+  );
 }
 
 // ================================================================ the refusals
@@ -782,6 +927,9 @@ export function refusals(): boolean {
     // the form of the entry
     refused(add({ type: 'outline' }), OUTLINE_REFUSALS.missingCurves('addExternal.ref')) &&
     refused(add({ type: 'outline', curves: { 'a/b': curves.l1 } }), OUTLINE_REFUSALS.localId('addExternal.ref', 'a/b')) &&
+    // a name every object has would vanish from the record (measured, J7): `__proto__` as a key of
+    // parsed JSON, `constructor`, `toString`
+    ['__proto__', 'constructor', 'toString'].every((key) => refused(add({ type: 'outline', curves: JSON.parse(`{"${key}":{"type":"line","a":[0,0],"b":[10,0]}}`) }), OUTLINE_REFUSALS.localId('addExternal.ref', key))) &&
     refused(add({ type: 'outline', curves: { l1: { type: 'line', a: [0, 0], b: [0, 0] } } }), OUTLINE_REFUSALS.noLength('addExternal.ref.curves.l1')) &&
     refused(add({ type: 'outline', curves: { a1: { type: 'arc', center: [0, 0], start: [3, 0], end: [0, 3.001] } } }), 'off one radius') &&
     refused(add({ type: 'outline', curves: { l1: { type: 'line', a: ['w', 0], b: [1, 0] } } }), OUTLINE_REFUSALS.expression('addExternal.ref.curves.l1.a')) &&
@@ -796,7 +944,13 @@ export function refusals(): boolean {
     // an outline does not become a mirror, and a file that is no file of the format
     refused({ type: 'updateExternal', sketch: 'board', id: 'pcbo', ref: { type: 'pattern', sources: ['x'], transform: { type: 'mirror', axis: 'origin/y' } } } as Command, 'cannot become derived geometry') &&
     !importOutline('dxf', bytes('AutoCAD Binary DXF\r\n')).ok &&
-    !importOutline('svg', bytes('<html></html>')).ok
+    !importOutline('svg', bytes('<html></html>')).ok &&
+    // a file cut short is not read as far as it goes (measured, I1 and S5): no EOF; a path that does
+    // not end; and an unsupported entity is not a refusal
+    unreadable(importOutline('dxf', bytes(boardDxf(60).replace('0\r\nEOF\r\n', '')))) &&
+    unreadable(importOutline('svg', bytes('<svg><circle r="10"/><path d="M0 0 L'))) &&
+    unreadable(importOutline('svg', bytes('<svg><path d="M0 0 L1 2 3"/></svg>'))) &&
+    importOutline('svg', bytes('<svg><circle r="10"/><text>A</text></svg>')).ok
   );
 }
 
@@ -814,8 +968,7 @@ export function scenario(): boolean {
     revisedFile,
     volumes,
     lidSection,
-    placement,
   ];
   return steps.every((step) => step());
 }
-export const cases: (() => boolean)[] = [flag, mixedLoop, updateRule, orderOfTheFile, welded, ownFiles, unitsAndLayers, splines, svgSubset, manyCurves, throughMcp, refusals];
+export const cases: (() => boolean)[] = [placement, flag, mixedLoop, updateRule, orderOfTheFile, welded, weldBounds, ownFiles, unitsAndLayers, splines, closedSpline, cornerTangent, svgSubset, manyCurves, throughMcp, refusals];

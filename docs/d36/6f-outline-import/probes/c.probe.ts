@@ -8,7 +8,7 @@ import { profileOf, solverSetup } from '../../../../packages/engine/src/sketch';
 import { createPlanegcsSolver } from '../../../../packages/solver-planegcs/src/index';
 import { XY, addSketch, batch, newEngine, run } from '../../../../packages/scenarios/test/kit';
 import { addOutline, bigDxf, regionArea, resultOf } from './kit';
-import { type OutlineCurve, importOutline, installOutlineKind, outlineEntry } from './proto';
+import { type ImportedCurve, importOutline, installOutlineKind, outlineEntry } from './proto';
 
 installOutlineKind();
 vi.mock('../../../../packages/engine/src/references/spec', async (importOriginal) => {
@@ -25,7 +25,7 @@ const ms = (run: () => unknown, times = 1): number => {
 };
 
 // what get_sketch would list for every entity of an entry: the curve with its places, rounded
-const listed = (curves: Record<string, OutlineCurve>, limit: number): string =>
+const listed = (curves: Record<string, ImportedCurve>, limit: number): string =>
   JSON.stringify(
     Object.entries(curves)
       .slice(0, limit)

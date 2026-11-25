@@ -86,10 +86,12 @@ describe('H: the cover as one model', () => {
     const before = state;
     const seven = set(engine, 'vents', '7');
     console.log('H4 vents 7: not ok', allOk(seven), 'lid', volume(seven, 'lid') - volume(before, 'lid'), 'by hand', -2 * SLOT * 2);
-    const three = engine.preview({ type: 'setParameter', name: 'vents', expr: '3' });
-    console.log('H4 vents 3:', three.ok ? JSON.stringify([three.state.evaluation.features.ventCut.error?.code, three.state.evaluation.features.ventCut.error?.refs]) : three.error.message);
+    // 3 is executed, not previewed: 5 has to bring the cut back from the failing state
+    const cutBefore = JSON.stringify(seven.document.features.find((f) => f.id === 'ventCut'));
+    const three = set(engine, 'vents', '3');
+    console.log('H4 vents 3 (executed): not ok', allOk(three), JSON.stringify([three.evaluation.features.ventCut.error?.code, three.evaluation.features.ventCut.error?.refs]), 'the cut unchanged', JSON.stringify(three.document.features.find((f) => f.id === 'ventCut')) === cutBefore);
     state = set(engine, 'vents', '5');
-    console.log('H4 vents 5: not ok', allOk(state), 'lid back', volume(state, 'lid') - volume(before, 'lid'));
+    console.log('H4 vents 5: not ok', allOk(state), 'lid back', volume(state, 'lid') - volume(before, 'lid'), 'the cut unchanged', JSON.stringify(state.document.features.find((f) => f.id === 'ventCut')) === cutBefore);
 
     // step 7: the revised file of the board, 2 mm wider
     const entry = sketchOf(state, 'board').external.pcbo as unknown as { curves: object };
@@ -106,5 +108,9 @@ describe('H: the cover as one model', () => {
     const outer = regions.reduce((best, r) => (r.loops.length > best.loops.length ? r : best), regions[0]);
     const withHoles = outer.loops.reduce((part, loop, i) => part + (i === 0 ? 1 : -1) * Math.abs(loopArea(loop)), 0);
     console.log('H5 lid section:', about.loops, 'loops', about.circles, 'circles, area', about.area, '; read back', JSON.stringify(read.report.byKind), 'welded', read.report.welded, 'regions', regions.length, 'valid', resultOf(again, 'lidBack').valid, 'the lid region with its holes', withHoles, 'difference', withHoles - about.area, 'the lid', volume(wider, 'lid') / 2, 'all regions', regionArea(again, 'lidBack'));
+    // a quarter turn of the board in the assembled model (the review, codex 11): the cover is held
+    // on the axes of its sketches, which do not turn with the board
+    const turned = engine.preview({ type: 'updateExternal', sketch: 'board', id: 'pcbo', ref: { ...(sketchOf(wider, 'board').external.pcbo as object), turn: Math.PI / 2 } } as unknown as Command);
+    console.log('H6 a quarter turn of the board in the assembled model: not ok', turned.ok ? JSON.stringify(allOk(turned.state)) : turned.error.message);
   });
 });

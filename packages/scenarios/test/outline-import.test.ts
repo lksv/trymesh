@@ -140,3 +140,27 @@ describe('an arc pulled towards its chord where it meets another (D72)', () => {
     }
   });
 });
+
+describe('the engine’s own SVG read back (D72)', () => {
+  it('the section of the board as SVG: the curves of the DXF at the same places, extruded to the volume of the board', () => {
+    const engine = newEngine();
+    standInBoard(engine);
+    const asSvg = engine.export('svg', { plane: XY, offset: 0.8, bodies: ['pcb'] });
+    const asDxf = engine.export('dxf', { plane: XY, offset: 0.8, bodies: ['pcb'] });
+    if (!asSvg.ok || !asDxf.ok) throw new Error('export refused');
+    const svg = read('svg', asSvg.result.files[0].bytes);
+    const dxf = read('dxf', asDxf.result.files[0].bytes);
+    expect(svg.report.byKind).toEqual(dxf.report.byKind);
+    expect([svg.report.welded, svg.report.open]).toEqual([0, 0]);
+    // the drawing of the SVG stands in its own box (a margin, y down): the same outline moved
+    const [ds, dd] = [svg.report.bounds, dxf.report.bounds];
+    expect(ds.max[0] - ds.min[0]).toBeCloseTo(dd.max[0] - dd.min[0], 6);
+    expect(ds.max[1] - ds.min[1]).toBeCloseTo(dd.max[1] - dd.min[1], 6);
+    const state = run(engine, addSketch('again', XY), addOutline('again', 'o', { curves: svg.curves, anchor: 'center' }));
+    expect(resultOf(state, 'again').valid).toBe(true);
+    const outer = resultOf(state, 'again').regions.find((region) => region.ref.outerLoop.length > 1);
+    expect(outer?.loops).toHaveLength(5);
+    const after = run(engine, addExtrude('copy', 'again', [outer?.ref.outerLoop ?? []], 1.6));
+    expect(volume(after.evaluation.bodies.copy.solid)).toBeCloseTo(volume(after.evaluation.bodies.pcb.solid), 6);
+  });
+});

@@ -42,6 +42,7 @@ export { STL_IMPORT_OPTIONS, UNIT_IN_MM } from './import/stl';
 export { OUTLINE_FORMATS, type OutlineOutcome, type OutlineReport, type OutlineRevision, WELD_DEFAULT, curveCounts, importOutline, outlineRevision } from './import/outline-formats';
 export { type AnyOutlineFormat, OUTLINE_SHARED_OPTIONS, type OutlineCatalog, type OutlineFormat, type OutlineFormatSpec, type OutlineFormats, type OutlineOptions, type ReadOutline } from './import/spec';
 export { DXF_OPTIONS } from './import/dxf';
+export { SVG_OPTIONS } from './import/svg';
 export { type IndexedMesh, MESH_LIMITS, type MeshDefects, type MeshProblem, type MeshShell, defectsText, fromBase64, indexedMesh, meshDefects, meshProblem, shellsOf, storedMesh, toBase64, withoutWalls } from './mesh';
 export { PLACEMENT_FIELDS } from './features/mesh';
 export { ZIP_NAME_LIMIT, type ZipEntry, crc32, zip } from './export/zip';

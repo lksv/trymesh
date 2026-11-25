@@ -11,8 +11,9 @@ import type { ArgPath, Evaluation, Id, ImportedCurve, OutlineReadWith, Vec2 } fr
 import { has } from '../util';
 import { dxf } from './dxf';
 import { type AnyOutlineFormat, ImportFailure, type OutlineCatalog, type OutlineFormat, type OutlineOptions, type ReadOutline } from './spec';
+import { svg } from './svg';
 
-export const OUTLINE_FORMATS: OutlineCatalog = { dxf };
+export const OUTLINE_FORMATS: OutlineCatalog = { dxf, svg };
 
 // ---------------------------------------------------------------- the report
 

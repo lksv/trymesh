@@ -240,8 +240,8 @@ const holds = (t: Tally): void => {
 // ---------------------------------------------------------------- the catalog
 
 describe('the catalog of outline formats (D72)', () => {
-  it('every format takes layers, unit and weld', () => {
-    expect(Object.keys(OUTLINE_FORMATS)).toContain('dxf');
+  it('has dxf and svg, each with layers, unit and weld', () => {
+    expect(Object.keys(OUTLINE_FORMATS)).toEqual(['dxf', 'svg']);
     for (const spec of Object.values(OUTLINE_FORMATS)) expect(Object.keys(spec.options).sort()).toEqual(['layers', 'unit', 'weld']);
   });
 

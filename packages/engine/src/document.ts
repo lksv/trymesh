@@ -95,6 +95,22 @@ function withPosition(sketch: SketchFeature, given: unknown): unknown {
 
 // ---------------------------------------------------------------- registr typů features
 
+// The defaults of a new feature in addFeature (D73, `NewFeature`): `name` is the ID and
+// `suppressed` false when left out, and a sketch gets what it leaves out of its empty parts. Only
+// the command fills them in: a document keeps every field, so a load still asks for them.
+const EMPTY_SKETCH_PARTS = ['points', 'radii', 'curves', 'constraints', 'external'] as const;
+function newFeature(v: unknown): unknown {
+  if (!isObject(v)) return v;
+  const filled: Dict = { ...v };
+  if (filled.name === undefined && typeof filled.id === 'string') filled.name = filled.id;
+  if (filled.suppressed === undefined) filled.suppressed = false;
+  if (filled.type === 'sketch') {
+    for (const part of EMPTY_SKETCH_PARTS) if (filled[part] === undefined) filled[part] = {};
+    if (filled.solved === undefined) filled.solved = { inputs: '', external: {} };
+  }
+  return filled;
+}
+
 // Validates a feature and returns its canonical copy. `before`: see requireRef; `mode`: see FieldMode.
 function feature(doc: Document, before: number | undefined, v: unknown, what: string, mode: FieldMode): Feature {
   const o = object(v, what);
@@ -486,7 +502,7 @@ export function applyCommand(doc: Document, command: Command): Document {
     case 'addFeature': {
       const index = cmd.index === undefined ? doc.features.length : finite(cmd.index, 'addFeature.index');
       if (!Number.isInteger(index) || index < 0 || index > doc.features.length) fail('addFeature.index: mimo rozsah časové osy');
-      const f = feature(doc, index, cmd.feature, 'addFeature.feature', 'add');
+      const f = feature(doc, index, newFeature(cmd.feature), 'addFeature.feature', 'add');
       const ids = documentIds(doc);
       const added = [f.id, ...(f.type === 'sketch' ? sketchIds(f) : [])];
       for (const id of added) if (ids.has(id) || added.indexOf(id) !== added.lastIndexOf(id)) fail(`addFeature: ID "${id}" už v dokumentu je`);

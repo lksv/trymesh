@@ -193,6 +193,19 @@ describe('describe_api in sections (D73)', () => {
   });
 });
 
+describe('a new feature with its defaults (D73)', () => {
+  it('execute takes a sketch of id, type and plane and an extrusion without name and suppressed', () => {
+    const engine = newEngine();
+    const made = ok(engine, 'execute', { command: { type: 'addFeature', feature: { id: 's', type: 'sketch', plane: { kind: 'base', plane: 'XY' } } } });
+    expect(made).toMatchObject({ ok: true, problems: [], sketches: [{ id: 's' }] });
+    ok(engine, 'sketch_tool', { sketch: 's', tool: 'rectangle', input: { first: { at: [0, 0] }, opposite: { at: [10, 5] } } });
+    const lines = ok(engine, 'get_sketch', { sketch: 's' }).curves.map((c: { id: string }) => c.id);
+    expect(ok(engine, 'execute', { command: { type: 'addFeature', feature: { id: 'E', type: 'extrude', profile: { type: 'regions', sketch: 's', regions: [{ outerLoop: lines }] }, extent: { type: 'distance', start: 0, distance: 2 }, operation: 'new' } } })).toMatchObject({ ok: true, bodies: ['E'], problems: [] });
+    expect(ok(engine, 'get_document', { feature: 'E' })).toMatchObject({ id: 'E', name: 'E', suppressed: false });
+    expect(ok(engine, 'describe_api', { section: 'conventions' })).toContain('a new sketch needs only `id`, `type` and `plane`');
+  });
+});
+
 describe('sketch tools', () => {
   const hexagon = { center: { at: [0, 0], snap: { kind: 'point', id: 'origin' } }, vertex: { at: [3.1, 0.4] }, sides: 6, sizeKind: 'acrossFlats', size: 5.5 };
 

@@ -1954,9 +1954,21 @@ export type CommandResult =
 // - The curves of an imported outline and the options it was read with hold numbers only (D72).
 export type Input<T> = T extends number ? number | Expr : T extends readonly (infer U)[] ? Input<U>[] : T extends { kind: string } | ImportedCurve | OutlineReadWith ? T : T extends object ? { [K in keyof T]: Input<T[K]> } : T;
 
+// A new feature in addFeature (D73): its input form, in which `name` (the ID when left out) and
+// `suppressed` (false) may be left out, and a sketch may leave out what starts empty (`points`,
+// `radii`, `curves`, `constraints`, `external`, `solved`): `{ id: 's1', type: 'sketch', plane: {
+// kind: 'base', plane: 'XY' } }` is a new sketch. The stored feature has every field.
+export type NewFeature = Input<Feature> extends infer F
+  ? F extends { type: 'sketch' }
+    ? Loose<F, 'name' | 'suppressed' | 'points' | 'radii' | 'curves' | 'constraints' | 'external' | 'solved'>
+    : Loose<F, 'name' | 'suppressed'>
+  : never;
+// `T` with the fields `K` optional.
+export type Loose<T, K extends PropertyKey> = Omit<T, K> & { [P in K & keyof T]?: T[P] };
+
 export type Command =
   // časová osa
-  | { type: 'addFeature'; feature: Input<Feature>; index?: number } // bez indexu na konec
+  | { type: 'addFeature'; feature: NewFeature; index?: number } // without an index at the end
   | { type: 'removeFeature'; id: Id }
   | { type: 'moveFeature'; id: Id; index: number }
   | { type: 'renameFeature'; id: Id; name: string }

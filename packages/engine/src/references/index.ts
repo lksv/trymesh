@@ -10,6 +10,7 @@ import type { ExternalRef, Id, IssueCode, SketchFeature } from '../types';
 import { ORIGIN, has, isOriginAxis } from '../util';
 import { type ValidationContext, fail, object } from '../validation';
 import { edge, projected } from './edge';
+import { pattern } from './pattern';
 import type { AnyKind, EntryKindName, KindOf, ReferenceContext, ResolvedReference, StoredValue } from './spec';
 
 export type { DerivedGeometry, EntryGeometry, GeometrySource, ReferenceContext, ResolvedReference, StoredValue } from './spec';
@@ -17,17 +18,16 @@ export type { DerivedGeometry, EntryGeometry, GeometrySource, ReferenceContext, 
 // One entry per member of `ExternalRef`, of the shape its name gives it (a reference kind when it
 // has a value in `ReferenceValues`, else a derived kind): a member without an entry does not
 // compile.
-export const REFERENCE_KINDS: { readonly [T in EntryKindName]: KindOf<T> } = { edge };
+export const REFERENCE_KINDS: { readonly [T in EntryKindName]: KindOf<T> } = { edge, pattern };
 
 // The kind of an entry (one cast, as `specOf` of the registry of feature types has). It may be
 // a reference or a derived kind: a caller that wants `compute` or `derive` asks `source` first.
 export const kindOf = (ref: ExternalRef): AnyKind => REFERENCE_KINDS[ref.type] as unknown as AnyKind;
 
-// The validator of an entry of `external`: reads `type` and hands the entry to its kind. The text
-// for an unknown type names the edge while it is the one kind.
+// The validator of an entry of `external`: reads `type` and hands the entry to its kind.
 export function externalRef(context: ValidationContext, sketch: SketchFeature, id: Id, entry: unknown, what: string): ExternalRef {
   const o = object(entry, what);
-  if (typeof o.type !== 'string' || !has(REFERENCE_KINDS, o.type)) return fail(`${what}: promítnout jde jen hranu`);
+  if (typeof o.type !== 'string' || !has(REFERENCE_KINDS, o.type)) return fail(`${what}: an entry of a sketch is the projection of an edge (\`edge\`) or a mirror or pattern of the sketch (\`pattern\`)`);
   return (REFERENCE_KINDS[o.type as EntryKindName] as unknown as AnyKind).validate(context, sketch, id, o, what);
 }
 

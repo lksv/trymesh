@@ -1,6 +1,6 @@
 // Validace a provedení příkazů nad dokumentem (bez přepočtu).
 import { describe, expect, it } from 'vitest';
-import type { Command, Constraint, Document, ExtrudeFeature, Feature, FeaturePatch, PlaneRef, SketchFeature } from '../src/types';
+import type { Command, Constraint, Document, EdgeProjection, ExtrudeFeature, Feature, FeaturePatch, PlaneRef, SketchFeature } from '../src/types';
 import { CommandError, FEATURE_TYPE_INFO, applyCommand, bodyOwner, emptyDocument, emptySketch, featureRefs, validateDocument } from '../src/document';
 
 const XY: PlaneRef = { kind: 'base', plane: 'XY' };
@@ -323,7 +323,7 @@ describe('promítnutá geometrie', () => {
 
   it('odvozené entity plynou z druhu promítnutí a jméno hrany se uloží kanonicky', () => {
     const doc = run(withSketch(), { type: 'addExternal', sketch: 'S2', id: 'x1', ref: { type: 'edge', body: 'E1', edge, kind: 'line' } });
-    expect(sketchOf(doc, 'S2').external.x1.edge).toEqual({ a: edge.b, b: edge.a }); // E1/endCap < E1/side/l2
+    expect((sketchOf(doc, 'S2').external.x1 as EdgeProjection).edge).toEqual({ a: edge.b, b: edge.a }); // E1/endCap < E1/side/l2
     const bound = run(doc, { type: 'addConstraint', sketch: 'S2', id: 'k', constraint: { type: 'coincident', a: 'q', b: 'x1/a' } }, { type: 'addConstraint', sketch: 'S2', id: 'd', constraint: { type: 'distancePointLine', point: 'q', line: 'x1', value: 5, driving: true } });
     expect(Object.keys(sketchOf(bound, 'S2').constraints)).toEqual(['k', 'd']);
     invalid(doc, { type: 'addConstraint', sketch: 'S2', id: 'k', constraint: { type: 'coincident', a: 'q', b: 'x1/center' } }, /ve skice není/);
@@ -344,7 +344,7 @@ describe('promítnutá geometrie', () => {
     const doc = run(withSketch(), { type: 'addExternal', sketch: 'S2', id: 'x1', ref: { type: 'edge', body: 'E1', edge, kind: 'line' } }, { type: 'addConstraint', sketch: 'S2', id: 'k', constraint: { type: 'coincident', a: 'q', b: 'x1/a' } }, { type: 'addConstraint', sketch: 'S2', id: 'k2', constraint: { type: 'coincident', a: 'q', b: 'origin' } });
     const other = { a: { feature: 'E1', role: 'side', curve: 'l3' }, b: { feature: 'E1', role: 'endCap' } } as const;
     const updated = run(doc, { type: 'updateExternal', sketch: 'S2', id: 'x1', ref: { type: 'edge', body: 'E1', edge: other, kind: 'line' } });
-    expect(sketchOf(updated, 'S2').external.x1.edge.b).toEqual(other.a);
+    expect((sketchOf(updated, 'S2').external.x1 as EdgeProjection).edge.b).toEqual(other.a);
     expect(Object.keys(sketchOf(updated, 'S2').constraints)).toEqual(['k', 'k2']);
     invalid(doc, { type: 'updateExternal', sketch: 'S2', id: 'x1', ref: { type: 'edge', body: 'E1', edge: other, kind: 'circle' } }, /druh promítnutí změnit nejde/);
     invalid(doc, { type: 'addExternal', sketch: 'S1', id: 'x2', ref: { type: 'edge', body: 'E1', edge, kind: 'line' } }, /musí ležet před/);

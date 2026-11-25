@@ -41,7 +41,7 @@ import { faceKey } from '../src/face-roles';
 import { type ExactCurve, exactStart, planeLevel } from '../src/recompute/extent';
 import type { Loop } from '../src/sketch';
 import { LENGTH_TOLERANCE } from '../src/util';
-import type { FaceName } from '../src/types';
+import type { EdgeProjection, FaceName } from '../src/types';
 import { midplaneFrame } from '../src/features/plane';
 
 type Entry = [id: string, curve: Curve, radius?: number];
@@ -325,7 +325,7 @@ describe('a module per feature type (D37): what the move could have changed unse
     refused(doc, to('nope'), /feature "nope" neexistuje/);
     refused(doc, to('S1', 'A'), /feature "S1" není těleso/);
     refused(doc, to('A', 'PL'), /feature "PL" není a feature that names faces/);
-    expect((feature(applyCommand(doc, to('A', 'H')), 'S2') as SketchFeature).external.x.edge.a.feature).toBe('H');
+    expect(((feature(applyCommand(doc, to('A', 'H')), 'S2') as SketchFeature).external.x as EdgeProjection).edge.a.feature).toBe('H');
   });
 
   it('only an extrusion that adds or cuts is a source of a pattern or says so', () => {
@@ -1271,8 +1271,8 @@ describe('the review of the implementation of 6a (D64)', () => {
       return copy;
     };
     expect(validateDocument(JSON.parse(JSON.stringify(doc)))).toEqual(doc);
-    expect(() => validateDocument(tampered((s) => (s.external.x1 = { type: 'sketch', sketch: 'S1', entity: 'l1' })))).toThrow(/external\.x1: promítnout jde jen hranu/);
-    expect(() => validateDocument(tampered((s) => (s.external.x1 = { body: 'E1' })))).toThrow(/external\.x1: promítnout jde jen hranu/);
+    expect(() => validateDocument(tampered((s) => (s.external.x1 = { type: 'sketch', sketch: 'S1', entity: 'l1' })))).toThrow('external.x1: an entry of a sketch is the projection of an edge (`edge`) or a mirror or pattern of the sketch (`pattern`)');
+    expect(() => validateDocument(tampered((s) => (s.external.x1 = { body: 'E1' })))).toThrow('external.x1: an entry of a sketch is the projection of an edge (`edge`) or a mirror or pattern of the sketch (`pattern`)');
     expect(() => validateDocument(tampered((s) => (s.solved.external = { x1: { kind: 'ellipse', center: [0, 0] } })))).toThrow(/solved\.external\.x1\.kind: čeká se line nebo circle/);
     expect(() => validateDocument(tampered((s) => (s.solved.external = { x2: { kind: 'circle', center: [0, 0], radius: 0 } })))).toThrow(/solved\.external\.x2\.radius: poloměr musí být kladný/);
     expect(() => validateDocument(tampered((s) => (s.solved.external = { x2: { kind: 'line', a: [0, 0], b: [1, 0] } })))).toThrow(/neodpovídá promítnuté geometrii skici/);

@@ -419,7 +419,8 @@ const bodyNames = (body: Id): Id[] => (bodyOwner(body).local === undefined ? [bo
 // The IDs an axis names (`names` below).
 const axisNames = (axis: AxisRef): Id[] => {
   if (axis.kind === 'sketchPoint') return [axis.sketch, axis.point, ...(axis.point.includes('/') ? [axis.point.split('/')[0]] : [])];
-  if (axis.kind === 'sketchLine') return [axis.sketch, axis.line];
+  // a slashed line is of an entry (a projected line, a copy of a mirror or pattern, D68): its owner too
+  if (axis.kind === 'sketchLine') return [axis.sketch, axis.line, ...(axis.line.includes('/') ? [axis.line.split('/')[0]] : [])];
   if (axis.kind === 'face') return [...bodyNames(axis.body), axis.face.feature, ...(axis.face.copy ?? []).map((tag) => tag.pattern)];
   return [];
 };
@@ -464,8 +465,8 @@ export const mechanism: SectionSpec<Section, MechanismResult> = {
     return Object.keys(joints).every((key) => joints[key] === section.joints[key]) ? section : { ...section, joints };
   },
   // the feature of every body of every link (and a derived body itself); the sketch and the point of
-  // every axis (or the sketch and the line), and the projected entity a derived point is of (`x1`
-  // of `x1/center`); for the axis of a round face the body (and its feature for a derived body), the
+  // every axis (or the sketch and the line), and the entry a derived point or line is of (`x1` of
+  // `x1/center`, `m` of `m/1/ax`); for the axis of a round face the body (and its feature for a derived body), the
   // feature that named the face and every pattern of its copy tags
   names: (section) => [
     ...Object.values(section.links).flatMap((own) => own.bodies.flatMap(bodyNames)),

@@ -3,7 +3,7 @@
 // `<id>/center` of a circle.
 import { lookup } from '../recompute/services';
 import { analyzeBody, projectEdge } from '../solid';
-import type { ExternalRef, Projected } from '../types';
+import type { EdgeProjection, Projected } from '../types';
 import { edgeName, faceRefs, fail, finite, object, oneOf, requireFace, string } from '../validation';
 import type { ReferenceKindSpec } from './spec';
 
@@ -24,7 +24,7 @@ export function projected(v: unknown, what: string): Projected {
   return fail(`${what}.kind: čeká se line nebo circle`);
 }
 
-export const edge: ReferenceKindSpec<ExternalRef, Projected> = {
+export const edge: ReferenceKindSpec<EdgeProjection, Projected> = {
   source: 'reference',
   title: 'Projection of an edge',
   validate: (context, _sketch, _id, o, what) => {

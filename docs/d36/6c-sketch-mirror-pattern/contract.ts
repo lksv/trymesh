@@ -120,8 +120,8 @@ export interface EdgeProjection {
   edge: EdgeName;
   kind: ProjectionKind;
 }
-// today's `ExternalRef` is the edge
-export const edgeIsTodaysEntry: EdgeProjection = {} as ExternalRef;
+// the edge of `ExternalRef` (before 6c the whole of it; implemented, `ExternalRef` is the union)
+export const edgeIsTodaysEntry: EdgeProjection = {} as Extract<ExternalRef, { type: 'edge' }>;
 export type ExternalRefAfter = EdgeProjection | SketchPattern;
 // The commands take the input form, so a numeric field of an entry may be an expression
 // (`Input` leaves the edge as it is: it has a `kind`).

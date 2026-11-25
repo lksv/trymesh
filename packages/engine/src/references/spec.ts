@@ -4,6 +4,7 @@
 // this directory and one line of `REFERENCE_KINDS` (index.ts). The vocabulary the kinds share (the
 // derived IDs, the regions, the joins) is in docs/architecture/sketch.md.
 import type { EntityKind } from '../catalog';
+import type { Entity } from '../sketch-content';
 import type { State } from '../recompute/state';
 import type { CurveShape, ExternalRef, FaceName, Frame, Id, IssueCode, OpenEnds, Point2, Projected, ResultCurve, SketchFeature } from '../types';
 import type { Dict, FeatureRef, ValidationContext } from '../validation';
@@ -85,12 +86,13 @@ export interface DerivedFailure {
 //   may be an entity whatever the count of the document, as a body of a pattern of features is).
 //   `entities` (the base) lists those the document makes now.
 // - `commandProblem`: what `addExternal` and `updateExternal` refuse beyond the form, read from the
-//   sketch as it is. `before` is the entry as it was, for an update: only what it brings in is asked.
+//   sketch as it is (`entityOf`, what an ID is in it, handed in: the module of a kind is below the
+//   registry). `before` is the entry as it was, for an update: only what it brings in is asked.
 // - `derive`: the geometry of the entry, or the failure.
 export interface DerivedKindSpec<R> extends KindBase<R> {
   source: 'derived';
   entity(id: Id, ref: R, sketch: SketchFeature, entry: Id): EntityKind | undefined;
-  commandProblem(sketch: SketchFeature, ref: R, before?: R): string | undefined;
+  commandProblem(sketch: SketchFeature, ref: R, before: R | undefined, entityOf: (id: Id) => Entity | undefined): string | undefined;
   derive(id: Id, ref: R, base: SketchBase): EntryGeometry | DerivedFailure;
 }
 

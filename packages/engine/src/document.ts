@@ -745,7 +745,7 @@ export function applyCommand(doc: Document, command: Command): Document {
         const context = entryContext(doc, index);
         const ref = externalRef(context, s, id, cmd.ref, 'addExternal.ref');
         const kind = kindOf(ref);
-        const problem = kind.source === 'derived' ? kind.commandProblem(s, ref) : undefined;
+        const problem = kind.source === 'derived' ? kind.commandProblem(s, ref, undefined, (entity) => entityOf(s, entity)) : undefined;
         if (problem) fail(`addExternal.ref: ${problem}`);
         return withEntryExpressions({ ...s, external: { ...s.external, [id]: ref } }, id, context.fields.expressions('addExternal.ref') ?? {});
       });
@@ -777,7 +777,7 @@ export function applyCommand(doc: Document, command: Command): Document {
         if (problem) fail(`updateExternal: ${problem}`);
         // of a derived entry only what the update brings in is checked against the sketch
         const kind = kindOf(ref);
-        const brought = kind.source === 'derived' ? kind.commandProblem(s, ref, s.external[id]) : undefined;
+        const brought = kind.source === 'derived' ? kind.commandProblem(s, ref, s.external[id], (entity) => entityOf(s, entity)) : undefined;
         if (brought) fail(`updateExternal.ref: ${brought}`);
         // Zmrazené hodnoty patřily původní hraně.
         const next = { ...s, external: { ...s.external, [id]: ref }, solved: { ...s.solved, external: without(s.solved.external, (e) => e === id) } };

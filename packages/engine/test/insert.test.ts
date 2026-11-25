@@ -316,14 +316,20 @@ describe('the names of the faces of an insertion', () => {
     refused(doc, { type: 'moveFeature', id: 'onRing', index: 0 }, /onRing" by se dostala před feature "b1"/);
   });
 
-  it('a face is found by its key and then compared: a name that keys like a real one is no reference to it', () => {
+  it('a face is found by its key and then compared: a name that reads like a copy of a real one is no reference to it', () => {
     const real: FaceName = { feature: 'ring', role: 'side', curve: 'outer', copy: [{ pattern: 'p', index: 1 }] };
     const alias: FaceName = { feature: 'ring', role: 'side', curve: 'outer/@p:1' };
-    expect(faceKey(alias)).toBe(faceKey(real));
+    // since D68 a text with a slash is quoted in the key, so the two keys differ
+    expect(faceKey(alias)).toBe('ring/side/"outer/@p:1"');
+    expect(faceKey(alias)).not.toBe(faceKey(real));
     expect(sameFaceName(alias, real)).toBe(false);
     const table = { faceIds: new Map([[faceKey(real), 0]]), faceNames: [real] };
     expect(faceNumber(table, real)).toBe(0);
     expect(faceNumber(table, alias)).toBeUndefined();
+    // the comparison after the look-up stays: a table whose key points at another name does not
+    // answer that name for the key
+    const crossed = { faceIds: new Map([[faceKey(alias), 0]]), faceNames: [real] };
+    expect(faceNumber(crossed, alias)).toBeUndefined();
     const other: FaceName = { feature: 'ring', role: 'startCap' };
     expect(sameEdgeName({ a: real, b: other }, { a: other, b: real })).toBe(true);
     expect(sameEdgeName({ a: alias, b: other }, { a: real, b: other })).toBe(false);

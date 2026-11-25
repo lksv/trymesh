@@ -3,11 +3,12 @@
 // it has its row; and what the pickers, the view and the panel read of an entry: its entities.
 import { type EntityKind, type ExternalRef, type Id, type SketchFeature, referenceEntities } from '@trymesh/engine';
 import { edge } from './edge';
+import { pattern } from './pattern';
 import type { ReferenceUi } from './spec';
 
 export type { ReferenceUi } from './spec';
 
-export const REFERENCE_UI: { readonly [T in ExternalRef['type']]: ReferenceUi<Extract<ExternalRef, { type: T }>> } = { edge };
+export const REFERENCE_UI: { readonly [T in ExternalRef['type']]: ReferenceUi<Extract<ExternalRef, { type: T }>> } = { edge, pattern };
 
 // The row of an entry (one cast, as the registries of the engine have).
 export const referenceUi = (ref: ExternalRef): ReferenceUi<ExternalRef> => REFERENCE_UI[ref.type] as ReferenceUi<ExternalRef>;

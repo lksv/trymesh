@@ -451,7 +451,7 @@ function featuresSummary(state: EngineState, ids: unknown): unknown {
   if (!Array.isArray(ids) || ids.length === 0 || !ids.every((id) => typeof id === 'string')) throw new ToolError('argument "features": a list of feature IDs that is not empty is expected');
   const { document, evaluation } = state;
   const known = document.features.filter((feature) => has(evaluation.features, feature.id));
-  const missing = ids.filter((id) => !known.some((feature) => feature.id === id));
+  const missing = [...new Set(ids)].filter((id) => !known.some((feature) => feature.id === id));
   if (missing.length) throw new ToolError(`argument "features": the state has no feature ${missing.map((id) => `"${id}"`).join(', ')}; it has ${known.map((feature) => feature.id).join(', ') || 'none'}`);
   const listed = known.filter((feature) => ids.includes(feature.id));
   const bodies = listed.flatMap((feature) => evaluation.features[feature.id]?.bodies ?? []).filter((id) => has(evaluation.bodies, id));
@@ -876,21 +876,28 @@ function commandProblem(result: Extract<CommandResult, { ok: false }>): string {
   return `${code}: ${message}${where}${commandIndex === undefined ? '' : ` (the command of the batch with the index ${commandIndex})`}`;
 }
 
-// The facts of the features a command added or changed (D73): a feature of the document after it
-// that is not the object it was before, with facts of its result. So the answer of a command that
-// builds a gear says its module and diameters, and a batch that touches many features says no more
-// than FACTS_LISTED of them.
+// The facts of the features a command changed (D73): a feature of the state after it whose
+// result has facts that differ from those of the state before it, or whose status differs (a new
+// feature too). The recompute decides, not the command: a parameter that changes a sketch changes
+// the facts of the revolve that turns it, and a rename changes none. A result that is the object
+// it was before (the recompute memoises by identity) is the same without a comparison. So the
+// answer of a command that builds a gear says its module and diameters, and a batch that touches
+// many features says no more than FACTS_LISTED of them.
 export const FACTS_LISTED = 20;
-function touchedFacts(before: Document, state: EngineState): { facts?: Json; factsNotListed?: number } {
-  const old = new Map(before.features.map((feature) => [feature.id, feature]));
-  const touched = state.document.features.filter((feature) => old.get(feature.id) !== feature && state.evaluation.features[feature.id]?.facts);
+function touchedFacts(before: EngineState, state: EngineState): { facts?: Json; factsNotListed?: number } {
+  const facts = (result: FeatureResult | undefined): string | undefined => (result?.facts ? JSON.stringify(factsInfo(result).facts) : undefined);
+  const touched = state.document.features.filter((feature) => {
+    const [now, then] = [state.evaluation.features[feature.id], has(before.evaluation.features, feature.id) ? before.evaluation.features[feature.id] : undefined];
+    if (!now?.facts || now === then) return false;
+    return then === undefined || then.status !== now.status || facts(then) !== facts(now);
+  });
   if (touched.length === 0) return {};
   const listed = touched.slice(0, FACTS_LISTED);
   return { facts: Object.fromEntries(listed.map((feature) => [feature.id, factsInfo(state.evaluation.features[feature.id]).facts as Json])), ...(touched.length > listed.length ? { factsNotListed: touched.length - listed.length } : {}) };
 }
 
-// `before`: the document the command was applied to, for the facts of what it touched.
-function outcome(result: CommandResult, before?: Document): unknown {
+// `before`: the state the command was applied to, for the facts of what it changed.
+function outcome(result: CommandResult, before?: EngineState): unknown {
   // An invalid command did not change the document: it is an error of the call, not a result.
   if (!result.ok) throw new ToolError(commandProblem(result));
   const { document, evaluation } = result.state;
@@ -1433,10 +1440,10 @@ export function tools(): Tool[] {
       // the document (body properties) still named them; a body made under such an ID takes the
       // properties, an entity of a sketch only shares the ID
       run: (engine, args) => {
-        const before = engine.getState().document;
+        const before = engine.getState();
         const given = command(args);
         const answer = outcome(engine.execute(given), before) as Record<string, unknown>;
-        const taken = takenOver(before, given);
+        const taken = takenOver(before.document, given);
         return taken.length ? { ...answer, takenOver: taken } : answer;
       },
     },
@@ -1444,7 +1451,7 @@ export function tools(): Tool[] {
       name: 'preview',
       description: 'Computes the result of a command but does not write it to the document. Useful for trying out a change.',
       inputSchema: COMMAND,
-      run: (engine, args) => outcome(engine.preview(command(args)), engine.getState().document),
+      run: (engine, args) => outcome(engine.preview(command(args)), engine.getState()),
     },
     {
       name: 'sketch_tool',
@@ -1463,20 +1470,20 @@ export function tools(): Tool[] {
       },
       run: (engine, args) => {
         const { command, ids } = sketchToolBatch(engine, args);
-        const before = engine.getState().document;
+        const before = engine.getState();
         return { ids, ...(outcome(args.preview === true ? engine.preview(command) : engine.execute(command), before) as object) };
       },
     },
     {
       name: 'new_document',
       description:
-        'Replaces the document with an empty one (D73): one command, so one undo step brings the old document back. A document that holds anything (a feature, a parameter, a check, body properties, a link or a joint, a stored mesh or document) is replaced only with `discard: true`; without it the call is refused and says what the document holds (save it first with save_document if it is worth keeping). The answer says what was discarded. The settings (the chord tolerance) stay. Works on the document the tools work on (see session_status), and the file of that document is forgotten, so save_document then needs a path.',
+        'Replaces the document with an empty one (D73): one command, so one undo step brings the old document back. A document that holds anything (a feature, a parameter, a check, body properties, a link or a joint, a stored mesh or document) is replaced only with `discard: true`; without it the call is refused and says what the document holds (save it first with save_document if it is worth keeping). The answer says what was discarded. The settings (the chord tolerance) stay. Works on the document the tools work on (see session_status), and the file of that document is forgotten, so save_document then needs a path; on the server\'s own engine an undo that brings the document back brings its file back, in the app it does not.',
       inputSchema: { type: 'object', properties: { discard: { type: 'boolean', description: 'true: discard what the document holds' } }, additionalProperties: false },
       run: (engine, args) => {
         const { command, holds } = emptying(engine.getState().document);
         if (Object.keys(holds).length === 0) return { ok: true, discarded: {}, note: 'The document is empty already; nothing changed.' };
         if (args.discard !== true) throw new ToolError(`the document is not empty, it holds ${holdsText(holds)}; new_document with \`discard: true\` replaces it with an empty one (one undo step brings it back), or save it first with save_document`);
-        return { ...(outcome(engine.execute(command)) as Record<string, unknown>), discarded: holds, note: `Discarded ${holdsText(holds)}; undo brings them back.` };
+        return { ...(outcome(engine.execute(command)) as Record<string, unknown>), discarded: holds, note: `Discarded ${holdsText(holds)}; undo brings ${Object.values(holds).reduce((sum, count) => sum + count, 0) === 1 ? 'it' : 'them'} back.` };
       },
     },
     {

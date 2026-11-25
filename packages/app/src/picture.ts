@@ -46,11 +46,18 @@ export function pictureModel(request: ImageRequest, pose: Pose = poseOf(request.
   const all = Object.keys(request.state.evaluation.bodies);
   const asked = request.bodies ? all.filter((id) => request.bodies?.includes(id)) : all;
   // the palette by the place in the state; with the colours of the model the colour of the body
-  // properties first (D73)
+  // properties first (D73), and for a body without one the palette without the colours a body of
+  // the state has of its own by name, so that a palette body does not look like a coloured one
   const own = (id: Id): string | undefined => (request.colors === 'model' ? request.state.evaluation.bodyProperties?.[id]?.color : undefined);
+  const owned = new Set(all.flatMap((id) => {
+    const stated = own(id);
+    return stated === undefined ? [] : [colorName(Number.parseInt(stated.slice(1), 16))];
+  }));
+  const free = PALETTE.filter((entry) => !owned.has(entry.name));
+  const palette = free.length ? free : PALETTE;
   const colorOf = (id: Id): { color: number; name: string } => {
     const stated = own(id);
-    if (stated === undefined) return PALETTE[Math.max(0, all.indexOf(id)) % PALETTE.length];
+    if (stated === undefined) return palette[Math.max(0, all.indexOf(id)) % palette.length];
     const color = Number.parseInt(stated.slice(1), 16);
     return { color, name: colorName(color) };
   };
@@ -88,9 +95,18 @@ export function pictureModel(request: ImageRequest, pose: Pose = poseOf(request.
     ...(clip ? { clip } : {}),
   };
   const cut = new Set(regions.map((region) => region.body));
+  // bodies drawn in one colour cannot be told apart in the picture: the legend says so (D73, review)
+  const sharing = (id: Id): Id[] => drawn.filter((other) => other !== id && colorOf(other).color === colorOf(id).color);
   return {
     model,
-    bodies: drawn.map((id) => ({ body: id, color: hex(colorOf(id).color), colorName: colorOf(id).name, ...(cut.has(id) ? { cutColor: hex(shaded(colorOf(id).color)) } : {}), ...(request.colors === 'model' ? { colorFrom: own(id) === undefined ? ('palette' as const) : ('model' as const) } : {}) })),
+    bodies: drawn.map((id) => ({
+      body: id,
+      color: hex(colorOf(id).color),
+      colorName: colorOf(id).name,
+      ...(cut.has(id) ? { cutColor: hex(shaded(colorOf(id).color)) } : {}),
+      ...(request.colors === 'model' ? { colorFrom: own(id) === undefined ? ('palette' as const) : ('model' as const) } : {}),
+      ...(sharing(id).length ? { sharedWith: sharing(id) } : {}),
+    })),
     cutAway,
   };
 }

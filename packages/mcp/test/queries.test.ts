@@ -231,9 +231,20 @@ describe('the consistency of the queries (D73)', () => {
     execute(engine, { type: 'setBodyProperties', body: 'high', patch: { use: 'auxiliary' } });
     const one = call(engine, { query: 'mass', args: { density: 1.24 } });
     expect(one.bodies.map((body: { body: string }) => body.body)).toEqual(['low']);
-    expect(one.skipped).toEqual(['high']);
+    expect(one.skipped).toEqual([{ body: 'high', reason: 'auxiliary' }]);
     execute(engine, { type: 'setBodyProperties', body: 'high', patch: { use: 'reference', mass: 50 } });
     expect(call(engine, { query: 'mass', args: { density: 1.24 } }).bodies.map((body: { body: string; from: string }) => [body.body, body.from])).toEqual([['low', 'argument'], ['high', 'mass']]);
+    // review of D73: a reference part with no mass of its own is not weighed as the printed parts
+    // are; skipped with the reason, unless it is listed or `densities` names it
+    execute(engine, { type: 'setBodyProperties', body: 'high', patch: { mass: null } });
+    const bare = call(engine, { query: 'mass', args: { density: 1.24, fill: 0.3 } });
+    expect(bare.bodies.map((body: { body: string }) => body.body)).toEqual(['low']);
+    expect(bare.skipped).toEqual([{ body: 'high', reason: 'noMassOfItsOwn' }]);
+    expect(call(engine, { query: 'mass', args: { density: 1.24, densities: { high: 7.8 } } }).bodies.map((body: { body: string; from: string }) => [body.body, body.from])).toEqual([['low', 'argument'], ['high', 'densities']]);
+    expect(call(engine, { query: 'mass', args: { bodies: ['low', 'high'], density: 1.24 } }).skipped).toBeUndefined();
+    execute(engine, { type: 'setBodyProperties', body: 'low', patch: { use: 'reference' } });
+    expect(call(engine, { query: 'mass', args: { density: 1.24 } }).error).toMatch(/^failed: mass: bodies: no body has a mass: low \(a reference part with no mass or density of its own: .*\), high \(/);
+    execute(engine, { type: 'setBodyProperties', body: 'low', patch: { use: null } });
     execute(engine, { type: 'setBodyProperties', body: 'low', patch: { use: 'auxiliary' } });
     execute(engine, { type: 'setBodyProperties', body: 'high', patch: { use: 'auxiliary' } });
     expect(call(engine, { query: 'mass' })).toEqual({ error: 'failed: mass: bodies: every body is auxiliary and has no mass (low, high)' });

@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { CONSTRAINTS, type Command } from '@trymesh/engine';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { readZip } from '../../engine/test/zip-reader';
-import { type Bridge, openBridge, startBridge } from '../src/bridge';
+import { type Bridge, DEFAULT_BRIDGE_PORT, bridgeHolder, openBridge, startBridge } from '../src/bridge';
 import { type BridgeStatus, connectBridge } from '../src/bridge-client';
 import { connect, newEngine } from './kit';
 
@@ -766,7 +766,7 @@ describe('the bridge to the running app', () => {
     expect(await session.call('sketch_tool', { sketch: 's', tool: 'rectangle', input })).toMatchObject({ ok: true, ids: { points: ['origin', 'p1', 'p2', 'p3'], lines: ['c1', 'c2', 'c3', 'c4'] }, sketches: [{ id: 's', regions: 1 }] });
     expect(before[2]).toEqual(['sketch_tool', { sketch: 's', tool: 'rectangle', input }]);
     expect(Object.keys((app.getState().document.features[0] as { curves: object }).curves)).toEqual(['c1', 'c2', 'c3', 'c4']);
-    expect(await session.call('sketch_tool', { sketch: 's', tool: 'rectangle', input: { first: input.first } })).toEqual({ error: 'rectangle: `opposite` is needed unless `width` and `height` are both given (as numbers, or expressions the parameters give a value to)' });
+    expect(await session.call('sketch_tool', { sketch: 's', tool: 'rectangle', input: { first: input.first } })).toEqual({ error: 'rectangle: `opposite` is needed unless `width` and `height` are both given' });
     await session.call('undo');
     // an exception after the run: the answer arrives and the connection stays
     failAfter = true;
@@ -852,34 +852,67 @@ describe('the bridge to the running app', () => {
 
 // D73: a port held by another server is said, and taken once it is free; an empty document
 describe('the bridge and the document (D73)', () => {
-  it('a bridge that cannot listen: session_status says why and what to do, and the server takes the port once it is free', async () => {
+  it('a bridge that cannot listen: session_status says why and what to do; the port is taken only when asked; the first answer after a switch says so', async () => {
     const holder = await startBridge(0);
     const port = holder.port;
     const opened = await openBridge(port);
     expect(opened).toEqual({ failure: { port, code: 'EADDRINUSE', message: expect.stringContaining('EADDRINUSE') } });
+    // the holder of the process (main.ts): it closes whichever bridge it opened, also a late one
+    const mine = bridgeHolder(port);
+    expect('failure' in (await mine.open())).toBe(true);
     let tries = 0;
     const session = await connect({
       bridgeFailure: 'failure' in opened ? opened.failure : undefined,
       reopenBridge: () => {
         tries++;
-        return openBridge(port);
+        return mine.open();
       },
     });
     const held = await session.call('session_status');
     expect(held).toMatchObject({ engine: 'server', bridge: null, bridgeError: { port, code: 'EADDRINUSE', advice: expect.stringContaining(`Another program holds 127.0.0.1:${port}, most likely another trymesh MCP server`) } });
-    expect(held.bridgeError.advice).toContain('--port or TRYMESH_BRIDGE_PORT');
+    expect(held.bridgeError.advice).toContain(`--port or TRYMESH_BRIDGE_PORT (the app connects to ${DEFAULT_BRIDGE_PORT} only)`);
+    expect(held.bridgeError.advice).toContain('session_status with `openBridge: true` takes it');
     expect(held.note).toContain('see bridgeError');
-    // another tool does not try again before BRIDGE_RETRY_MS
-    await session.call('get_model');
-    expect(tries).toBe(1);
+    // the review of D73: nothing tries the port by itself, also after it is free
     await holder.close();
-    const free = await session.call('session_status');
-    expect(tries).toBe(2);
-    expect(free).toMatchObject({ engine: 'server', bridge: { port, appConnected: false } });
+    await session.call('get_model');
+    expect(await session.call('session_status')).toMatchObject({ engine: 'server', bridge: null });
+    expect(tries).toBe(0);
+    // asked to, it takes the port and says so
+    const free = await session.call('session_status', { openBridge: true });
+    expect(tries).toBe(1);
+    expect(free).toMatchObject({ engine: 'server', bridge: { port, appConnected: false }, openBridge: { result: 'opened', port } });
     expect(free.bridgeError).toBeUndefined();
-    // the bridge it took is a working one
-    const status = await fetch(`http://127.0.0.1:${port}/status`);
-    expect(await status.json()).toEqual({ service: 'trymesh-mcp-bridge', connected: false });
+    expect((await session.call('session_status', { openBridge: true })).openBridge).toEqual({ result: 'openAlready', port });
+    expect(tries).toBe(1);
+    // the app connects: the first answer after the switch says that the tools now work in the app
+    const texts = async (name: string, args: Record<string, unknown> = {}): Promise<string[]> => ((await session.client.callTool({ name, arguments: args })) as { content: { text: string }[] }).content.map((item) => item.text);
+    const app = newEngine();
+    let status: BridgeStatus = 'off';
+    const connection = connectBridge(app, { url: `http://127.0.0.1:${port}`, retryMs: 20, onStatus: (next) => (status = next) });
+    await until(() => status === 'connected' && mine.current()?.connected() === true, 'the app connected');
+    const switched = await texts('execute', { command: { type: 'setParameter', name: 'w', expr: '5' } });
+    expect(switched).toHaveLength(2);
+    expect(switched[1]).toMatch(/^Note: the app connected through the bridge\. This tool worked on the document open in the app; the answers before were about the server's own document/);
+    expect(app.getState().document.parameters.map((parameter) => parameter.name)).toEqual(['w']);
+    expect(await texts('get_parameters')).toHaveLength(1);
+    // and back
+    connection.stop();
+    await until(() => mine.current()?.connected() === false, 'the app disconnected');
+    const back = await texts('get_parameters');
+    expect(back[1]).toMatch(/^Note: the app is no longer connected\. This tool worked on the server's own document/);
+    expect(await texts('get_parameters')).toHaveLength(1);
+    await session.close();
+    // the end of the process closes the bridge it opened late: the port is free again
+    await mine.close();
+    const again = await startBridge(port);
+    await again.close();
+  });
+
+  it('without a bridge to open, `openBridge` says so', async () => {
+    const session = await connect();
+    expect((await session.call('session_status', { openBridge: true })).openBridge).toEqual({ result: 'noBridge', note: 'this server was started without a bridge (--no-bridge)' });
+    expect(await session.call('session_status', { openBridge: 'yes' })).toEqual({ error: expect.stringContaining('openBridge') });
     await session.close();
   });
 
@@ -915,6 +948,14 @@ describe('the bridge and the document (D73)', () => {
     expect(await session.call('save_document')).toEqual({ error: 'the document has no file; give "path"' });
     await session.call('undo');
     expect(session.engine.save()).toBe(saved);
+    // the review of D73: the undo that brings the document back brings its file back; a redo
+    // empties it again and forgets the file again
+    expect(await session.call('session_status')).toMatchObject({ file });
+    await session.call('redo');
+    expect(await session.call('save_document')).toEqual({ error: 'the document has no file; give "path"' });
+    await session.call('undo');
+    expect(await session.call('save_document')).toMatchObject({ file });
+    expect(await readFile(file, 'utf8')).toBe(saved);
     await session.close();
   });
 });

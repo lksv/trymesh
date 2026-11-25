@@ -162,7 +162,7 @@ describe('scenario 13, the part of 3a: bodies with materials, and a motor as a r
     const state = run(engine, { type: 'setBodyProperties', body: 'base', patch: { use: 'auxiliary' } });
     expect(state.evaluation.bodyProperties.base.mass).toBeUndefined();
     const answer = massOf(engine, { bodies: ['base', 'motor'], densities: { base: 5 } });
-    expect(answer.skipped).toEqual(['base']);
+    expect(answer.skipped).toEqual([{ body: 'base', reason: 'auxiliary' }]);
     near(answer.mass, 280);
     expect(engine.query('mass', { bodies: ['base'] })).toMatchObject({ ok: false, error: { code: 'failed', message: expect.stringContaining('every listed body is auxiliary') } });
     expect(engine.interference({ bodies: ['base', 'upper'] }).checked).toBe(1);

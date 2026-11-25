@@ -435,6 +435,28 @@ describe('the fillet tool: several corners in one call (D73)', () => {
     expect(engine.getState().document).toBe(before.document);
   });
 
+  it('corners that patch, move and shorten different features: each feature once, in the order of the timeline', () => {
+    // the plate with a sketch and a plane on the side face of `ob` (it starts at o2), a sketch on
+    // that of `oc` (it starts at o3) between them, and a projected edge of `ob` both corners shorten
+    const engine = plate();
+    const top: FaceName = { feature: 'E', role: 'endCap' };
+    run(
+      engine,
+      addSketch('onOb', onFace('E', side('E', 'ob'))),
+      addSketch('onOc', onFace('E', side('E', 'oc'))),
+      { type: 'addFeature', feature: { id: 'P', type: 'plane', base: onFace('E', side('E', 'ob')), offset: 1 } },
+      addSketch('t', onFace('E', top)),
+      { type: 'addExternal', sketch: 't', id: 'edge', ref: { type: 'edge', body: 'E', edge: { a: top, b: side('E', 'ob') }, kind: 'line' } },
+    );
+    expect(tool(engine.getState(), 's', 'o2', 4)).toMatchObject({ ok: true, ids: { patched: ['E'], moved: ['onOb', 'P'], shortened: ['t'] } });
+    expect(tool(engine.getState(), 's', 'o3', 4)).toMatchObject({ ok: true, ids: { patched: ['E'], moved: ['onOc'], shortened: ['t'] } });
+    // corner by corner the lists would be onOb, P, onOc; the timeline has onOc before P
+    const made = corners(engine.getState(), 's', ['o2', 'o3'], 4) as Made;
+    expect(made.ids).toMatchObject({ patched: ['E'], moved: ['onOb', 'onOc', 'P'], shortened: ['t'], entries: [] });
+    run(engine, batch(...made.commands));
+    expectAllOk(engine.getState());
+  });
+
   it('a line two corners share: each corner sees the line the one before it shortened', () => {
     const engine = plate();
     // the right side `ob` is 50 long: 26 fits at one end of it, not at both

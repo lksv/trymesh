@@ -1,7 +1,7 @@
 // Regressions from reviews of the MCP package.
 import { describe, expect, it } from 'vitest';
 import { type Command, type Engine, type SketchFeature, type SketchResult, emptySketch } from '@trymesh/engine';
-import { engineTypes } from '../src/api';
+import { apiLookup, engineTypes } from '../src/api';
 import { callTool, openEndAdvice } from '../src/tools';
 import { newEngine } from './kit';
 
@@ -137,5 +137,85 @@ describe('import_outline and get_sketch of an outline: the review of 6f', () => 
     const shown = row(engine, 'm');
     expect(shown.listed).toBe(50);
     expect(shown.more).toContain('from: 50');
+  });
+});
+
+// The review of the implementation of D73 (MCP and API ergonomics).
+describe('the review of D73', () => {
+  const ok = (engine: Engine, name: string, args: Record<string, unknown> = {}): any => {
+    const outcome = callTool(engine, name, args);
+    if (!outcome.ok) throw new Error(outcome.error);
+    return outcome.result;
+  };
+
+  // finding B2: the facts were of the features whose object the command replaced, so a change that
+  // reached a feature only through the recompute said nothing, and a rename repeated the facts
+  it('the facts in the answer are of the features whose result changed, whatever the command touched', () => {
+    const engine = newEngine();
+    const built = ok(engine, 'execute', {
+      command: {
+        type: 'batch',
+        commands: [
+          { type: 'setParameter', name: 'x', expr: '20' },
+          { type: 'setParameter', name: 'ang', expr: 'deg(90)' },
+          { type: 'addFeature', feature: { id: 's', type: 'sketch', plane: { kind: 'base', plane: 'XY' } } },
+          { type: 'addPoint', sketch: 's', id: 'c', x: 20, y: 0 },
+          { type: 'addPoint', sketch: 's', id: 'q2', x: 0, y: 10 },
+          { type: 'addCurve', sketch: 's', id: 'ax', curve: { type: 'line', a: 'origin', b: 'q2' } },
+          { type: 'addConstraint', sketch: 's', id: 'v', constraint: { type: 'vertical', line: 'ax' } },
+          { type: 'addCurve', sketch: 's', id: 'k', curve: { type: 'circle', center: 'c' }, radius: 5 },
+          { type: 'addConstraint', sketch: 's', id: 'dx', constraint: { type: 'horizontalDistance', a: 'origin', b: 'c', value: 'x', driving: true } },
+          { type: 'addFeature', feature: { id: 'rv', type: 'revolve', profile: { type: 'regions', sketch: 's', regions: [{ outerLoop: ['k'] }] }, axis: { kind: 'sketchLine', sketch: 's', line: 'ax' }, extent: { type: 'angle', start: 0, angle: 'ang' }, operation: 'new' } },
+        ],
+      },
+    });
+    expect(Object.keys(built.facts)).toEqual(['rv']);
+    // a parameter of the sketch: the command touches no feature, the recompute changes the revolve
+    const moved = ok(engine, 'execute', { command: { type: 'setParameter', name: 'ang', expr: 'deg(180)' } });
+    expect(Object.keys(moved.facts ?? {})).toEqual(['rv']);
+    expect(moved.facts.rv.steps).toBeGreaterThan(built.facts.rv.steps);
+    // a rename changes no fact, a parameter nothing uses changes none either
+    expect(ok(engine, 'execute', { command: { type: 'renameFeature', id: 'rv', name: 'Ring' } })).not.toHaveProperty('facts');
+    expect(ok(engine, 'execute', { command: { type: 'setParameter', name: 'unused', expr: '1' } })).not.toHaveProperty('facts');
+    // a change of the status says the facts again (suppressed: no result facts; back: the facts)
+    expect(ok(engine, 'execute', { command: { type: 'setSuppressed', id: 'rv', suppressed: true } })).not.toHaveProperty('facts');
+    expect(Object.keys(ok(engine, 'execute', { command: { type: 'setSuppressed', id: 'rv', suppressed: false } }).facts)).toEqual(['rv']);
+  });
+
+  // finding B3: the comment of another command came with a command below it in its group
+  it('describe_api { command }: the comment that leads a command is its own, its group header, or one that names it', () => {
+    const text = (command: string): string => {
+      const found = apiLookup({ command });
+      if (!found.ok) throw new Error(found.error);
+      return found.text;
+    };
+    expect(text('addConstraint')).not.toContain('One point of an own curve is replaced');
+    expect(text('removeConstraint')).not.toContain('setCurvePoint');
+    expect(text('dragPoint')).not.toContain('Switching to a reference dimension');
+    expect(text('setCurvePoint')).toContain('One point of an own curve is replaced');
+    expect(text('removeLink')).toContain('removeLink is refused while a joint names the link');
+    expect(text('setCheck')).toContain('Only a syntax error');
+    expect(text('updateExternal')).toContain('An\n  // update (updateExternal) replaces the whole entry');
+    expect(text('addPoint')).toContain('// sketch');
+  });
+
+  // finding B4: the types a lookup lists came from its comments as well
+  it('describe_api: the types a lookup names are those of its code, not of its comments', () => {
+    const named = (args: { command?: string; type?: string }): string => {
+      const found = apiLookup(args);
+      if (!found.ok) throw new Error(found.error);
+      return /Types it names[^:]*: (.*)$/m.exec(found.text)?.[1] ?? '';
+    };
+    expect(named({ type: 'Input' }).split(', ')).not.toContain('Command');
+    expect(named({ command: 'removeLink' }).split(', ')).not.toContain('Mechanism');
+    expect(named({ command: 'addConstraint' }).split(', ')).toEqual(expect.arrayContaining(['Constraint', 'FixedInput']));
+  });
+
+  // finding B8: a feature asked for twice was named twice in the error; one thing discarded was "them"
+  it('get_model names a missing feature once; new_document says "it" of one thing', () => {
+    const engine = newEngine();
+    expect(callTool(engine, 'get_model', { features: ['x', 'x'] })).toEqual({ ok: false, error: 'argument "features": the state has no feature "x"; it has none' });
+    ok(engine, 'execute', { command: { type: 'setParameter', name: 'w', expr: '1' } });
+    expect(ok(engine, 'new_document', { discard: true }).note).toBe('Discarded 1 parameter; undo brings it back.');
   });
 });

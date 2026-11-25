@@ -715,8 +715,9 @@ function declarations(): Map<string, { text: string; section: string }> {
   return found;
 }
 
-// The names of declared types a text mentions, but `exclude`.
-const typesNamed = (text: string, known: Map<string, unknown>, exclude: string): string[] => [...new Set(text.match(/\b[A-Z]\w+\b/g) ?? [])].filter((name) => name !== exclude && known.has(name));
+// The names of declared types the code of a text mentions, but `exclude`; its comments are left
+// out, which name types in passing (`Input` in a word about the input form, `Mechanism` in a rule).
+const typesNamed = (text: string, known: Map<string, unknown>, exclude: string): string[] => [...new Set(text.replace(/\/\/.*$/gm, '').match(/\b[A-Z]\w+\b/g) ?? [])].filter((name) => name !== exclude && known.has(name));
 
 // The lines of the union Command in the types.
 function commandLines(): string[] {
@@ -726,16 +727,23 @@ function commandLines(): string[] {
   return start < 0 || end < 0 ? [] : lines.slice(start + 1, end + 1);
 }
 
-// One command of the union Command: its line with the comment that leads its group (the comment
-// lines above it and the commands between that comment and it).
+// One command of the union Command: its line with the comment that leads it. A comment right above
+// the line is its own. Above other commands of its group, a comment leads it only when it is the
+// header of the group (one line: `// sketch`) or names the command: the comment of setCurvePoint
+// is not about addConstraint below it (D73, review).
 function commandText(type: string): string | undefined {
   const lines = commandLines();
-  const at = lines.findIndex((line) => /^\s*\|/.test(line) && line.includes(`{ type: '${type}';`));
+  const command = (line: string): boolean => /^\s*\|/.test(line);
+  const comment = (line: string): boolean => /^\s*\/\//.test(line);
+  const at = lines.findIndex((line) => command(line) && line.includes(`{ type: '${type}';`));
   if (at < 0) return undefined;
   let first = at;
-  while (first > 0 && /^\s*\|/.test(lines[first - 1])) first--;
-  while (first > 0 && /^\s*\/\//.test(lines[first - 1])) first--;
-  return lines.slice(first, at + 1).join('\n');
+  while (first > 0 && command(lines[first - 1])) first--;
+  let top = first;
+  while (top > 0 && comment(lines[top - 1])) top--;
+  const block = lines.slice(top, first);
+  const leads = first === at || block.length === 1 || block.some((line) => new RegExp(`\\b${type}\\b`).test(line));
+  return leads ? lines.slice(top, at + 1).join('\n') : lines[at];
 }
 
 export function commandTypes(): string[] {

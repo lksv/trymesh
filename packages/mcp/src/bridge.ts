@@ -59,6 +59,35 @@ export async function openBridge(port: number = DEFAULT_BRIDGE_PORT): Promise<{ 
   }
 }
 
+// The bridge of a server process (main.ts, D73): `open` at the start and again when session_status
+// is asked to (`openBridge: true`); `close` at the end of the process closes whichever bridge it
+// opened, also one opened late, so that the port does not outlive the server.
+export interface BridgeHolder {
+  current(): Bridge | undefined;
+  open(): Promise<{ bridge: Bridge } | { failure: BridgeFailure }>;
+  close(): Promise<void>;
+}
+export function bridgeHolder(port: number, opened?: (bridge: Bridge) => void): BridgeHolder {
+  let bridge: Bridge | undefined;
+  return {
+    current: () => bridge,
+    async open() {
+      if (bridge) return { bridge };
+      const result = await openBridge(port);
+      if ('bridge' in result) {
+        bridge = result.bridge;
+        opened?.(bridge);
+      }
+      return result;
+    },
+    async close() {
+      const closing = bridge;
+      bridge = undefined;
+      await closing?.close();
+    },
+  };
+}
+
 // port 0 = the system assigns a free port. When the port cannot be opened (another server runs), the
 // promise is rejected.
 export function startBridge(port: number = DEFAULT_BRIDGE_PORT): Promise<Bridge> {

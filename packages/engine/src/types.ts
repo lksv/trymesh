@@ -1990,9 +1990,10 @@ export type Command =
   | { type: 'updateFeature'; id: Id; patch: FeaturePatch }
   // One numeric field by its address (see fieldsOf); a number removes the expression, a string sets it.
   | { type: 'setField'; feature: Id; path: FieldPath; value: number | Expr }
-  // Parameters and checks. Only a syntax error (including a number where a comparison is expected)
-  // and a disallowed name make the command invalid; an unknown name and a cycle are accepted and
-  // show up in the recompute result (otherwise `Zr = Zs + 2 * Zp` could not be created before `Zs`).
+  // Parameters and checks (setParameter, renameParameter, removeParameter, setCheck, renameCheck,
+  // removeCheck). Only a syntax error (including a number where a comparison is expected) and a
+  // disallowed name make the command invalid; an unknown name and a cycle are accepted and show up
+  // in the recompute result (otherwise `Zr = Zs + 2 * Zp` could not be created before `Zs`).
   | { type: 'setParameter'; name: string; expr: Expr; index?: number } // creates or changes; index = position in the table
   | { type: 'renameParameter'; name: string; to: string } // rewrites the name in every expression as well
   | { type: 'removeParameter'; name: string } // expressions that use it end up as an error or a warning of their feature
@@ -2034,7 +2035,7 @@ export type Command =
   | { type: 'dragPoint'; sketch: Id; point: Id; x: number; y: number }
   // `ref` in its input form: a numeric field of an entry may be an expression (kept in the sketch's
   // `expressions` at `external/<id>/…`; setField with the sketch as the feature reaches one). An
-  // update replaces the whole entry: send the entry with its expressions as strings, or a number
+  // update (updateExternal) replaces the whole entry: send the entry with its expressions as strings, or a number
   // removes the expression; a string equal to the expression the field has counts as unchanged
   // (an imported outline is the exception: fields left out keep what it has, SketchOutline). An
   // update may not turn reference geometry into derived geometry or back. An update that keeps the

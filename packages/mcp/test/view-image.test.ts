@@ -342,7 +342,9 @@ describe('a picture on its way to a client', () => {
     const answer = await session.client.callTool({ name: 'view_image', arguments: { view: 'front', bodies: ['pin'], section: { plane: XZ, offset: -1 }, width: 320, height: 240 } });
     expect(answer.isError).toBeUndefined();
     const content = answer.content as { type: string; data?: string; mimeType?: string; text?: string }[];
-    expect(content).toHaveLength(2);
+    // the third: the first answer after the app connected says that the tools switched (D73, review)
+    expect(content).toHaveLength(3);
+    expect(content[2].text).toMatch(/^Note: the app connected through the bridge/);
     expect(content[0]).toEqual({ type: 'image', data: 'UE5H', mimeType: 'image/png' });
     expect(JSON.parse(content[1].text ?? '')).toEqual({ width: 320, height: 240, scale: 0.123457, bodies: [{ body: 'pin', color: '#000000', colorName: 'colour 0' }], section: { cut: ['pin'], cutAway: [] } });
     expect(requests).toHaveLength(1);

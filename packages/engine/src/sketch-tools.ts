@@ -109,7 +109,7 @@ export const SKETCH_TOOLS: Record<SketchToolName, SketchToolSpec> = {
   rectangle: {
     title: 'Rectangle',
     summary:
-      'A rectangle: four lines, two horizontal and two vertical. By two opposite corners, `first` and `opposite`; or by its centre, `center` instead of `first`: the corner opposite `opposite` across the centre is then `points[0]`, and a construction diagonal from `points[0]` to `points[2]` has the centre as its midpoint. `width` and `height` (each a number or an expression) add a distance dimension between the corners of a horizontal and of a vertical side, and the rectangle is drawn at that size from `first` or `center` towards `opposite` (towards +x and +y without it; `opposite` may be left out when both are given; an `opposite` that snaps keeps its place). Without them the width and the height stay free. With `width`, `height` and `first` or `center` snapped to a point (such as `origin`) the rectangle is fully determined.',
+      'A rectangle: four lines, two horizontal and two vertical. By two opposite corners, `first` and `opposite`; or by its centre, `center` instead of `first`: the corner opposite `opposite` across the centre is then `points[0]`, and a construction diagonal from `points[0]` to `points[2]` has the centre as its midpoint. `width` and `height` (each a number or an expression) add a distance dimension between the corners of a horizontal and of a vertical side, and the rectangle is drawn at that size from `first` or `center` towards `opposite` (towards +x and +y without it; `opposite` may be left out when both are given, and may then not snap to a point, which the sizes place already; an `opposite` that snaps otherwise keeps its place). Without them the width and the height stay free. With `width`, `height` and `first` or `center` snapped to a fixed point (such as `origin`) the rectangle is fully determined; on a point that is free its two coordinates stay free.',
     inputs: {
       first: { kind: 'anchor', optional: true },
       center: { kind: 'anchor', optional: true },
@@ -432,14 +432,16 @@ function inputProblem(spec: SketchToolSpec, context: SketchToolContext, input: u
 
 const failed = (message: string): SketchToolResult => ({ ok: false, message });
 
-// The value of a size given as a number or an expression, when it is known and positive: an
-// expression needs the values of the parameters.
-function sizeValue(context: SketchToolContext, value: number | Expr | undefined): number | undefined {
-  if (value === undefined) return undefined;
-  if (typeof value === 'number') return value > 0 ? value : undefined;
-  if (!context.parameters) return undefined;
+// A size given as a number or an expression (a width, a radius): the number, or the value of the
+// expression the parameters give it, checked against the spec of the input as a number is; or why
+// it cannot be used. A number has been checked by `inputProblem` already.
+function sizeOf(context: SketchToolContext, name: string, value: number | Expr | undefined, input: SketchToolInput): number | undefined | { problem: string } {
+  if (value === undefined || typeof value === 'number') return value;
+  if (!context.parameters) return { problem: `${name}: the expression cannot be evaluated without the values of the parameters` };
   const known = evaluateNumber(value, context.parameters);
-  return known.ok && known.value > 0 ? known.value : undefined;
+  if (!known.ok) return { problem: `${name}: ${known.error.message}` };
+  const checked = checkNumber(known.value, input.kind === 'number' ? input.spec : { title: name, unit: 'mm' });
+  return checked.ok ? checked.value : { problem: `${name}: ${checked.message}` };
 }
 
 function rectangle(context: SketchToolContext, input: SketchToolInputs['rectangle'], newId: NewId): SketchToolResult {
@@ -448,9 +450,16 @@ function rectangle(context: SketchToolContext, input: SketchToolInputs['rectangl
   const byCenter = input.center !== undefined;
   const from = (byCenter ? input.center : input.first) as Anchor;
   const pf = anchorPosition(context, from);
-  const [width, height] = [sizeValue(context, input.width), sizeValue(context, input.height)];
+  const sizes = [sizeOf(context, 'width', input.width, SKETCH_TOOLS.rectangle.inputs.width), sizeOf(context, 'height', input.height, SKETCH_TOOLS.rectangle.inputs.height)];
+  for (const size of sizes) if (typeof size === 'object') return failed(size.problem);
+  const [width, height] = sizes as (number | undefined)[];
   const po = input.opposite && anchorPosition(context, input.opposite);
-  if (!po && (width === undefined || height === undefined)) return failed('`opposite` is needed unless `width` and `height` are both given (as numbers, or expressions the parameters give a value to)');
+  if (!po && (width === undefined || height === undefined)) return failed('`opposite` is needed unless `width` and `height` are both given');
+  // Both sizes place the opposite corner already; snapped to a point as well, the sketch would ask
+  // for it at two places (a conflict whenever `first` or `center` is held).
+  if (input.opposite?.snap?.kind === 'point' && width !== undefined && height !== undefined) {
+    return failed(`\`opposite\` snaps to the point "${input.opposite.snap.id}", but \`width\` and \`height\` place that corner already: leave out \`opposite\` (drawn towards +x and +y) or give it without \`snap\` (only the direction counts), or leave out one of the sizes`);
+  }
   // The corner `opposite` as drawn: where it snaps, else at the given size (half of it from the
   // centre) towards where it was given, else where it was given.
   const reach = byCenter ? 0.5 : 1;
@@ -645,16 +654,8 @@ function filletCorner(context: SketchToolCall, corner: Id, input: { radius: numb
     }
   }
   // the radius: a number, or an expression the parameters give a value to
-  let radius: number;
-  if (typeof input.radius === 'number') radius = input.radius;
-  else {
-    if (!context.parameters) return failed('radius: the expression cannot be evaluated without the values of the parameters');
-    const known = evaluateNumber(input.radius, context.parameters);
-    if (!known.ok) return failed(`radius: ${known.error.message}`);
-    const checked = checkNumber(known.value, SKETCH_TOOLS.fillet.inputs.radius.kind === 'number' ? SKETCH_TOOLS.fillet.inputs.radius.spec : { title: 'Radius', unit: 'mm' });
-    if (!checked.ok) return failed(`radius: ${checked.message}`);
-    radius = checked.value;
-  }
+  const radius = sizeOf(context, 'radius', input.radius, SKETCH_TOOLS.fillet.inputs.radius) as number | { problem: string };
+  if (typeof radius === 'object') return failed(radius.problem);
 
   const p = pointAt(context, corner) as Vec2;
   const curves = lines.map((id) => sketch.curves[id] as LineCurve);

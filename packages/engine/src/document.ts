@@ -118,6 +118,26 @@ function feature(doc: Document, before: number | undefined, v: unknown, what: st
   return validated(FEATURE_TYPES[type] as FeatureModule<Feature>, doc, before, o, what, mode);
 }
 
+// The feature of addFeature. Validation keeps only the fields it knows, and with the defaults of
+// `NewFeature` a misspelt optional field (`supressed`, `nmae`, `point` for `points`) would end in
+// success without effect; so a top-level key of the input that the validator of the type never
+// reads is refused, naming the fields it reads (D73, review). A key without a value is no field.
+function addedFeature(doc: Document, before: number, v: unknown, what: string): Feature {
+  const input = newFeature(v);
+  if (!isObject(input)) return feature(doc, before, input, what, 'add');
+  const read = new Set<string>(['type', 'expressions']);
+  const note = (key: string | symbol): void => void (typeof key === 'string' && read.add(key));
+  const watched = new Proxy(input, {
+    get: (target, key, receiver) => (note(key), Reflect.get(target, key, receiver)),
+    has: (target, key) => (note(key), Reflect.has(target, key)),
+    getOwnPropertyDescriptor: (target, key) => (note(key), Reflect.getOwnPropertyDescriptor(target, key)),
+  });
+  const checked = feature(doc, before, watched, what, 'add');
+  const unknown = Object.keys(input).filter((key) => input[key] !== undefined && !read.has(key));
+  if (unknown.length) fail(`${what}.${unknown[0]}: a feature of the type ${checked.type} has no field "${unknown[0]}"; its fields are ${['type', ...[...read].filter((key) => key !== 'type' && key !== 'expressions'), 'expressions'].join(', ')}`);
+  return checked;
+}
+
 function validated(spec: FeatureModule<Feature>, doc: Document, before: number | undefined, o: Dict, what: string, mode: FieldMode): Feature {
   const fields = new Fields(mode, expressionsOf(o, what), () => evaluateParameters(doc.parameters));
   const checked = spec.validate(o, what, { ...refContext(doc, before), fields });
@@ -506,7 +526,7 @@ export function applyCommand(doc: Document, command: Command): Document {
     case 'addFeature': {
       const index = cmd.index === undefined ? doc.features.length : finite(cmd.index, 'addFeature.index');
       if (!Number.isInteger(index) || index < 0 || index > doc.features.length) fail('addFeature.index: outside the range of the timeline');
-      const f = feature(doc, index, newFeature(cmd.feature), 'addFeature.feature', 'add');
+      const f = addedFeature(doc, index, cmd.feature, 'addFeature.feature');
       const ids = documentIds(doc);
       const added = [f.id, ...(f.type === 'sketch' ? sketchIds(f) : [])];
       for (const id of added) if (ids.has(id) || added.indexOf(id) !== added.lastIndexOf(id)) fail(`addFeature: the ID "${id}" is already in the document`);

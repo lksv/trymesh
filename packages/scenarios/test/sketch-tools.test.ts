@@ -57,6 +57,13 @@ describe('the catalog of sketch tools', () => {
     expect(SKETCH_TOOLS.polygon.inputs).toMatchObject({ center: { kind: 'anchor' }, vertex: { kind: 'anchor' }, sides: { kind: 'number', spec: { integer: true, min: { value: 3 }, max: { value: MAX_POLYGON_SIDES } } }, sizeKind: { kind: 'option', options: ['circumscribed', 'acrossFlats'], optional: true }, size: { kind: 'number', optional: true, expression: true } });
     expect(Object.keys(SKETCH_TOOLS.polygon.ids)).toEqual(['center', 'circle', 'points', 'lines', 'constraints', 'size']);
     for (const spec of Object.values(SKETCH_TOOLS)) expect(spec.title.length * spec.summary.length).toBeGreaterThan(0);
+    // a group of `oneOf` names optional inputs only (D73, review): a required one would always be given
+    for (const [tool, spec] of Object.entries(SKETCH_TOOLS)) {
+      for (const group of spec.oneOf ?? []) {
+        expect(group.length, `${tool}: ${group.join(', ')}`).toBeGreaterThan(1);
+        for (const name of group) expect(spec.inputs[name], `${tool}.${name}`).toMatchObject({ optional: true });
+      }
+    }
   });
 });
 
@@ -103,7 +110,7 @@ describe('the rectangle tool', () => {
     const engine = sketched();
     expect(refused(engine, 'rectangle', { first: free(1, 1), opposite: free(1, 9) })).toMatch(/must differ in both coordinates/);
     expect(refused(engine, 'rectangle', { first: onPoint('origin'), opposite: onPoint('origin') })).toMatch(/must differ/);
-    expect(refused(engine, 'rectangle', { first: free(1, 1) })).toBe('`opposite` is needed unless `width` and `height` are both given (as numbers, or expressions the parameters give a value to)');
+    expect(refused(engine, 'rectangle', { first: free(1, 1) })).toBe('`opposite` is needed unless `width` and `height` are both given');
     expect(refused(engine, 'rectangle', { first: free(1, 1), width: 4 })).toMatch(/^`opposite` is needed/);
     expect(refused(engine, 'rectangle', { opposite: free(1, 1) })).toBe('Rectangle takes exactly one of first, center');
     expect(refused(engine, 'rectangle', { first: free(0, 0), center: free(1, 1), opposite: free(5, 5) })).toBe('Rectangle takes exactly one of first, center; given: first, center');

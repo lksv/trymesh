@@ -123,8 +123,14 @@ export const projectSketch: SketchPlaceTool<ProjectSketchOptions> = {
     if (options.whole) {
       const made = sketchTool('projectSketch', context.tool, { sketch: snap.sketch, as: options.as }, host.newId);
       if (!made.ok) return host.say(`From sketch: ${made.message}`, true);
-      const left = made.ids.skipped.length + made.ids.doubled.length;
-      host.run({ type: 'batch', commands: made.commands }, `${host.nameOf(snap.sketch)} projected: ${made.ids.entries.length} entities${made.ids.curves.length ? `, ${made.ids.curves.length} own curves over them` : ''}${left ? `, ${left} left out (projected already or at a place taken)` : ''}.`);
+      const { entries, taken, curves, patched, skipped, doubled } = made.ids;
+      const left = skipped.length + doubled.length;
+      // an entry taken over is counted apart from the new ones (its flag switched off), and the
+      // features renamed to its own curve are named
+      host.run(
+        { type: 'batch', commands: made.commands },
+        `${host.nameOf(snap.sketch)} projected: ${entries.length - taken.length} entities${taken.length ? `, ${taken.length} taken over` : ''}${curves.length ? `, ${curves.length} own curves over them` : ''}${left ? `, ${left} left out (projected already or at a place taken)` : ''}${patched.length ? `; renamed to the own curves in ${patched.map((id) => host.nameOf(id)).join(', ')}` : ''}.`,
+      );
       return;
     }
     const candidate = candidatesOf(host, context).entities.find((c) => c.sketch === snap.sketch && c.id === snap.id);

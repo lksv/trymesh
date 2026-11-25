@@ -30,7 +30,7 @@ import { type ContactKind, type CurveContacts, type Profile, type Region, type S
 import { constraintKey, constraintOperands, constraintPath, curvePoints, isDimension, isDriving } from './sketch-content';
 import type { NewId, SketchToolCall, SketchToolContext, SketchToolResult } from './sketch-tools';
 import type { Command, Constraint, Curve, CurvePointName, CurveShape, Document, EdgeName, Expr, FaceName, Feature, FeaturePatch, Id, ParameterResult, PlaneRef, Point2, ProfileSource, RegionRef, SketchFeature, SketchPattern, SketchProjection, SketchResult, Vec2 } from './types';
-import { LENGTH_TOLERANCE, ORIGIN, dist2, has, isOriginAxis, unreachable } from './util';
+import { LENGTH_TOLERANCE, ORIGIN, canonicalEdge, dist2, has, isOriginAxis, unreachable } from './util';
 
 // ---------------------------------------------------------------- what reads a profile (D52)
 
@@ -2330,6 +2330,10 @@ function middleOf(world: World, spec: CutSpec, plan: Plan): { curve: Id; at: Vec
   return undefined;
 }
 
+// The outer loop of a region rewritten by names: each curve read through `piecesOf`, sorted and
+// without duplicates as a region is named.
+const loopByNames = (loop: readonly Id[], changes: CurveChanges, sketch: SketchFeature): Id[] => [...new Set(loop.flatMap((id) => piecesOf(changes, sketch, id) ?? [id]))].sort();
+
 interface Patches {
   commands: Command[];
   patched: Id[];
@@ -2409,7 +2413,7 @@ function patchFeatures(world: World, plan: Plan, spec: CutSpec, changes: CurveCh
             continue;
           }
           pending = true;
-          const outerLoop = [...new Set(region.outerLoop.flatMap((id) => piecesOf(changes, afterSketch, id) ?? [id]))].sort();
+          const outerLoop = loopByNames(region.outerLoop, changes, afterSketch);
           if (outerLoop.length > 0) regions.push({ ...region, outerLoop });
           else dropped = true;
         }
@@ -2685,6 +2689,137 @@ function patchBlends(world: World, plan: Plan, changes: CurveChanges, afterDoc: 
       if (facesIn(feature).some((face) => face.feature === blend.id && (face.role === 'chamfer' || face.role === 'fillet') && rewritten.includes(face.edge))) out.shortened.push(feature.id);
     }
   }
+}
+
+// ---------------------------------------------------------------- curves renamed one for one
+
+// A value with the face names `face` renames replaced, at any depth; the value itself when none is.
+function withFaces<T>(value: T, face: (name: FaceName) => FaceName | undefined): T {
+  if (Array.isArray(value)) {
+    let changed = false;
+    const items = value.map((item) => {
+      const next = withFaces(item, face);
+      if (next !== item) changed = true;
+      return next;
+    });
+    return (changed ? items : value) as T;
+  }
+  if (typeof value !== 'object' || value === null) return value;
+  const o = value as Record<string, unknown>;
+  const base = (typeof o.feature === 'string' && typeof o.role === 'string' ? face(o as unknown as FaceName) : undefined) ?? o;
+  let out: Record<string, unknown> | undefined;
+  for (const [key, item] of Object.entries(base)) {
+    const next = withFaces(item, face);
+    if (next !== item) (out ??= { ...base })[key] = next;
+  }
+  return (out ?? base) as T;
+}
+
+// What reads curves of a sketch renamed one for one (6b's takeover, D69: the flag `regions` of a
+// projection switched off and an own curve drawn over it at the same place, so that every region
+// along it and every side face of it is named by the own curve after the batch), patched in the
+// same batch as the cuts patch theirs: the regions rewritten by names (`piecesOf`, one piece per
+// curve) and the side faces by the face rule (`sideOf`, of the features over the sketch).
+// - the regions of the features over the sketch (`updateFeature` of `profile.regions`);
+// - the edges of chamfers and fillets (`updateFeature` of `edges`; a face of a blend is named by the
+//   place of its edge, which stays);
+// - the plane of a sketch (`setSketchPlane`) and the edges it projects (`updateExternal`);
+// - the base and the midplane of a plane feature (`updateFeature`).
+// A side face named anywhere else (an extent up to it, an axis, a frame, a section entry), or an
+// edge whose two faces would change their order under the new name (its end `a` would become `b`),
+// is not patched: `unpatched` lists those readers (features in the order of the timeline, then the
+// keys of section entries), and the caller refuses the rename. A wall names own curves only, so it
+// never reads a projection.
+export interface RenamePatches {
+  commands: Command[];
+  patched: Id[];
+  unpatched: Id[];
+}
+export function renamePatches(document: Document, sketch: SketchFeature, renames: Readonly<Record<Id, Id>>): RenamePatches {
+  const renamed = Object.keys(renames);
+  const changes: CurveChanges = { changed: [], restarted: [], rekinded: [], removed: [], removedPoints: [], added: [], span: [], pieces: Object.fromEntries(renamed.map((id) => [id, [renames[id]]])), stretches: [] };
+  const over = new Set(document.features.filter((f) => profileSourceOf(f)?.sketch === sketch.id).map((f) => f.id));
+  const face = (name: FaceName): FaceName | undefined => {
+    if (!over.has(name.feature) || !sideOf(name, renamed)) return undefined;
+    const side = name as Extract<FaceName, { curve: Id }>;
+    return { ...side, curve: (piecesOf(changes, sketch, side.curve) as Id[])[0] };
+  };
+  const names = (value: unknown): boolean => facesIn(value).some((name) => face(name) !== undefined);
+  // an edge keeps the order of its faces under the new names
+  const keepsOrder = (edge: EdgeName): boolean => {
+    const c = canonicalEdge(edge);
+    const next = { a: face(c.a) ?? c.a, b: face(c.b) ?? c.b };
+    return canonicalEdge(next) === next;
+  };
+  const out: RenamePatches = { commands: [], patched: [], unpatched: [] };
+  for (const feature of document.features) {
+    if (feature.id === sketch.id) continue;
+    const commands: Command[] = [];
+    const patch: Record<string, unknown> = {};
+    // the fields patched below; a renamed face in any other is not patched
+    let handled: string[] = [];
+    let unpatched = false;
+    const source = profileSourceOf(feature);
+    if (source?.type === 'regions' && source.sketch === sketch.id) {
+      handled = ['profile'];
+      const regions = source.regions.map((region) => ({ ...region, outerLoop: loopByNames(region.outerLoop, changes, sketch) }));
+      if (JSON.stringify(regions) !== JSON.stringify(source.regions)) patch.profile = { regions };
+    }
+    switch (feature.type) {
+      case 'sketch': {
+        handled = ['plane', 'external'];
+        const plane = withFaces(feature.plane, face);
+        if (plane !== feature.plane) commands.push({ type: 'setSketchPlane', sketch: feature.id, plane });
+        for (const [id, ref] of Object.entries(feature.external)) {
+          const next = withFaces(ref, face);
+          if (next === ref) continue;
+          if (ref.type === 'edge' && !keepsOrder(ref.edge)) unpatched = true;
+          else commands.push({ type: 'updateExternal', sketch: feature.id, id, ref: next });
+        }
+        break;
+      }
+      case 'chamfer':
+      case 'fillet': {
+        handled = ['edges'];
+        const edges = withFaces(feature.edges, face);
+        if (edges === feature.edges) break;
+        if (feature.edges.some((edge, i) => edges[i] !== edge && !keepsOrder(edge))) unpatched = true;
+        else patch.edges = edges;
+        break;
+      }
+      case 'plane': {
+        handled = ['base', 'midplaneWith'];
+        for (const key of handled as ('base' | 'midplaneWith')[]) {
+          const next = withFaces(feature[key], face);
+          if (next !== feature[key]) patch[key] = next;
+        }
+        break;
+      }
+      default:
+        break;
+    }
+    if (Object.entries(feature).some(([key, value]) => !handled.includes(key) && names(value))) unpatched = true;
+    if (unpatched) {
+      out.unpatched.push(feature.id);
+      continue;
+    }
+    if (Object.keys(patch).length > 0) commands.push({ type: 'updateFeature', id: feature.id, patch: patch as FeaturePatch });
+    if (commands.length === 0) continue;
+    out.commands.push(...commands);
+    out.patched.push(feature.id);
+  }
+  // the entries of the sections that name such a face
+  const entries: Id[] = [];
+  for (const name of Object.keys(DOCUMENT_SECTIONS) as (keyof typeof DOCUMENT_SECTIONS)[]) {
+    const section = document[name] as unknown;
+    if (typeof section !== 'object' || section === null) continue;
+    for (const group of Object.values(section as Record<string, unknown>)) {
+      if (typeof group !== 'object' || group === null || Array.isArray(group)) continue;
+      for (const [key, entry] of Object.entries(group as Record<string, unknown>)) if (names(entry)) entries.push(key);
+    }
+  }
+  out.unpatched.push(...[...new Set(entries)].sort());
+  return out;
 }
 
 // ---------------------------------------------------------------- what reads a changed curve

@@ -137,23 +137,32 @@ function exactArc(center: Vec2, start: Vec2, end: Vec2): Projected | undefined {
   return { kind: 'arc', center, start, end: [center[0] + (rs * (end[0] - center[0])) / re, center[1] + (rs * (end[1] - center[1])) / re] };
 }
 
+// How far the end of a stored arc may lie off the circle of its start, relative to its radius, and
+// still be read as it is: `exactArc` is not idempotent in floating point (applied to its own output
+// it moves the end by an ulp in about a third of cases), so a value `compute` wrote is kept bit for
+// bit and a frozen projection stays the same at every recompute, save and load.
+const ARC_STORED_TOLERANCE = 1e-12;
+
 // A stored value read back: the stored object itself when it is of the entry's kind and has the
 // extent `compute` requires of a fresh one, so a hand-written value is never a fixed curve the
-// solver rejects. A line with no length or an arc with no extent does not fit the entry (load
-// refuses it; no command writes one); an arc whose end is off the circle of its start is made exact.
+// solver rejects. A line with no length, a circle with a radius under the length tolerance or an
+// arc with no extent does not fit the entry (load refuses it; no command writes one); an arc whose
+// end is off the circle of its start by more than an ulp or so (`ARC_STORED_TOLERANCE`) is made exact.
 function storedValue(stored: unknown, ref: SketchProjection, what: string): Projected | undefined {
   const value = projected(stored, what);
   if (value.kind !== ref.kind) return undefined;
   switch (value.kind) {
     case 'point':
-    case 'circle':
       return stored as Projected;
+    case 'circle':
+      return value.radius >= LENGTH_TOLERANCE ? (stored as Projected) : undefined;
     case 'line':
       return distance(value.a, value.b) >= LENGTH_TOLERANCE ? (stored as Projected) : undefined;
     case 'arc': {
       const exact = exactArc(value.center, value.start, value.end);
       if (exact?.kind !== 'arc') return undefined;
-      return exact.end[0] === value.end[0] && exact.end[1] === value.end[1] ? (stored as Projected) : exact;
+      const [rs, re] = [distance(value.start, value.center), distance(value.end, value.center)];
+      return Math.abs(re - rs) <= ARC_STORED_TOLERANCE * rs ? (stored as Projected) : exact;
     }
     default:
       return unreachable(value, 'projected value');

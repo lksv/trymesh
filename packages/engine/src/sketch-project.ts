@@ -8,6 +8,7 @@ import { entityIndex, kindOf } from './references/index';
 import { type ProjectedKind, degreesText, projectFromSketch, sketchMap } from './references/projection';
 import { sketchWorld, toolBase } from './references/world';
 import { type SketchCurve, type SketchGeometry, solvedCurves } from './sketch';
+import { renamePatches } from './sketch-cut';
 import { curvePoints } from './sketch-content';
 import type { NewId, SketchToolCall, SketchToolResult } from './sketch-tools';
 import type { Command, Constraint, CurveShape, Id, Projected, SketchFeature, SketchProjection, SketchResult, Vec2 } from './types';
@@ -25,15 +26,23 @@ export const PROJECT_SKETCH_IDS = {
   sources: 'the entity of the source sketch each entry projects',
   skipped: 'entities of the source this sketch projects already; nothing was made for them (with `as: "own"`, see `taken` for an entry with the flag `regions`)',
   doubled: 'with `as: "own"`: curves of the source at the place of a curve before them in the list, or of an own curve that forms regions in this sketch already (one own curve is drawn per place); nothing was made for them',
-  taken: 'with `as: "own"`: the entries of this sketch that projected a listed curve with the flag `regions` already (they are not cut); their flag is switched off and an own curve is drawn over each and held on it',
+  taken: 'with `as: "own"` and `entities`: the entries of this sketch that projected a curve named in `entities` with the flag `regions` already (they are not cut); their flag is switched off and an own curve is drawn over each and held on it, so the regions along it and its side face are named by the own curve',
   curves: 'with `as: "own"`: the own curves, `curves[i]` over the i-th entry that is a curve',
   points: 'with `as: "own"`: the own points (the ends, one per place, then the centres)',
   helpers: 'with `as: "own"`: the construction lines from the centre of each own arc to its start',
   constraints: 'with `as: "own"`: the constraints that hold the own curves on the projected ones',
+  patched: 'with `taken`: the features that named a region along a taken entry or a side face of it, renamed to its own curve in the same batch (the regions of an extrusion or a revolve, the edges of a chamfer or a fillet, the plane of a sketch and the edges it projects, the base or midplane of a plane)',
 } as const;
 
 export const TILTED = (sketch: Id, degrees: number): string => `the plane of ${sketch} is at ${degreesText(degrees)} to this sketch; only a sketch on a parallel plane is projected`;
 export const LYING = (a: Id, b: Id, sketch: Id): string => `${a} and ${b} of ${sketch} lie on each other: projected with regions both would bound the same regions; name the entities, or use as: "source"`;
+
+// An entry to take over whose place an own curve holds already (drawn by hand over it).
+export const COVERED = (entry: Id, ref: SketchProjection, own: Id, sketch: Id): string =>
+  `${entry} has the own curve ${own} over it already: switch the flag of ${entry} off instead, updateExternal { sketch: "${sketch}", id: "${entry}", ref: { type: "sketch", sketch: "${ref.sketch}", entity: "${ref.entity}", kind: "${ref.kind}", regions: false } }; the regions along it and its side face are then named by ${own}, so rename them in the features that read them`;
+// Taken entries whose side face something names that the takeover does not rename.
+export const UNPATCHED = (taken: readonly Id[], readers: readonly Id[]): string =>
+  `${taken.join(', ')} ${taken.length === 1 ? 'is' : 'are'} not taken over: the own curve would rename ${taken.length === 1 ? 'its side face' : 'their side faces'}, which ${readers.join(', ')} ${readers.length === 1 ? 'names' : 'name'} where the takeover cannot rename it (an extent up to the face, an axis or a frame on it, a section entry, or an edge whose faces would swap); make ${readers.length === 1 ? 'it' : 'them'} name another face first`;
 
 const failed = (message: string): SketchToolResult => ({ ok: false, message });
 
@@ -145,11 +154,13 @@ export function projectSketch(context: SketchToolCall, input: ProjectSketchInput
     }
   }
   // then the skip: what this sketch projects already; with own, an entry of the same kind with the
-  // flag is taken over (its flag switched off, an own curve drawn over it), not skipped
+  // flag whose entity `entities` names is taken over (its flag switched off, an own curve drawn over
+  // it), not skipped. A run over the whole sketch skips it: taking it over renames the regions along
+  // it and its side face, which only a request that names it asks for.
   const projected = new Map(Object.entries(target.external).flatMap(([id, ref]) => (ref.type === 'sketch' && ref.sketch === from ? [[ref.entity, { id, ref }] as const] : [])));
   const takes = (item: Item): boolean => {
     const entry = projected.get(item.id);
-    return as === 'own' && entry !== undefined && entry.ref.regions && entry.ref.kind === item.kind;
+    return as === 'own' && input.entities !== undefined && entry !== undefined && entry.ref.regions && entry.ref.kind === item.kind;
   };
   const skipped = items.filter((item) => projected.has(item.id) && !doubled.has(item.id) && !takes(item)).map((item) => item.id);
   // the values, as the projection gives them (a degenerate one refused)
@@ -161,25 +172,30 @@ export function projectSketch(context: SketchToolCall, input: ProjectSketchInput
     if ('code' in value) return failed(`${item.id} of ${from} cannot be projected: ${value.detail}`);
     values.set(item.id, value);
   }
-  // then, for own, a place this sketch already holds with an own curve that forms regions
+  // then, for own, a place this sketch already holds with an own curve that forms regions; a
+  // flagged entry to take over there is told how to switch its flag off instead
+  const covered: string[] = [];
   if (as === 'own') {
     const mine = solvedCurves(target, targetResult.sketch);
     const own = [...mine.curves.values()].filter((curve) => curve.source === 'own' && curve.regions);
     const geometry: SketchGeometry = { points: { ...mine.geometry.points }, radii: { ...mine.geometry.radii } };
     for (const [id, value] of values) {
       const curve = placed(`\u0000${id}`, value, geometry);
-      if (curve && own.some((other) => occupies(curve, other, geometry))) {
-        doubled.add(id);
-        values.delete(id);
-      }
+      const other = curve && own.find((o) => occupies(curve, o, geometry));
+      if (!other) continue;
+      doubled.add(id);
+      values.delete(id);
+      const item = items.find((i) => i.id === id) as Item;
+      const entry = projected.get(id);
+      if (entry && takes(item)) covered.push(COVERED(entry.id, entry.ref, other.id, target.id));
     }
   }
   const made = items.filter((item) => values.has(item.id));
-  if (made.length === 0) return failed(`nothing to project: of ${from} ${skipped.length} ${skipped.length === 1 ? 'entity is' : 'entities are'} projected already${doubled.size ? `, ${doubled.size} at a place another curve has` : ''}`);
+  if (made.length === 0) return failed(`nothing to project: of ${from} ${skipped.length} ${skipped.length === 1 ? 'entity is' : 'entities are'} projected already${doubled.size ? `, ${doubled.size} at a place another curve has` : ''}${covered.map((text) => `; ${text}`).join('')}`);
 
   const sketch = target.id;
   const commands: Command[] = [];
-  const out = { entries: [] as Id[], sources: [] as Id[], skipped, doubled: items.filter((item) => doubled.has(item.id)).map((item) => item.id), taken: [] as Id[], curves: [] as Id[], points: [] as Id[], helpers: [] as Id[], constraints: [] as Id[] };
+  const out = { entries: [] as Id[], sources: [] as Id[], skipped, doubled: items.filter((item) => doubled.has(item.id)).map((item) => item.id), taken: [] as Id[], curves: [] as Id[], points: [] as Id[], helpers: [] as Id[], constraints: [] as Id[], patched: [] as Id[] };
   const entryOf = new Map<Id, Id>();
   for (const item of made) {
     const ref: SketchProjection = { type: 'sketch', sketch: from, entity: item.id, kind: item.kind, regions: as === 'own' ? false : role(item) };
@@ -196,6 +212,20 @@ export function projectSketch(context: SketchToolCall, input: ProjectSketchInput
     }
   }
   if (as === 'own') commands.push(...ownOutline(sketch, made, values, entryOf, out, newId, heldEnds(target, targetResult.sketch)));
+  // a taken entry is renamed to its own curve in the regions along it and on its side face: what
+  // reads them is patched in the same batch, or the takeover is refused
+  if (out.taken.length > 0) {
+    const renames: Record<Id, Id> = {};
+    const overCurves = made.filter((item) => item.kind !== 'point');
+    overCurves.forEach((item, i) => {
+      const entry = entryOf.get(item.id) as Id;
+      if (out.taken.includes(entry)) renames[entry] = out.curves[i];
+    });
+    const patches = renamePatches(context.document, target, renames);
+    if (patches.unpatched.length > 0) return failed(UNPATCHED(out.taken, patches.unpatched));
+    commands.push(...patches.commands);
+    out.patched.push(...patches.patched);
+  }
   return { ok: true, commands, ids: out };
 }
 

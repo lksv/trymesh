@@ -25,7 +25,7 @@ const line = (a: Vec2, b: Vec2): ImportedCurve => ({ type: 'line', a, b });
 const polar = (c: Vec2, r: number, deg: number): Vec2 => [c[0] + r * Math.cos((deg * Math.PI) / 180), c[1] + r * Math.sin((deg * Math.PI) / 180)];
 const arc = (c: Vec2, r: number, from: number, to: number): ImportedCurve => ({ type: 'arc', center: c, start: polar(c, r, from), end: polar(c, r, to) });
 const dist = (a: Vec2, b: Vec2): number => Math.hypot(a[0] - b[0], a[1] - b[1]);
-const brief = (r: ReturnType<typeof assemble>['report']): string => JSON.stringify({ curves: r.curves, byKind: r.byKind, welded: r.welded, moved: r.moved, shifted: r.shifted, closed: r.closed, dropped: r.dropped, duplicates: r.duplicates, blocked: r.blocked, open: r.open, gaps: r.gaps.length });
+const brief = (r: ReturnType<typeof assemble>['report']): string => JSON.stringify({ curves: r.curves, byKind: r.byKind, welded: r.welded, moved: r.moved, reshaped: r.reshaped, bent: r.bent, radius: r.radius, closed: r.closed, dropped: r.dropped, duplicates: r.duplicates, blocked: r.blocked, crowded: r.crowded, open: r.open, gaps: r.gaps.length });
 const inSketch = (curves: Record<string, ImportedCurve>): EngineState => run(newEngine(), addSketch('s', XY), addOutline('s', 'o', outlineEntry(curves)));
 const square = (s: number): ImportedCurve[] => [line([0, 0], [s, 0]), line([s, 0], [s, s]), line([s, s], [0, s]), line([0, s], [0, 0])];
 
@@ -90,7 +90,7 @@ describe('J: the reviews', () => {
       const q = made.curves.a2 as { center: Vec2; start: Vec2; end: Vec2 };
       console.log(`J5 gap ${gap}:`, brief(made.report), '|rs − re|', Math.abs(dist(q.start, q.center) - dist(q.end, q.center)).toExponential(2), 'radius', dist(q.start, q.center).toFixed(6), 'centre moved', dist(q.center, (second as { center: Vec2 }).center).toExponential(2));
       expect(made.report.moved).toBeLessThanOrEqual(0.01);
-      expect(made.report.shifted).toBeLessThanOrEqual(0.01);
+      expect(made.report.bent).toBeLessThanOrEqual(0.01);
     }
   });
 

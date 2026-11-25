@@ -19,8 +19,8 @@
 import type { Command, CommandResult, Engine, EngineState, Expr, Id, QueryOutcome, SketchResult, SketchToolInputs, Vec2 } from '../../../packages/engine/src/index';
 import { freshIds, sketchTool } from '../../../packages/engine/src/index';
 import type { OutlineAbout } from '../../../packages/engine/src/export/outline';
-import type { CommandAfter, EntryCurvesResult, ImportOutlineAnswer, ImportOutlineArgs, ImportedCurve, OutlineDetail, OutlineInput, OutlineOutcome, OutlineReport, PlacedOutline, SketchFeatureAfter, SketchOutline } from './contract';
-import { ENTITY_TAKEN, OUTLINE_LIMITS, OUTLINE_NOT_CUT, OUTLINE_REFUSALS, importOutline, outlineRevision, weldOutline } from './contract';
+import type { CommandAfter, EntryCurvesResult, ImportOutlineAnswer, ImportOutlineArgs, ImportedCurve, OutlineDetail, OutlineInput, OutlineOutcome, OutlineReport, PlacedOutline, ShownLoop, SketchFeatureAfter, SketchOutline, SketchRegionsResult } from './contract';
+import { ENTITY_KIND_CHANGED, ENTITY_TAKEN, OUTLINE_LIMITS, OUTLINE_NOT_CUT, OUTLINE_REFUSALS, SKETCH_SHOWN, importOutline, openEnds, outlineIds, outlineRevision, weldOutline } from './contract';
 
 // ---------------------------------------------------------------- the engine with the kind
 
@@ -35,7 +35,10 @@ export declare function fail(message: string): never;
 // the query of section 6 of the contract, the MCP tool and get_sketch, as the tests reach them
 export declare function entryCurves(args: { sketch: Id; entry: Id; kind?: ImportedCurve['type']; from?: number; max?: number }): EntryCurvesResult;
 export declare function importOutlineTool(args: ImportOutlineArgs): ImportOutlineAnswer;
-export declare function getSketch(sketch: Id): { external: (OutlineDetail | { id: Id })[]; advice: string[] };
+export declare function getSketch(sketch: Id): { external: (OutlineDetail | { id: Id })[]; regions: { ref: ShownLoop; area: number; holes: number }[]; advice: string[] };
+// the MCP tools `query` and `execute`, as an AI calls them: what it has is their answers alone
+export declare function mcpQuery(query: 'sketchRegions', args: { sketch: Id; curve?: Id; from?: number; max?: number }): SketchRegionsResult;
+export declare function mcpExecute(command: CommandAfter): { ok: boolean; features?: Record<Id, { status: string }> };
 
 export const done = (result: CommandResult): EngineState => (result.ok ? result.state : fail(`${result.error.code}: ${result.error.message}`));
 export const run = (...commands: CommandAfter[]): EngineState => done(engine.execute(commands.length === 1 ? commands[0] : { type: 'batch', commands }));
@@ -185,9 +188,9 @@ export function board(): EngineState {
   // the report: 12 curves (4 lines, 4 arcs, 4 circles), nothing welded, nothing open; the layers
   // of the file with what they hold, the courtyard and the text among them
   if (report.curves !== 12 || report.open !== 0 || !same(report.byKind, { line: 4, circle: 4, arc: 4, spline: 0 }) || !same(Object.keys(report.about.layers), ['Edge.Cuts', 'F.CrtYd', 'F.SilkS'])) fail('the report');
-  // `source` is what the file was read with ({ format: 'dxf', layers: ['Edge.Cuts'] }): a
+  // `readWith` is what the file was read with ({ format: 'dxf', layers: ['Edge.Cuts'] }): a
   // replacement repeats it
-  run(sketch('board', XY), outline('board', 'pcbo', { type: 'outline', name: 'board.dxf', source: report.source, curves, anchor: 'center' }));
+  run(sketch('board', XY), outline('board', 'pcbo', { type: 'outline', name: 'board.dxf', readWith: report.readWith, curves, anchor: 'center' }));
   return run(extrude('pcb', 'board', [OUTLINE], '1.6', 'new'));
 }
 // What the board is after step 1: no own geometry, no freedom, one region of the eight outline
@@ -466,7 +469,8 @@ export function revisedFile(): boolean {
     revision.added.length === 0 &&
     revision.removed.length === 0 &&
     revision.renamed.length === 0 &&
-    same(entry.source, { format: 'dxf', layers: ['Edge.Cuts'] }) &&
+    same(entry.readWith, { format: 'dxf', layers: ['Edge.Cuts'] }) &&
+    revision.changed === 7 &&
     entry.anchor === 'center' &&
     entry.name === 'board.dxf' &&
     allOk(state) &&
@@ -528,7 +532,7 @@ export function lidSection(): boolean {
 export function placement(): boolean {
   fresh();
   const { curves, report } = boardFile(62);
-  run(sketch('board', XY), outline('board', 'pcbo', { type: 'outline', name: 'board.dxf', source: report.source, curves, anchor: 'center' }), extrude('pcb', 'board', [OUTLINE], '1.6', 'new'));
+  run(sketch('board', XY), outline('board', 'pcbo', { type: 'outline', name: 'board.dxf', readWith: report.readWith, curves, anchor: 'center' }), extrude('pcb', 'board', [OUTLINE], '1.6', 'new'));
   skeletonAndBase();
   const byOrigin = run({ type: 'updateExternal', sketch: 'board', id: 'pcbo', ref: { type: 'outline', anchor: 'origin', x: -130, y: -100 } });
   const measured = resultOf(byOrigin, 'frame').measurements;
@@ -634,7 +638,7 @@ export function orderOfTheFile(): boolean {
   const swapped = [parts[0], parts[2], parts[1], ...parts.slice(3)].join('0\r\nCIRCLE\r\n');
   const second = read(importOutline('dxf', bytes(swapped), EDGE)).curves;
   const revision = outlineRevision(first, second);
-  return revision.kept === 12 && revision.added.length === 0 && same(revision.renamed, [{ id: 'c1', was: 'c2' }, { id: 'c2', was: 'c1' }]) && first.c1.type === 'circle' && second.c1.type === 'circle' && first.c1.center[0] !== second.c1.center[0];
+  return revision.kept === 12 && revision.changed === 0 && revision.added.length === 0 && same(revision.renamed, [{ id: 'c1', was: 'c2' }, { id: 'c2', was: 'c1' }]) && first.c1.type === 'circle' && second.c1.type === 'circle' && first.c1.center[0] !== second.c1.center[0];
 }
 
 // ================================================================ the readers
@@ -663,31 +667,40 @@ export function welded(): boolean {
   return exact.regions === 4 && exact.open === 16 && four.regions === 5 && four.open === 0 && four.welded === 8 && four.moved < 1e-4 && two.regions === 5 && two.moved < 0.01 && gaps.length === 16 && near(gaps[0].distance, 0.0031, 1e-3);
 }
 
-// The bounds of the weld (the reviews: fable 1, 2, 12; codex 2, 3; agy 6), on curves given to
-// `weldOutline` directly. Measured, J1 to J6.
+// The bounds of the weld (the reviews of both rounds), on curves given to `weldOutline` directly.
+// Measured, J1 to J6 and K2 to K5.
 export function weldBounds(): boolean {
   const line = (a: Vec2, b: Vec2): ImportedCurve => ({ type: 'line', a, b });
   const polar = (c: Vec2, r: number, deg: number): Vec2 => [c[0] + r * Math.cos((deg * Math.PI) / 180), c[1] + r * Math.sin((deg * Math.PI) / 180)];
   const arc = (c: Vec2, r: number, from: number, to: number): ImportedCurve => ({ type: 'arc', center: c, start: polar(c, r, from), end: polar(c, r, to) });
-  const square: ImportedCurve[] = [line([0, 0], [20, 0]), line([20, 0], [20, 20]), line([20, 20], [0, 20]), line([0, 20], [0, 0])];
+  const side = (gap: number): ImportedCurve[] => [line([0, 0], [20 - gap, 0]), line([20, 0], [20, 20 - gap]), line([20, 20], [gap, 20]), line([0, 20], [0, gap])];
+  const square = side(0);
+  const kept = (welded: { curves: (ImportedCurve | undefined)[] }): ImportedCurve[] => welded.curves.filter((c): c is ImportedCurve => c !== undefined);
+  const open = (welded: { curves: (ImportedCurve | undefined)[] }): number => openEnds(kept(welded), 0.01).open;
   // a corner of radius 0.5 drawn as 200 lines of 0.0039 mm, whose ends meet: nothing is welded
   const corner = Array.from({ length: 201 }, (_, i) => polar([19.5, 0.5], 0.5, -90 + (90 * i) / 200));
   const fine = weldOutline([line([0, 0], corner[0]), ...corner.slice(1).map((p, i) => line(corner[i], p)), line(corner[200], [20, 20]), line([20, 20], [0, 20]), line([0, 20], [0, 0])], 0.01);
   // three ends at x = 0, 0.009 and 0.018: the second goes onto the first, the third would have to
   // go 0.018 and stays, counted and listed
   const chain = weldOutline([line([-5, 0], [0, 0]), line([0.009, 0], [0.009, 5]), line([0.018, 0], [5, 0.018])], 0.01);
-  // a hole written as an arc from 0° to 359.9° (its ends 0.0028 mm apart) is a circle; to 359° an arc
+  // a hole written as an arc from 0° to 359.9° (its ends 0.0028 mm apart) is a circle; to 359° an
+  // arc; with a chord under the join (359.99999°) a circle whatever the weld
   const hole = weldOutline([...square, arc([10, 10], 1.6, 0, 359.9)], 0.01);
   const notHole = weldOutline([...square, arc([10, 10], 1.6, 0, 359)], 0.01);
-  // two quarter arcs of radius 10 that miss each other by 0.005: the later is re-centred, its
-  // centre and radius within the weld (measured: 0.0018 and 0.0013); by 0.02 they stay apart
+  const tiny = weldOutline([...square, arc([10, 10], 1.6, 0, 359.99999)], 0);
+  // two quarter arcs of radius 10 that miss each other by 0.005: the later is the circle through
+  // its new ends and its old middle (measured: its quarter points 0.0010 off, its radius 10.0043);
+  // by 0.02 they stay apart
   const pair = weldOutline([arc([1.2345, 2.3456], 10, 0, 90), arc([1.2395, 2.3431], 10, 90, 180)], 0.01);
   const apart = weldOutline([arc([1.2345, 2.3456], 10, 0, 90), arc([1.2545, 2.3356], 10, 90, 180)], 0.01);
-  // an arc of radius 1000 and nearly a whole turn with an arc of radius 30 ending 0.009 from its
-  // end: neither radius changes by more than the weld (measured: 0 and 5e-7)
-  const big = arc([0, 1000], 1000, -90, 269.999);
-  const beside = weldOutline([big, arc([(big as { end: Vec2 }).end[0] + 0.009, (big as { end: Vec2 }).end[1] - 30], 30, 90, 180)], 0.01);
-  const kept = beside.curves[0];
+  // an arc gives way to another arc only: two lines that meet 0.005 from the start of an arc
+  // leave the arc where it is, and the joint open (the first revision moved the arc's centre 0.0035)
+  const unit = arc([0, 0], 1, 0, 90);
+  const beside = weldOutline([unit, line([1.005, 0], [3, 0]), line([1.005, 0], [1.005, -2])], 0.01);
+  // a square with four gaps of 0.005 and each side twice: the twins go first, then it closes
+  const twins = weldOutline([...side(0.005), ...side(0.005)], 0.01);
+  // a line shorter than the gaps around it is not collapsed onto a third end
+  const short = weldOutline([line([-5, 0], [0, 0]), line([0.003, 0], [0.006, 0]), line([0.0135, 0], [5, 0])], 0.01);
   // the bottom side a second time, the other way round, and a hole twice
   const twice = weldOutline([...square, line([20, 0], [0, 0]), { type: 'circle', center: [5, 5], radius: 1 }, { type: 'circle', center: [5, 5], radius: 1 }], 0.01);
   return (
@@ -696,21 +709,49 @@ export function weldBounds(): boolean {
     chain.welded === 1 &&
     chain.moved <= 0.01 &&
     chain.blocked === 1 &&
-    chain.open === 4 &&
+    open(chain) === 4 &&
     hole.closed === 1 &&
     hole.curves[4]?.type === 'circle' &&
     notHole.curves[4]?.type === 'arc' &&
-    notHole.open === 2 &&
+    open(notHole) === 2 &&
+    tiny.curves[4]?.type === 'circle' &&
     pair.welded === 1 &&
-    pair.shifted <= 0.01 &&
+    pair.reshaped === 1 &&
+    pair.bent <= 0.01 &&
     apart.welded === 0 &&
-    kept?.type === 'arc' &&
-    near(Math.hypot(kept.start[0] - kept.center[0], kept.start[1] - kept.center[1]), 1000, 0.01) &&
-    beside.moved <= 0.01 &&
+    same(beside.curves[0], unit) &&
+    beside.reshaped === 0 &&
+    beside.blocked === 1 &&
+    twins.duplicates === 4 &&
+    twins.welded === 4 &&
+    open(twins) === 0 &&
+    short.dropped === 0 &&
+    open(short) === 2 &&
     twice.duplicates === 2 &&
     twice.curves[4] === undefined &&
     twice.curves[6] === undefined
   );
+}
+
+// The IDs are the reader's and the weld renames nothing (the second round of reviews; measured,
+// K1). A file with a hole written as an arc of nearly a whole turn, between circles and arcs:
+// whatever the weld, the IDs are `l1 l2 l3 l4 a1 c1 a2 c2 a3`; with the default weld `a1` is a
+// circle, with none an arc. A revision that makes the entity `o/a1` another kind is taken when no
+// constraint names it, and refused, naming the entity, both kinds and the constraint, when one does.
+export function idsAndTheWeld(): boolean {
+  const line = (a: Vec2, b: Vec2): ImportedCurve => ({ type: 'line', a, b });
+  const polar = (c: Vec2, r: number, deg: number): Vec2 => [c[0] + r * Math.cos((deg * Math.PI) / 180), c[1] + r * Math.sin((deg * Math.PI) / 180)];
+  const arc = (c: Vec2, r: number, from: number, to: number): ImportedCurve => ({ type: 'arc', center: c, start: polar(c, r, from), end: polar(c, r, to) });
+  const file: ImportedCurve[] = [line([0, 0], [40, 0]), line([40, 0], [40, 40]), line([40, 40], [0, 40]), line([0, 40], [0, 0]), arc([10, 10], 1.6, 0, 359.9), { type: 'circle', center: [20, 10], radius: 1 }, arc([30, 30], 3, 0, 90), { type: 'circle', center: [10, 30], radius: 1 }, arc([30, 10], 3, 180, 300)];
+  const ids = outlineIds(file);
+  const named = (weld: number): Record<Id, ImportedCurve> => Object.fromEntries(weldOutline(file, weld).curves.flatMap((curve, i) => (curve ? [[ids[i], curve]] : [])));
+  const [asCircle, asArc] = [named(0.01), named(0)];
+  run(sketch('idSk', XY), outline('idSk', 'o', { type: 'outline', curves: asCircle, regions: false }));
+  const update: CommandAfter = { type: 'updateExternal', sketch: 'idSk', id: 'o', ref: { type: 'outline', curves: asArc } };
+  const free = engine.preview(update).ok;
+  run(pt('idSk', 'p', 12, 12), constrain('idSk', 'k', { type: 'coincident', a: 'p', b: 'o/a1/center' }), pt('idSk', 'q', 12, 10), constrain('idSk', 'kq', { type: 'pointOnCurve', point: 'q', curve: 'o/a1' }));
+  // the centre is a point of a circle and of an arc alike and may stay named; the curve changes its kind
+  return same(ids, ['l1', 'l2', 'l3', 'l4', 'a1', 'c1', 'a2', 'c2', 'a3']) && same(Object.keys(asCircle), Object.keys(asArc)) && asCircle.a1.type === 'circle' && asArc.a1.type === 'arc' && outlineRevision(asCircle, asArc).changed === 1 && free && refused(update, ENTITY_KIND_CHANGED('o/a1', 'circle', 'arc', ['kq']));
 }
 
 // Polylines with bulges, both forms, read as the engine writes them (D54: POLYLINE, VERTEX and
@@ -801,6 +842,22 @@ export function closedSpline(): boolean {
   return resultOf(state, 'clSk').valid && same(loopsOf(state, 'clSk'), [['o/s1']]) && resultOf(state, 'clSk').openEnds === undefined && getSketch('clSk').advice.every((text) => !text.includes('open'));
 }
 
+// Nodes without a handle, and what has no extent (the second round of reviews; measured, K8). A
+// `C` whose first control point is its start, an `S` after an `L` (its first control point is the
+// current point, by SVG) and a `T` after an `L` are splines with two control points at one place:
+// read, accepted by the validator and placed, one region. A `Q` that returns to its start and a
+// `C` whose four points are one place have no extent: left out and counted, their numbers unused.
+export function handles(): boolean {
+  const file = (d: string): Uint8Array => bytes(`<svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="100mm" viewBox="0 0 100 100"><path d="${d}"/></svg>`);
+  const placed = ['M10 10 C10 10 30 0 40 10 L40 30 L10 30 Z', 'M10 30 L10 10 S30 0 40 10 L40 30 Z', 'M10 30 L10 10 T40 10 L40 30 Z'].every((d, i) => {
+    const { curves, report } = read(importOutline('svg', file(d)));
+    const state = run(sketch(`hSk${i}`, XY), outline(`hSk${i}`, 'o', { type: 'outline', curves }));
+    return report.byKind.spline === 1 && resultOf(state, `hSk${i}`).valid && loopsOf(state, `hSk${i}`).length === 1;
+  });
+  const flat = read(importOutline('svg', file('M10 10 L40 10 L40 30 L10 30 Z M50 50 Q60 40 50 50 M70 70 C70 70 70 70 70 70'))).report;
+  return placed && flat.dropped === 2 && flat.byKind.spline === 0 && same(flat.ids.unused, ['s1', 's2']) && flat.curves === 4;
+}
+
 // A tangency at a corner of an outline. The end of the bottom line (`o/l1/b`) and the start of
 // the corner arc (`o/a1/start`) are two entities at one place. An own line that starts on either
 // and is tangent to the arc is the tangent at their common end: horizontal, and its far end slides
@@ -815,7 +872,17 @@ export function cornerTangent(): boolean {
     const dragged = run({ type: 'dragPoint', sketch: s, point: 'q', x: 36, y: -12 });
     const diagnosis = engine.diagnoseSketch(s);
     return near(resultOf(dragged, s).points.q.y, -20, 1e-9) && near(resultOf(dragged, s).points.q.x, 36, 1e-6) && diagnosis.degreesOfFreedom === 1 && diagnosis.redundant.length === 0;
-  });
+  }) && cornerArc();
+}
+// The same from the other side (the review, fable 9; measured, K12): an own arc that ends at the
+// corner, held on the start of the corner arc (`o/a1/start`) and tangent to the line of the outline
+// (`o/l1`), whose end is that place under another ID. Its centre is then straight below the corner.
+function cornerArc(): boolean {
+  const { curves } = boardFile(60);
+  const s = 'tanSkArc';
+  run(sketch(s, XY), outline(s, 'o', { type: 'outline', curves, anchor: 'center' }), pt(s, 'c', 27.3, -24.8), pt(s, 'p', 27.2, -20.1), pt(s, 'e', 32, -25.2), { type: 'addCurve', sketch: s, id: 'n', curve: { type: 'arc', center: 'c', start: 'e', end: 'p', construction: true } }, constrain(s, 'k1', { type: 'coincident', a: 'p', b: 'o/a1/start' }), constrain(s, 'k2', { type: 'tangent', a: 'o/l1', b: 'n' }));
+  const dragged = run({ type: 'dragPoint', sketch: s, point: 'e', x: 33, y: -26 });
+  return near(resultOf(dragged, s).points.c.x, 27, 1e-9) && engine.diagnoseSketch(s).redundant.length === 0;
 }
 
 // The subset of SVG, as a drawing program writes one: a root of 100 mm × 50 mm over a viewBox of
@@ -884,6 +951,22 @@ export function manyCurves(): boolean {
   );
 }
 
+// A region of more than twenty curves, extruded from the answers of MCP alone (the second round of
+// reviews: the capped rows of `get_sketch` left no way to name it). `get_sketch` prints the loop
+// of the toothed outline short, with the call that gives it whole; the query `sketchRegions` asked
+// for the region of one of its curves answers with the whole reference, and that reference is what
+// the extrusion takes.
+export function regionThroughMcp(): boolean {
+  const shown = getSketch('bigSk').regions;
+  const long = shown.map((row) => row.ref).find((ref): ref is Extract<ShownLoop, { count: number }> => 'count' in ref);
+  const answer = mcpQuery('sketchRegions', { sketch: 'bigSk', curve: 'o/l1' });
+  const region = answer.regions[0];
+  const made = mcpExecute({ type: 'addFeature', feature: { id: 'bigBody', name: 'bigBody', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 'bigSk', regions: [region.ref] }, extent: { type: 'distance', start: 0, distance: 2 }, operation: 'new' } } as Command);
+  // the pages: 501 regions, twenty at a time, and a page never cut inside a loop
+  const second = mcpQuery('sketchRegions', { sketch: 'bigSk', from: 20, max: 20 });
+  return shown.length === SKETCH_SHOWN.regions && long !== undefined && long.count === 500 && long.first.length === SKETCH_SHOWN.loop && long.whole.includes('sketchRegions') && answer.status === 'ok' && answer.total === 1 && region.ref.outerLoop.length === 500 && region.holes.length === 500 && made.ok && made.features?.bigBody.status === 'ok' && second.total === 501 && second.from === 20 && second.regions.length === 20;
+}
+
 // ================================================================ the tool of MCP
 
 // `import_outline` without a sketch only reports; with one it places; with `replace` it reads the
@@ -903,10 +986,10 @@ export function throughMcp(): boolean {
     look.entry === undefined &&
     Object.keys(look.report.about.layers).length === 3 &&
     same(placed.entry, { sketch: 'mcpSk', id: 'pcbo' }) &&
-    same(placed.ids, { prefix: 'pcbo/', lines: 4, arcs: 4, circles: 4, splines: 0 }) &&
+    same(placed.report.ids, { lines: 4, arcs: 4, circles: 4, splines: 0, unused: [], unusedCount: 0 }) &&
     again.revision?.kept === 12 &&
     again.report.curves === 12 &&
-    same(again.report.source, { format: 'dxf', layers: ['Edge.Cuts'] }) &&
+    same(again.report.readWith, { format: 'dxf', layers: ['Edge.Cuts'] }) &&
     held.refused !== undefined &&
     held.refused.includes('pcbo/c4/center') &&
     held.report.curves === 11 &&
@@ -950,7 +1033,13 @@ export function refusals(): boolean {
     unreadable(importOutline('dxf', bytes(boardDxf(60).replace('0\r\nEOF\r\n', '')))) &&
     unreadable(importOutline('svg', bytes('<svg><circle r="10"/><path d="M0 0 L'))) &&
     unreadable(importOutline('svg', bytes('<svg><path d="M0 0 L1 2 3"/></svg>'))) &&
-    importOutline('svg', bytes('<svg><circle r="10"/><text>A</text></svg>')).ok
+    importOutline('svg', bytes('<svg><circle r="10"/><text>A</text></svg>')).ok &&
+    // the second round: two roots, an attribute twice, a number that is none (S10); a polyline that
+    // declares four vertices and holds three (I10)
+    unreadable(importOutline('svg', bytes('<svg><circle r="10"/></svg><svg><circle r="5"/></svg>'))) &&
+    unreadable(importOutline('svg', bytes('<svg><circle r="10" r="5"/></svg>'))) &&
+    unreadable(importOutline('svg', bytes('<svg><circle r="1e999"/></svg>'))) &&
+    unreadable(importOutline('dxf', bytes(['0', 'SECTION', '2', 'ENTITIES', '0', 'LWPOLYLINE', '8', '0', '90', '4', '70', '1', '10', '0', '20', '0', '10', '10', '20', '0', '10', '10', '20', '10', '0', 'ENDSEC', '0', 'EOF', ''].join('\r\n'))))
   );
 }
 
@@ -971,4 +1060,4 @@ export function scenario(): boolean {
   ];
   return steps.every((step) => step());
 }
-export const cases: (() => boolean)[] = [placement, flag, mixedLoop, updateRule, orderOfTheFile, welded, weldBounds, ownFiles, unitsAndLayers, splines, closedSpline, cornerTangent, svgSubset, manyCurves, throughMcp, refusals];
+export const cases: (() => boolean)[] = [placement, flag, mixedLoop, updateRule, orderOfTheFile, welded, weldBounds, idsAndTheWeld, ownFiles, unitsAndLayers, splines, closedSpline, handles, cornerTangent, svgSubset, manyCurves, regionThroughMcp, throughMcp, refusals];

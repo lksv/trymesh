@@ -14,13 +14,26 @@
 // - Millimetres from `width`, `height` and the `viewBox`. The y of SVG points down: every place is
 //   mirrored, (x, y) to (x, −y).
 // - Everything left out is counted in `about.skipped`.
+// - After the second round of review (codex 6 and 9, agy 4 and 11, fable 16): one root element, no
+//   attribute twice, every number finite (as read and after the transforms), a root with a size
+//   above 0, the smaller of two scales that differ (with a note), a limit of control points and a
+//   path scanned as it is read, `about.unitFrom`, `about.notes` and the layers by tag, and a shape
+//   under a transform without an inverse listed.
 import type { ImportedCurve, ReadCurve, ReadOutline, Vec2 } from './proto';
 
 // the limits checked while reading (the review of the design, codex 10)
 export const SVG_MAX_CHARACTERS = 8_000_000;
 export const SVG_MAX_CURVES = 8000;
+// the control points of all the splines read from the layers asked for (4 for C and S, 3 for Q and T)
+export const SVG_MAX_CONTROL = 8000;
 
 const unreadable = (why: string): Error => new Error(`unreadable: ${why}`);
+// a number as written; one that is not finite (`1e999`) is no number of a drawing
+const finiteNumber = (text: string, what: string): number => {
+  const value = Number(text);
+  if (!Number.isFinite(value)) throw unreadable(`${what}: the number "${text}" is not finite`);
+  return value;
+};
 
 // a 2 × 3 matrix [a, b, c, d, e, f]: (x, y) to (a·x + c·y + e, b·x + d·y + f)
 type Matrix = [number, number, number, number, number, number];
@@ -47,7 +60,7 @@ function numberList(text: string, what: string): number[] {
     one.lastIndex = i;
     const found = one.exec(text);
     if (!found) throw unreadable(`${what}: a number is expected at character ${i} ("${text.slice(i, i + 12)}")`);
-    out.push(Number(found[0]));
+    out.push(finiteNumber(found[0], `${what}, at character ${i}`));
     i += found[0].length;
   }
 }
@@ -90,10 +103,10 @@ function transformOf(text: string | undefined, what: string): Matrix {
 // the root's `width` and `height`, in millimetres
 const UNIT_MM: Record<string, number> = { mm: 1, cm: 10, in: 25.4, pt: 25.4 / 72, pc: 25.4 / 6, px: 25.4 / 96, '': 25.4 / 96 };
 const LENGTH = new RegExp(`^(${NUMBER})\\s*([A-Za-z%]*)$`);
-function length(text: string | undefined): number | undefined {
+function length(text: string | undefined, what: string): number | undefined {
   const found = text?.trim().match(LENGTH);
   if (!found || !(found[2] in UNIT_MM)) return undefined;
-  return Number(found[1]) * UNIT_MM[found[2]];
+  return finiteNumber(found[1], what) * UNIT_MM[found[2]];
 }
 // a length of a basic shape in user units: 96 of them an inch (SVG 1.1, 7.10)
 const USER: Record<string, number> = { '': 1, px: 1, in: 96, mm: 96 / 25.4, cm: 960 / 25.4, pt: 96 / 72, pc: 16 };
@@ -117,12 +130,21 @@ function decoded(value: string, at: number): string {
     return String.fromCodePoint(code);
   });
 }
-// The tags of a well-formed text, in order. Text between tags is passed over.
+// The tags of a well-formed text, in order. Text between tags is passed over inside the root; a
+// document has one root element, and outside it only white space, comments, processing
+// instructions and a DOCTYPE.
 function* tags(text: string): Generator<Tag> {
   const NAME = /[A-Za-z_][\w:.-]*/y;
   const open: string[] = [];
   const n = text.length;
-  let i = 0;
+  let i = text.charCodeAt(0) === 0xfeff ? 1 : 0;
+  let rooted = false; // a root element was opened
+  // text between two tags, or after the last: outside the root it is white space
+  const between = (from: number, to: number): void => {
+    if (open.length > 0) return;
+    const stray = text.slice(from, to).search(/\S/);
+    if (stray >= 0) throw unreadable(`text outside the root element (at character ${from + stray}: "${text.slice(from + stray, from + stray + 12)}")`);
+  };
   const until = (from: number, end: string, what: string): number => {
     const found = text.indexOf(end, from);
     if (found < 0) throw unreadable(`${what} that starts at character ${from} is not closed: the file is cut short`);
@@ -130,6 +152,7 @@ function* tags(text: string): Generator<Tag> {
   };
   for (;;) {
     const lt = text.indexOf('<', i);
+    between(i, lt < 0 ? n : lt);
     if (lt < 0) break;
     if (text.startsWith('<!--', lt)) i = until(lt, '-->', 'a comment');
     else if (text.startsWith('<?', lt)) i = until(lt, '?>', 'a processing instruction');
@@ -152,7 +175,10 @@ function* tags(text: string): Generator<Tag> {
       NAME.lastIndex = lt + 1;
       const name = NAME.exec(text)?.[0];
       if (name === undefined) throw unreadable(`a "<" that starts no tag (at character ${lt})`);
+      if (open.length === 0 && rooted) throw unreadable(`a second root element <${name}> (at character ${lt}): a document has one`);
+      rooted = true;
       const attributes: Record<string, string> = {};
+      const seen = new Set<string>();
       let j = lt + 1 + name.length;
       let selfClosing = false;
       for (;;) {
@@ -179,6 +205,8 @@ function* tags(text: string): Generator<Tag> {
         if (end < 0) throw unreadable(`the tag <${name}: the value of ${key} that starts at character ${j} is not closed: the file is cut short`);
         const value = text.slice(j + 1, end);
         if (value.includes('<')) throw unreadable(`the tag <${name}: a "<" in the value of ${key} (at character ${j})`);
+        if (seen.has(key)) throw unreadable(`the tag <${name}: the attribute ${key} is given twice (at character ${j})`);
+        seen.add(key);
         attributes[key] = decoded(value, lt);
         j = end + 1;
       }
@@ -200,8 +228,10 @@ interface Segment {
 const ARITY: Record<string, number> = { M: 2, L: 2, H: 1, V: 1, Z: 0, C: 6, S: 4, Q: 4, T: 2, A: 7 };
 // The segments of path data (SVG 1.1, 8.3.9). Groups of arguments after the first are the command
 // again; after M they are L. The two flags of an arc are one character each.
-function scanPath(d: string, what: string): Segment[] {
-  const out: Segment[] = [];
+// A generator: a segment is handed on as it is read, so that the limits of the reader stop a huge
+// path at once and no list of its segments is built.
+function* scanPath(d: string, what: string): Generator<Segment> {
+  let first = true;
   const one = new RegExp(NUMBER, 'y');
   let i = 0;
   const bad = (why: string): Error => unreadable(`${what}: ${why} at character ${i} of d ("${d.slice(i, i + 12)}")`);
@@ -212,8 +242,10 @@ function scanPath(d: string, what: string): Segment[] {
     one.lastIndex = i;
     const found = one.exec(d);
     if (!found) throw bad(i >= d.length ? 'the data ends where a number is expected' : 'a number is expected');
+    const value = Number(found[0]);
+    if (!Number.isFinite(value)) throw bad(`the number "${found[0]}" is not finite`);
     i += found[0].length;
-    return Number(found[0]);
+    return value;
   };
   const flag = (): number => {
     if (d[i] !== '0' && d[i] !== '1') throw bad('a flag 0 or 1 is expected');
@@ -224,12 +256,13 @@ function scanPath(d: string, what: string): Segment[] {
     const letter = d[i];
     const command = letter.toUpperCase();
     if (!/[A-Za-z]/.test(letter) || !(command in ARITY)) throw bad(`"${letter}" is no path command`);
-    if (out.length === 0 && command !== 'M') throw bad('a path starts with M');
+    if (first && command !== 'M') throw bad('a path starts with M');
+    first = false;
     const relative = letter !== command;
     i++;
     space();
     if (command === 'Z') {
-      out.push({ command: 'Z', relative, args: [] });
+      yield { command: 'Z', relative, args: [] };
       continue;
     }
     let groups = 0;
@@ -239,11 +272,10 @@ function scanPath(d: string, what: string): Segment[] {
         args.push(command === 'A' && (k === 3 || k === 4) ? flag() : number());
         space();
       }
-      out.push({ command: (command === 'M' && groups > 0 ? 'L' : command) as Segment['command'], relative, args });
+      yield { command: (command === 'M' && groups > 0 ? 'L' : command) as Segment['command'], relative, args };
       groups++;
     } while (i < d.length && /[0-9+\-.]/.test(d[i]));
   }
-  return out;
 }
 
 // An arc of SVG from `p` to `q` (not one place) with the radius `r` (not 0) and the two flags, in
@@ -266,7 +298,11 @@ const SHAPES = new Set(['path', 'rect', 'circle', 'ellipse', 'line', 'polyline',
 export function readSvg(text: string, options: { layers?: string[]; unit?: string } = {}): ReadOutline {
   if (text.length > SVG_MAX_CHARACTERS) throw new Error(`tooLarge: the file has ${text.length} characters, more than the ${SVG_MAX_CHARACTERS} an outline is read from`);
   const curves: ReadCurve[] = [];
-  const layers: Record<string, number> = {};
+  // per layer, its elements by tag (shapes and what is listed), read or not
+  const layers: Record<string, Record<string, number>> = {};
+  const notes: string[] = [];
+  let unitFrom: 'option' | 'file' | 'default' = 'default';
+  let control = 0; // the control points of the splines taken
   const skipped: Record<string, number> = {};
   const skip = (what: string): void => void (skipped[what] = (skipped[what] ?? 0) + 1);
   // the stack of open elements: the transform into millimetres with y up, the layers, whether its content is skipped
@@ -285,15 +321,24 @@ export function readSvg(text: string, options: { layers?: string[]; unit?: strin
     if (tagName === 'svg' && !root) {
       const box = a.viewBox ? numberList(a.viewBox, 'the viewBox of the root') : undefined;
       if (box && (box.length !== 4 || !(box[2] > 0) || !(box[3] > 0))) throw unreadable('the viewBox of the root is four numbers with a width and a height above 0');
-      const [w, h] = [length(a.width), length(a.height)];
+      const [w, h] = [length(a.width, 'the width of the root'), length(a.height, 'the height of the root')];
+      if ((w !== undefined && !(w > 0)) || (h !== undefined && !(h > 0))) throw unreadable(`the root has no size: width="${a.width ?? ''}" height="${a.height ?? ''}" (both above 0 when given)`);
       let scale = UNIT_MM.px;
-      if (options.unit !== undefined) scale = UNIT_MM[options.unit];
-      else if (box && w !== undefined && h !== undefined) {
+      if (options.unit !== undefined) {
+        scale = UNIT_MM[options.unit];
+        unitFrom = 'option';
+      } else if (box && w !== undefined && h !== undefined) {
+        // The two scales of the root. A viewer fits the box into the size (`meet`): the smaller.
+        // Equal within 1e-6: one scale. Otherwise the smaller with a note; stretched on purpose
+        // (`preserveAspectRatio="none"`) by more than a thousandth, the drawing has no one scale.
         const [sx, sy] = [w / box[2], h / box[3]];
-        if (Math.abs(sx - sy) > 1e-6 * Math.max(sx, sy)) throw unreadable('width, height and viewBox give an uneven scale; give the option unit');
-        scale = sx;
-      }
-      unit = options.unit ?? (box && w !== undefined ? `${Number(scale.toPrecision(9))} mm per unit` : 'px');
+        const apart = Math.abs(sx - sy) / Math.max(sx, sy);
+        if (apart > 1e-3 && (a.preserveAspectRatio ?? '').trim() === 'none') throw unreadable('width, height and viewBox give an uneven scale with preserveAspectRatio="none"; give the option unit');
+        scale = Math.min(sx, sy);
+        if (apart > 1e-6) notes.push(`width over the viewBox gives ${Number(sx.toPrecision(9))} mm per unit and height ${Number(sy.toPrecision(9))}; the smaller is taken, as a viewer fits the drawing${apart > 1e-3 ? ' (they differ by more than a thousandth: give the option unit if the size is wrong)' : ''}`);
+        unitFrom = 'file';
+      } else notes.push('the root gives no size (width, height and viewBox): read at 96 units per inch; give the option unit if the drawing is in another unit');
+      unit = options.unit ?? (unitFrom === 'file' ? `${Number(scale.toPrecision(9))} mm per unit` : 'px');
       // millimetres, y up; the user space as it is: the origin of the viewBox moves nothing
       root = [scale, 0, 0, -scale, 0, 0];
       if (tag.open) stack.push({ matrix: root, layers: [], skipped: false });
@@ -316,7 +361,10 @@ export function readSvg(text: string, options: { layers?: string[]; unit?: strin
     const layer = on[on.length - 1] ?? '';
     const shape = SHAPES.has(tagName);
     const listed = LISTED.has(tagName) || nested;
-    if (shape || listed) layers[layer] = (layers[layer] ?? 0) + 1;
+    if (shape || listed) {
+      layers[layer] ??= {};
+      layers[layer][tagName] = (layers[layer][tagName] ?? 0) + 1;
+    }
     if (options.layers !== undefined && !on.some((l) => options.layers?.includes(l))) continue;
     if (listed) {
       skip(nested ? 'svg (nested)' : tagName);
@@ -327,15 +375,33 @@ export function readSvg(text: string, options: { layers?: string[]; unit?: strin
     const flips = det(matrix) < 0;
     const scale = Math.hypot(matrix[0], matrix[1]);
     const at = (p: Vec2): Vec2 => apply(matrix, p);
-    const before = curves.length;
+    const [before, controlBefore] = [curves.length, control];
     const take = (curve: ImportedCurve): void => {
       if (curves.length >= SVG_MAX_CURVES) throw new Error(`tooLarge: the file has more than ${SVG_MAX_CURVES} curves on the layers asked for`);
+      // after the transforms every place and radius is a finite number
+      const places = curve.type === 'line' ? [curve.a, curve.b] : curve.type === 'circle' ? [curve.center, [curve.radius, 0] as Vec2] : curve.type === 'arc' ? [curve.center, curve.start, curve.end] : curve.points;
+      if (!places.every((p) => Number.isFinite(p[0]) && Number.isFinite(p[1]))) throw unreadable(`${label}: its transform gives a place that is no finite number`);
+      if (curve.type === 'spline') {
+        control += curve.points.length;
+        if (control > SVG_MAX_CONTROL) throw new Error(`tooLarge: the splines on the layers asked for have more than ${SVG_MAX_CONTROL} control points`);
+      }
       curves.push({ curve, layer });
     };
     const leaveOut = (why: string): void => {
       curves.length = before;
+      control = controlBefore;
       skip(`${tagName} (${why})`);
     };
+    // finite numbers can multiply to one that is not (`scale(1e200)` twice)
+    if (!matrix.every(Number.isFinite)) throw unreadable(`${label}: its transform is no finite number`);
+    // a transform without an inverse (`scale(2, 0)`) flattens the shape onto a line or a point
+    const flat = !(Math.abs(det(matrix)) > 1e-12 * Math.max(Math.hypot(matrix[0], matrix[1]), Math.hypot(matrix[2], matrix[3])) ** 2);
+    if (flat) {
+      // the data of a path is still read: one that does not parse is a broken file
+      if (tagName === 'path') for (const _ of scanPath(a.d ?? '', a.id !== undefined ? `the path "${a.id}"` : `the path at character ${tag.at}`));
+      skip(`${tagName} (flat transform)`);
+      continue;
+    }
     const line = (p: Vec2, q: Vec2): void => {
       if (p[0] !== q[0] || p[1] !== q[1]) take({ type: 'line', a: at(p), b: at(q) });
     };
@@ -351,7 +417,7 @@ export function readSvg(text: string, options: { layers?: string[]; unit?: strin
         odd ??= found[2];
         return 0;
       }
-      return Number(found[1]) * USER[found[2]];
+      return finiteNumber(found[1], `${label}, ${key}`) * USER[found[2]];
     };
     const same = (p: number, q: number): boolean => Math.abs(p - q) <= 1e-9 * Math.max(Math.abs(p), Math.abs(q));
     if (tagName === 'circle' || tagName === 'ellipse') {
@@ -403,6 +469,8 @@ export function readSvg(text: string, options: { layers?: string[]; unit?: strin
       // the control point before `here` of the last C or S, and of the last Q or T
       let [cubic, quad]: [Vec2 | undefined, Vec2 | undefined] = [undefined, undefined];
       for (const { command, relative, args: p } of segments) {
+        // after a segment that is not read the rest is only checked: data that does not parse is a broken file
+        if (unsupported) continue;
         const to = (x: number, y: number): Vec2 => (relative ? [here[0] + x, here[1] + y] : [x, y]);
         const mirror = (c: Vec2 | undefined): Vec2 => (c ? [2 * here[0] - c[0], 2 * here[1] - c[1]] : here);
         let [nextCubic, nextQuad]: [Vec2 | undefined, Vec2 | undefined] = [undefined, undefined];
@@ -439,12 +507,12 @@ export function readSvg(text: string, options: { layers?: string[]; unit?: strin
           here = next;
         }
         [cubic, quad] = [nextCubic, nextQuad];
-        if (unsupported) break;
       }
       // a path with a segment that is not read is left out whole
       if (unsupported) leaveOut(unsupported);
     }
   }
   if (!root) throw unreadable('not an SVG file (no svg element)');
-  return { curves, about: { unit, layers, skipped } };
+  // `layers` by tag is the shape of the contract; the type shared with the reader of DXF is the other fork's
+  return { curves, about: { unit, unitFrom, layers: layers as unknown as ReadOutline['about']['layers'], skipped, notes } };
 }

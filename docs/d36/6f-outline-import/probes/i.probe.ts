@@ -3,7 +3,7 @@
 // splines and the limits checked while reading. Only the reader (`./dxf`): no engine, no weld.
 import { describe, expect, it } from 'vitest';
 import { bezierAt, bsplineBeziers, splineBeziers } from '../../../../packages/engine/src/spline';
-import { DXF_MAX_CHARACTERS, DXF_MAX_CURVES, DXF_MAX_SPLINE_POINTS, readDxf, splineCurves } from './dxf';
+import { DXF_MAX_CHARACTERS, DXF_MAX_CONTROL, DXF_MAX_CURVES, DXF_MAX_SPLINE_POINTS, readDxf, splineCurves } from './dxf';
 import type { ImportedCurve, Vec2 } from './proto';
 
 type G = (code: number, value: string | number) => void;
@@ -369,7 +369,8 @@ describe('probe I: the reader of DXF, hardened', () => {
       unusedPoint: said(3, [0, 0, 0, 0, 0, 1, 1, 1, 1], [[9, 9], ...four]),
       // knots that differ in their last digits: one double knot, two pieces, none without extent
       lastDigits: said(3, [0, 0, 0, 0, 1, 1 + 1e-12, 2, 2, 2, 2], six),
-      // a piece without extent: two control points of a polyline spline at one place
+      // a piece without extent (two control points of a polyline spline at one place) is read as it
+      // is written: it takes its place in the order of the file and is left out after the IDs
       pieceWithoutExtent: said(1, [0, 0, 1, 2, 2], [[0, 0], [0, 0], [5, 0]]),
       degree1: said(1, [0, 0, 1, 3, 3], [[0, 0], [2, 1], [5, 0]]),
     };
@@ -386,7 +387,7 @@ describe('probe I: the reader of DXF, hardened', () => {
     expect(cases.discontinuous).toContain('SPLINE (discontinuous)');
     expect(cases.unusedPoint).toContain('SPLINE (discontinuous)');
     expect(cases.lastDigits).toBe('spline4 spline4 {}');
-    expect(cases.pieceWithoutExtent).toBe('line {"SPLINE piece (no extent)":1}');
+    expect(cases.pieceWithoutExtent).toBe('line line {}');
     expect(cases.degree1).toBe('line line {}');
     // what the engine's function does with the two cases when it is given them as they are
     const raw = bsplineBeziers(six, [0, 0, 0, 0, 1, 1 + 1e-12, 2, 2, 2, 2], 3);
@@ -513,5 +514,143 @@ describe('probe I: the reader of DXF, hardened', () => {
     expect(lifted.about.notes?.length).toBe(1);
     expect(lifted.curves[0].curve).toEqual({ type: 'line', a: [0, 0], b: [5, 0] });
     expect(elevated.about.notes?.length).toBe(1);
+  });
+  it('I10: comments, declared counts, paper space, the control points of splines, the layers by type', () => {
+    // 1. comments (group 999) after `0 SECTION`, between `9 $INSUNITS` and its value, inside an entity
+    const commented = ['999', 'written by a test', '0', 'SECTION', '999', 'the header', '2', 'HEADER', '9', '$INSUNITS', '999', 'inches', '70', '1', '0', 'ENDSEC', '0', 'SECTION', '999', 'the entities', '2', 'ENTITIES', '0', 'LINE', '8', 'a', '10', '0', '999', 'between the groups of an entity', '20', '0', '11', '1', '21', '0', '0', 'ENDSEC', '0', 'EOF', ''].join('\n');
+    const read = readDxf(commented);
+    console.log('I10 comments:', kinds(read.curves), 'unit', read.about.unit, read.about.unitFrom, 'b', JSON.stringify((read.curves[0].curve as { b: Vec2 }).b), 'layers', JSON.stringify(read.about.layers));
+    expect(read.about.unit).toBe('in');
+    expect((read.curves[0].curve as { b: Vec2 }).b[0]).toBeCloseTo(25.4, 12);
+
+    // 2. declared counts
+    const lw = (declared: number | undefined, n: number, closed = true) =>
+      dxf((g) => {
+        g(0, 'LWPOLYLINE');
+        g(8, '0');
+        if (declared !== undefined) g(90, declared);
+        g(70, closed ? 1 : 0);
+        for (const [x, y] of ([[0, 0], [10, 0], [10, 10], [0, 10]] as Vec2[]).slice(0, n)) {
+          g(10, x);
+          g(20, y);
+        }
+      });
+    const fourOfThree = refusal(() => readDxf(lw(4, 3)));
+    const fourOfFour = kinds(readDxf(lw(4, 4)).curves);
+    const undeclared = kinds(readDxf(lw(undefined, 3)).curves);
+    const four: Vec2[] = [[0, 0], [1, 2], [3, 2], [4, 0]];
+    const clamped = [0, 0, 0, 0, 1, 1, 1, 1];
+    const counts = (more: [number, number][], knots = clamped, control = four): string => {
+      const text = dxf((g) => spline(g, 3, knots, control, more));
+      const message = refusal(() => readDxf(text));
+      return message === 'read' ? kinds(readDxf(text).curves) : message;
+    };
+    const splineCounts = { right: counts([[72, 8], [73, 4], [74, 0]]), knots: counts([[72, 9], [73, 4]]), control: counts([[72, 8], [73, 5]]), fit: counts([[72, 8], [73, 4], [74, 2]]), none: counts([]) };
+    console.log('I10 LWPOLYLINE declaring 4 vertices and holding 3:', fourOfThree, '| holding 4:', fourOfFour, '| declaring nothing, 3 vertices:', undeclared);
+    for (const [name, value] of Object.entries(splineCounts)) console.log(`I10 SPLINE counts, ${name}:`, value);
+    expect(fourOfThree).toMatch(/^unreadable/);
+    expect(fourOfThree).toContain('declares 4');
+    expect(fourOfFour).toBe('line line line line');
+    expect(undeclared).toBe('line line line');
+    expect(splineCounts.right).toBe('spline4');
+    expect(splineCounts.none).toBe('spline4');
+    for (const refused of [splineCounts.knots, splineCounts.control, splineCounts.fit]) expect(refused).toMatch(/^unreadable/);
+
+    // 3. paper space
+    const paper = readDxf(
+      dxf((g) => {
+        line(g, 0, 0, 5, 0);
+        g(0, 'CIRCLE');
+        g(8, '0');
+        g(67, 1);
+        g(10, 1);
+        g(20, 1);
+        g(40, 2);
+        g(0, 'POLYLINE');
+        g(8, 'frame');
+        g(67, 1);
+        g(70, 1);
+        for (const [x, y] of [[0, 0], [200, 0], [200, 100]]) {
+          g(0, 'VERTEX');
+          g(8, 'frame');
+          g(10, x);
+          g(20, y);
+        }
+        g(0, 'SEQEND');
+        g(0, 'CIRCLE');
+        g(8, '0');
+        g(67, 0);
+        g(10, 1);
+        g(20, 1);
+        g(40, 2);
+      }),
+    );
+    console.log('I10 paper space:', kinds(paper.curves), JSON.stringify(paper.about.skipped), 'layers', JSON.stringify(paper.about.layers));
+    expect(kinds(paper.curves)).toBe('line circle');
+    expect(paper.about.skipped).toEqual({ 'CIRCLE (paper space)': 1, 'POLYLINE (paper space)': 1 });
+    expect(paper.about.layers).toEqual({ 0: { LINE: 1, CIRCLE: 2 }, frame: { POLYLINE: 1 } });
+    // paper space does not count toward the limit of curves
+    const papers = readDxf(dxf((g) => Array.from({ length: 9000 }, (_, i) => line(g, i, 0, i + 1, 1, [[67, 1]]))));
+    expect(papers.curves.length).toBe(0);
+    expect(papers.about.skipped).toEqual({ 'LINE (paper space)': 9000 });
+
+    // 4. the control points of splines: per entity, and of all the curves read
+    const time = <T>(run: () => T): [T, number] => {
+      const start = performance.now();
+      const result = run();
+      return [result, performance.now() - start];
+    };
+    const wavy = (n: number, y0 = 0): Vec2[] => Array.from({ length: n }, (_, i): Vec2 => [i, y0 + (i % 2) * 2]);
+    // clamped knots that are not even: the second inner span is twice as long
+    const uneven = (n: number): number[] => [0, 0, 0, 0, ...Array.from({ length: n - 4 }, (_, i) => (i === 0 ? 1 : i + 2)), n - 1, n - 1, n - 1, n - 1];
+    const even = (n: number): number[] => [0, 0, 0, 0, ...Array.from({ length: n - 4 }, (_, i) => i + 1), n - 3, n - 3, n - 3, n - 3];
+    const pieces = (count: number) => dxf((g) => Array.from({ length: count }, (_, k) => spline(g, 3, uneven(500), wavy(500, 10 * k))));
+    const wholes = (count: number) => dxf((g) => Array.from({ length: count }, (_, k) => spline(g, 3, even(64), wavy(64, 10 * k))));
+    const controlOf = (curves: { curve: ImportedCurve }[]): number => curves.reduce((sum, c) => sum + (c.curve.type === 'spline' ? c.curve.points.length : 0), 0);
+    const [four500, four500Ms] = time(() => readDxf(pieces(4)).curves);
+    const [five500, five500Ms] = time(() => refusal(() => readDxf(pieces(5))));
+    const [wholes125, wholes125Ms] = time(() => readDxf(wholes(125)).curves);
+    const [wholes200, wholes200Ms] = time(() => refusal(() => readDxf(wholes(200))));
+    const [one2000, one2000Ms] = time(() => readDxf(dxf((g) => spline(g, 3, uneven(DXF_MAX_SPLINE_POINTS), wavy(DXF_MAX_SPLINE_POINTS)))).curves);
+    const [one2001, one2001Ms] = time(() => refusal(() => readDxf(dxf((g) => spline(g, 3, uneven(DXF_MAX_SPLINE_POINTS + 1), wavy(DXF_MAX_SPLINE_POINTS + 1))))));
+    console.log(`I10 four SPLINEs of 500 control points, uneven knots: ${four500.length} curves, ${controlOf(four500)} control points in ${four500Ms.toFixed(0)} ms`);
+    console.log(`I10 five of them (9,940 control points): ${five500} in ${five500Ms.toFixed(0)} ms`);
+    console.log(`I10 125 SPLINEs of 64 kept whole: ${wholes125.length} curves, ${controlOf(wholes125)} control points in ${wholes125Ms.toFixed(0)} ms`);
+    console.log(`I10 200 of them (12,800): ${wholes200} in ${wholes200Ms.toFixed(0)} ms`);
+    console.log(`I10 one SPLINE of ${DXF_MAX_SPLINE_POINTS} control points, uneven knots: ${one2000.length} curves, ${controlOf(one2000)} control points in ${one2000Ms.toFixed(0)} ms; of ${DXF_MAX_SPLINE_POINTS + 1}: ${one2001} in ${one2001Ms.toFixed(1)} ms`);
+    expect(controlOf(four500)).toBe(4 * 497 * 4);
+    expect(five500).toMatch(/^tooLarge/);
+    expect(controlOf(wholes125)).toBe(DXF_MAX_CONTROL);
+    expect(wholes200).toMatch(/^tooLarge/);
+    expect(controlOf(one2000)).toBeLessThanOrEqual(DXF_MAX_CONTROL);
+    expect(one2001).toMatch(/^tooLarge/);
+
+    // 7. a number that is not finite
+    const huge = refusal(() =>
+      readDxf(
+        dxf((g) => {
+          g(0, 'LINE');
+          g(8, '0');
+          g(10, 0);
+          g(20, 0);
+          g(11, '1e999');
+          g(21, 0);
+        }),
+      ),
+    );
+    const nan = refusal(() =>
+      readDxf(
+        dxf((g) => {
+          g(0, 'CIRCLE');
+          g(8, '0');
+          g(10, 'nan');
+          g(20, 0);
+          g(40, 1);
+        }),
+      ),
+    );
+    const infinite = refusal(() => readDxf(dxf((g) => spline(g, 3, [0, 0, 0, 0, 1, 1, 1, 'Infinity'], four))));
+    console.log('I10 1e999:', huge, '| nan:', nan, '| a knot Infinity:', infinite);
+    for (const message of [huge, nan, infinite]) expect(message).toMatch(/^unreadable/);
   });
 });

@@ -1,9 +1,12 @@
 // Probe S: the reader of the SVG subset after the review of the design (codex 5 and 7, agy 5): a
 // tokenizer of XML and of path data, the degenerate arcs, lengths with units, S and T, a round
 // ellipse, transforms that are no similarity, files that are not well formed, the early limits.
+// After the second round (codex 6 and 9, agy 4 and 11, fable 16), S10 to S14: one root, no
+// attribute twice, finite numbers, the size and the two scales of the root, the limit of control
+// points with a path scanned as it is read, what `about` says, a transform without an inverse.
 import { describe, expect, it } from 'vitest';
 import type { ImportedCurve, Vec2 } from './proto';
-import { SVG_MAX_CHARACTERS, SVG_MAX_CURVES, readSvg } from './svg';
+import { SVG_MAX_CHARACTERS, SVG_MAX_CONTROL, SVG_MAX_CURVES, readSvg } from './svg';
 
 // 1 mm per user unit
 const mm = (body: string, more = ''): string => `<svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="100mm" viewBox="0 0 100 100"${more}>${body}</svg>`;
@@ -130,7 +133,7 @@ describe('S: the reader of SVG, hardened', () => {
     const fine = readSvg(`<?xml version="1.0"?><!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
 <svg:svg xmlns:svg="http://www.w3.org/2000/svg" width='10mm' height='10mm' viewBox='0 0 10 10'><style><![CDATA[ a < b ]]></style><svg:g id="a&amp;b&#x41;&#66;"><svg:circle r="1"/></svg:g></svg:svg>`);
     console.log('S5 fine', JSON.stringify(fine.about));
-    expect(fine.about.layers).toEqual({ 'a&bAB': 1 });
+    expect(fine.about.layers).toEqual({ 'a&bAB': { circle: 1 } });
     expect(fine.curves).toHaveLength(1);
   });
 
@@ -199,5 +202,136 @@ describe('S: the reader of SVG, hardened', () => {
     const big = refusal(`<svg>${' '.repeat(SVG_MAX_CHARACTERS)}</svg>`);
     console.log('S9 characters:', big, `in ${(performance.now() - started).toFixed(1)} ms`);
     expect(big).toMatch(/^tooLarge: /);
+  });
+
+  it('S10: one root, no attribute twice, numbers that are finite', () => {
+    const cases: Record<string, string> = {
+      'two roots (codex 9)': '<svg><circle r="10"/></svg><svg><circle cx="50" r="5"/></svg>',
+      'an element after the root': '<svg><circle r="10"/></svg><g/>',
+      'text after the root': '<svg><circle r="10"/></svg> tail',
+      'text before the root': 'junk <svg><circle r="10"/></svg>',
+      'an attribute twice': '<svg><circle r="10" r="20"/></svg>',
+      'an attribute twice on the root': '<svg width="10mm" width="20mm"><circle r="10"/></svg>',
+      'a length that is not finite': mm('<circle r="1e999"/>'),
+      'a coordinate of a path that is not finite': mm('<path d="M0 0 L1e999 0"/>'),
+      'points that are not finite': mm('<polygon points="0,0 1e999,1 2,2"/>'),
+      'a viewBox that is not finite': '<svg width="10mm" height="10mm" viewBox="0 0 1e999 10"><circle r="1"/></svg>',
+      'a transform that is not finite': mm('<g transform="scale(1e999)"><line x1="0" y1="0" x2="1" y2="0"/></g>'),
+      'finite numbers whose product is not': mm('<g transform="scale(1e200)"><g transform="scale(1e200)"><line x1="0" y1="0" x2="1" y2="0"/></g></g>'),
+    };
+    for (const [name, text] of Object.entries(cases)) {
+      const message = refusal(text);
+      console.log(`S10 ${name}:`, message);
+      expect(message).toMatch(/^unreadable: /);
+    }
+    // what stays readable around the root: a declaration, comments, white space, a byte-order mark
+    const fine = readSvg(`\uFEFF<?xml version="1.0"?>\n<!-- before -->\n${mm('<circle r="1"/>')}\n<!-- after -->\n`);
+    expect(fine.curves).toHaveLength(1);
+    // an empty root that closes itself is a root too
+    expect(refusal('<svg/><svg/>')).toMatch(/^unreadable: a second root/);
+  });
+
+  it('S11: the size of the root and its two scales', () => {
+    const root = (attributes: string): string => `<svg ${attributes}><circle cx="100" cy="100" r="10"/></svg>`;
+    const one = (attributes: string): string => {
+      try {
+        const read = readSvg(root(attributes));
+        const c = read.curves[0].curve as Extract<ImportedCurve, { type: 'circle' }>;
+        return `${read.about.unit}, from ${read.about.unitFrom}, radius ${c.radius.toFixed(6)} mm, notes ${JSON.stringify(read.about.notes)}`;
+      } catch (error) {
+        return (error as Error).message;
+      }
+    };
+    // fable 16: an optimiser's rounded viewBox of an A4 page (was refused as an uneven scale)
+    const a4 = one('width="210mm" height="297mm" viewBox="0 0 793.7 1122.52"');
+    console.log('S11 A4 with a rounded viewBox:', a4);
+    expect(a4).toMatch(/^0\.26458\d* mm per unit, from file/);
+    expect(a4).toMatch(/the smaller is taken/);
+    const exact = one('width="100mm" height="50mm" viewBox="0 0 200 100"');
+    console.log('S11 equal scales:', exact);
+    expect(exact).toBe('0.5 mm per unit, from file, radius 5.000000 mm, notes []');
+    const stretched = one('width="100mm" height="100mm" viewBox="0 0 200 100"');
+    console.log('S11 scales 0.5 and 1 (a viewer fits):', stretched);
+    expect(stretched).toMatch(/^0\.5 mm per unit, from file, radius 5\.000000 mm/);
+    expect(stretched).toMatch(/more than a thousandth/);
+    const none = one('width="100mm" height="100mm" viewBox="0 0 200 100" preserveAspectRatio="none"');
+    console.log('S11 the same with preserveAspectRatio none:', none);
+    expect(none).toMatch(/^unreadable: .*give the option unit/);
+    const nearNone = one('width="210mm" height="297mm" viewBox="0 0 793.7 1122.52" preserveAspectRatio="none"');
+    console.log('S11 the rounded A4 with preserveAspectRatio none:', nearNone);
+    expect(nearNone).toMatch(/from file/);
+    for (const size of ['width="0" height="10mm" viewBox="0 0 100 100"', 'width="10mm" height="0mm" viewBox="0 0 100 100"', 'width="-5mm" height="10mm"']) {
+      const message = one(size);
+      console.log(`S11 ${size}:`, message);
+      expect(message).toMatch(/^unreadable: the root has no size/);
+    }
+    const bare = one('');
+    console.log('S11 no size:', bare);
+    expect(bare).toMatch(/^px, from default, radius 2\.645833 mm, notes \["the root gives no size/);
+    const given = readSvg(root('width="210mm" height="297mm" viewBox="0 0 793.7 1122.52"'), { unit: 'mm' });
+    expect(given.about.unitFrom).toBe('option');
+    expect(given.about.notes).toEqual([]);
+  });
+
+  it('S12: the limit of control points, and a path scanned as it is read', () => {
+    const cubics = (n: number): string => mm(`<path d="M0 0${Array.from({ length: n }, (_, i) => ` C${i} 1 ${i} 2 ${i + 1} 0`).join('')}"/>`);
+    const timed = (text: string): string => {
+      const started = performance.now();
+      let outcome: string;
+      try {
+        const read = readSvg(text);
+        outcome = `read, ${read.curves.length} curves`;
+      } catch (error) {
+        outcome = (error as Error).message;
+      }
+      return `${outcome} in ${(performance.now() - started).toFixed(1)} ms`;
+    };
+    const within = timed(cubics(1900));
+    const most = timed(cubics(SVG_MAX_CONTROL / 4));
+    const over = timed(cubics(2100)); // codex 6: 8400 control points were read
+    console.log('S12 1900 C:', within, '|', `${SVG_MAX_CONTROL / 4} C:`, most, '| 2100 C:', over);
+    expect(within).toMatch(/^read, 1900 curves/);
+    expect(most).toMatch(/^read, 2000 curves/);
+    expect(over).toMatch(/^tooLarge: the splines/);
+    // quadratics count three each; lines none
+    const quads = (n: number): string => mm(`<path d="M0 0${Array.from({ length: n }, (_, i) => ` Q${i} 1 ${i + 1} 0`).join('')}"/>`);
+    expect(timed(quads(2666))).toMatch(/^read, 2666 curves/);
+    expect(timed(quads(2667))).toMatch(/^tooLarge: the splines/);
+    // a huge path stops at the limit and is not scanned to its end: 200,000 lines, and the same
+    // with data that does not parse at its very end (never reached)
+    const lines = (n: number, tail = ''): string => mm(`<path d="M0 0${' L1 0 L0 0'.repeat(n / 2)}${tail}"/>`);
+    const huge = timed(lines(200_000));
+    const hugeBroken = timed(lines(200_000, ' L 1 x'));
+    console.log('S12 200,000 lines:', huge, '| with a broken end:', hugeBroken);
+    expect(huge).toMatch(/^tooLarge: /);
+    expect(hugeBroken).toMatch(/^tooLarge: /);
+    // a path that is left out gives its control points back
+    const elliptical = `<path d="M0 0${' C1 1 2 1 3 0'.repeat(1500)} A 5 3 0 0 1 10 0"/>`;
+    const both = readSvg(mm(elliptical + elliptical + `<path d="M0 0${' C1 1 2 1 3 0'.repeat(1500)}"/>`));
+    console.log('S12 two paths of 1500 C left out, a third read:', both.curves.length, JSON.stringify(both.about.skipped));
+    expect(both.curves).toHaveLength(1500);
+    // after a segment that is not read the rest of the data is still checked
+    expect(refusal(mm('<path d="M0 0 A 5 3 0 0 1 10 0 L 1 x"/>'))).toMatch(/^unreadable: /);
+  });
+
+  it('S13: what about says: where the unit came from, notes, the layers by tag', () => {
+    const read = readSvg(mm('<g id="cut"><rect width="10" height="5"/><circle r="1"/><circle cx="5" r="1"/><text>A</text></g><g inkscape:label="engrave" id="g7"><path d="M0 0 L1 1"/><svg width="1" height="1"/></g><line x1="0" y1="0" x2="1" y2="0"/>'), { layers: ['cut'] });
+    console.log('S13 about', JSON.stringify(read.about));
+    expect(read.about.layers).toEqual({ cut: { rect: 1, circle: 2, text: 1 }, engrave: { path: 1, svg: 1 }, '': { line: 1 } });
+    expect(read.about.unitFrom).toBe('file');
+    expect(read.about.notes).toEqual([]);
+    expect(read.about.skipped).toEqual({ text: 1 });
+    expect(read.curves).toHaveLength(6);
+  });
+
+  it('S14: a transform without an inverse', () => {
+    const read = readSvg(mm('<g transform="scale(2,0)"><circle r="5"/><rect width="10" height="5"/><path d="M0 0 L5 5 C1 1 2 2 3 3"/><polygon points="0,0 4,0 4,3"/></g><g transform="matrix(1 2 2 4 0 0)"><line x1="0" y1="0" x2="1" y2="1"/></g><g transform="scale(0)"><circle r="1"/></g><circle r="1"/>'));
+    console.log('S14', read.curves.length, 'curves;', JSON.stringify(read.about.skipped));
+    expect(read.curves).toHaveLength(1);
+    expect(read.about.skipped).toEqual({ 'circle (flat transform)': 2, 'rect (flat transform)': 1, 'path (flat transform)': 1, 'polygon (flat transform)': 1, 'line (flat transform)': 1 });
+    // a broken path under such a transform is still a broken file
+    expect(refusal(mm('<g transform="scale(2,0)"><path d="M0 0 L 1 x"/></g>'))).toMatch(/^unreadable: /);
+    // a tiny but whole scale is no flat transform
+    expect(readSvg(mm('<g transform="scale(1e-6)"><circle r="5"/></g>')).curves).toHaveLength(1);
   });
 });

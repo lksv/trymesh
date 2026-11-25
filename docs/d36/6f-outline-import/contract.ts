@@ -20,14 +20,19 @@
 //    format: the local IDs, the weld (bounded), the limits, the report.
 // 5. What 6f adds at the plug-in points of 6e and in the code of 6b and 6c: three texts and four
 //    conditions.
-// 6. A query `entryCurves`: the curves of one entry with their places, a page at a time.
+// 6. Two queries: `entryCurves`, the curves of one entry with their places, and `sketchRegions`,
+//    the regions of a sketch with their whole loops, each a page at a time.
 // 7. MCP: the tool `import_outline`; what `get_sketch` and `get_document` say of an outline.
 // 8. The app: the button of the sketch panel, the row of the kind.
 // No command, no feature type, no face role, no issue code, no section, no schema step.
 //
 // Revised 2026-11-25 after the three reviews of the design (design.md, "Reviews"): the curve type
-// is `ImportedCurve` (`ImportedCurve` is taken, sketch.ts), the weld is bounded, the options of the
+// is `ImportedCurve` (`OutlineCurve` is taken, sketch.ts), the weld is bounded, the options of the
 // import are stored in the entry, the limits count more than curves.
+// Revised again the same day after the second round (design.md, "Reviews"): the IDs are the
+// reader's and nothing after renames a curve, an arc gives way to an arc only, the limits are
+// enforced where they are named, the query `sketchRegions`, the bridge of the tool, the entry's
+// field `readWith` (it was `source`, the word of `get_sketch` for the kind of an entry).
 
 import type { Command, Document, EntityKind, ExternalRef, Expr, Id, NumberSpec, Projected, SketchFeature, Vec2 } from '../../../packages/engine/src/index';
 import type { ArgSpecs, ArgsOf, RunArgsOf } from '../../../packages/engine/src/index';
@@ -43,8 +48,8 @@ import type { SketchCurve } from '../../../packages/engine/src/sketch';
 // - `arc`: counter-clockwise from `start` to `end` about `center`; the two ends on one radius within
 //   `OUTLINE_LIMITS.arc`; `start` equal to `end` is no arc (a whole turn is a `circle`).
 // - `spline`: the control points of a spline of the sketch (CurveShape `spline`, D70): 3 to 64, the
-//   first again as the last closes it (then at least 4). Neighbours at least the length tolerance
-//   apart.
+//   first again as the last closes it (then at least 4). Control points may stand at one place (a
+//   node without a handle); the spline as a whole has an extent.
 export type ImportedCurve =
   | { type: 'line'; a: Vec2; b: Vec2 }
   | { type: 'circle'; center: Vec2; radius: number }
@@ -59,9 +64,11 @@ export type ImportedCurve =
 //   command; the app has "Import an outline…" in the panel of a sketch.
 // - `curves`: the curves by their local ID (letters, digits, underscores, at most 32, and no name
 //   every object has, such as `constructor`), 1 to 2000, their splines with at most 2000 control
-//   points together. The readers number them by kind in the order of the file: `l1`, `l2`, … lines,
-//   `a1` … arcs, `c1` … circles, `s1` … splines; a curve the import left out (one that lay on
-//   another, or had no extent) leaves its number unused.
+//   points together. The readers number them by the kind the file gave and its order: `l1`, `l2`, …
+//   lines, `a1` … arcs, `c1` … circles, `s1` … splines. Nothing after the reader renames a curve: one
+//   the import left out (it lay on another, or had no extent) leaves its number unused, and an arc
+//   of nearly a whole turn that was read as a circle keeps the ID of an arc (`a3` is then a circle:
+//   the `type` of the curve says what it is, the letter what the file had).
 // - IDs: the curve `<entry>/<local>` (`board/l3`); its points as an own curve of that kind names
 //   them: `<entry>/<local>/a` and `/b` of a line, `/center` of a circle, `/center`, `/start`, `/end`
 //   of an arc, and `/0`, `/1`, … the control points of a spline. The entry itself is no entity.
@@ -82,7 +89,7 @@ export type ImportedCurve =
 //   outline as own curves in a later sketch (the sketch tool projectSketch with `as: 'own'`), then
 //   cut that.
 // - `name`: for people, the name of the file. An empty one is no name.
-// - `source`: what the file was read with (the format, the layers, the unit, the weld), written by
+// - `readWith`: what the file was read with (the format, the layers, the unit, the weld), written by
 //   the import and repeated by a replacement, so that a revised file is read as the first was.
 // - A revised file: `updateExternal` with the new `curves` (the tool import_outline with
 //   `replace`). An entity keeps its ID when the file lists it at the same place among the curves of
@@ -95,7 +102,7 @@ export type ImportedCurve =
 export interface SketchOutline {
   type: 'outline';
   name?: string;
-  source?: OutlineSource;
+  readWith?: OutlineReadWith;
   curves: Record<Id, ImportedCurve>;
   x: number;
   y: number;
@@ -106,7 +113,7 @@ export interface SketchOutline {
 // What an outline was imported with: the key of the format and its options as they were given
 // (`layers`, `unit`, `weld`; one left out was the format's default). Checked by its form only (the
 // kind does not import the catalog of formats); a replacement checks it against the format again.
-export interface OutlineSource {
+export interface OutlineReadWith {
   format: string;
   layers?: string[];
   unit?: string;
@@ -122,7 +129,7 @@ export const OUTLINE_REGIONS_DEFAULT = true;
 export interface OutlineInput {
   type: 'outline';
   name?: string;
-  source?: OutlineSource;
+  readWith?: OutlineReadWith;
   curves: Record<Id, ImportedCurve>;
   x?: number | Expr;
   y?: number | Expr;
@@ -134,8 +141,8 @@ export interface OutlineInput {
 // then keeps what the entry has, an expression too (`partial` of the kind, section 3). `curves`
 // given replaces the stored outline whole. So the flag is switched, or the outline moved, without
 // sending the curves again: `{ type: 'outline', regions: false }`. A field given as `undefined` is
-// a field left out. `name: ''` and `source: null` clear the two optional fields.
-export type OutlineUpdate = Partial<Omit<OutlineInput, 'type' | 'source'>> & { type: 'outline'; source?: OutlineSource | null };
+// a field left out. `name: ''` and `readWith: null` clear the two optional fields.
+export type OutlineUpdate = Partial<Omit<OutlineInput, 'type' | 'readWith'>> & { type: 'outline'; readWith?: OutlineReadWith | null };
 
 export type ExternalRefAfter = ExternalRef | SketchOutline;
 // The two commands as they take an outline; every other command is the engine's.
@@ -161,13 +168,17 @@ export type SketchFeatureAfter = Omit<SketchFeature, 'external' | 'solved'> & { 
 //   largest coordinate of the arc (at least 1): 1e-9 mm for a board, 1e-4 for coordinates of 1e5
 //   (6b's `ARC_STORED_TOLERANCE * scale`). The readers leave under 1e-12; the placement then puts
 //   the end on the circle of the start (6b's `exactArc`).
-// - `listed`: how many curves `get_sketch` lists of one outline, and above how many `get_document`
-//   leaves the curves out.
-// - `characters`, `read`, `readControl`: what a reader takes before it refuses with `tooLarge`,
-//   checked while it reads and before the weld: the characters of the file, the curves read from
-//   the layers asked for (four outlines' worth: the weld and the duplicates may bring a file under
-//   the limit), the control points of the splines read.
-export const OUTLINE_LIMITS = { curves: 2000, control: 2000, splinePoints: 64, localId: 32, note: 500, arc: 1e-9, listed: 50, characters: 8_000_000, read: 8000, readControl: 8000 } as const;
+// - `listed`, `listedPoints`: how many curves `get_sketch` lists of one outline (and above how many
+//   `get_document` leaves the curves out), and how many positions those curves may hold together:
+//   a spline of 64 control points is 64 positions, so curves alone do not bound an answer.
+// - `characters`, `read`, `readControl`, `readSpline`: what a reader takes before it refuses with
+//   `tooLarge`, checked while it reads and before the weld: the characters of the file (the bytes,
+//   before they are decoded); the curves read from the layers asked for (four outlines' worth: the
+//   weld and the duplicates may bring a file under the limit); the control points of all the spline
+//   curves it has made so far (a spline kept whole counts its control points, a Bezier piece its
+//   three or four); the control points of one DXF `SPLINE` (its conversion is quadratic: 2000 take
+//   0.2 s, 8000 would take 4 s).
+export const OUTLINE_LIMITS = { curves: 2000, control: 2000, splinePoints: 64, localId: 32, note: 500, arc: 1e-9, listed: 50, listedPoints: 500, characters: 8_000_000, read: 8000, readControl: 8000, readSpline: 2000 } as const;
 export const OUTLINE_PLACE: NumberSpec = { title: 'Place', unit: 'mm', default: 0 };
 export const OUTLINE_TURN: NumberSpec = { title: 'Turn', unit: 'rad', min: { value: -2 * Math.PI }, max: { value: 2 * Math.PI }, default: 0 };
 
@@ -250,8 +261,8 @@ export declare function narrowed(geometry: EntryGeometry, named: ReadonlySet<Id>
 
 // The kind (references/outline.ts). `refs` and `faces` are empty: an outline reads nothing of the
 // model. `compute` never fails. `keepsValue`: the stored value is kept when the update changes
-// neither the place (`x`, `y`, `turn`, `anchor`) nor the object of `curves` (the flag, the name, the
-// source), and dropped otherwise, as 6b's kind does: a document saved while its sketch is in
+// neither the place (`x`, `y`, `turn`, `anchor`) nor the object of `curves` (the flag, the name,
+// `readWith`), and dropped otherwise, as 6b's kind does: a document saved while its sketch is in
 // conflict then holds no value of a placement the entry no longer has (the review, agy 8).
 export declare const outline: ReferenceKindAfter<SketchOutline, PlacedOutline>;
 
@@ -269,20 +280,34 @@ export declare function updateProblem(sketch: SketchFeature, id: Id, before: Ext
 export const ENTITY_TAKEN = (entry: Id, gone: { entity: Id; constraints: Id[] }[]): string =>
   `the update takes away ${gone.map((g) => `"${g.entity}" (named by ${g.constraints.join(', ')})`).join(', ')} of "${entry}": remove ${gone.length === 1 && gone[0].constraints.length === 1 ? 'that constraint' : 'those constraints'} in the same batch before it (the tool import_outline: \`remove\`), or keep the ${gone.length === 1 ? 'curve' : 'curves'}`;
 
-// The solver adapter (packages/solver-planegcs, `commonEnd`): two fixed points within this distance
-// are one end, as two points joined by a coincident are. The points of an outline belong to their
-// curves, so at a corner the end of a line and the start of an arc are two IDs at one place; an own
-// line held on one of them and tangent to the other curve then gets the form of a tangency at a
-// common end. Without it the general form is solved at its double root (J10: the line 4e-5 mm off
-// the tangent, and a drag along it does not move).
+// The solver adapter (packages/solver-planegcs, `commonEnd`). Two ends are one end when they are
+// one ID, or two fixed points at one place: within `FIXED_JOIN` of the radius of the arc of the
+// tangency, and never more than `FIXED_JOIN` mm (`sameEnd`). A common end of a line and an arc is
+// then: an end of the line and an end of the arc that are one end, or one coincident whose two
+// operands are one end with an end of the line and one end with an end of the arc. So the rule
+// reads the same from either side: an own line held on the outline's point of the other curve, an
+// own arc held on it, an own line that starts at `origin` where a fixed arc starts. A chain of two
+// coincidents is not read, as today (D52).
+// - Measured (J10, K12): without it the general form is solved at its double root (an own line
+//   3.7e-5 mm off the tangent, stiff under a drag; an own arc 1e-7 off; a fixed point 5e-7 inside
+//   the start of an arc of radius 3: not solved at all).
+// - By the radius, so that a point that is near in millimetres and far by the size of the arc is
+//   not taken (the review, codex 3: an arc of radius 1e-4 and a point 5e-7 inside its start; K12:
+//   as today). Whenever the adapter takes the common end, the analysis does too: the point is
+//   within `SHARED` (1e-6) of the size of the curves from the circle, and held on it.
+// - The function reads positions now, of fixed points only; it gets the points and the fixed set.
 export const FIXED_JOIN = 1e-6;
+export declare function sameEnd(p: Id, q: Id, radius: number, points: Record<Id, { x: number; y: number }>, fixed: ReadonlySet<Id>): boolean;
 
 // The texts of the validator of the kind.
 export const OUTLINE_REFUSALS = {
   count: (what: string, n: number): string => `${what}.curves: an outline has 1 to ${OUTLINE_LIMITS.curves} curves, not ${n}`,
   localId: (what: string, key: string): string => `${what}.curves: "${key}" is no local ID of a curve (letters, digits and underscores, at most ${OUTLINE_LIMITS.localId}, and no name every object has)`,
   control: (what: string, n: number): string => `${what}.curves: the splines of an outline have at most ${OUTLINE_LIMITS.control} control points together, not ${n}`,
-  splinePoints: (what: string): string => `${what}: a spline has 3 to ${OUTLINE_LIMITS.splinePoints} control points, a closed one at least 4, each at least the length tolerance from the next`,
+  splinePoints: (what: string): string => `${what}: a spline has 3 to ${OUTLINE_LIMITS.splinePoints} control points, a closed one at least 4`,
+  splineEnds: (what: string): string => `${what}: the ends of the spline are within the length tolerance and not one place: close it by its first point again`,
+  noExtent: (what: string): string => `${what}: the spline has no extent`,
+  points: (what: string): string => `${what}.points: a list of positions is expected`,
   expression: (what: string): string => `${what}: a position of a stored outline is a number; an expression goes into x, y or turn of the entry`,
   noLength: (what: string): string => `${what}: the line has no length`,
   noRadius: (what: string): string => `${what}: the radius is under the length tolerance`,
@@ -290,6 +315,22 @@ export const OUTLINE_REFUSALS = {
   arcWhole: (what: string): string => `${what}: the start and the end of the arc are one place; a whole turn is a circle`,
   missingCurves: (what: string): string => `${what}.curves: the curves of the outline are expected (the tool import_outline reads them from a file)`,
 };
+
+// The property the import is held to, tested over generated files: whatever `importOutline`
+// answers is accepted by the validator of the kind (`curveProblem` is its rule for one curve). The
+// validator's copy is frozen (the record, each curve, each position), so an object it remembers
+// as its own cannot be written into and sent back unchecked.
+export declare function curveProblem(curve: ImportedCurve, what: string): string | undefined;
+
+// The rule of an update for a kind that answers `entity` (an outline), parts 2 and 3 as one pass
+// over the constraints of the sketch, with no listing of either entry: for each operand that is
+// the entry's ID or under it (`operand === id || operand.startsWith(id + '/')`), the kind before
+// and the kind after. Gone: part 3 (`ENTITY_TAKEN`). Another kind: part 2, with this text. An
+// entity no constraint names may change its kind (an arc of nearly a whole turn that one revision
+// reads as a circle and the next as an arc): what names it from outside its sketch breaks aloud at
+// the recompute, as for an entity that went. The kinds without `entity` keep part 2 as it is.
+export const ENTITY_KIND_CHANGED = (entity: Id, was: EntityKind, will: EntityKind, constraints: Id[]): string =>
+  `the update makes "${entity}" ${will === 'arc' ? 'an' : 'a'} ${will} where it was ${was === 'arc' ? 'an' : 'a'} ${was}, and ${constraints.join(', ')} ${constraints.length === 1 ? 'names' : 'name'} it: remove ${constraints.length === 1 ? 'that constraint' : 'those constraints'} in the same batch before it`;
 
 // ================================================================ 4. the import
 
@@ -348,42 +389,54 @@ export interface OutlineFormats {
 }
 export type OutlineFormat = keyof OutlineFormats;
 export type OutlineOptions<F extends OutlineFormat> = ArgsOf<OutlineFormats[F]>;
-// The catalog (import/outline.ts), beside `IMPORT_FORMATS`: a format is a module of `import/` and
+// The catalog (import/outline-formats.ts), beside `IMPORT_FORMATS`: a format is a module of `import/` and
 // one line. `importFormatOf(path, OUTLINE_FORMATS)` and `importAccept(OUTLINE_FORMATS)` of D55 pick
 // a format by the extension and make the list of a file input; both take a catalog already.
 export declare const OUTLINE_FORMATS: { [F in OutlineFormat]: OutlineFormatSpec<OutlineFormats[F]> };
 
 // What an import says about the outline it read.
-// - `curves`, `byKind`: what the outline holds after the weld.
+// - `curves`, `byKind`, `control`: what the outline holds after the weld (by the `type` of each
+//   curve), and the control points of its splines.
+// - `ids`: the last number given of each kind, and the numbers not used (at most 20, and their
+//   count): `l1` to `l<lines>` but for `unused`. A count of curves does not say their IDs.
 // - `welded`: ends moved onto another end; `moved`: the furthest any end was moved, mm, measured
 //   from where the file had it: never more than the weld.
-// - `shifted`: the furthest the centre of an arc was moved, mm: never more than the weld.
+// - `reshaped`: arcs whose end was moved onto an end of another arc; `bent`: the furthest a quarter
+//   point of such an arc of the file lies off its new circle, mm: never more than the weld;
+//   `radius`: the largest change of a radius among them, mm (it can be large for a shallow arc,
+//   whose radius a file of few digits does not hold: K11).
 // - `closed`: arcs of nearly a whole turn read as circles, and splines closed onto their start.
-// - `dropped`: curves left out because they have no extent; `duplicates`: curves left out because
-//   they lie on an earlier curve of the file. Their local IDs stay unused.
-// - `blocked`: welds not made, because the end or its arc would have gone further than the weld
-//   from where the file had it (the third end of a chain, an arc of a large radius and a short
-//   chord). Those ends are open and in `gaps`.
+// - `dropped`: curves left out because they have no extent, in the file or after the weld;
+//   `duplicates`: curves left out because they lie on an earlier curve of the file.
+// - `blocked`: open ends that have another end within the weld and could not be put on it (it
+//   would have gone further than the weld from its place in the file, or it is an end of an arc
+//   beside a line); `crowded`: open ends with more than eight other ends within the weld, which
+//   the weld leaves alone. Both are open and in `gaps`.
 // - `open`: ends that are the end of no other curve; `gaps`: at most 20 of them that have another
 //   end within a hundred weld tolerances, the nearest first, with the distance.
 // - `bounds`: mm, in the coordinates of the file.
-// - `notes`: in words, for the caller to read: the reader's (`about.notes`), then the gaps and the
-//   weld that would close them, what was blocked, bounds under 1 mm or over 10 m ("is the unit
-//   right?"), the cost of many curves or of many splines, curves that cross or lie on each other
-//   when the caller placed the outline and its sketch says so.
+// - `notes`: in words, for the caller to read: the reader's (`about.notes`), then the gaps (with
+//   the weld that would close them only when the gap is beyond the weld), what was blocked or
+//   crowded, an arc whose radius changed by more than the weld, bounds under 1 mm or over 10 m ("is
+//   the unit right?"), the cost of many curves or of many splines.
 export interface OutlineReport {
   format: OutlineFormat;
-  source: OutlineSource; // what the entry stores, for the next replacement
+  readWith: OutlineReadWith; // what the entry stores, for the next replacement
   about: ReadOutline['about'];
   curves: number;
   byKind: Record<ImportedCurve['type'], number>;
+  control: number;
+  ids: { lines: number; arcs: number; circles: number; splines: number; unused: Id[]; unusedCount: number };
   welded: number;
   moved: number;
-  shifted: number;
+  reshaped: number;
+  bent: number;
+  radius: number;
   closed: number;
   dropped: number;
   duplicates: number;
   blocked: number;
+  crowded: number;
   open: number;
   gaps: { at: Vec2; distance: number }[];
   bounds: { min: Vec2; max: Vec2 };
@@ -402,48 +455,85 @@ export type OutlineOutcome =
 
 // Reads a file into the curves of an outline. A function without a state, as `importMesh`: the
 // curves enter a document by `addExternal` or `updateExternal`.
-// 1. The options are checked against the description of the format and the format reads the bytes
-//    (its limits apply while it reads).
-// 2. The local IDs: by kind, in the order of the file, from 1 (`outlineIds`). Before the weld, so
-//    that what the weld leaves out leaves a gap and renames nothing, and the IDs do not depend on
-//    the weld. (An arc the weld reads as a circle is numbered among the circles, at its place.)
-// 3. The weld (`weldOutline`).
-// 4. `empty`, and the limits of an outline (`tooLarge`).
-// 5. The report.
+// 1. The size of the bytes; the options checked against the description of the format; the format
+//    reads (its limits apply while it reads).
+// 2. The local IDs (`outlineIds`): from the curves as the reader gave them, by the kind of the file
+//    and its order, from 1. Nothing after this step renames a curve, so the IDs depend on the file
+//    and the layers alone: not on the weld, and not on what is left out.
+// 3. The weld (`weldOutline`), which begins and ends by leaving out what has no extent and what
+//    lies on an earlier curve.
+// 4. `empty`, and the limits of an outline (`tooLarge`: curves, control points), before anything
+//    is computed for the report.
+// 5. The report (the open ends and the gaps by a search that is bounded: `openEnds`).
 // The same bytes and options give the same curves under the same IDs.
 export declare function importOutline<F extends OutlineFormat>(format: F, bytes: Uint8Array, options?: OutlineOptions<F>): OutlineOutcome;
 
-// The weld (design.md, "The weld"). Bounded: nothing is merged transitively, no end moves further
-// than `tolerance` from where the file had it, and no arc's centre or radius changes by more.
-// 1. An arc of more than a half turn whose own two ends are within the tolerance, with no end of
-//    another curve near them, becomes a circle; an open spline of four points or more likewise is
-//    closed onto its start. The two ends of one curve are never welded otherwise.
-// 2. An end is met when an end of another curve is within 1e-6 mm of it (the join of the sketch).
-//    Met ends never move: a file whose ends meet is not changed, however short its curves.
+// The weld (design.md, "The weld"). Bounded in what it moves and in what it costs.
+// 0. Left out: a curve with no extent (a line or a control polygon under 1e-6 mm, a radius under
+//    it, a quadratic that returns to its start). Closed, whatever the tolerance: an arc of more than
+//    a half turn whose ends are within 1e-6 mm (a circle), a spline of four points or more
+//    likewise. Left out: a curve that lies on an earlier one (the same places within 1e-6 mm by
+//    distance, a line or a spline either way round), BEFORE the ends are looked at: a twin would
+//    make every end of its curve met.
+// 1. With a tolerance: an arc of more than a half turn, or a spline of four points or more, whose
+//    own two ends are within it, with no end of another curve near them, is closed. Otherwise the
+//    two ends of one curve are never welded to each other, and an end never goes to the place its
+//    own other end stands at.
+// 2. An end is met when an end of another curve is within 1e-6 mm of it. Met ends never move.
 // 3. The pairs of an open end and an end of another curve within the tolerance, the nearest first
-//    (then by the order of the file). Of two open ends one moves onto the other: an end of a line
-//    or a spline before an end of an arc, otherwise the later in the file. An open end moves onto
-//    an end that is settled already only when that keeps it within the tolerance of where the file
-//    had it; otherwise the weld is counted in `blocked` and the end stays open.
-// 4. An arc whose end moves gets its centre put on the bisector of its chord, at the nearest point.
-//    The move is made only when, against the arc of the file, the centre and the radius change by
-//    no more than the tolerance and the sweep by less than a half turn; otherwise the other end of
-//    the pair is tried, and then the weld is blocked. An arc whose ends stayed keeps its digits.
-// 5. A line or an arc whose two ends are then one place is left out (`dropped`); a spline end is
-//    not moved onto its own neighbour point. A curve that lies on an earlier one (the same places
-//    within 1e-6 mm; a line or a spline either way round) is left out (`duplicates`).
-// With a tolerance of 0 only step 5 runs. The result is aligned with the input: undefined where a
-// curve was left out.
-export declare function weldOutline(curves: readonly ImportedCurve[], tolerance: number): { curves: (ImportedCurve | undefined)[]; welded: number; moved: number; shifted: number; closed: number; dropped: number; duplicates: number; blocked: number; open: number; gaps: OutlineReport['gaps'] };
+//    (then by the order of the file). An end of a line or a spline goes onto the other end. **An
+//    end of an arc goes only onto an end of another arc** (of two, the later in the file first);
+//    beside a line or a spline the arc keeps the digits of its file, and when the other end cannot
+//    come to it the weld is not made. No end goes further than the tolerance from where the file
+//    had it.
+// 4. An arc whose end went onto another arc's is the circle through its two ends and the middle
+//    of the arc of the file. The move is made only when that middle lies between the new ends the
+//    same way round and the quarter points of the arc of the file are within the tolerance of the
+//    new circle. The centre and the radius are not bounded: for a shallow arc they change much
+//    while the arc moves little, and the report says by how much. An arc whose ends stayed is the
+//    arc of the file, to the digit.
+// 5. Step 0 again.
+// The cost: every search is in cells around a place and looks at no more than 64 candidates; an
+// open end with more than 8 other ends within the tolerance is `crowded` and left alone, so the
+// pairs are at most 8 per end (the review, codex 7: 64 million pairs for 8000 lines between two
+// clusters). With a tolerance under 1e-6 only step 0 runs. The result is aligned with the input:
+// undefined where a curve was left out.
+export interface Welded {
+  curves: (ImportedCurve | undefined)[];
+  welded: number;
+  moved: number;
+  reshaped: number;
+  bent: number;
+  radius: number;
+  closed: number;
+  dropped: number;
+  duplicates: number;
+  blocked: number;
+  crowded: number;
+}
+export declare function weldOutline(curves: readonly ImportedCurve[], tolerance: number): Welded;
+// The IDs of the curves of a reader, in their order; before the weld, and not changed by it.
 export declare function outlineIds(curves: readonly ImportedCurve[]): Id[];
+// The ends that are the end of no other curve, and at most 20 of them with another end within a
+// hundred tolerances: cells of that size, the same bound on the candidates. After the limits of
+// an outline are checked (the review, fable 3: 3.5 ms per open end before; K6: 30 ms for 2000).
+export declare function openEnds(curves: Iterable<ImportedCurve>, tolerance: number): { open: number; gaps: OutlineReport['gaps'] };
 
 // What a revised outline does to the entities of the one before it, for the answer of a tool and
-// the status line of the app: the local IDs that stay, come and go, and `renamed`: an ID whose
-// curve is, in the new file, where the old file had the curve of another ID of its kind (two holes
-// listed the other way round, J11). Found by the places rounded to 1e-6 mm: it finds a swap of
-// curves that did not move, not a renumbering of curves that did.
+// the draft of the app.
+// - `kept`: the IDs both have; `changed`: of them, those whose curve is at no place a curve of the
+//   old outline had (it moved, or it is a new curve under an old ID, or it changed its kind).
+// - `added`, `removed`: the IDs only the new, only the old outline has.
+// - `renamed`: an ID, old or new, whose curve is where the old outline had the curve of another ID
+//   (two holes listed the other way round; a hole put in first, which gives every later one the
+//   next number: K10). An ID can be in `added` and in `renamed`: `c5` is new, and its curve is the
+//   old `c4`.
+// Places are compared by distance (within 1e-6 mm, in the cells around them, never by one
+// rounding), a line or a spline either way round. It finds curves that did not move; one that
+// moved and changed its place in the file at once is `changed`.
 export interface OutlineRevision {
   kept: number;
+  changed: number;
   added: Id[];
   removed: Id[];
   renamed: { id: Id; was: Id }[];
@@ -459,6 +549,11 @@ export const DXF_READS = {
   insunits: { 0: 'mm', 1: 'in', 2: 'ft', 4: 'mm', 5: 'cm', 6: 'm', 8: 'uin', 9: 'mil', 10: 'yd', 13: 'um', 14: 'dm' },
   unitInMm: { mm: 1, cm: 10, m: 1000, in: 25.4, ft: 304.8, uin: 2.54e-5, mil: 0.0254, yd: 914.4, um: 0.001, dm: 100 },
   knots: 1e-9, // of the span of the knots: closer knots are one; the ends are clamped within it
+  // declared counts, checked against what was read when the file has them: the vertices of an
+  // LWPOLYLINE; the knots, the control points and the fit points of a SPLINE
+  counts: { LWPOLYLINE: [90], SPLINE: [72, 73, 74] },
+  comment: 999, // a group passed over wherever it stands
+  paperSpace: 67, // 1: the entity is left out and listed, a POLYLINE with its vertices
 } as const;
 
 // ================================================================ 5. the packages before it
@@ -533,29 +628,69 @@ export interface EntryCurvesResult {
 }
 export declare function listedCurve(curve: SketchCurve, geometry: { points: Record<Id, { x: number; y: number }>; radii: Record<Id, number> }): ListedCurve | undefined;
 
+// The regions of a sketch with their whole references, a page at a time: what `get_sketch` prints
+// short (`SKETCH_SHOWN`). A command names a region by its whole sorted outer loop and there is no
+// other form, so without this query a region of more than `SKETCH_SHOWN.loop` curves could not be
+// named through MCP at all (the second round of reviews, all three).
+// - `curve`: only the regions whose outer loop or one of whose holes holds this curve: the way from
+//   a curve of an outline (`board/l1`) to the region to extrude.
+// - `from`, `max`: the regions passed over, and the most listed. A page also ends when it has
+//   listed `REGION_PAGE_IDS` IDs, but never before its first region, however long its loop.
+export const SKETCH_REGIONS_ARGS = {
+  sketch: { kind: 'sketch', title: 'Sketch' },
+  curve: { kind: 'text', title: 'Curve', summary: 'Only the regions bounded by this curve, by its ID in the sketch (own, of an entry, or a copy).', optional: true },
+  from: { kind: 'number', title: 'From', summary: 'How many regions to pass over, for the next page.', optional: true, spec: { title: 'Regions to pass over', unit: 'count', integer: true, min: { value: 0 }, default: 0 } },
+  max: { kind: 'number', title: 'Most regions', summary: 'The most regions to list; `total` counts them all.', optional: true, spec: { title: 'Most regions to list', unit: 'count', integer: true, min: { value: 1 }, max: { value: 100 }, default: 20 } },
+} as const satisfies ArgSpecs;
+export const REGION_PAGE_IDS = 2000;
+// - `ref`: the reference of the region as a command takes it, whole: `{ outerLoop: [...] }`.
+// - `index`: the place of the region among the regions of the sketch, which `from` counts.
+// - `holes`: the loops inside it, each by the IDs of its curves; `area`: mm², less the holes;
+//   `box`: of the outer loop, in the sketch.
+export interface RegionRow {
+  index: number;
+  ref: { outerLoop: Id[] };
+  area: number;
+  box: [number, number, number, number];
+  holes: Id[][];
+}
+// - `status`: `unavailable` when the sketch did not evaluate; `invalid` when its profile is (then
+//   it has no regions; the query `sketchContacts` says why).
+export interface SketchRegionsResult {
+  status: 'ok' | 'unavailable' | 'invalid';
+  total: number;
+  from: number;
+  regions: RegionRow[];
+}
+
 // ================================================================ 7. MCP
 
 // The tool `import_outline` (packages/mcp/src/server.ts, beside `import_mesh`: it needs a disk).
-// The server reads the file and runs `importOutline`; what follows runs where the engine is, by one
-// function of tools.ts (`outlineInto`: the server's own engine, or the app's over the bridge), so
-// both give the same answer and the revision is computed from the document, not from an answer
-// of `get_sketch` or `get_document`, which leave curves out.
+// The server reads the bytes of the file (refusing by their size before anything) and hands them,
+// with the arguments, to one function of tools.ts, `outlineInto`, which runs where the engine is:
+// on the server's own engine, or in the app over the bridge, as the internal tool `_outline` (as
+// `_load` carries a document). There the file is read by `importOutline` and the command sent. So
+// a replacement reads what the entry stores (`readWith`) from the document it is about to change,
+// and both routes give one answer; nothing is read back through `get_sketch` or `get_document`.
 // - Without `sketch` nothing is changed: the answer is the report, so the layers and the size of a
-//   file are seen before it is placed.
+//   file are seen before it is placed. `replace` and `remove` without `sketch` are refused.
 // - With `sketch`: one command or one batch, one undo step. `addExternal` under `id` (by default
 //   the name of the file reduced to an ID, numbered while taken), with the placement and the flag
-//   given, and `source` as the file was read.
-// - With `replace`: `id` is required. The options left out are those the entry stores (`source`),
-//   so the revised file is read with the layers, the unit and the weld of the first; `format` too.
-//   Then `updateExternal` of the entry with the new curves and the new `source`, and nothing else
-//   unless given, so the placement, the flag and their expressions stay.
+//   given, and `readWith` as the file was read.
+// - With `replace`: `id` is required. The format: what the extension of the path names; the
+//   entry's when it names none. The options: those given, whole; when `options` is left out and the
+//   format is the entry's, those the entry stores, so the revised file is read with the layers, the
+//   unit and the weld of the first (`options: {}` reads every layer with the defaults). The answer
+//   says in `next` when the stored options were not used. Then `updateExternal` of the entry with
+//   the new curves and the new `readWith`, and nothing else unless given, so the placement, the
+//   flag and their expressions stay.
 // - `remove`, with `replace`: IDs of constraints of the sketch to remove in the same batch, before
 //   the update: the way past the rule of an update. A refusal changes nothing, the constraints
 //   stay; its message names the constraints, and the caller repeats the call with them.
 // - The answer never holds the curves. A refusal of the command still carries the report.
 export interface ImportOutlineArgs {
   path: string;
-  format?: OutlineFormat; // by default the extension of the path decides; with `replace`, the entry's
+  format?: OutlineFormat;
   options?: Record<string, unknown>; // of the format: layers, unit, weld
   sketch?: Id;
   id?: Id;
@@ -568,36 +703,47 @@ export interface ImportOutlineArgs {
   anchor?: SketchOutline['anchor'];
   regions?: boolean;
 }
-// - `entry`: `<sketch>` and the ID, when something was placed; `ids`: how to name what was read
-//   (the prefix and the counts: `board/l1` … `board/l4`).
-// - `revision`, with `replace`: what stayed, came and went, and what a swap renamed.
+// - `entry`: `<sketch>` and the ID, when something was placed; how its entities are named is in
+//   `report.ids` (`board/l1` … by the last numbers and the unused ones).
+// - `revision`, with `replace`: what stayed, changed, came and went, and what was renamed.
 // - `refused`: the message of the command that was refused; nothing was changed.
 // - `sketch`: the brief of the sketch after the command, as `execute` gives it (status, valid,
 //   regions, open ends), and `problems`: the features that are not ok after it (a mirror that lost
 //   its axis, a later projection that lost its entity, an extrusion without its region).
-// - `next`: in words, what to do now (extrude a region, constrain to an entity, project it).
+// - `next`: in words, what to do now (the query sketchRegions for the region to extrude, a
+//   constraint to an entity, a projection of it).
 export interface ImportOutlineAnswer {
   file: string;
   report: OutlineReport;
   entry?: { sketch: Id; id: Id };
-  ids?: { prefix: string; lines: number; arcs: number; circles: number; splines: number };
   revision?: OutlineRevision;
   refused?: string;
   sketch?: unknown;
   problems?: unknown;
   next: string;
 }
-// What runs where the engine is: the curves as read, and the arguments of the tool but the path.
-export declare function outlineInto(engine: { execute(command: CommandAfter): unknown }, curves: Record<Id, ImportedCurve>, report: OutlineReport, args: Omit<ImportOutlineArgs, 'path' | 'options' | 'format'>): ImportOutlineAnswer;
+// What runs where the engine is: the file as the server read it, and the arguments of the tool but
+// the path. In the bridge it is the internal tool `OUTLINE_BRIDGE_TOOL`, listed in `MUTATING` (the
+// app ends a draft before it runs); `changesDocument` answers for it by the call and its result:
+// a sketch was named and the answer has no `refused`. The app says it in its status line as it
+// says `_load`.
+export const OUTLINE_BRIDGE_TOOL = '_outline';
+export declare function outlineInto(engine: { execute(command: CommandAfter): unknown }, file: { name: string; bytes: Uint8Array }, args: Omit<ImportOutlineArgs, 'path'>): ImportOutlineAnswer;
+export const outlineChangesDocument = (args: Omit<ImportOutlineArgs, 'path'>, answer: ImportOutlineAnswer): boolean => args.sketch !== undefined && answer.entry !== undefined && answer.refused === undefined;
 
 // What `get_sketch` says of an outline, in the place of the generic row of an entry (which would
 // spread the stored curves and list every entity): the fields with their expressions, without
-// `curves`; what it holds; where it stands; the first curves. The rest is the query `entryCurves`.
+// `curves`; what it was read with; what it holds; where it stands; the first curves. The rest is
+// the query `entryCurves`. The curves listed are at most `OUTLINE_LIMITS.listed` and hold at most
+// `OUTLINE_LIMITS.listedPoints` positions together (the first curve is listed whatever it holds);
+// a spline is listed without `through` here (the query gives it). The query bounds its page by
+// positions the same way (five times as many).
 export interface OutlineDetail {
   id: Id;
   type: 'outline';
   source: 'reference';
   name?: string;
+  readWith?: OutlineReadWith;
   x: number | Expr;
   y: number | Expr;
   turn: number | Expr;
@@ -605,7 +751,7 @@ export interface OutlineDetail {
   regions: boolean;
   counts: Record<ImportedCurve['type'], number>;
   box: [number, number, number, number]; // in the sketch, as placed
-  curves: ListedCurve[]; // at most OUTLINE_LIMITS.listed, in the order of the entry
+  curves: (ListedCurve | Omit<Extract<ListedCurve, { type: 'spline' }>, 'through'>)[]; // in the order of the entry
   listed: number;
   total: number;
   more?: string; // when `listed` is under `total`: the query that gives the rest
@@ -617,25 +763,25 @@ export interface OutlineDetail {
 export const OUTLINE_OMITTED = (count: number): string => `${count} curves; get_sketch lists the first ${OUTLINE_LIMITS.listed}, the query entryCurves the rest, and save_document writes them`;
 
 // The rows `regions` of `get_sketch` (`regionRows`), capped: at most `regions` rows and a count of
-// the rest; an outer loop of more than `loop` IDs is printed as its count, its first `loop` IDs
-// and the entries its IDs are under, in the place of `ref`. Measured before the cap (the review,
-// fable 4): 33,841 characters of `regions` for an outline of 1000 curves. A region is still named
-// to a command by its whole loop, which the query `regions` of the sketch gives.
+// the rest; an outer loop of more than `loop` IDs is printed as its count, its first `loop` IDs,
+// the entries its IDs are under, and the call that gives it whole (`query sketchRegions` with
+// `from` at its index and `max` 1). Measured before the cap (the review, fable 4): 33,841
+// characters of `regions` for an outline of 1000 curves.
 export const SKETCH_SHOWN = { regions: 50, loop: 20 } as const;
-export type ShownLoop = { outerLoop: Id[] } | { count: number; first: Id[]; entries: Id[] };
+export type ShownLoop = { outerLoop: Id[] } | { count: number; first: Id[]; entries: Id[]; whole: string };
 
 // ================================================================ 8. the app
 
 // The row of the kind (`REFERENCE_UI.outline`, packages/app/src/references/outline.ts): the form of
 // 6c's rows for the three numbers and the anchor, 6b's flag and `inModel`, and one new member.
 // - `file`: a button of the row that opens the draft of the panel on this entry (a hidden file
-//   input of `accept`), with the options the entry stores (`source`). Data only: the panel reads the
+//   input of `accept`), with the options the entry stores (`readWith`). Data only: the panel reads the
 //   file and runs the command, and the row imports nothing of the sketch mode.
 export interface ReferenceUiAfter<R> {
   file?: {
     title: string;
     accept: string;
-    source(ref: R): OutlineSource | undefined;
+    readWith(ref: R): OutlineReadWith | undefined;
   };
 }
 // What the panel of a sketch holds while a file is being placed or replaced (`SketchState.outline`):
@@ -643,7 +789,7 @@ export interface ReferenceUiAfter<R> {
 // - `replaces`: the entry a replacement is for. The draft then starts from the options that entry
 //   stores, shows the revision (kept, added, removed, renamed) and the constraints the rule of an
 //   update names, with a checkbox to remove them, and *Replace* sends one batch. An entry without
-//   `source` (written by hand, or by a command) starts from the defaults and says so.
+//   `readWith` (written by hand, or by a command) starts from the defaults and says so.
 // *Place* sends `addExternal`; a change of a layer, the unit or the weld reads the bytes again.
 export interface OutlineDraft {
   name: string;
@@ -657,7 +803,13 @@ export interface OutlineDraft {
   outcome: OutlineOutcome;
   replaces?: { entry: Id; revision: OutlineRevision; held: { entity: Id; constraints: Id[] }[]; remove: boolean };
 }
-// The pickers of the app (packages/app/src/references/index.ts): `PICKER_LIMIT` (100) applies to
-// every entry with more entities than that, not to derived entries only; the note of what was left
-// out says "entities" for an outline. An entity beyond the limit is picked in the view.
+// The pickers of the app. `PICKER_LIMIT` (100) applies to every entry with more entities than that,
+// not to derived entries only, and **after** the entities are filtered by the kind the picker
+// asks for (`entryEntities(feature, kind?)`), so 34 lines do not hide the circles behind them. The
+// list of an axis, a direction and a centre in the form of an entry (`entryForm`,
+// packages/app/src/panels/sketch.ts) reads the same function; today it walks the index itself. A
+// picker that left entities out says how many and has a field to narrow it by a part of an ID
+// (`c12`); in the sketch mode an entity is picked in the view as well. The row of an outline shows
+// the count of its open ends, as the row of a mirror does.
+export declare function entryEntities(feature: SketchFeatureAfter, entry: Id, kind?: EntityKind, contains?: string): { listed: Id[]; left: number };
 export declare function outlineId(document: Document, file: string): Id; // `idFromFile` among the IDs of the document

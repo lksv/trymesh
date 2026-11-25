@@ -119,3 +119,6 @@ export function boardCurves(W = 60, H = 40, R = 3): Record<Id, ImportedCurve> {
 export const IMPORTED_OUTLINE = (entry = 'pcbo'): Id[] => ['a1', 'a2', 'a3', 'a4', 'l1', 'l2', 'l3', 'l4'].map((local) => `${entry}/${local}`);
 // The command that places an outline in a sketch.
 export const addOutline = (sketch: Id, id: Id, ref: Partial<SketchOutline> & { curves: Record<Id, ImportedCurve> } & Record<string, unknown>): Command => ({ type: 'addExternal', sketch, id, ref: { type: 'outline', ...ref } }) as Command;
+
+// The board as a PCB tool writes it to DXF (written without adapters, so the engine's tests read it too).
+export { boardDxf } from '../../engine/test/outline-kit';

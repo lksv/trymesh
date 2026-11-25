@@ -4,6 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import { type Command, type CutIds, type Engine, type EngineState, type Expr, type Id, type SketchFeature, type SketchResult, type SketchToolInputs, AXIS_CURVES, AXIS_REACH, DUPLICATE, REGIONS_ON_A_POINT, UNDER_ORIGIN, emptySketch, faceKey, freshIds, lineExtent, profileOf, repairsByDefault, sketchTool, sketchWorld, solvedCurves, splineBox, splineThrough, toolBase, type OutlineAbout } from '@trymesh/engine';
 import { pcbByHand, point, standInBoard } from './board-kit';
+import * as s15 from './scenario15-kit';
 import { XY, addSketch, batch, constrain, newEngine, run } from './kit';
 
 const resultOf = (state: EngineState, id: Id): SketchResult => state.evaluation.features[id].sketch as SketchResult;
@@ -1269,5 +1270,45 @@ describe('scenario 15, steps 4, 6 and 7: the lid with spline grips (6d, D70)', (
     const volume = state.evaluation.bodies.lid.volume;
     expect(Math.abs(volume - polygonArea(state, s, [...region[0]].sort()) * LT)).toBeLessThan(PRISM);
     expect(Math.abs(volume - (lidWithGrips(GRIP) - Math.PI * R * R) * LT)).toBeLessThan(GRIP_ALLOWANCE + 0.06 * 2 * LT);
+  });
+});
+
+describe('scenario 15 assembled: the board imported from its DXF, the cover built on it, the revised file (6f, D72)', () => {
+  // one document through the steps, in order (calls.ts of 6f, `scenario`)
+  it('step 1: the board from board.dxf, placed by its centre and extruded', () => {
+    s15.fresh();
+    expect(s15.boardChecks(s15.board())).toBe(true);
+  });
+  it('steps 2 and 3: the skeleton projects the board, the floor, the rim and the standoffs', () => {
+    expect(s15.baseChecks(s15.skeletonAndBase())).toBe(true);
+  });
+  it('step 4: the lid held on projections of the sides, mirrored', () => {
+    const state = s15.lid();
+    expect(s15.allOk(state)).toBe(true);
+    expect(Math.abs(s15.volumeOf(state, 'lid') - s15.lidByHand(60))).toBeLessThan(s15.LID_ALLOWANCE);
+  });
+  it('step 5: two rows of vents', () => {
+    const state = s15.vents();
+    expect(s15.allOk(state)).toBe(true);
+    expect(Math.abs(s15.volumeOf(state, 'lid') - (s15.lidByHand(60) - 7 * s15.SLOT * 2))).toBeLessThan(s15.LID_ALLOWANCE);
+  });
+  it('step 6: the notch of the floor and the round notch of the lid', () => {
+    expect(s15.allOk(s15.floorNotch())).toBe(true);
+    expect(s15.notchChecks(s15.lidNotch())).toBe(true);
+  });
+  it('step 7: vents 7, 3 and 5; the revised file 2 mm wider; the volumes by the query mass; the section of the lid read back', () => {
+    expect(s15.ventCount()).toBe(true);
+    expect(s15.revisedFile()).toBe(true);
+    expect(s15.volumes()).toBe(true);
+    expect(s15.lidSection()).toBe(true);
+  });
+  it('the placement on a model of its own: the anchor, the turn as an expression, setField, the rename of its parameter', () => {
+    expect(s15.placement()).toBe(true);
+  });
+  it('the flag off and on, and a loop of own and imported curves', () => {
+    s15.fresh();
+    expect(s15.flag()).toBe(true);
+    s15.fresh();
+    expect(s15.mixedLoop()).toBe(true);
   });
 });

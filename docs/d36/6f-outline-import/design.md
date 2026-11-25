@@ -812,6 +812,42 @@ Nothing waits for the owner. Answered on 2026-11-25, each as recommended (answer
 2. **What `import_outline` does.** The plan says it "answers with the batch". This design has it send the command (and only report without a sketch), because the batch would carry every curve to the caller and back, up to 140,000 characters each way. *Recommendation: it sends the command.* **Answered: it sends the command (answer 38).** `import_mesh` changes the document already (it stores the mesh), so this is the pattern that exists.
     - The reviewers' conditions, met: without a sketch it only reports; a refusal still answers with the report; a replacement names its entry, reads the file with the stored options, and has a way past the rule of an update in one batch (`remove`); the answer lists what a swap renamed; the same answer through the bridge and on the server's own engine, because one function runs where the engine is (the second round; a test the implementation owes); a call that only looks, or that is refused, does not end a draft of the app, and the file crosses the bridge as base64 (the third round).
 
+## As implemented
+
+Implemented 2026-11-25 in the order of the points of work, a commit each: the kind with the narrowed input of the solver (points 1 and 2 of the design, merged as the design says: `bfbdac6`), the fixed join of the adapter and the limits (`2993201`), the import with the reader of DXF (`8152693`), the reader of SVG (`77361fd`), MCP (`b20c91a`), the app (`a751267`), and scenario 15 assembled. What differs from the design:
+
+1. **A leaf of its own for the curves as data**, `imported-curve.ts` (`OUTLINE_LIMITS`, `OUTLINE_REFUSALS`, `curveProblem`, `outlineBox`, `arcTolerance`), which the kind, the weld and the validator share; the design put them in the kind's module. `references/outline.ts` imports nothing of `import/`, and `import/outline-formats.ts` nothing of `references/`, as the design says.
+2. **The tests with adapters are in `packages/scenarios`** (`imported-outline.test.ts`, `outline-import.test.ts`): the engine's tests have no solver. The pure tests are `packages/engine/test/imported-outline.test.ts`, `outline-import.test.ts` and `svg-import.test.ts`. The board of a PCB tool is `boardDxf` of `packages/engine/test/outline-kit.ts`, which `board-kit.ts` re-exports, so the engine's tests and the scenarios read one file; the design put it in `board-kit.ts`, which imports the adapters.
+3. **`namedOutside` of 6e** walks a derived entry by its texts (a pattern's `refs` is empty) and a reference entry through `refs`.
+4. **6c's closed curve** (`closedAtEnds` in `positionJoins`) also applies to the copies of a closed own spline: no existing test changed.
+5. **`Input<T>` leaves `ImportedCurve` and `OutlineReadWith` as they are**: without it the numbers of the stored curves became `number | Expr` in the input form of a command.
+6. **`OUTLINE_SHARED_OPTIONS`** (`layers`, `weld`) in `import/spec.ts`, spread into the options of each format; `unit` is each format's own.
+7. **`readWith` is what the caller gave**, not the options after the check filled the default of the weld, so a replacement repeats the first import and not a default of today.
+8. **The query `sketchRegions` has no default of `index`**: the contract gave it `default: 0`, and the check of the arguments fills a default in, so every call would have kept the first region alone. The two queries are at the end of `QUERIES`, so the existing order (and the text of an unknown query a test reads) stays.
+9. **`outlineFormatOf`** (`import/outline-formats.ts`) names the format of a path, as `importFormatOf` does for a mesh.
+10. **`get_sketch` keeps `regions` an array**: the rows past 50 are counted in a field beside it, `regionsNotListed` (`{ count, more }`).
+11. **`import_outline` always goes through `_outline`**, on the server's own engine as well (through `callTool`), so both routes run the same code with the bytes as base64; the answer's `file` is the path, as `import_mesh` gives it.
+12. **The app**: the draft is a module of its own (`panels/outline-draft.ts`) and a field of the sketch mode (`SketchMode.outline`). The pickers filter by kind before the limit, for every entry (`entryEntities(sketch, kinds)`), and `omittedNotes` counts what is left out of any entry; **the field that narrows a picker by a part of an ID is not built** (an entity beyond the first hundred is picked in the view in the sketch mode; in the forms of the model view it is not offered). The test of the draft is `packages/app/test/outline.test.ts` with assertions, not a record of `app.test.ts`; the status line of `_outline` is in the record `bridge`.
+13. **Scenario 15** runs the calls of `calls.ts` (steps 1 to 7, the placement, the flag and the mixed loop, each case on a fresh document) from `packages/scenarios/test/scenario15-kit.ts`, the harness the calls declare made real, with `boardDxf` of `outline-kit.ts` in the place of the calls' copy of it; one check of the calls was corrected: `report.byKind` was compared as JSON with its keys in another order than the report gives them (line, arc, circle, spline). The other cases of `calls.ts` (the update rule, the weld, the readers, many curves, MCP, the refusals) are covered by the tests named above rather than run from the calls.
+14. **The narrowing and the kind are in one commit** (`bfbdac6`), the fixed join of the adapter and the limits in the next: the design merges points 1 and 2.
+
+### To verify, the outcomes
+
+1. A DXF of a real PCB tool and of a real CAD tool: **not checked**, no real file was at hand. The reader takes what the design names; KiCad's plot "using contours" (each edge as the outline of its stroke) would read as two loops beside each other and is not detected by the report.
+2. An SVG of a real drawing program: **not checked** for the same reason; the flags without separators and the groups as layers are tested on files written by the tests.
+3. The narrowing inside the engine: **done**. The narrowed input against the whole input (by a mock of the kind's `narrow`): the same points, radii, result and `diagnoseSketch`; the stamps of the existing tests unchanged (no stored sketch of a test changed).
+4. The memory of the solver with the narrowed input: 2000 curves with repeated drags and 500 splines of four control points solved without an abort; **no session of hundreds of drags was run**.
+5. The fixed join of the adapter: **done**. The adapter with the rule as it stands (by the radius only for a fixed arc) was run over every test of the repository and the spikes with the decision of before logged beside it: 4124 decisions, none differed; no existing test changed.
+6. `partial` in `updateExternal`: **done** in the command (each field alone, `undefined`, expressions kept, `name: ''`, `readWith: null`, another type not merged), and an entry without references validated once.
+7. The third part of the rule in a batch: **done**, both orders (`removeConstraint` then `updateExternal` passes; the other order is refused).
+8. The app with an outline of 2000 curves: **not measured** in a browser (no Playwright in this session); the pickers with the limit are tested.
+9. `import_outline` through the bridge and on the server's own engine: **done**, the same answer (`outline-formats.test.ts`).
+10. The app's snapshots: the button changes every record that shows the panel of a sketch, and the two queries every record that shows the menu of queries; nothing else.
+11. `modules.test.ts`: **passes** with the new files; `references/outline.ts` imports nothing of `import/`.
+12. The weld's properties over generated files: **done**, the probe L carried over with its generators (1100 rings, each at two other places).
+13. The size of a bridged call near the limit: the limit is checked on the text before it is decoded (`outlineBytes`); **a call of 8 million bytes was not run** through the bridge.
+14. A DXF in the coordinates of a survey: **not checked** with a real file; rings at 300 m, 10 km and 500 km are tested.
+
 ## Reviews
 
 ### The review of the design, 2026-11-25 (Fable, `codex`, `agy`)

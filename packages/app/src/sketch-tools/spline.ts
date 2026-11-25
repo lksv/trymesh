@@ -3,10 +3,9 @@
 // them. A second place beyond the end of a line at the first place is moved onto the line's
 // extension (the mode's inferred direction `extension`), and the batch holds it on the line, so the
 // spline runs on smoothly from it.
-import { splinePolyline } from '@trymesh/engine';
 import { PICK_REACH } from '../host';
-import { splineCommands } from '../sketch-commands';
-import { VIEW_TOLERANCE, dist } from '../sketch-view';
+import { SPLINE_TOOL_PROBLEMS, repeatsPlace, splineCommands } from '../sketch-commands';
+import { dist, splineShape } from '../sketch-view';
 import { type Place, type SketchPlaceTool, anchor, drawn, placePosition } from './spec';
 
 export const spline: SketchPlaceTool<undefined> = {
@@ -18,7 +17,14 @@ export const spline: SketchPlaceTool<undefined> = {
     const last = places[places.length - 1];
     // the closing click is told by position: the first place is seldom a point of the sketch yet
     const closing = kept.length >= 3 && dist(placePosition(context.view, last), placePosition(context.view, kept[0])) <= PICK_REACH * host.pixelSize();
-    if (!closing) return places;
+    if (!closing) {
+      // a point picked twice is refused at the click, and the places before it stay
+      if (repeatsPlace(context.view, kept.map(anchor), anchor(last))) {
+        host.say(SPLINE_TOOL_PROBLEMS.twice(places.length), true);
+        return kept;
+      }
+      return places;
+    }
     const batch = splineCommands(m.id, context.view, kept.map(anchor), true, host.newId);
     if ('problem' in batch) {
       host.say(batch.problem, true);
@@ -38,10 +44,10 @@ export const spline: SketchPlaceTool<undefined> = {
     const control = [...places, cursor.at];
     if (control.length < 2) return [];
     const out = [control];
-    if (control.length >= 3) {
-      // the rule of the view: the largest side of the box of the control points
-      const size = Math.max(Math.max(...control.map((p) => p[0])) - Math.min(...control.map((p) => p[0])), Math.max(...control.map((p) => p[1])) - Math.min(...control.map((p) => p[1])));
-      if (size > 0) out.push(splinePolyline(control, VIEW_TOLERANCE * size));
+    // the rule of the view (`splineShape`), once the control points are not all at one place
+    if (control.length >= 3 && control.some((p) => p[0] !== control[0][0] || p[1] !== control[0][1])) {
+      const shape = splineShape(control);
+      if (shape.type === 'spline') out.push(shape.points);
     }
     return out;
   },

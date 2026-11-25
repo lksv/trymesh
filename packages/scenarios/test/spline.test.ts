@@ -3,7 +3,8 @@
 // the places of 6e (trim, extend, split, the query of the contacts), 6c (mirror and pattern) and 6b
 // (projection from a sketch). docs/d36/6d-sketch-spline/design.md, "Tests the implementation owes".
 import { describe, expect, it } from 'vitest';
-import { type Command, type CutIds, type Engine, type EngineState, type Id, type SketchFeature, type SketchResult, type SketchToolInputs, freshIds, sketchTool } from '@trymesh/engine';
+import { type Command, type CutIds, type Engine, type EngineState, type Id, type SketchFeature, type SketchResult, type SketchToolInputs, curveUnder, freshIds, sketchTool, splinePolyline } from '@trymesh/engine';
+import { occupies } from '../../engine/src/references/derive';
 import { XY, addExtrude, addSketch, constrain, newEngine, run } from './kit';
 
 const resultOf = (state: EngineState, id: Id): SketchResult => state.evaluation.features[id].sketch as SketchResult;
@@ -90,6 +91,32 @@ describe('a spline in the document (D70)', () => {
     expect(diagnosis.degreesOfFreedom).toBe(10);
   });
 
+  it('a tangent join to an arc: a construction leg over the end leg, tangent to the arc, is solved and the profile is one region', () => {
+    const engine = newEngine();
+    run(engine, addSketch('S', XY));
+    const state = run(
+      engine,
+      point('S', 'q', 0, 0),
+      point('S', 's', 10, 0),
+      point('S', 'e', 0, 10),
+      point('S', 'c1', -5, 11),
+      point('S', 'c2', -12, 5),
+      point('S', 'c3', -12, 0),
+      { type: 'addCurve', sketch: 'S', id: 'a', curve: { type: 'arc', center: 'q', start: 's', end: 'e' } },
+      spline('S', 'sp', ['e', 'c1', 'c2', 'c3']),
+      line('S', 'l', 'c3', 's'),
+      line('S', 'leg', 'e', 'c1', true),
+      constrain('S', 't', { type: 'tangent', a: 'leg', b: 'a' }),
+    );
+    const result = resultOf(state, 'S');
+    // the leg is tangent to the circle at the end of the arc: square to the radius there
+    const [q, e, c1] = [result.points.q, result.points.e, result.points.c1];
+    expect(((c1.x - e.x) * (e.x - q.x) + (c1.y - e.y) * (e.y - q.y)) / Math.hypot(c1.x - e.x, c1.y - e.y) / Math.hypot(e.x - q.x, e.y - q.y)).toBeCloseTo(0, 6);
+    expect(c1.x).toBeLessThan(e.x);
+    expect(result.valid).toBe(true);
+    expect(result.regions.map((r) => r.ref.outerLoop)).toEqual([['a', 'l', 'sp']]);
+  });
+
   it('a second control point held on a line keeps the side it starts on (measured I)', () => {
     for (const [x, smooth] of [
       [26, true],
@@ -158,10 +185,45 @@ describe('the side face of a spline and what reads an exact outline (D70)', () =
     expect(error?.message).toMatch(/The curve "sp" is a spline, which has no exact form/);
     const taper = engine.preview({ type: 'addFeature', feature: { id: 'O', name: 'O', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 'S', regions }, extent: { type: 'distance', start: 0, distance: 2, taper: 0.1 }, operation: 'new' } as never });
     expect(taper.ok && taper.state.evaluation.features.O.error?.code).toBe('invalidProfile');
+    expect(taper.ok && taper.state.evaluation.features.O.error?.refs).toEqual(['sp']);
     const revolve = engine.preview({ type: 'addFeature', feature: { id: 'R', name: 'R', suppressed: false, type: 'revolve', profile: { type: 'regions', sketch: 'S', regions }, axis: { kind: 'base', axis: 'Y' }, extent: { type: 'full' }, operation: 'new' } as never });
     expect(revolve.ok && revolve.state.evaluation.features.R.error?.code).toBe('invalidProfile');
     expect(revolve.ok && revolve.state.evaluation.features.R.error?.refs).toEqual(['sp']);
     expect(refusal(engine, { type: 'addFeature', feature: { id: 'W', name: 'W', suppressed: false, type: 'extrude', profile: { type: 'wall', sketch: 'S', curves: ['sp'], thickness: 1 }, extent: { type: 'distance', start: 0, distance: 1 }, operation: 'new' } as never })).toMatch(/sp/);
+  });
+
+  it('a region away from the splines of its sketch is offset and revolved; a wall whose line becomes a spline in a batch is refused in the recompute', () => {
+    const engine = newEngine();
+    run(engine, addSketch('S', XY));
+    run(
+      engine,
+      point('S', 'p1', 10, 0),
+      point('S', 'p2', 20, 0),
+      point('S', 'p3', 20, 10),
+      point('S', 'p4', 10, 10),
+      line('S', 'l1', 'p1', 'p2'),
+      line('S', 'l2', 'p2', 'p3'),
+      line('S', 'l3', 'p3', 'p4'),
+      line('S', 'l4', 'p4', 'p1'),
+      point('S', 's1', 30, 0),
+      point('S', 's2', 40, 0),
+      point('S', 's3', 40, 10),
+      point('S', 's4', 30, 10),
+      spline('S', 'sp', ['s1', 's2', 's3', 's4', 's1']),
+    );
+    const regions = [{ outerLoop: ['l1', 'l2', 'l3', 'l4'] }];
+    const offset = engine.preview({ type: 'addFeature', feature: { id: 'O', name: 'O', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 'S', regions, offset: 1 }, extent: { type: 'distance', start: 0, distance: 2 }, operation: 'new' } });
+    expect(offset.ok && offset.state.evaluation.features.O.status).toBe('ok');
+    // the square 10 × 10 grown by 1 (sharp corners), 2 high
+    expect(offset.ok && offset.state.evaluation.bodies.O.volume).toBeCloseTo(12 * 12 * 2, 3);
+    const revolve = engine.preview({ type: 'addFeature', feature: { id: 'R', name: 'R', suppressed: false, type: 'revolve', profile: { type: 'regions', sketch: 'S', regions }, axis: { kind: 'base', axis: 'Y' }, extent: { type: 'full' }, operation: 'new' } as never });
+    expect(revolve.ok && revolve.state.evaluation.features.R.status).toBe('ok');
+    run(engine, { type: 'addFeature', feature: { id: 'W', name: 'W', suppressed: false, type: 'extrude', profile: { type: 'wall', sketch: 'S', curves: ['l1'], thickness: 1 }, extent: { type: 'distance', start: 0, distance: 1 }, operation: 'new' } as never });
+    const state = run(engine, { type: 'batch', commands: [{ type: 'removeEntity', sketch: 'S', id: 'l1' }, point('S', 'q', 15, -3), spline('S', 'l1', ['p1', 'q', 'p2'])] });
+    const error = state.evaluation.features.W.error;
+    expect(error?.code).toBe('invalidProfile');
+    expect(error?.message).toBe('The curve "l1" is a spline; a wall runs along lines, arcs and circles.');
+    expect(error?.refs).toEqual(['l1']);
   });
 
   it('a plate whose hole is a closed spline is not offset either: the refusal names the spline of the hole', () => {
@@ -225,8 +287,23 @@ describe('6e beside a spline (D70)', () => {
     expect(withSpline?.kind).toBe('crossing');
     expect(withSpline?.fix).toBe('none');
     expect(withSpline?.why).toMatch(/"sp" is a spline, which is not cut and holds no point/);
-    // an end of the other curve on the spline is `end`
-    run(engine, point('S', 'z1', 60, 30), { type: 'removeEntity', sketch: 'S', id: 'y2' }, point('S', 'y3', 44.5, 10), line('S', 'y', 'y1', 'y3'));
+    // an end of the other curve on the spline is `end`: on its polyline (a point of it), since the
+    // polyline lies inside the curve (an end on the curve itself is a crossing of a piece)
+    const polyline = splinePolyline(
+      [
+        [40, 0],
+        [50, 10],
+        [40, 20],
+      ],
+      0.01,
+    );
+    const onIt = polyline[Math.floor(polyline.length / 2) - 1];
+    run(engine, { type: 'removeEntity', sketch: 'S', id: 'y' }, point('S', 'y3', onIt[0], onIt[1]), point('S', 'y4', 30, onIt[1]), line('S', 'y', 'y4', 'y3'));
+    const ended = contacts(engine, 'S').contacts.find((c) => c.curves.includes('sp'));
+    expect(ended?.kind).toBe('end');
+    expect(ended?.fix).toBe('none');
+    expect(ended?.at[0]).toBeCloseTo(onIt[0], 6);
+    expect(ended?.at[1]).toBeCloseTo(onIt[1], 6);
     const knot = newEngine();
     run(knot, addSketch('K', XY));
     run(knot, point('K', 'n1', 0, 0), point('K', 'n2', 30, 0), point('K', 'n3', 30, 20), point('K', 'n4', 10, 20), point('K', 'n5', 10, -10), spline('K', 'k', ['n1', 'n2', 'n3', 'n4', 'n5']));
@@ -269,6 +346,32 @@ describe('6e beside a spline (D70)', () => {
       expect(resultOf(state, 'U').valid).toBe(true);
       expect(resultOf(state, 'U').regions.map((r) => r.ref.outerLoop)).toEqual([['ul', 'us']]);
     }
+  });
+
+  it('two splines whose ends meet at two places: split joins both by a coincident and re-points neither', () => {
+    const engine = newEngine();
+    run(engine, addSketch('U', XY));
+    run(engine, point('U', 'a', 0, 0), point('U', 'b', 10, 10), point('U', 'c', 20, 0), point('U', 'd', 20, 0), point('U', 'f', 10, -10), point('U', 'g', 0, 0), spline('U', 's1', ['a', 'b', 'c']), spline('U', 's2', ['d', 'f', 'g']));
+    const found = contacts(engine, 'U');
+    expect(found.contacts.map((c) => [c.kind, c.fix, c.curves])).toEqual([
+      ['ends', 'join', ['s1', 's2']],
+      ['ends', 'join', ['s1', 's2']],
+    ]);
+    const made = tool(engine, 'split', 'U', {});
+    if (!made.ok) throw new Error(made.message);
+    expect(made.commands.some((c) => c.type === 'setCurvePoint')).toBe(false);
+    const joined = made.commands.flatMap((c) => (c.type === 'addConstraint' && c.constraint.type === 'coincident' ? [[c.constraint.a, c.constraint.b].sort().join('=')] : []));
+    expect(joined.sort()).toEqual(['a=g', 'c=d']);
+    const state = run(engine, ...made.commands);
+    expect(resultOf(state, 'U').valid).toBe(true);
+    expect(resultOf(state, 'U').regions.map((r) => r.ref.outerLoop)).toEqual([['s1', 's2']]);
+  });
+
+  it('curveUnder answers with the spline for a place on it, and with the line for a place on a line', () => {
+    const engine = newEngine();
+    const state = bulge(engine);
+    expect(curveUnder(contextOf(state, 'S'), [44.9, 10])).toBe('sp');
+    expect(curveUnder(contextOf(state, 'S'), [20, 0.01])).toBe('l1');
   });
 
   it('a construction leg to an inner control point that nothing else names, trimmed away: the point and the spline stay', () => {
@@ -368,6 +471,20 @@ describe('6c with a spline (D70)', () => {
     expect(result.regions.map((r) => r.ref.outerLoop)).toEqual([['l', 's']]);
     const turned = run(engine, { type: 'addExternal', sketch: 'M', id: 'p', ref: { type: 'pattern', sources: ['s', 'l'], transform: { type: 'circular', center: 'origin', count: 3, span: { type: 'full' } } } as never });
     expect(resultOf(turned, 'M').curves['p/1/s'].shape).toEqual({ type: 'spline', points: ['p/1/a', 'p/1/b', 'p/1/c', 'p/1/d'] });
+    // the source listed the other way round: the copy occupies it too
+    const reversed = engine.preview({ type: 'batch', commands: [{ type: 'removeExternal', sketch: 'M', id: 'p' } as never, { type: 'removeExternal', sketch: 'M', id: 'm' } as never, { type: 'removeEntity', sketch: 'M', id: 's' }, spline('M', 's', ['d', 'c', 'b', 'a']), { type: 'addExternal', sketch: 'M', id: 'm', ref: { type: 'pattern', sources: ['s'], transform: { type: 'mirror', axis: 'origin/y' } } }] });
+    if (!reversed.ok) throw new Error(reversed.error.message);
+    expect(resultOf(reversed.state, 'M').curves['m/1/s'].regions).toBe(false);
+    expect(resultOf(reversed.state, 'M').regions.map((r) => r.ref.outerLoop)).toEqual([['l', 's']]);
+  });
+
+  it('occupies takes a spline\'s control points in order or in reverse, and nothing else', () => {
+    const geometry = { points: { a: { x: 0, y: 0 }, b: { x: 5, y: 5 }, c: { x: 10, y: 0 }, d: { x: 15, y: 5 } }, radii: {} };
+    const curve = (id: Id, points: Id[]) => ({ id, shape: { type: 'spline' as const, points }, source: 'own' as const, regions: true });
+    expect(occupies(curve('x', ['a', 'b', 'c']), curve('y', ['a', 'b', 'c']), geometry)).toBe(true);
+    expect(occupies(curve('x', ['a', 'b', 'c']), curve('y', ['c', 'b', 'a']), geometry)).toBe(true);
+    expect(occupies(curve('x', ['a', 'b', 'c']), curve('y', ['b', 'a', 'c']), geometry)).toBe(false);
+    expect(occupies(curve('x', ['a', 'b', 'c']), curve('y', ['a', 'b', 'c', 'd']), geometry)).toBe(false);
   });
 });
 
@@ -399,6 +516,12 @@ describe('6b and a spline (D70)', () => {
     expect(follower.status).not.toBe('error');
     expect(follower.warnings.some((w) => w.code === 'brokenProjection' && /is a spline now, not a line/.test(w.message ?? JSON.stringify(w)))).toBe(true);
     expect(resultOf(state, 'T').points['f1/b']?.x).toBeCloseTo(40, 9);
+    // the document loads, and the projection is frozen there too
+    const loaded = newEngine();
+    expect(loaded.load(JSON.stringify(state.document)).ok).toBe(true);
+    const again = loaded.getState().evaluation.features.T;
+    expect(again.status).toBe('warning');
+    expect(again.warnings.map((w) => w.code)).toContain('brokenProjection');
   });
 
   it('projectSketch leaves the splines out and lists them; with entities naming one it refuses; sketchSources lists it without a place', () => {

@@ -635,8 +635,9 @@ export function openEndAdvice(feature: SketchFeature, solved: SketchResult | und
 
 // Where a spline runs (D70, the owner's answers 26 and 34): `through`, points the curve passes from
 // its start to its end (the joints of its Bezier pieces and the middle of each), and `box`, the box
-// of the curve, at the solved positions of its control points, rounded as positions are; left out
-// while a control point has no position.
+// of the curve, at the positions `at` of the control points shows (the solved ones, else the
+// document's, so also in an unsolved sketch), rounded as positions are; left out while a control
+// point has no position.
 function splineDetail(points: readonly Id[], at: (point: Id) => Point2 | undefined): { through?: Json; box?: Json } {
   const control = points.map((point) => (point === 'origin' ? { x: 0, y: 0 } : at(point)));
   if (control.some((p) => p === undefined)) return {};

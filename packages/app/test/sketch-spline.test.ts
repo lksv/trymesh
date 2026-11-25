@@ -84,16 +84,27 @@ describe('the tool Spline (D70)', () => {
     const points = (made[0][1] as { points: string[] }).points;
     expect(points).toHaveLength(5);
     expect(points[4]).toBe(points[0]);
-    // the existing point q1 picked twice: refused, nothing sent, the places stay
+    // the existing point q1 picked twice: refused at the click, nothing sent, the places before it
+    // stay (the review of the implementation: it was caught at Enter only, and stayed among them)
     h.click(at(10, 10));
     h.click(at(0, 80));
     h.click(at(10, 10));
-    h.key('Enter');
     expect(status(h)).toBe(SPLINE_TOOL_PROBLEMS.twice(3));
     expect(splines(h)).toHaveLength(1);
+    h.click(at(40, 80));
+    h.key('Enter');
+    const after = splines(h);
+    expect(after).toHaveLength(2);
+    const second = (after.find(([id]) => id !== made[0][0])?.[1] as { points: string[] }).points;
+    expect(second).toHaveLength(3);
+    expect(second[0]).toBe('q1');
+    const [p2, p3] = second.slice(1).map((id) => position(h, id));
+    [...p2, ...p3].forEach((v, i) => expect(v).toBeCloseTo([0, 80, 40, 80][i], 6));
+    // Escape drops the places
+    h.click(at(0, 100));
     h.key('Escape');
     h.key('Enter');
-    expect(splines(h)).toHaveLength(1);
+    expect(splines(h)).toHaveLength(2);
   });
 
   it('from the end of a line the second place goes onto its extension and is held on the line', async () => {

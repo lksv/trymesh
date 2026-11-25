@@ -1394,3 +1394,50 @@ describe('the reviews of the design of 6d (D70): a spline in the profile', () =>
     expect(profile(t).valid).toBe(false);
   });
 });
+
+// The review of the implementation of 6d (D70).
+describe('the review of the implementation of 6d (D70)', () => {
+  const spline = (...points: string[]): Curve => ({ type: 'spline', points });
+
+  it('a 64-point zigzag spline at a chord tolerance of 1e-6 (170,442 polyline points) is a valid profile; the reach of a half-edge took the points as arguments of one call (F1)', () => {
+    const points: Record<string, [number, number]> = { z1: [315, -200], z2: [0, -200] };
+    const ids: string[] = [];
+    for (let i = 0; i < 64; i++) {
+      points[`p${i}`] = [i * 5, i % 2 ? 30 : 0];
+      ids.push(`p${i}`);
+    }
+    const s = sketch(points, [
+      ['sp', spline(...ids)],
+      ['l1', line('p63', 'z1')],
+      ['l2', line('z1', 'z2')],
+      ['l3', line('z2', 'p0')],
+    ]);
+    expect(splinePolyline(ids.map((id) => points[id]), 1e-6).length).toBeGreaterThan(150000);
+    const p = profile(s, 1e-6);
+    expect(p.valid).toBe(true);
+    expect(p.regions).toHaveLength(1);
+  });
+
+  it('two 64-point splines with touching boxes at a chord tolerance of 1e-5 (45k pieces each) are tested by a sweep, not piece against every piece (F4)', () => {
+    const points: Record<string, [number, number]> = {};
+    const [a, b]: string[][] = [[], []];
+    for (let i = 0; i < 64; i++) {
+      points[`a${i}`] = [i * 2, 10 + (i % 2 === 0 ? 10 : -10)];
+      points[`b${i}`] = [i * 2 + 1, 30 + (i % 2 === 0 ? 10 : -10)];
+      a.push(`a${i}`);
+      b.push(`b${i}`);
+    }
+    const s = sketch(points, [
+      ['sa', spline(...a)],
+      ['sb', spline(...b)],
+      ['l1', line('a0', 'b0')],
+      ['l2', line('a63', 'b63')],
+    ]);
+    const started = performance.now();
+    const p = profile(s, 1e-5);
+    // measured: 10.2 s with the double loop, 1.1 s with the sweep; the bound is loose for a loaded machine
+    expect(performance.now() - started).toBeLessThan(6000);
+    expect(p.valid).toBe(true);
+    expect(p.regions).toHaveLength(1);
+  });
+});

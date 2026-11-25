@@ -146,6 +146,12 @@ export function arcCommands(sketch: Id, view: SketchView, center: Anchor, start:
 
 // ---------------------------------------------------------------- the spline (D70)
 
+// Whether a place of the tool Spline is at a place kept before it: the same point of the sketch, or
+// within the length tolerance. The tool asks it at each click and the batch again at the end.
+export function repeatsPlace(view: SketchView, kept: Anchor[], next: Anchor): boolean {
+  const at = positionOf(view, next);
+  return kept.some((place) => (place.snap?.kind === 'point' && next.snap?.kind === 'point' && place.snap.id === next.snap.id) || dist(positionOf(view, place), at) <= SAME_PLACE);
+}
 export const SPLINE_TOOL_PROBLEMS = {
   tooFew: 'A spline needs at least three control points.',
   twice: (place: number): string => `The control point ${place} is at a point the spline already has; a spline passes each of its control points once.`,
@@ -189,14 +195,8 @@ export function extensionOf(view: SketchView, first: Anchor, at: Vec2, reach: nu
 // places or two places at one point.
 export function splineCommands(sketch: Id, view: SketchView, places: Anchor[], closed: boolean, newId: NewId): { commands: Command[] } | { problem: string } {
   if (places.length < 3) return { problem: SPLINE_TOOL_PROBLEMS.tooFew };
+  for (let j = 1; j < places.length; j++) if (repeatsPlace(view, places.slice(0, j), places[j])) return { problem: SPLINE_TOOL_PROBLEMS.twice(j + 1) };
   const at = places.map((p) => positionOf(view, p));
-  for (let j = 1; j < places.length; j++) {
-    for (let i = 0; i < j; i++) {
-      const [a, b] = [places[i].snap, places[j].snap];
-      const samePoint = a?.kind === 'point' && b?.kind === 'point' && a.id === b.id;
-      if (samePoint || dist(at[i], at[j]) <= SAME_PLACE) return { problem: SPLINE_TOOL_PROBLEMS.twice(j + 1) };
-    }
-  }
   const placed = places.map((p) => place(sketch, view, p, newId));
   const ids = placed.map((p) => p.id);
   const commands: Command[] = placed.flatMap((p) => p.commands);
@@ -257,10 +257,10 @@ function sort(view: SketchView, ids: Id[]): Sorted {
 // fixed entities alone (the origin, its axes, projected geometry). `horizontal` and `vertical` go to
 // the own lines of the selection only.
 // A selection that holds an entity no constraint may name gets no offer (`takesConstraint`).
-const holdsCopy = (view: SketchView, selection: Id[]): boolean => selection.some((id) => !takesConstraint(view, id));
+const holdsUnconstrainable = (view: SketchView, selection: Id[]): boolean => selection.some((id) => !takesConstraint(view, id));
 export function geometricFor(kind: GeometricKind, view: SketchView, selection: Id[]): Constraint[] | undefined {
   const own = (id: Id): boolean => view.points.get(id)?.own === true || view.curves.get(id)?.own === true;
-  if (!selection.some(own) || holdsCopy(view, selection)) return undefined;
+  if (!selection.some(own) || holdsUnconstrainable(view, selection)) return undefined;
   const { points, lines, round } = sort(view, selection);
   const only = (p: number, l: number, r: number) => points.length === p && lines.length === l && round.length === r;
   switch (kind) {
@@ -336,7 +336,7 @@ function roundDimension(kind: EntityKind | undefined): 'diameter' | 'radius' {
 
 // Kóta podle výběru (tabulka v docs/ui.md); hodnota je současná míra zaokrouhlená na setiny.
 export function dimensionFor(variant: DimensionVariant, view: SketchView, selection: Id[]): Dimension | undefined {
-  if (holdsCopy(view, selection)) return undefined;
+  if (holdsUnconstrainable(view, selection)) return undefined;
   const { points, lines, round } = sort(view, selection);
   const count = points.length + lines.length + round.length;
   let shape: DimensionShape | undefined;

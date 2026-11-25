@@ -627,18 +627,46 @@ function piecePairs(A: Shape, B: Shape, tol: number): { P: Exact; Q: Exact; shar
     return (s.a === key && s.along[k] <= reach) || (s.b === key && total - s.along[k + 1] <= reach);
   };
   const [partsA, partsB] = [parts(A), parts(B)];
-  const boxesB = partsB.map((part) => shapeBox(part.shape));
   const out: { P: Exact; Q: Exact; shared: Vec2[] }[] = [];
-  for (const pa of partsA) {
-    const box = shapeBox(pa.shape);
-    partsB.forEach((pb, j) => {
-      const other = boxesB[j];
-      if (box[0] > other[2] + 2 * tol || other[0] > box[2] + 2 * tol || box[1] > other[3] + 2 * tol || other[1] > box[3] + 2 * tol) return;
-      const reach = vertexReach(pa.shape, pb.shape, tol);
-      out.push({ P: pa.shape, Q: pb.shape, shared: shared.filter((v) => near(A, pa.k, v.key, reach) && near(B, pb.k, v.key, reach)).map((v) => v.at) });
-    });
+  for (const [i, j] of boxPairs(
+    partsA.map((part) => shapeBox(part.shape)),
+    partsB.map((part) => shapeBox(part.shape)),
+    2 * tol,
+  )) {
+    const [pa, pb] = [partsA[i], partsB[j]];
+    const reach = vertexReach(pa.shape, pb.shape, tol);
+    out.push({ P: pa.shape, Q: pb.shape, shared: shared.filter((v) => near(A, pa.k, v.key, reach) && near(B, pb.k, v.key, reach)).map((v) => v.at) });
   }
   return out;
+}
+
+// The pairs (i, j) of a box of the first list and a box of the second whose distance on each axis
+// is at most `gap`, in the order of the double loop over i and then j (`compatible` stops at the
+// first pair that fails). Found by sorting the boxes of both along the longer side of the box of
+// all of them and sweeping, so two splines of many pieces are not tested piece against every piece
+// (the review of 6d, F4). A box with a coordinate that is not finite is paired with every box of the
+// other list, as the double loop would.
+function boxPairs(first: readonly Box[], second: readonly Box[], gap: number): [number, number][] {
+  const finite = (b: Box): boolean => b.every(Number.isFinite);
+  const entries: { box: Box; side: 0 | 1; index: number }[] = [];
+  const pairs: [number, number][] = [];
+  first.forEach((box, index) => (finite(box) ? entries.push({ box, side: 0, index }) : second.forEach((_, j) => pairs.push([index, j]))));
+  second.forEach((box, index) => (finite(box) ? entries.push({ box, side: 1, index }) : first.forEach((other, i) => finite(other) && pairs.push([i, index]))));
+  let [x0, y0, x1, y1] = [Infinity, Infinity, -Infinity, -Infinity];
+  for (const { box } of entries) [x0, y0, x1, y1] = [Math.min(x0, box[0]), Math.min(y0, box[1]), Math.max(x1, box[2]), Math.max(y1, box[3])];
+  const [lo, hi] = x1 - x0 >= y1 - y0 ? [0, 2] : [1, 3]; // the axis of the sweep
+  const [crossLo, crossHi] = [1 - lo, 3 - lo];
+  entries.sort((p, q) => p.box[lo] - q.box[lo]);
+  for (let k = 0; k < entries.length; k++) {
+    const a = entries[k];
+    for (let m = k + 1; m < entries.length; m++) {
+      const b = entries[m];
+      if (b.box[lo] > a.box[hi] + gap) break;
+      if (a.side === b.side || b.box[crossLo] > a.box[crossHi] + gap || a.box[crossLo] > b.box[crossHi] + gap) continue;
+      pairs.push(a.side === 0 ? [a.index, b.index] : [b.index, a.index]);
+    }
+  }
+  return pairs.sort((p, q) => p[0] - q[0] || p[1] - q[1]);
 }
 
 // Smějí se dvě křivky v profilu potkat? Dotýkat se smějí jen ve spojených bodech.
@@ -1124,7 +1152,10 @@ function buildProfile(curves: readonly SketchCurve[], joins: (id: Id) => Id, geo
       const s = h.shape;
       if (s.kind !== 'spline') return dist2(s.pa, s.pb);
       const v = h.forward ? s.pa : s.pb;
-      return Math.max(...s.pts.map((p) => dist2(p, v)));
+      // a loop, not a spread: a polyline can have more points than a call takes arguments
+      let largest = 0;
+      for (const p of s.pts) largest = Math.max(largest, dist2(p, v));
+      return largest;
     };
     for (const list of outgoing.values()) {
       const distance = Math.min(...list.map((i) => reachOf(halves[i]))) / 2;

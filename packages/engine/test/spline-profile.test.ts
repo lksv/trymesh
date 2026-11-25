@@ -119,18 +119,47 @@ describe('the profile of a sketch with a spline', () => {
     expect(profile(cusp).valid).toBe(true);
   });
 
-  it('a spline that crosses itself, and one that touches a line between vertices, make the profile invalid', () => {
+  it('a spline that crosses itself, and one that crosses a line between vertices, make the profile invalid', () => {
     const knot = sketch({ n1: [0, 0], n2: [30, 0], n3: [30, 20], n4: [10, 20], n5: [10, -10] }, [['k', spline('n1', 'n2', 'n3', 'n4', 'n5')]]);
     expect(profile(knot).valid).toBe(false);
-    // a spline whose middle bulges onto a line between its ends
-    const touching = sketch(
+    // a spline whose middle bulges across a line between its ends (to y = -2.5)
+    const crossing = sketch(
       { a: [0, 0], b: [20, 0], c: [10, -10], d: [10, 10], e: [0, 5], f: [20, 5] },
       [
         ['l', line('a', 'b')],
         ['sp', spline('e', 'c', 'f')],
       ],
     );
-    expect(profile(touching).valid).toBe(false);
+    expect(profile(crossing).valid).toBe(false);
+  });
+
+  it('a spline that touches a line between vertices is decided by its polyline at the chord tolerance (known limit, measured K)', () => {
+    // the curve touches y = 0 at (10, 0); at 0.01 its polyline of 23 pieces stays 0.0095 above it,
+    // at 1e-4 a point of the polyline lies on the touch
+    const touching = sketch(
+      { a: [0, 0], b: [20, 0], c: [10, -5], e: [0, 5], f: [20, 5] },
+      [
+        ['l', line('a', 'b')],
+        ['sp', spline('e', 'c', 'f')],
+      ],
+    );
+    expect(profile(touching, 0.01).valid).toBe(true);
+    expect(profile(touching, 1e-4).valid).toBe(false);
+  });
+
+  it('a tangent join to an arc is valid with one region; a cusp with the spline outside the arc is invalid (known limit)', () => {
+    // a quarter arc from (10, 0) to (0, 10) about the origin, the spline leaving (0, 10) along -x
+    const join = (c1: [number, number]) =>
+      sketch(
+        { q: [0, 0], s: [10, 0], e: [0, 10], c1, c2: [-12, 5], c3: [-12, 0] },
+        [
+          ['a', arc('q', 's', 'e')],
+          ['sp', spline('e', 'c1', 'c2', 'c3')],
+          ['l', line('c3', 's')],
+        ],
+      );
+    expect(regionsOf(join([-6, 10]))).toEqual(['a,l,sp']);
+    expect(profile(join([6, 10])).valid).toBe(false);
   });
 
   it('a closed spline alone is one region, its side its own; as a hole of a plate it is a hole; a dangling line at its point changes nothing (measured E)', () => {
@@ -269,6 +298,101 @@ describe('a spline as one shape against the chain of its polyline (measured F)',
     }
     expect(compared).toBeGreaterThan(1000);
     expect(valid).toBeGreaterThan(200);
+    expect(performance.now() - started).toBeLessThan(60000);
+  });
+
+  // The review of the implementation: the design ran arcs too. A lens of a spline and a second
+  // spline, an arc or a line between two shared vertices A and B; a fan of lines or of lines and an
+  // arc at A; 15% of the control points doubled. Every spline becomes the chain of its polyline.
+  it('agrees with a second spline, arcs at the shared vertex and doubled control points', () => {
+    const chainOf = (points: Record<string, [number, number]>, curves: Entry[], tolerance: number): { points: Record<string, [number, number]>; curves: Entry[] } => {
+      const chainPoints = { ...points };
+      const out: Entry[] = [];
+      for (const [id, c] of curves) {
+        if (c.type !== 'spline') {
+          out.push([id, c]);
+          continue;
+        }
+        const pts = splinePolyline(
+          c.points.map((p): Vec2 => points[p]),
+          tolerance,
+        );
+        const names = pts.map((p, k) => {
+          if (k === 0) return c.points[0];
+          if (k === pts.length - 1) return c.points[c.points.length - 1];
+          chainPoints[`${id}w${k}`] = [p[0], p[1]];
+          return `${id}w${k}`;
+        });
+        names.slice(1).forEach((b, k) => out.push([`${id}_${String(k).padStart(5, '0')}`, line(names[k], b)]));
+      }
+      return { points: chainPoints, curves: out };
+    };
+    let [valid, compared] = [0, 0];
+    const started = performance.now();
+    for (const [tolerance, runs] of [
+      [0.1, 400],
+      [0.01, 400],
+      [0.001, 150],
+    ]) {
+      const next = random(77 + Math.round(1 / tolerance));
+      for (let run = 0; run < runs; run++) {
+        const points: Record<string, [number, number]> = { A: [0, 0], B: [20 + next() * 20, (next() - 0.5) * 10] };
+        const controls = (name: string, side: number): string[] => {
+          const n = 1 + Math.floor(next() * 4);
+          const ids = ['A'];
+          for (let i = 0; i < n; i++) {
+            const t = (i + 1) / (n + 1);
+            const id = `${name}${i}`;
+            points[id] = [points.B[0] * t + (next() - 0.5) * 6, points.B[1] * t + side * (2 + next() * 12)];
+            ids.push(id);
+            if (next() < 0.15) {
+              points[`${id}d`] = [...points[id]];
+              ids.push(`${id}d`);
+            }
+          }
+          ids.push('B');
+          return ids;
+        };
+        const curves: Entry[] = [['s1', spline(...controls('a', 1))]];
+        const second = next();
+        if (second < 0.5) curves.push(['s2', spline(...controls('b', -1))]);
+        else if (second < 0.8) {
+          // an arc from B to A about a centre on their perpendicular bisector
+          const k = (next() - 0.5) * 3;
+          points.ac = [points.B[0] / 2 - k * points.B[1], points.B[1] / 2 + k * points.B[0]];
+          curves.push(['ar', arc('ac', 'B', 'A')]);
+        } else curves.push(['ln', line('B', 'A')]);
+        if (next() < 0.7) {
+          const scale = 30 * Math.exp(Math.log(1 / 60) + next() * Math.log(120));
+          const [t1, t2] = [next() * 2 * Math.PI, next() * 2 * Math.PI];
+          points.za = [scale * Math.cos(t1), scale * Math.sin(t1)];
+          points.zb = [scale * Math.cos(t2), scale * Math.sin(t2)];
+          curves.push(['u1', line('A', 'za')], ['u2', line('za', 'zb')]);
+          if (next() < 0.5) {
+            const k = (next() - 0.5) * 3;
+            points.zc = [points.zb[0] / 2 - k * points.zb[1], points.zb[1] / 2 + k * points.zb[0]];
+            curves.push(['u3', arc('zc', 'zb', 'A')]);
+          } else curves.push(['u3', line('zb', 'A')]);
+        }
+        let a: { valid: boolean; areas: number[] };
+        let b: { valid: boolean; areas: number[] };
+        try {
+          const chain = chainOf(points, curves, tolerance);
+          a = summary(sketch(points, curves), tolerance);
+          b = summary(sketch(chain.points, chain.curves), tolerance);
+        } catch {
+          continue;
+        }
+        compared++;
+        expect(a.valid).toBe(b.valid);
+        if (!a.valid) continue;
+        valid++;
+        expect(a.areas.length).toBe(b.areas.length);
+        a.areas.forEach((x, i) => expect(Math.abs(x - b.areas[i])).toBeLessThanOrEqual(1e-6 * Math.max(1, x)));
+      }
+    }
+    expect(compared).toBeGreaterThan(850);
+    expect(valid).toBeGreaterThan(400);
     expect(performance.now() - started).toBeLessThan(60000);
   });
 });

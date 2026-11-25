@@ -1571,3 +1571,73 @@ describe('the third review of the implementation of 6b (D69)', () => {
   });
 });
 type SketchResult6 = { valid: boolean; points: Record<string, { x: number; y: number }>; regions: { ref: { outerLoop: string[] } }[]; openEnds?: { ends: { end: string; reason: string; distance: number }[] } };
+
+// The review of the implementation of 6d (D70): the texts and the listing of 6e's tools beside a spline.
+describe('the review of the implementation of 6d (D70)', () => {
+  type E = ReturnType<typeof newEngine>;
+  const point = (sketch: string, id: string, x: number, y: number): Command => ({ type: 'addPoint', sketch, id, x, y });
+  const line = (sketch: string, id: string, a: string, b: string): Command => ({ type: 'addCurve', sketch, id, curve: { type: 'line', a, b } });
+  const spline = (sketch: string, id: string, points: string[]): Command => ({ type: 'addCurve', sketch, id, curve: { type: 'spline', points } });
+  const tool = (engine: E, name: 'extend' | 'split', sketch: string, input: object) => {
+    const state = engine.getState();
+    const context = { sketch: state.document.features.find((f) => f.id === sketch) as SketchFeature, result: state.evaluation.features[sketch].sketch as never, document: state.document, features: state.evaluation.features };
+    return sketchTool(name, context, input as never, freshIds(state.document, 't_'));
+  };
+
+  // F2: the refusal gave the text of a flagged projection ("is not own … change its source")
+  it('an extend whose stretch crosses an own spline is refused with a text of the spline; one that meets only a spline says so', () => {
+    const engine = newEngine();
+    run(engine, addSketch('S', XY));
+    run(
+      engine,
+      point('S', 'p1', 0, 0),
+      point('S', 'p2', 40, 0),
+      point('S', 'm', 50, 10),
+      point('S', 'p3', 40, 20),
+      point('S', 'p4', 0, 20),
+      line('S', 'l1', 'p1', 'p2'),
+      spline('S', 'sp', ['p2', 'm', 'p3']),
+      line('S', 'l3', 'p3', 'p4'),
+      line('S', 'l4', 'p4', 'p1'),
+      point('S', 'v1', 60, -10),
+      point('S', 'v2', 60, 30),
+      line('S', 'v', 'v1', 'v2'),
+      point('S', 'y2', 30, 10),
+      line('S', 'y', 'p1', 'y2'),
+    );
+    // a feature reads the regions, so the repair is on and an extension that would leave the profile invalid is refused
+    run(engine, addExtrude('E', 'S', [['l1', 'l3', 'l4', 'sp']], 2));
+    expect((engine.getState().evaluation.features.S.sketch as unknown as SketchResult6).valid).toBe(true);
+    for (const input of [{ curve: 'y', end: 'b' }, { curve: 'y', end: 'b', with: 'v' }]) {
+      const made = tool(engine, 'extend', 'S', input);
+      expect(!made.ok && made.message).toMatch(/^the extension of "y" would meet the spline "sp" at \[43\.9\d+, 14\.6\d+\], which is not cut and holds no point: the profile would become invalid; move the control points of "sp", or extend "y" to a curve it meets before the spline$/);
+    }
+    // without the line beyond, the extension meets only the spline
+    run(engine, { type: 'removeEntity', sketch: 'S', id: 'v' });
+    const alone = tool(engine, 'extend', 'S', { curve: 'y', end: 'b' });
+    expect(!alone.ok && alone.message).toMatch(/^the extension of "y" beyond "y2" meets no curve it can stop at, only the spline "sp" at \[43\.9\d+, 14\.6\d+\]: a spline is not cut and holds no point/);
+  });
+
+  // F3: the spline was decided before 6b's flagged projection, so its end and the projection's were
+  // listed and split tied them by a coincident
+  it('ends of an own spline and a flagged projection are not listed, as for an arc; split re-points the own line alone', () => {
+    for (const kind of ['spline', 'arc'] as const) {
+      const engine = newEngine();
+      run(engine, addSketch('S', XY));
+      run(engine, point('S', 'a', 0, 0), point('S', 'b', 40, 0), line('S', 'l1', 'a', 'b'));
+      run(engine, addSketch('T', XY));
+      run(engine, { type: 'addExternal', sketch: 'T', id: 'e1', ref: { type: 'sketch', sketch: 'S', entity: 'l1', kind: 'line', regions: true } });
+      const curve: Command = kind === 'spline' ? spline('T', 'c', ['A', 'M', 'B']) : { type: 'addCurve', sketch: 'T', id: 'c', curve: { type: 'arc', center: 'M', start: 'A', end: 'B' } };
+      run(engine, point('T', 'A', 40, 0), point('T', 'M', 20, kind === 'arc' ? -10 : 20), point('T', 'B', 0, 0), curve, point('T', 'C', 40, 0), point('T', 'D', 40, 10), line('T', 'k', 'C', 'D'));
+      const answer = engine.query('sketchContacts', { sketch: 'T' });
+      if (!answer.ok) throw new Error(answer.error.message);
+      expect(answer.result.contacts.map((c) => [c.kind, c.fix, c.curves])).toEqual([['ends', 'join', ['c', 'k']]]);
+      const made = tool(engine, 'split', 'T', {});
+      if (!made.ok) throw new Error(made.message);
+      expect(made.commands).toEqual([
+        { type: 'setCurvePoint', sketch: 'T', id: 'k', point: 'a', to: 'A' },
+        { type: 'removeEntity', sketch: 'T', id: 'C' },
+      ]);
+    }
+  });
+});

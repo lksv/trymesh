@@ -299,7 +299,8 @@ type Command =
   // skica
   | { type: 'setSketchPlane'; sketch: Id; plane: PlaneRef }
   | { type: 'addPoint'; sketch: Id; id: Id; x: number; y: number }
-  | { type: 'addCurve'; sketch: Id; id: Id; curve: Curve; radius?: number }   // radius u kružnice  // a spline (D70): curve { type: 'spline', points } over 3 to 64 own points or origin
+  | { type: 'addCurve'; sketch: Id; id: Id; curve: Curve; radius?: number }   // radius u kružnice
+                                                                              // a spline (D70): curve { type: 'spline', points } over 3 to 64 own points or origin
   | { type: 'removeEntity'; sketch: Id; id: Id }                              // bod nebo křivka
   | { type: 'setConstruction'; sketch: Id; id: Id; construction: boolean }
   | { type: 'setCurvePoint'; sketch: Id; id: Id; point: CurvePointName; to: Id } // D52: another point in one place of a curve

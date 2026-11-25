@@ -1309,6 +1309,42 @@ describe('a spline over MCP (D70)', () => {
     ]);
   });
 
+  // The review of the implementation (deviation 2, accepted): `through` and `box` are at the
+  // positions `at` of the points shows, so an unsolved sketch lists them too.
+  it('get_sketch of an unsolved sketch gives through and box at the positions at of the control points shows', () => {
+    const engine = newEngine();
+    execute(engine, sketch('s'));
+    execute(engine, {
+      type: 'batch',
+      commands: [
+        ...points([
+          ['a2', 42, 5],
+          ['g1', 42, 15],
+          ['g2', 38, 27],
+          ['g3', 42, 39],
+          ['a3', 42, 49],
+        ]),
+        { type: 'addCurve', sketch: 's', id: 'c2', curve: { type: 'spline', points: ['a2', 'g1', 'g2', 'g3', 'a3'] } },
+        constrain('d1', { type: 'distance', a: 'a2', b: 'a3', value: 44, driving: true }),
+        constrain('d2', { type: 'horizontalDistance', a: 'a2', b: 'a3', value: 0, driving: true }),
+        constrain('d3', { type: 'verticalDistance', a: 'a2', b: 'a3', value: 40, driving: true }),
+      ],
+    });
+    const detail = ok(engine, 'get_sketch', { sketch: 's' });
+    expect(detail.diagnosis.status).toBe('conflict');
+    const at = (id: string): [number, number] => {
+      const p = detail.points.find((q: { id: string }) => q.id === id).at;
+      return Array.isArray(p) ? [p[0], p[1]] : [p.x, p.y];
+    };
+    const curve = detail.curves.find((c: { id: string }) => c.id === 'c2');
+    expect(curve.through[0]).toEqual(at('a2'));
+    expect(curve.through[curve.through.length - 1]).toEqual(at('a3'));
+    // the joint of the two pieces, a quarter of g1, half of g2 and a quarter of g3
+    const [g1, g2, g3] = [at('g1'), at('g2'), at('g3')];
+    expect(curve.through[2]).toEqual([(g1[0] + 2 * g2[0] + g3[0]) / 4, (g1[1] + 2 * g2[1] + g3[1]) / 4]);
+    expect(curve.box).toHaveLength(4);
+  });
+
   it('sketchContacts says that a spline crosses itself', () => {
     const engine = newEngine();
     execute(engine, sketch('s'));

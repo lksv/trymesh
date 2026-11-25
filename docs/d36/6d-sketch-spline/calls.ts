@@ -440,8 +440,10 @@ export function sixPoints(): boolean {
 // half at x = 20; two trims of 6e leave the notch: the arc of the circle outside the outline goes,
 // then the piece of the line inside the circle. 6c patches the entry of the mirror, so the copy has
 // the notch at x = −20. The lid's region passes the two splines, so its loop has no exact curves:
-// 6e's face rule follows it on its polygon. The lid is not in `dropped`, keeps one region with the
-// grips and the notch arcs, and loses two half discs.
+// 6e's face rule follows it on its polygon. The lid keeps one region with the grips and the notch
+// arcs, and loses two half discs. Corrected after the implementation (its review, deviation 1): the
+// first trim leaves the half disc of the notch a second region of the lid, which the second trim
+// takes away, so the second lists the lid in `dropped`, as 6e's own notch of scenario 15 does.
 // Run after `lidWithGrip`, last: it changes the lid's sketch.
 const NOTCH_R = 4;
 export function notchWithGrip(): boolean {
@@ -453,7 +455,7 @@ export function notchWithGrip(): boolean {
   const region = regionsOfFeature(state, 'lid');
   return (
     !first.dropped.includes('lid') &&
-    !second.dropped.includes('lid') &&
+    same(second.dropped, ['lid']) && // corrected after the implementation (deviation 1)
     resultOf(state, s).valid &&
     region.length === 1 &&
     region[0].includes('c2') &&
@@ -471,6 +473,8 @@ export function notchWithGrip(): boolean {
 // spline's loop, which has no exact curves: a point inside the hole must not count as plate, so
 // the region `s` of the hole is not added to the feature (review, finding 3, case B), and the body
 // keeps its hole. Measured before the notch: the volume 2720.3569, which is (1600 − 239.8216) · 2.
+// As for the lid, the second trim lists the plate in `dropped` (corrected after the implementation,
+// deviation 1).
 export function plateWithSplineHole(): boolean {
   const s = 'plateSketch';
   run(sketchFeature(s));
@@ -500,7 +504,7 @@ export function plateWithSplineHole(): boolean {
   return (
     near(volumeOf(before, 'plate'), (1600 - hole) * 2, PRISM) &&
     !first.dropped.includes('plate') &&
-    !second.dropped.includes('plate') &&
+    same(second.dropped, ['plate']) && // corrected after the implementation (deviation 1)
     regions.length === 1 &&
     !regions.some((loop) => same(loop, ['s'])) &&
     state.evaluation.features['plate'].status === 'ok' &&

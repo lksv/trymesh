@@ -1,18 +1,19 @@
 # 6h The Onshape converter on the tools of step 6
 
-**State: design, second version, revised on 2026-11-25 after three independent reviews of the first version (commit `314188c`; "Reviews"). Written against `master` at `c01e765` (6a2, 6e, 6c, 6b and 6d merged). Every finding of the reviews was checked on the downloaded model with a throwaway copy of `tools/onshape` outside the repository, and the numbers of "Measured" are those of the revised rules. Not implemented.** There is no `contract.ts` and no `calls.ts`: the point changes `tools/onshape` and `docs/onshape-import.md` only, no type, command, query or field of the engine, and it takes no decision number ([6-plan.md](../6-plan.md), "6h"; the owner's answers 4 and 25 of [6-cross-review.md](../6-cross-review.md)). Its record is [onshape-import.md](../../onshape-import.md).
+**State: design, third version, revised on 2026-11-25 after the second round of review (two reviews of the first revision, commit `2f7eb2f`; the first round's three were of the first version, `314188c`; "Reviews"). Written against `master` at `c01e765` (6a2, 6e, 6c, 6b and 6d merged). Every finding of both rounds was checked on the downloaded model with a throwaway copy of `tools/onshape` outside the repository, and the numbers of "Measured" are those of the rules as they now stand. Not implemented.** There is no `contract.ts` and no `calls.ts`: the point changes `tools/onshape` and `docs/onshape-import.md` only, no type, command, query or field of the engine, and it takes no decision number ([6-plan.md](../6-plan.md), "6h"; the owner's answers 4 and 25 of [6-cross-review.md](../6-cross-review.md)). Its record is [onshape-import.md](../../onshape-import.md).
 
-The converter gains heuristics over geometry (what an external operand is, when a pattern can be an entry, which constraint is implied), so its points get a full review, except the last one, which only writes documents (CLAUDE.md, "Depth of the review"; "Points of work").
+The converter gains heuristics over geometry (what an external operand is, when a pattern can be an entry, which constraint is implied), so every point gets a full review (CLAUDE.md, "Depth of the review"; "Points of work").
 
 The point in short:
 
 1. **Of the 287 constraints reported lost, 156 are not lost.** 155 are realised by one shared point (Onshape ties the ends of curves by coincident constraints; the converter makes them one point) and one is written twice. **131 of 380 are lost**, and the report says so from now on, by cause.
 2. **The tools of step 6 recover 125 of the 131**, measured: 37 on curves the converter split (`split`), 31 on the origin, 13 on a default plane, 12 on an entity of another sketch and 1 on an edge of a body (entries `sketch` and `edge`), 19 patterns (10 as entries `pattern`, 9 by construction spokes), 5 mirrors about a line of the sketch, and 7 of the 9 constraints of a kind the converter did not map.
 3. **6 stay lost**: 4 `FIX` of the disc's splines and 2 midpoints of two points. With the owner's "no" to question 2 of "Open" it is 12.
-4. **A constraint that follows from the others is not written.** The first version kept the 10 redundant constraints the engine named; one sketch then conflicted at every change of its parameter. Now a redundant constraint that can go without giving a freedom back is removed and gets the fate `implied` (5 constraints).
-5. **The converted document is tried away from today's values.** Every parameter a studio uses is changed by 3 % and the result is part of the report and of the acceptance: no change may break a sketch or a feature. The baseline passes 40 changes, the first version of this design broke at 3 of 48, this version passes 56.
-6. **The parts do not change**: all 16 volumes within 7e-6 mm³ of today's, the same regions in all 24 sketches, the same 4 of 10 chamfers. 21 of the 24 sketches come out fully determined (none today); the freedom of all sketches together drops from 771 to 10.
-7. **What differs from the plan's outline**, each because of what the model holds: a mirror or a pattern is an entry only where nothing names or meets its copies (otherwise a mirror is written by `symmetric` and a pattern by spokes); the angle, "horizontal of two points" and the distance of two lines are mapped here; an external ID is decoded, not only searched by geometry; and the disc's splines convert correctly but cost 108 s a recompute, so splines have a cap and the disc keeps its generator.
+4. **The converted document is tried away from today's values, and what the conversion promised is asserted there.** Every parameter is walked two steps each way and back, every literal dimension and every count of an entry is changed, and at each state the probe checks that pattern instances are still their seeds turned and that the two copies of a derived sketch still agree. It is part of the report and of the acceptance. The baseline passes every status and leaves its patterns behind (in 6 of 40 walks the instances are no longer their seed turned); the first version broke at 3 changes of 48; this version breaks at no change of a parameter and fails no assertion.
+5. **A constraint is removed as implied only where a sketch is shown not to follow, and only when it then follows better.** The first revision removed nine by rank; the second round showed that this cured one sketch and harmed another. Judged by behaviour, two are removed.
+6. **Two sketches cannot take a change of their own literal dimensions**, as Onshape wrote them: Motor Shell 1 and 3 are over-determined, and nothing tried cures it. They follow their parameter. It is an engine gap, named in the report (14 of 96 changes of a dimension).
+7. **The parts do not change**: all 16 volumes within 7e-6 mm³ of today's, the same regions in all 24 sketches, the same 4 of 10 chamfers. 21 of the 24 sketches come out fully determined (none today); the freedom of all sketches together drops from 771 to 10.
+8. **What differs from the plan's outline**, each because of what the model holds: a mirror or a pattern is an entry only where nothing names or meets its copies (otherwise a mirror is written by `symmetric` and a pattern by spokes); the angle, "horizontal of two points" and the distance of two lines are mapped here; an external ID is decoded, not only searched by geometry; and the disc's splines convert correctly but cost 108 s a recompute, so splines have a cap and the disc keeps its generator.
 
 ## The brief, and what the measurements changed in it
 
@@ -23,7 +24,7 @@ What the count, the trials and the reviews settled:
 - **The 287 was a miscount.** The converter's line "n of m constraints" counted the constraints it wrote. A coincident constraint of two points is never written: the two are one point of trymesh already. That is 151 of the 380. Four mirrors of a point that is an end of the mirror line are realised the same way, and one constraint was a duplicate. The 380 are the set today's report counts: the constraints of the 24 sketches the converter makes of the 8 part studios of the dump that have sketches (23 sketches; the two derived ones are converted in both studios that derive them, and the three of their source studio are not converted on their own).
 - **An external operand is a bare deterministic ID** (`IB`, `JCC`, `JFE`), and `fetch.ts` dumps the geometry behind the queries of features, not of sketch constraints. **The ID is not opaque, though** (found by the first review): it holds the operation that made the entity, its kind and an index, and `fs.json` says which operations belong to which sketch ("External operands"). With it 12 of the 13 operands in other sketches are identified exactly, and the thirteenth turns out to be an edge of a body.
 - **Onshape's pattern and mirror are constraints among own curves**: an instance is an entity like any other, with constraints of its own, cut by other curves, a seed of another pattern. A copy of 6c can be none of these. Of the 19 patterns, 9 have a copy that is constrained or crossed, and of the 13 mirrors of curves, 11.
-- **A conversion that holds at today's values can break beside them.** Two sketches of the first version did: one by redundant constraints, one by a pattern left free. The check at today's positions cannot see either, so the document is also tried with changed parameters ("The parameter probe").
+- **A conversion that holds at today's values can break beside them.** Two sketches of the first version did: one by redundant constraints, one by a pattern left free; and one of the first revision did at the second step of a change. The check at today's positions cannot see any of them, so the document is also tried with changed values ("The probes").
 - **All 24 sketches lie on the Top plane with the identity frame.** The mapping of a default plane by the sketch's matrix is therefore tested on fixtures, not on the model.
 - **The model has no linear pattern, no open circular pattern, no arc with a constraint, no sketch turned in its plane and no spline but the disc's.** What the design says of those is from the code of the engine and from knowledge of Onshape, and says so; their tests are named so ("Tests").
 
@@ -61,14 +62,15 @@ Every Onshape constraint of every converted sketch gets exactly one fate. The co
 | `written` | One or more constraints of trymesh stand for it and are in the document (a mirror of two lines is two `symmetric`; a pattern by spokes is many) |
 | `entry` | A pattern or a mirror written as an entry `pattern` of the sketch |
 | `shared` | Realised by the geometry, with the detail which way: two points that are one point of trymesh; a point "on" a curve it is an end of; a relation among the copies of one entry; a point held on a curve that the cut turned into the shared point of the pieces |
-| `twice` | Every constraint it would write has the `constraintKey` of one written for another Onshape constraint, with the same value or expression |
-| `implied` | Written, and then removed because it follows from the others: the engine listed it as redundant and its removal gave the sketch no freedom back ("Implied constraints") |
+| `twice` | Every constraint it would write says what one written for another Onshape constraint says (below). Its record names that constraint, and its final fate is read through it: if the one that was written ends `shared` by the cut, `implied` or `refused`, so does this one, with the detail "as …" |
+| `implied` | Written, and then removed whole, because with it the sketch could not follow a change that it follows without it, and its relation still held at every state tried ("Implied constraints"). None on this model |
 | `lost` | Nothing stands for it; it has a cause |
 
 The headline number is `lost`. `written` counts Onshape constraints, not commands, so a sketch no longer reads "13 of 12".
 
 - **`shared` is established, not assumed**: a coincidence of two points is `shared` only when the two are the same point of the written sketch; if they are not (they stand apart in the dump), a `coincident` is written and the check decides. Measured: all 151 are one point.
-- **`twice` is by the engine's key.** The old filter dropped the value and sorted `a` and `b`, which is wrong for `angle`, `horizontalDistance` and `verticalDistance`, where the order is the sign. Two constraints with one key and different values are not `twice`: the second is lost with the cause `refused` ("another value for the same operands"), since the engine holds one constraint per key.
+- **`twice` is by meaning, the engine's key is by structure.** `constraintKey` sorts the two operands of `angle`, `horizontalDistance` and `verticalDistance` (the catalog calls them unordered, since a swap only turns the sign), so it finds the constraint the sketch cannot hold twice, and does not say whether the two agree. The converter compares in a canonical form: the operands in the key's order and, for those three kinds, the value or the expression negated when that swapped them. Equal in that form is `twice`. The same key with another canonical value is a contradiction the engine would refuse: the second is lost with the cause `refused` ("another value for the same operands"). So `(A, B, d)` and `(B, A, −d)` are `twice`, and `(A, B, d)` and `(B, A, d)` are not.
+- **`shared` says how the converter realised it, not that Onshape's relation is proven kept.** Where the one point is a weld without a constraint, see "Welded points".
 
 ### Causes
 
@@ -79,10 +81,10 @@ A lost constraint has one cause, and the record keeps two things apart: **what i
 | `refused` | Made, then dropped by the check (the reason and the engine's list of conflicting constraints with it), or with another value than a constraint of the same key |
 | `pattern` | A sketch pattern that is neither an entry nor written by spokes (the detail says why) |
 | `origin` | An external operand that is Onshape's origin, not mapped (the baseline only) |
-| `plane` | An external operand that is a default plane and no axis of the sketch, or not mapped |
+| `plane` | An external operand that is a default plane and no axis of the sketch, a face of a plane feature, or not mapped |
 | `sketch` | An external operand that the decode gives to another sketch (the detail: not found there, several fit, or the sketch is not in this document) |
 | `edge` | An external operand that the decode gives to a body (the detail: no edge fits, or several) |
-| `unknown` | An external operand whose ID does not decode |
+| `unknown` | An external operand whose ID does not decode, or whose operation belongs to no feature the rules name |
 | `mirror` | A mirror of two curves about a line of the sketch (the baseline only) |
 | `spline` | An operand is a spline or an ellipse the converter left out |
 | `arc` | An operand is an arc (the converter gives an arc no kind today; none on this model) |
@@ -114,22 +116,30 @@ Taken on the dump with the counting added to an unchanged copy of the converter;
 
 By type this is the list known from the report: COINCIDENT 56, CIRCULAR_PATTERN 19, MIRROR 13, HORIZONTAL 11, DIAMETER 11, ANGLE 6, FIX 4, DISTANCE 4, TANGENT 3, EQUAL 2, MIDPOINT 2. The first version had 13 under "another sketch"; the decode moves one to "an edge".
 
-**Welded points.** The converter makes one point of points at one place whether or not a constraint ties them. Over the 23 sketches of the dump, 157 places hold more than one Onshape point; at 81 the points are tied by coincident or concentric constraints, at 76 they are not, and all 76 hold a point of a pattern or mirror instance (70 only such points, 6 an instance point and a point outside). No two plain entities are welded without a constraint. The weld of instance ends is what lets a ring of instances close; the converter counts both kinds in `summary.json` and reports a weld without a constraint between entities that are no instances, case by case. The merge itself goes from rounded cells of 1e-4 mm (which can part two points 2e-7 apart and join two 9.8e-5 apart) to a distance of 1e-6 mm; on this model no two distinct places are nearer than 0.25 mm and no welded points differ by more than 1e-9.
+**Welded points.** The converter makes one point of points at one place whether or not a constraint ties them. Over the 23 sketches of the dump, 157 places hold more than one Onshape point; at 81 the points are tied by coincident or concentric constraints, at 76 they are not, and all 76 hold a point of a pattern or mirror instance (70 only such points, 6 an instance point and a point outside). No two plain entities are welded without a constraint.
+
+- **A weld without a constraint is a relation the converter adds.** Onshape holds such points together only by today's geometry (the ends of neighbouring instances of a ring), and they need not stay together under an edit there. Without the weld the ring would not close into a region here. Every such weld is recorded in `summary.json` by its class (among the instances of one pattern or mirror; an instance and an entity outside; two plain entities) and the last two classes are listed one by one in the report: 6 and 0 on this model.
+- **The merge** goes from rounded cells of 1e-4 mm (which can part two points 2e-7 apart and join two 9.8e-5 apart) to a distance of 1e-6 mm, in clusters: points are joined when a chain of steps of at most 1e-6 links them, and a cluster wider than 1e-6 is reported, since a distance is not transitive. On this model no two distinct places are nearer than 0.25 mm and no welded points differ by more than 1e-9.
 
 ### The report and `summary.json`
 
 - **`tools/onshape/fates.ts`** (new): the types `Fate` and `Cause`, the record of a constraint and a `Tally` that the `Report` holds; a test asserts that the fates of a sketch add up to its constraints.
 - **The line of a sketch** in `report.md`: `Sketch 2: 6 points, 4 curves; of 12 constraints 9 written, 2 shared, 1 lost; 5 degrees of freedom`, and under it one line per cause: `Sketch 2: lost: 1 MIDPOINT of two points (kind)`. The line "constraints without a counterpart: {…}" goes.
-- **Sections at the end**: `## Sketch constraints` (the two tables above, as the run found them), `## External operands` (every operand with what it was decoded to, the candidates and the pick), `## Entries` (every pattern and mirror with the rule that kept it out), `## Parameters` (the probe).
+- **Sections at the end**: `## Sketch constraints` (the two tables above, as the run found them), `## External operands` (every operand with what it was decoded to, the candidates and the pick), `## Entries` (every pattern and mirror with the rule that kept it out), `## Expressions dropped` (every dimension written as a number, with why), `## Welds` (those without a constraint that reach outside a pattern), `## Redundant constraints` (what the solver still lists, per sketch, with the sketch's probe), `## Probe` (the document's probe: every change that is not plainly followed, with its verdict, and what drives nothing).
 - **`summary.json`** beside `report.md` is what the acceptance compares. Every key is qualified by the studio (`Motor Shell/Sketch_1`; a derived copy by the feature that derives it), since `Sketch_1` exists in seven studios. It holds:
     - the run: the converter's commit, the fingerprint of the dump (a hash over its files), the override used, the settings;
     - the fates and causes, in total and per sketch; per constraint its record without the commands;
-    - per sketch: status and warnings, freedom, the constraints still listed as redundant, validity, the number of regions and Onshape's number, the areas of the regions sorted, the welds with and without a constraint, the step of the check that passed, the entries with the rule that failed, the operands with their candidates;
+    - per sketch: status and warnings, freedom, the constraints the solver still lists as redundant and the number the engine's diagnosis counts (`diagnoseSketch`; the solver's list is partial), validity, the number of regions and Onshape's number, the areas of the regions sorted, the welds with and without a constraint, the step of the check that passed, the entries with the rule that failed, the operands with their candidates;
     - per part: its body and volume in full precision, and Onshape's;
     - per feature that can fail in part: fillets and chamfers with edges kept of edges asked, starts written as `from` or as a number;
     - the loaded document: whether it loads, the features in error, the number of bodies;
-    - the probe: per studio and parameter, what changed.
-- **A comparator**: `ONSHAPE_BASELINE=<summary.json>` makes `convert.test.ts` compare its summary with that file and fail on a missing or extra key, a value that is not finite, a volume off by more than 1e-3 mm³, a region count or a sorted area off by more than 1e-6 mm², a change of a conversion outcome, or a parameter change that breaks what it did not break there. The report prints volumes to 0.1 mm³, which is too coarse for "unchanged"; the rounded table of "Measured" is evidence, the baseline file is the reference.
+    - the sketch's probe of every sketch that had one (its changes, its breaks before and after, the removals tried and kept) and the document's probe (every change with its verdict, the assertions, what drives nothing).
+- **A comparator**: `ONSHAPE_BASELINE=<summary.json>` makes `convert.test.ts` compare its summary with that file, by scope:
+    - **strict**, the same keys and values on both sides: the parts (volume within 1e-3 mm³, none missing, none not finite), the features that can fail in part (a fillet or chamfer by the number of edges kept of edges asked, a start by `from` or number: the outcome, never the reason text, which quotes face names that the cut changes), the 24 sketches of the source by their Onshape feature (the number of regions, the sorted areas within 1e-6 mm²), the loaded document (it loads, the features in error, the number of bodies);
+    - **allowed to grow**, each addition listed: helper copies, entries, parameters in use, the probe's cases;
+    - **expected to change**, compared with the numbers the point of work predicts: fates and causes.
+- **The fingerprint** of the run is a hash over a manifest of the raw input files of the dump (the files `fetch.ts` writes), not over the folder, which by default also holds the converter's output.
+- The report prints volumes to 0.1 mm³, which is too coarse for "unchanged"; the rounded table of "Measured" is evidence, the baseline file is the reference.
 
 ## The check
 
@@ -157,55 +167,114 @@ After the cut the check also asks that **the profile is valid**, that the tool l
     - an entry that rule 5 or 6 blames is dropped and the sketch is built again from the entities (the instances own, the pattern by spokes);
     - else the units are settled one by one with the cut inside the test of each ("write, cut, check"), so the unit that breaks the cut is the one refused;
     - a sketch whose bare geometry does not pass after the cut is reported with the tool's message and the rows of `sketchContacts`, left as written, and fails the acceptance. There is no "without constraints" step that hides it.
-4. **Then the implied constraints** are removed ("Implied constraints"), and the fates are final.
+4. **Then the implied constraints**, where a sketch cannot follow ("Implied constraints"), and the fates are final.
 
 **What the ladder does not promise.** One by one keeps a subset that depends on the order: of a group that conflicts, the one added last is the one called `refused`, and the subset is not the largest possible. Every constraint of Onshape holds at Onshape's positions, so a refusal means a wrong mapping or a wrong value, and the report gives the engine's list to find it.
 
-**Cost.** A preview of a sketch of the model takes 1 to 60 ms. Measured: 24 previews when all sketches pass in step 1 (they do), 16 more for the two helper copies that needed step 2, 15 trial removals of redundant constraints. The whole conversion stays at 32 s.
+**Cost.** A preview of a sketch of the model takes 1 to 60 ms. Measured: 24 previews when all sketches pass in step 1 (they do), 16 more for the two helper copies that needed step 2; the sketch's probe and its trial removals add 592 executed changes over seven sketches. The whole conversion takes 35 s (32 s without the probe).
 
 On this model all 24 sketches pass step 1, before and after the cut. Step 2 ran on the two helper copies of "Open", question 2: their source studio's geometry has the housing circle at 72 mm where `HOUSING_DIAMETER` gives 70, so that one diameter is written as its number and noted. The cut inside the test and the dropped entry are tested on fixtures.
 
 ### Implied constraints
 
-The first version kept the constraints the engine listed as redundant, because they were consistent. The first review measured what that does: Motor Shell Sketch 1 (no freedom, four redundant `symmetric`) answered every change of `HOUSING_DIAMETER` with `sketchConflict`; nothing moved and the body kept its volume. A consistent set with a redundant constraint is a sketch that cannot follow its parameter.
+Three rules were tried in turn, each measured on the model.
 
-**The rule.** After the cut, while the engine lists a redundant constraint: of the listed constraints that the converter wrote (not those the cut added), each is removed on a preview; a removal is allowed when the sketch still passes, stays valid and has no more degrees of freedom than before; of the allowed ones the removal that leaves the fewest listed is made, the first written of equals. It ends when none is listed or no listed one can go. A unit that loses all its constraints is `implied`; one that keeps some is `written`, and its record says how many were implied.
+- **The first version kept every constraint**, redundant ones too, because they were consistent. Motor Shell Sketch 1 (no freedom, four `symmetric` that the solver lists as redundant) then answered every change of `HOUSING_DIAMETER` with `sketchConflict`; nothing moved and the body kept its volume.
+- **The first revision removed by rank**: every listed constraint whose removal gave the sketch no freedom back, nine on this model. The second round measured that rule. Two of the nine removals (both in Motor Shell 1) cure the conflict above; seven cure nothing that any probe measures; and one harms: Input Shaft Sketch 2 without its coincidence with a projected point conflicts at the second step of a change of `E` and does not come back, where the full set follows. "No freedom back" and "no point moved" say that the constraint is dependent at today's state, not that the sketch behaves the same without it; a review's example removes the one dimension a parameter drives that way.
+- **Now the removal is judged by behaviour, and is lazy**: nothing is removed unless the sketch is shown not to follow, and a removal is kept only if the sketch then follows better and loses nothing.
 
-The alternatives were tried on the model, since the engine's list names some members of each dependent group, not a set that can be dropped:
+**The sketch's probe.** For a sketch in which the solver lists a redundant constraint, after the cut: every parameter the sketch reads, itself or through what its entries name, and every literal driving dimension of it (not the angles of spokes, not the zeros that stand for "horizontal"), is set to +3 %, to +6 % and back, then to −3 %, −6 % and back, each step executed on the document being built from the state before it, and all undone. A break is a step after which the sketch does not pass (status, conflict) or its profile has turned invalid, or a return after which it is not the sketch it was (status, the areas of its regions, and its points where it has no freedom).
+
+**The rule.**
+
+1. If the probe has no break, nothing is removed. The listed constraints stay and are in the notes.
+2. Else the candidates are the constraints the solver lists that the converter wrote (not those the cut added), **except a dimension whose expression names a parameter**: the relation a parameter drives is never removed.
+3. A candidate is removed on trial. The sketch must still pass and be valid. Its probe, with the list of changes taken before any removal (so a parameter whose only reader is the candidate is still tried), must have no break that the full set did not have, and not more breaks. And **the removed relation must still hold at every state of the probe that solves**: put back on a preview there, it moves no point by more than 1e-6 and leaves the status `ok`. Of the candidates that pass, the one that leaves the fewest breaks is removed, the first written of equals; then the list is taken again.
+4. The removals are kept only if the probe at the end has fewer breaks than at the start; else all are undone.
+5. What stays listed, and every break that remains, is in the notes and in `summary.json`.
+
+**A unit may lose part of its constraints here**, the one exception to "a unit is kept or dropped whole": a mirror of a line whose two `symmetric` say one thing twice keeps one. The unit stays `written` and its record says how many were implied; only a unit that loses all is `implied`.
+
+Measured (592 executed changes and 15 trial removals over the seven sketches; the conversion goes from 32 s to 35 s):
+
+| Sketch | Listed by the solver, counted by the diagnosis | Changes of the probe | Breaks with the full set | Removed | Breaks after |
+|---|---|---|---|---|---|
+| Input Shaft 1 | 1, 2 | 4 | 0 | none | 0 |
+| Input Shaft 2 | 1, 5 | 4 | 0 | none | 0 |
+| Output Shaft 4 | 1, 1 | 4 | 0 | none | 0 |
+| Output Shaft 5 | 1, 1 | 6 | 0 | none | 0 |
+| Motor Shell 1 | 4, 22 | 8 | 8: `HOUSING_DIAMETER` and its three literal dimensions (58 mm, 45°, 30°), both ways, all `sketchConflict` | 2 `symmetric`, one of each of two mirrors of lines, in 5 tries | 6: the three literal dimensions |
+| Motor Shell 2 | 1, 2 | 18 | 2: two diameters at 6 % turn the profile invalid (circles that meet; geometry) | none (1 try) | 2 |
+| Motor Shell 3 | 2, 12 | 8 | 8: its four literal dimensions (12 mm, 45°, 36 and 58 mm), both ways, all `sketchConflict` | none (9 tries) | 8 |
+
+- **Two constraints are removed, none of the nine of the first revision but those two, and no Onshape constraint is `implied` as a whole.** The five that were `implied` there are `written` again; Input Shaft 2 keeps its coincidence.
+- **Seven listed constraints stay** (Input Shaft 1 and 2, Output Shaft 4 and 5, Motor Shell 2, two in Motor Shell 3). In the first five sketches nothing breaks with them.
+- **Motor Shell 1 and 3 cannot take a change of any of their literal dimensions**, with any removal tried: 6 and 8 breaks stay. They are over-determined as Onshape wrote them (a mirror of a line whose ends lie on two circles is four equations of which one is new; Motor Shell 1 has seven such mirrors), the solver lists 4 and 2 constraints there where the engine's diagnosis counts 22 and 12, and the second round tried six sets of removals on Motor Shell 1 by hand without finding one that follows all four dimensions. This is engine gap 6, and the sketches are named in `docs/onshape-import.md`.
+
+The other rules, as measured (the first five rows by the designer's trial, the last two by the second round):
 
 | Rule | Result |
 |---|---|
-| Skip a constraint when the engine lists any redundant one right after it is added (the review's proposal) | 18 units dropped, and the sketches gain 13 degrees of freedom (172 against 159): constraints that are not implied go |
+| Keep everything | Motor Shell 1 conflicts at every change of `HOUSING_DIAMETER` (2 breaks of 56 at ± 3 %) |
+| Skip a constraint when the solver lists any redundant one right after it is added | 18 units dropped, and the sketches gain 13 degrees of freedom |
 | Skip a constraint that takes no freedom away when added | 9 dropped, 8 still listed, one degree of freedom more |
 | Remove listed ones before the cut | 25 dropped, among them points held on curves that the cut needs; 74 s |
-| Remove after the cut, the first listed of the allowed | Motor Shell 1 keeps two listed, and still conflicts |
-| **Remove after the cut, the one that leaves the fewest listed** | **9 removed in 15 tries; freedom unchanged; Motor Shell 1 follows its diameter** |
+| Remove by rank after the cut (the first revision) | 9 removed; Motor Shell 1 follows its parameter; Input Shaft 2 breaks at the second step of `E` and stays broken. Which constraints go depends on the tie-break, not on the order of the document |
+| The set the engine's diagnosis calls removable at once (`diagnoseSketch().removable`) | 25 removed; Motor Shell 1 still conflicts; Input Shaft 2 has an invalid profile and three extrusions in error at `E` − 3 %: the set holds constraints that are implied only at today's position |
+| **By behaviour, lazily** | **2 removed; one sketch cured of one parameter; nothing harmed** |
 
-Measured with the chosen rule: 5 Onshape constraints are `implied` (three "horizontal with the origin" of a centre that other constraints hold on the X axis already, in Input Shaft 1 and Output Shaft 4 and 5; one coincidence with a projected point in Input Shaft 2; the fourth right angle of a rectangle in Motor Shell 2), and 3 units keep fewer constraints than they were given (two mirrors of lines in Motor Shell 1 lose one `symmetric` each, the spokes of Motor Shell 3 two constraints). One listed constraint stays, a `symmetric` of Motor Shell 3 whose removal gives a freedom back; the probe finds nothing wrong with it. The engine side is a row of the backlog (gap 6).
+**What the rule does not do.** It finds what the probe can see: 3 % and 6 % of one value at a time. Its candidates are the solver's list, which is partial and depends on the IDs of the constraints (the adapter sorts by them); a removal that would help and is not listed is not found. A sketch in which nothing is listed is not probed here at all; the document's probe is what tries it. It does not make an over-determined sketch follow its dimensions (nothing tried does), and "none listed" is not "none redundant": the solver's list is partial, which is why the diagnosis's count is recorded beside it.
 
-**Known limit:** "implied" is judged at today's values. A constraint that is redundant only at a special position (two lines that happen to be parallel) is dropped although it holds something beside it. The probe shows such a sketch by its freedom changing with a parameter.
+### The probes
 
-### The parameter probe
+The check holds a sketch to Onshape's positions at today's values. Whether the document still works beside them is asked by changing it. There are two probes over one piece of code (`probe.ts`): the sketch's, inside the converter, which decides the removal above; and the document's, after the conversion, which is part of the report and of the acceptance.
 
-After the conversion, `convert.test.ts` loads every stored studio document that has a sketch, alone, and for every parameter that an expression of that document names and whose own expression is a number, sets it to +3 % and to −3 % (to ±1 when a count reads it), each from the loaded state. It records per change: the features that newly are in error, the number of bodies, the volume, and per sketch its status, conflicting constraints, validity, regions and freedom.
+**The document's probe.** `convert.test.ts` loads every stored studio document that has a sketch, alone, and makes three kinds of change, each from the loaded state and each undone:
 
-- **A break** is a feature newly in error, a changed number of bodies, a sketch whose status leaves `ok`, whose `conflicting` list fills or whose profile turns invalid.
-- **A note** is a changed number of regions or of degrees of freedom.
-- The parameters each studio uses are listed, so a variable that drives nothing is visible.
+| Change | Steps |
+|---|---|
+| Every parameter that an expression of the document names and whose own expression is a number | +3 %, +6 %, back; −3 %, −6 %, back (a whole number read as a count, of an entry, a pattern or a generator: ±1, ±2, a step under 1 left out; a zero: ±0.1, ±0.2) |
+| Every literal driving dimension of a sketch (a number, or an expression without a parameter; not the angles of spokes, not the zeros that stand for "horizontal") | +3 % and back; −3 % and back |
+| The count of every circular entry | +1; −1 |
 
-Measured (about 35 s for the document):
+**The verdict of a state**, the first that applies:
 
-| Document | Parameters in use | Changes | Breaks |
+| Verdict | When | Whose it is |
+|---|---|---|
+| cannot follow | a sketch's status leaves `ok` or its `conflicting` list fills. With no constraint named in a sketch that was cut, the report adds that the pieces of the cut may no longer exist ("Known limits") | the conversion's, or an over-determined sketch's (gap 6) |
+| invalid profile | a sketch's profile turns invalid | geometry (curves that newly meet), or a pattern left free |
+| kernel | a later feature fails in the kernel | the kernel's; named apart |
+| reference | a later feature loses what it names (`noProfile`, `brokenReference`), or the number of bodies changes | the way regions are named |
+| an assertion fails | below | the conversion's |
+| not back | after the return the document is not the loaded one: any of the above, a volume or a number of regions that differs | a sketch with freedom, or a solver that does not return |
+| drives nothing | no break, and no volume and no solved point outside a helper copy differs | listed, not a break |
+
+**The assertions.** "No break" is not "right": the patterns held only by equal sizes passed every status while their instances stood 0.87 mm apart. So at every state that solves, the probe checks on the solved geometry what the conversion promised and did not write as one constraint of the engine:
+
+- every instance point of a pattern by spokes is its seed point turned by k · 2π/n about the pivot (1e-6); the copies of an entry are that by construction;
+- the two lines of every "distance of two lines" are parallel;
+- every constraint removed as implied still holds (put back on a preview, nothing moves);
+- **the copies of one derived sketch in two studios are point for point the same** after the same change of a parameter, so the holes of two mating parts still mate.
+
+A constraint that is written is held by the solver wherever the status is `ok`; it needs no assertion.
+
+Measured:
+
+| Document | Parameters: walks, breaks | Dimensions: changes, breaks | Counts up, down: breaks |
 |---|---|---|---|
-| The baseline | 20 | 40 | 0 |
-| The first version of this design | 24 | 48 | 3: Motor Shell 1 conflicts at both values of `HOUSING_DIAMETER`; Output Shaft 6 is invalid, with Extrude 13 and 14 in error, at `OUTPUT_MOUNTING_PATTERN` + 3 % (and at 34, by the review) |
-| This version with the implied constraints removed and the nine patterns still lost | 24 | 48 | 1: Output Shaft 6 as above |
-| This version | 24 | 48 | 0 |
-| This version with the helper copies of question 2 | 28 | 56 | 0 |
+| The baseline | 40, 0 by any verdict; **6 fail the assertion of the patterns**: at `Phi_R` ± 3 % the pockets of Housing 1 stand 0.87 mm off their seed turned, at `M3_NUT_SIZE` the hexagon of Global Sketch 3 0.08 mm, in both studios | 62, 0 by any verdict; 8 fail that assertion (the hexagons of Input Shaft 4 and Motor Shaft 2, a pattern of Motor Shell 2) | no entries |
+| The first revision (removal by rank), by the second round's walks of 1 % | 54, 4: Input Shaft 2 with `E` both ways, not back; two failures of the kernel | 96, 14 | 2 of 10, 10 of 10 |
+| This version | 56, 0 | 96, 14: all 6 of Motor Shell 1 and all 8 of Motor Shell 3, `sketchConflict` (gap 6) | 2 of 10 (invalid profile), 10 of 10 (9 a reference, 1 an invalid profile) |
+| This version without the helper copies | 48, 2: `M3_NUT_SIZE` in Motor Shell is not back (the volume off by 0.08 mm³): the copy of Global Sketch 3 has freedom there and wanders | | |
 
-The baseline passes because those variables drive nothing there. Two notes remain in this version: Input Shaft Sketch 2 has 1 degree of freedom at `E` = 1.25 and none at either changed value (the first version had the same; a position where the count of the solver drops, not a loss).
+- **The baseline passes every status and is wrong beside today's values**: its patterns are lost, so their instances stay where they were when the seed moves (asserted with the instance rows of this version; the baseline's instances are the same own points). That is the answer to "the baseline survives all its changes": by status, yes.
+- **No assertion fails** at any state of this version's probe: the nine patterns by spokes stay their seeds turned, the three pairs of lines stay parallel, the two removed `symmetric` hold, and the copies of Global Sketch 2 and 3 in Housing and Motor Shell are the same points at every step (56 pairs of a change and a sketch, the largest difference 0 mm).
+- **Drives nothing**: `M3_INSERT_SIZE` in Housing; `OUTPUT_MOUNTING_PATTERN` in Housing and in Motor Shell, where only a circle of the helper copy reads it; the helper copies' 72 mm; one 12 mm diameter of Motor Shaft 3. A list of the parameters a studio names is therefore not a list of what drives it, and the report gives the second.
+- **Counts.** No parameter of the model is a count (the 19 patterns have `2`, `4`, `6`, `12`, `16` as numbers), so the entries are changed directly. Downwards the extrusions over the copies lose a named region in 9 of 10 ("Otherwise") and one profile turns invalid (Motor Shell 2 from 4 to 3); upwards two profiles turn invalid (Motor Shaft 3 from 2 to 3, Motor Shell 2 from 4 to 5) and eight leave nothing in error.
+- **The second round's walks of 1 % to ± 5 % and back**, run again on this version: 54 walks, 2 breaks, both failures of the kernel (Chamfer 1 of Housing at `HOUSING_DIAMETER` − 1 %, Extrude 8 of Motor Shell at − 4 %; gap 11), every walk back at its start. On the first revision they had 4 breaks and 2 walks not back. The standing probe's steps of 3 % and 6 % do not hit the two kernel failures, and they are not the conversion's to fix.
+- **Cost**: the parameters 150 s, the dimensions and counts 190 s, on a machine busy with other sessions; the first revision's single jumps took 35 s. It is a step of the acceptance, run with the dump, not of the root tests.
 
-The probe is 3 % around one state. It does not show a sense that is wrong only after a design flips, or a count changed far.
+**What it cannot show.** Two steps of 3 % of one value at a time: a sense that is wrong only after a design flips, a value far away, two parameters together (the second round tried all pairs at 10 % and found no break that needs two). A failure that lies between the steps: the kernel failures above. And whether Onshape itself would follow: an over-determined sketch of Onshape's may conflict there too.
 
 ## Crossing curves
 
@@ -220,7 +289,7 @@ is called once. The tool cuts every contact of two outline curves, joins ends at
 - **Its batch is previewed and checked before it is executed** ("What passes"). The tool answering `ok` is not enough: without a curve named it refuses only when it has nothing to do for an invalid profile; it can cut what it can and return a batch that leaves the profile invalid, with the rest in `ids.uncut` (a review's probe: a crossing circle and two partly overlapping lines give `ok`, 15 commands and an invalid profile).
 - **It runs on solved positions**, not on Onshape's; that is why the check before it holds the points to 1e-6.
 - **Exact duplicates first.** Two curves of the same kind over the same points with the same construction flag (a circle: the same centre point and radius within 1e-6) are written once. The converter's map from an Onshape entity to its curve (`rep`, not only the kind) points the second at the first, with its direction: a line drawn from `b` to `a` over one drawn from `a` to `b` is kept as "the same line, reversed", which the angle reads. A construction line and an outline line at one place are both kept. A partial overlap is no longer repaired ("Known limits").
-- **A constraint the cut consumes** is `shared`: a `pointOnCurve` that the tool lists in `ids.removed` because the point became the shared point of the pieces. Measured: 20.
+- **A constraint the cut removes** is in `ids.removed` for one of four reasons, and its fate follows the reason, which the converter reads off the sketch after the cut: the point it held on a curve became the shared point of the pieces (`shared`; all 20 of this model); it would repeat one the sketch has (`twice`); it went with a curve the tool removed, or would name one curve twice (lost, cause `refused`, "removed by the cut").
 - **A refusal is reported, not worked around.** The tool refuses what a cut cannot repair (curves lying on each other, two arcs that only touch, a circle with one point). The report then has the tool's message and the first rows of `sketchContacts`.
 - **The regions.** `matchRegion` reads the sketch after the cut, as it read the converter's pieces. A piece has a new ID (`Sketch_2.cut.c5`, the first piece keeps the ID of its curve), which nothing outside the sketch names.
 
@@ -270,11 +339,14 @@ The entry:
 
 ### Otherwise
 
-- **A mirror of two curves is written by the symmetry of their points**: `symmetric` for each pair of points (the ends of two lines paired by reflecting the positions; the centres of two circles, with `equalRadius`; the centre and the swapped ends of two arcs). A pair that is one point is on the mirror line: nothing when it is an end of that line or the origin on an axis, else `pointOnCurve` with it. Both curves stay own, so they can be constrained and cut. The fate is `written`. Three `symmetric` of two arcs say more than an arc has freedom for (its ends are at one distance from its centre already); the surplus is found and removed as implied. The model has no mirrored arcs, so that is a fixture; its mirrored lines show the same in small (two mirrors of Motor Shell 1 lose one `symmetric` each).
+- **A mirror of two curves is written by the symmetry of their points**: `symmetric` for each pair of points (the ends of two lines paired by reflecting the positions; the centres of two circles, with `equalRadius`; the centre and the swapped ends of two arcs). A pair that is one point is on the mirror line: nothing when it is an end of that line or the origin on an axis, else `pointOnCurve` with it. Both curves stay own, so they can be constrained and cut. The fate is `written`. Three `symmetric` of two arcs hold one scalar condition twice (an arc's ends are at one distance from its centre already). That surplus is one equation of six, not a whole `symmetric`: a review's probe has 5 degrees of freedom with the three and 6 with any one removed, and the solver lists nothing as redundant there. So the three are written and nothing promises that one goes; the fixture changes a parameter under the mirrored arcs and asks that the sketch follows. The model has no mirrored arcs.
 - **A circular pattern is written by spokes.** For every point Onshape lists in an instance (the ends and centres of its curves), a construction line from the pivot to it. The spoke of each image point has `equalLength` with the spoke of the seed point, and an `angle` of 2π/n to the spoke of the instance before; an image circle has `equalRadius` with its seed. The image points are then the seed points turned, whatever the seed does, and the instances stay own curves that can be constrained and cut. The fate is `written`, with the detail "by spokes".
     - **The angles tie the spokes as a tree, never as a ring**: two spokes already tied through angles get no further one. A hexagon's spokes close a ring, and the sixth angle is a redundant constraint that made Global Sketch 3 conflict at every change of a parameter (measured).
-    - **The count is a number**: `2 * pi / 6`. When `patternc1` holds a parameter, its value of today is written and the report says that the pattern no longer follows it; a changed count needs another number of instances, which own curves do not get.
+    - **The sense of the turn** is read from the positions the converter wrote, in its frame (the sign of the cross product of the seed's and the first image's spoke), so a sketch seen from the other side is right without a rule of its own. **A count of 2** is a turn of π, the edge of the range (−π, π], where that cross product is zero: `pi` is written.
+    - **The pivot.** A curve of the sketch may end only on an own point or `origin`. A pivot that is a projected point gets one own point, tied to it by `coincident`, and the spokes start there. A point of an instance that is the pivot itself (the centre of an arc about it) is the same point in every instance and gets no spoke.
+    - **The count is a number, and the pattern cannot be counted again.** `2 * pi / 6` is written. When `patternc1` holds a parameter, its value of today is written and the report says that the pattern no longer follows it; a changed count needs another number of instances, which own curves do not get, by a parameter or by hand. No pattern of the model has a parameter as its count (the 19 are `2`, `4`, `6`, `12`, `16`), so that branch is from knowledge.
     - **The rows of points.** Onshape lists the points of an instance as rows of their own (all 9 on this model). A curve whose points are not listed gets them in the order start, end, centre, checked by turning the seed's; a point that does not land is the pattern lost with the cause `pattern`.
+- **The count of an entry follows its expression upwards only, as the converter writes extrusions.** An extrusion over a patterned sketch names the region of every copy (`matchRegion`, by Onshape's faces). One copy fewer leaves a named region without its copy, which the engine makes a broken reference (D68): measured, a count lowered by one breaks the extrusions over 9 of the 10 circular entries and turns the tenth's profile invalid, and raised by one leaves no feature in error in 8 of 10 (every copy takes a new place; whether the added one is extruded was not looked at). The probe lists both ("The probes"); naming regions by rule and not by copy is not in 6h ("Known limits").
 - **The mirror of two points** stays `symmetric`, as today.
 
 **Why spokes after all.** The first version rejected them as too heavy (a construction line and two constraints per point, the count no parameter) and left such a pattern lost. The probe showed what a lost pattern does: the seed follows its variable, the instances do not, and the part breaks. Two ways to hold the instances were measured on the model:
@@ -309,10 +381,20 @@ The sizes alone keep the sketch from breaking and leave the pattern crooked. Spo
 
 A constraint names an external operand by `externalFirst`, `externalSecond`, `externalMirror`, a pivot, or `externalEntity1` and `externalEntity2` of a midpoint: a query with one deterministic ID and nothing else.
 
-**The ID decodes** (read off this dump by the first review; Onshape does not document it). After the first character, the second is the operation that made the entity, and the rest is a number in base 64, least significant digit first, whose low two bits are the kind (0 a vertex, 1 an edge, 2 a face, 3 a body) and the rest an index. `fs.json` lists the bodies and faces every feature created (`created`), so the operations of every sketch feature are known. Over the 8 studios 939 bodies, 957 faces and 746 edges decode to their kind without exception, and each of the 53 operations that hold bodies of a sketch belongs to one sketch.
+**The ID decodes** (read off this dump by the first review; Onshape does not document it). After the first character, the second is the operation that made the entity, and the rest is a number in base 64, least significant digit first, whose low two bits are the kind (0 a vertex, 1 an edge, 2 a face, 3 a body) and the rest an index. `fs.json` lists the bodies and faces every feature created (`created`), so the operations of every feature are known. Over the 8 studios 939 bodies, 957 faces and 746 edges decode to their kind without exception, and each of the 53 operations that hold bodies of a sketch belongs to one sketch.
 
-- **A self-test at the start of every studio**: every ID of `created` must decode to the kind it is listed under. If one does not, the decode is off for that studio, the report says so, and its operands are searched by geometry over all kinds, every pick marked as such.
-- **The decode is a filter and a cross-check, not a lookup.** The kind restricts the candidates (a vertex is a point, an edge a curve). An operation that belongs to a sketch restricts them to the sketch made from it; any other operation is a body, so the operand is an edge or a vertex of a body. The index is only a hint (it is the k-th curve of the feature for the three edges of this model and not simply the order of the points), so the entity itself is still found by geometry among those candidates.
+- **What an operation is, is decided by the type of the feature that owns it**, not by "a sketch or else a body" (the second round of review: an `importDerived` owns operations too, two per sketch it brings, and an own sketch held on a derived one would have been searched among the edges of bodies):
+
+    | The operation belongs to | The operand is |
+    |---|---|
+    | a `newSketch` | an entity of the trymesh sketch made from it |
+    | an `importDerived` that brings sketches | an entity of one of the copies made from it (candidates over all of them) |
+    | a feature that makes or changes solids | an edge or a vertex of a body |
+    | anything else (a plane, a mate connector, a curve), or no feature of `created` | nothing the converter knows: `plane` for a face of a plane feature, else `unknown` |
+- **Judged per ID, with no search without it.** An ID whose operation `created` does not know, or whose kind is a face or a body where an edge or a vertex is asked, is lost with the cause `unknown`. There is no fallback "by geometry over all kinds": that is the ranking the first round rejected, where a point and a curve through it cannot be told apart.
+- **A self-test at the start of every studio**: every ID of `created` must decode to the kind it is listed under. It tests the kind bits for a face and a body only (`created` lists no vertex and no edge) and says nothing of the operation; a studio that fails it gets no operand resolved by the decode, and the report says so.
+- **The limit of what was read**: the operation is one base-64 digit. The largest studios of the model use 50 and 49 of the 64 values (every sketch takes two); nothing in the dump shows how the 65th is written, and a studio of some 25 features has it. Such an ID is `unknown` by the rule above, and it is the trigger of "Open", question 3.
+- **The decode is a filter and a cross-check, not a lookup.** The kind restricts the candidates (a vertex is a point, an edge a curve) and the operation says where they are. The index is only a hint (it is the k-th curve of the feature for the three edges of this model and not simply the order of the points), so the entity itself is still found by geometry among those candidates.
 
 What the IDs are:
 
@@ -326,11 +408,15 @@ What the IDs are:
     | YZ | `origin/y` | `origin/x` | none |
 
     The three IDs are from knowledge of Onshape, supported by the decode. On this model `JDC` is Top by the dump (the plane of all 24 sketches, normal (0, 0, 1) through the origin); `JEC` and `JCC` are confirmed by the geometry: every mirror about `JEC` reflects across x = 0 and about `JCC` across y = 0, and every angle to `JCC` is its value measured from +X. A use that contradicts the mapping (a mirror that does not reflect across the axis) is refused by its unit and reported.
-3. **An ID of a sketch's operation** is an entity of the trymesh sketch made from that Onshape sketch (an own sketch or a derived copy; an ID lives in the studio that holds the constraint's own feature, so the IDs of a derived sketch are read in its source studio). Candidates are its own points and curves and the copies of its entries, of the decoded kind, mapped into the sketch by `sketchMap` with the frames of the two trymesh planes:
+3. **An ID of a sketch's operation** is an entity of the trymesh sketch made from that Onshape sketch, and an ID of an `importDerived`'s operation an entity of one of its copies (an ID lives in the studio that holds the constraint's own feature, so the IDs of a derived sketch are read in its source studio). Candidates are its own points and curves and the copies of its entries, of the decoded kind, mapped into the sketch by `sketchMap` with the frames of the two trymesh planes:
     - a vertex: a point at the place of every local operand that is coincident with it (1e-6);
     - an edge: a curve that fits every use. A point held on it lies on it, **within its extent** when any candidate holds it so; a circle or an arc equal to it has its radius (an arc cut from a circle counts, with the kind `arc`); a line parallel, perpendicular or at an angle to it is a line in the direction the constraint's value gives.
-4. **An ID of any other operation** is an edge or a vertex of a body: the bodies of the state before the sketch, the query `body`. A circular edge counts only with its axis along the sketch's normal (1e-4 rad), since otherwise it is no circle in the sketch; a straight edge perpendicular to the sketch is a point and no candidate. The entry is `{ type: 'edge', body, edge, kind: 'line' | 'circle' }` (D23); a point of it is the entry's own derived point (`<entry>/a`, `<entry>/b`, `<entry>/center`), the end taken by position on the previewed entry.
-5. **The pick.** Candidates that are one place in the sketch (two edges of one cylinder at two heights) are one answer: the first by the timeline is taken. Candidates at more than one place are not chosen among: the operand stays unresolved and its constraint is lost with the cause `sketch` or `edge` and the candidates in the detail. Every operand is in the report and in `summary.json` with what it decoded to, the number of candidates and places, and the pick; a pick is **inferred** from geometry within what the decode allows, and is named so.
+4. **An ID of an operation of a feature that makes or changes solids** is an edge or a vertex of a body: the bodies of the state before the sketch, the query `body`. A circular edge counts only with its axis along the sketch's normal (1e-4 rad), since otherwise it is no circle in the sketch; a straight edge perpendicular to the sketch is a point and no candidate. The entry is `{ type: 'edge', body, edge, kind: 'line' | 'circle' }` (D23); a point of it is the entry's own derived point (`<entry>/a`, `<entry>/b`, `<entry>/center`), the end taken by position on the previewed entry.
+5. **The pick.** One candidate is the answer. Several candidates are an answer only when they are **the same by construction**, which is one of two cases:
+    - points or curves of one sketch that the converter wrote as one entity (welded points, exact duplicates);
+    - edges of a body that lie on **one side face of one extrusion along the sketch's normal, without taper** (their names share that face): seen along the normal, every edge on that face lies on the curve the face was extruded from, whatever becomes of the caps. The first by the timeline is entered.
+
+    Anything else is not chosen among, also when the candidates are at one place today (one place is a distance of 1e-6, not equal text): the operand stays unresolved and its constraint is lost with the cause `sketch` or `edge` and the candidates in the detail. Two edges that only project onto each other now can part after an edit, and the first by the timeline would be an arbitrary dependency. Every operand is in the report and in `summary.json` with what it decoded to, the candidates and the pick; a pick is **inferred** from geometry within what the decode allows, and is named so.
 
 The entry of a sketch entity:
 
@@ -346,9 +432,15 @@ A derived sketch (`importDerived`) is a copy, as today, and its constraints are 
 
 The constraints of the model's two derived sketches name `JFE` and `JFJ`, which decode to Sketch 1 of their source studio: the end of its construction line at (32, 0) and that line. Neither studio derives that sketch. It is **the skeleton of the document**: four construction curves whose diameters are `#HOUSING_DIAMETER`, `#HOUSING_MOUNTPATTERN` and `#OUTPUT_MOUNTING_PATTERN`. The six constraints hold the seed of the 12 mounting holes (Global Sketch 2) and of the 12 nut pockets (Global Sketch 3) on the mount pattern circle. Without them `HOUSING_MOUNTPATTERN` is used by no converted studio, and the holes of two mating parts hang free.
 
-**A helper copy** closes it: when a derived sketch names an entity of a sketch of its source studio that this studio does not derive, that sketch is copied too, before the derived one, as a sketch of construction use (`Global Sketch 2 (Global Sketch: Sketch 1, a helper)`), and the operands are found in it. The decode says exactly which sketch. Its constraints are counted in a row of their own, outside the 380, so "before" and "after" stay the same set. It is the recommendation of "Open", question 2, which is the owner's.
+**A helper copy** closes it: when a derived sketch names an entity of a sketch of its source studio that this studio does not derive, that sketch is copied too, before the derived one, as a sketch of construction use (`Global Sketch 2 (Global Sketch: Sketch 1, a helper)`), and the operands are found in it. The decode says exactly which sketch. It is the recommendation of "Open", question 2, which is the owner's.
 
-Measured with the helper copies: one sketch of 4 curves and 9 constraints in each of the two studios (6 written, 3 shared; one diameter as a number, see "The ladder"); the 6 lost constraints are written; `HOUSING_MOUNTPATTERN` and `OUTPUT_MOUNTING_PATTERN` come into use in Housing and Motor Shell; `HOUSING_MOUNTPATTERN` ± 3 % moves the holes (the volume of Housing changes from 33562.6 to 33608.5 and 33594.1, of Motor Shell from 22516.8 to 22496.8 and 22493.0) with no conflict; the two copies of Global Sketch 2 and 3 have no freedom left (2 and 3 without).
+- **One per destination studio and source sketch**: the copy is kept by (destination studio, source studio, source feature) and reused by every derived sketch of the studio that needs it; its record keeps where it came from.
+- **One level only.** A helper copy's own constraints on a further sketch that is not in the studio are lost with the cause `sketch`; there is no closure over dependencies.
+- **Counted apart**: its constraints are in a row of their own, outside the 380, so "before" and "after" stay the same set.
+- **A parameter that only a helper copy reads is not "in use"** by the part; the probe lists it as driving nothing ("The probes").
+- **An expression the dump contradicts.** One diameter of the helper is written as a number: the dump's geometry has the circle at 72 mm under `DIAMETER = #HOUSING_DIAMETER`, and the variable is 70 (no variable feature in that studio). The same in a sketch of a part would turn an expression into a number with one line among hundreds, so the report has a section of its own, `## Expressions dropped`, for every dimension written as a number because the geometry does not have the expression's value.
+
+Measured with the helper copies: one sketch of 4 curves and 9 constraints in each of the two studios (6 written, 3 shared; one diameter as a number); the 6 lost constraints are written; `HOUSING_MOUNTPATTERN` comes into use in Housing and Motor Shell and moves the holes with no conflict at ± 3 % and ± 6 % (the volume of Housing goes from 33562.6 to 33652.9 and 33614.5 at ± 3 %, of Motor Shell from 22516.8 to 22576.2 and 22559.4); **the copies of Global Sketch 2 and 3 in the two studios stay point for point the same** at every one of the probe's changes (56 pairs of a change and a sketch compared, the largest difference 0 mm), which is what makes the holes of the two parts mate; the two copies have no freedom left (2 and 3 without). `OUTPUT_MOUNTING_PATTERN` is read in the two studios by a circle of the helper only and drives nothing there.
 
 ### The constraint on it
 
@@ -370,7 +462,7 @@ The operand is now an ID and a kind (`origin` a point; an axis a line; an entry 
 
 ### Measured
 
-- **The origin**: 31 of 31 made (22 `coincident`, 8 `pointOnCurve` with `origin/x`, 1 `horizontalDistance` with the expression `E`); 3 of the 8 are then `implied`.
+- **The origin**: 31 of 31 made (22 `coincident`, 8 `pointOnCurve` with `origin/x`, 1 `horizontalDistance` with the expression `E`).
 - **The default planes**: 13 of 13 (5 angles, 6 mirrors by `symmetric`, 2 mirrors as entries).
 - **Another sketch and an edge**, by the decode:
 
@@ -380,24 +472,24 @@ The operand is now an ID and a kind (`origin` a point; an axis a line; an entry 
     | `JFF` | Output Shaft 3, EQUAL, r 22.5 | an edge of Sketch 1 | 1 | its circle of r 22.5 |
     | `IF`, `JFE` | Input Shaft 2, points at (±1.25, 0) | vertices of Sketch 1 | 1 each | the two centres |
     | `JKM` | Output Shaft 4 and 5, a point at (17, 0) | a vertex of Sketch 2 | 1 | the centre of its fourth circle |
-    | `JQx` | Motor Shaft 3, a point at (3, 5.196) | an edge of a body (operation Q) | 6 edges at 3 places; within their extent 2 at one place | the rim of radius 6 of Extrude 1, as an `edge` entry |
+    | `JQx` | Motor Shaft 3, a point at (3, 5.196) | an edge of a body (operation Q) | 6 edges at 3 places; within their extent 2, both on one side face of Extrude 1 | the rim of radius 6 of Extrude 1, as an `edge` entry |
     | `JFE`, `JFJ` | Global Sketch 2 and 3, in two studios | a vertex and an edge of Sketch 1 of the source studio | 1 each in the helper copy; without it the sketch is not in the document | the end of the construction line, and the line |
 
-    With the kind and the sketch known, no operand in a sketch has more than one candidate. The first version searched all earlier sketches and picked `JKM` 1 of 2 and `JQx` 1 of 3; its picks for the sketch operands were the right entities, and for `JQx` the circle of Sketch 1 under the edge, a sketch entity where Onshape names the body. `JQx` fits four more edges only as endless lines (the point is beyond the ends of two hexagon sides); the two circular edges are the two ends of one cylinder.
-- **All 13 are written** (7 without the helper copies); one, the coincidence with `IF`, is then `implied`.
+    With the kind and the sketch known, no operand in a sketch has more than one candidate. The first version searched all earlier sketches and picked `JKM` 1 of 2 and `JQx` 1 of 3; its picks for the sketch operands were the right entities, and for `JQx` the circle of Sketch 1 under the edge, a sketch entity where Onshape names the body. `JQx` fits four more edges only as endless lines (the point is beyond the ends of two hexagon sides); the two circular edges lie on one side face, the one Extrude 1 made of that circle of Sketch 1, so they are the same by construction.
+- **All 13 are written** (7 without the helper copies).
 
 ## Kinds taken along
 
 Three kinds the plan left to the backlog are mapped, because the external operands need the first and the others cost a line each ("Open", question 1):
 
-- **ANGLE of two lines.** trymesh measures from the direction of `a` to the direction of `b`, counter-clockwise, in (−π, π]; Onshape gives an unsigned value and the flags `clockwise`, `aligned` and `flipped`. The angle is measured on the positions (a line that is a reversed duplicate in its own direction), and of the forms `e`, `-(e)`, `pi - (e)`, `(e) - pi` of the Onshape expression `e` those whose value (`expressionValue` over the parameters of the document) equals the measured angle within 1e-6 fit.
+- **ANGLE of two lines.** trymesh measures from the direction of `a` to the direction of `b`, counter-clockwise, in (−π, π]; Onshape gives an unsigned value and the flags `clockwise`, `aligned` and `flipped`. The angle is measured on the positions the converter wrote, in its own frame (so a sketch seen from the other side, `frame.sign`, and a line that is a reversed duplicate are already in the measured sign), and of the forms `e`, `-(e)`, `pi - (e)`, `(e) - pi` of the Onshape expression `e` those whose value (`expressionValue` over the parameters of the document) equals the measured angle within 1e-6 fit.
     - **One fits**: it is written.
-    - **Two fit** (at 0, π/2 and π: `e` and `pi - (e)` agree at 90° and part as soon as the value changes). One of the two has `e` with a plus and one with a minus. If `e` names no parameter, both are the same number for good and the first is written. Else the one with the minus is written when `clockwise` is true and the one with the plus when it is false, and the report says that the form was chosen by the flag.
+    - **Two fit** (at 0, ± π/2 and π: `e` and `pi - (e)` agree at 90° and part as soon as the value changes). If `e` names no parameter, both are the same number for good and the first is written. **Else the measured number is written**, the expression is listed under `## Expressions dropped` with the two forms, and the record says "ambiguous". The first revision chose by the flag `clockwise`; the second round showed that the six angles of the model cannot support it: none of them is at an ambiguous value, `clockwise` and `flipped` are confounded in them ((true, true, false) for the one that needs `-(e)`, `clockwise` false and `flipped` true for the other five), and a flag of Onshape's frame would have to be turned with the frame's handedness.
     - **None fits**: the measured number, with a note.
-    - The rule of the flag is read off this model, where `clockwise` is true exactly for the one angle of six that needs `-(e)`. `summary.json` records the three flags and the form of every angle, so a second model can confirm or correct it.
-    - Measured: all 6 angles written with their expression (5 as `e`, 1 as `-(e)`); none of them is at an ambiguous value (30°, 45° and 60°).
+    - `summary.json` records the three flags, the frame's sign and the form of every angle, so a second model can give the rule that this one cannot.
+    - Measured: all 6 angles written with their expression (5 as `e`, 1 as `-(e)`), at 30°, 45° and 60°.
 - **HORIZONTAL or VERTICAL of two points**: `verticalDistance` (or `horizontalDistance`) of 0 between them, a driving dimension. Measured: 3 of 3. It reads as a dimension of 0 in the app; a constraint of its own is a backlog row.
-- **DISTANCE of two lines**: `distancePointLine` of the start of the first line to the second, one constraint for one, written when the two lines are parallel in the geometry (1e-9), else lost with the cause `kind`. The first version left it lost because it had `parallel` beside it. Measured: 3 of 3 (the hexagons across flats, driving dimensions), the check and the probe pass.
+- **DISTANCE of two lines**: `distancePointLine` of the start of the first line to the second, written when the two lines are parallel in the geometry (1e-9), else lost with the cause `kind`. Onshape's distance of two lines also keeps them parallel, and one `distancePointLine` does not. Whether they stay parallel is asked of the sketch, not assumed: the probe asserts it at every state it tries ("The probes"), and a pair that does not stay parallel gets `parallel` in the same unit. Measured: 3 of 3 (the hexagons across flats, driving dimensions) written as the one constraint; the pairs stay parallel at every change, held by the spokes of their pattern, and the hexagons follow the distance.
 
 `expression()` of `common.ts` learns units as factors in general: `45.0*deg` and `45 deg` become `deg(45.0)`, `2*mm` becomes `2`, and a unit it does not know leaves the expression unconverted (a number, with a note), where today it passes through unchanged and fails later.
 
@@ -418,7 +510,7 @@ Onshape's spline is in `features.json` (`BTCurveGeometrySpline`: `controlPoints`
 2. **A clamped uniform cubic of up to 64 control points** (the knots equally spaced within 1e-9 of the range) is one `spline` over its control points: the curve of D70 exactly.
 3. **Any other spline that passes rule 1** goes through `bsplineBeziers` (D70 exports it for this): one `spline` of `degree + 1` points per piece (a line for degree 1), neighbouring pieces sharing their end point. The converter keeps the chain of pieces of each Onshape spline, in order.
 4. **The points**: the first and the last control point are the spline's end points of Onshape and are welded by position like any end; the inner control points are own points that are never welded with anything.
-5. **The budget: 193 control points of splines in one sketch**, counted over all its splines before any is written (64 cubic pieces, or three uniform splines of 64 points). Over it, none of the sketch's splines is written (a region bounded by half its splines is of no use), and each is listed with what it needs and what there is. Measured on the disc's two visible splines:
+5. **The budget: 193 control points of splines in one sketch**, counted as the points that would be written, after the decomposition into pieces, over all its splines and before any is written (64 cubic pieces, or three uniform splines of 64 points). It is a guard measured on sketches of splines alone, not a bound on the time of a sketch that also holds much else. Over it, none of the sketch's splines is written (a region bounded by half its splines is of no use), and each is listed with what it needs and what there is. Measured on the disc's two visible splines:
 
     | Pieces | Points | The batch of the sketch, points free | With `fixed` on every point |
     |---|---|---|---|
@@ -432,7 +524,7 @@ Onshape's spline is in `features.json` (`BTCurveGeometrySpline`: `controlPoints`
 
     The first version's cap was 256 pieces, set by the free points alone. An imported spline is what carries a `FIX`, and fixed points are what costs: the budget is where both columns stay under a quarter of a second. The whole outline is right: one region with an outer loop of 6,285 curves, the area by the pieces 2228.709 mm² (Onshape: the region with its bore and six holes, 2228.71), the extrusion 8914.87 mm³ in 0.27 s. But every recompute of that sketch would take 108 s, and it would hold 37,710 degrees of freedom.
 6. **The disc keeps its generator** (`overrides/actuator-5010.ts`, D61): its splines are over the budget, are listed, and the override builds the disc. With the six holes as an entry, the override's reading of the hole regions (regions with one curve in the outer loop) still finds the bore and six holes; its volume is unchanged.
-7. **A region bounded by a spline** is matched by the chain, not by a piece: an Onshape edge of the kind `other` matches a run of loop curves that is the whole chain of one spline, in order, when the chain's two ends are the edge's and the edge's middle lies on the chain's polyline within 1e-3. `matchRegion` skips `other` edges today and tests every loop curve alone; both change.
+7. **A region bounded by a spline** is matched by the chain, not by a piece: an Onshape edge of the kind `other` matches a run of loop curves that is the whole chain of one spline, in either direction, when the chain's two ends are the edge's and the edge's middle lies within 1e-3 mm of the chain. The chain is sampled by the converter for this, each Bezier piece halved until its chord error is under 1e-4 mm: the engine's polyline of a spline is made to the document's chord tolerance of 0.01 mm (a review's probe: the middle of an exact cubic 0.0062 mm off its polyline), which is coarser than the match. `matchRegion` skips `other` edges today and tests every loop curve alone; both change.
 8. **`FIX` of a spline** is one unit: `fixed` on every control point of its chain, each once.
 
 No spline of the model is under the budget, so rules 1 to 4, 7 and 8 are tested on fixtures only.
@@ -444,8 +536,8 @@ No spline of the model is under the budget, so rules 1 to 4, 7 and 8 are tested 
 3. Make the units: resolve external operands (which adds reference entries), map each Onshape constraint, start its record.
 4. The ladder of "The check": all units, or one by one.
 5. Execute; preview the cut and check it, with rules 5 and 6 of the entries; execute the cut.
-6. Remove the implied constraints.
-7. Close the records: fates, causes, what the cut consumed.
+6. Where the solver lists a redundant constraint: the sketch's probe, and the removal of what it shows to be implied.
+7. Close the records: fates, causes, what the cut removed.
 
 ## Regions and the features over a sketch
 
@@ -455,24 +547,24 @@ No spline of the model is under the budget, so rules 1 to 4, 7 and 8 are tested 
 
 ## Measured (2026-11-25)
 
-The model: the dump of the cycloidal actuator 5010 of 2026-11-25 (the assembly, the 8 part studios that have sketches with their dumps, 66 parts of other documents as STL). The baseline: the converter at `c01e765`, 31 s. The trial: a copy of the converter with every step of this design but the splines, rule 5 of the entry, the choice of a mirror's seed, the cut inside the test of a unit and the weld by distance; 32 s, and 35 s for the probe. "After" is with the helper copies of question 2; the last column is without them.
+The model: the dump of the cycloidal actuator 5010 of 2026-11-25 (the assembly, the 8 part studios that have sketches with their dumps, 66 parts of other documents as STL). The baseline: the converter at `c01e765`, 31 s. The trial: a copy of the converter with every step of this design but the splines, rule 5 of the entry, the choice of a mirror's seed, the cut inside the test of a unit, the weld by distance, the canonical form of `twice`, the decode by the type of the owning feature and the pivot's own point (none of which this model exercises); 35 s, and about 6 minutes for the document's probe. "Now" is with the helper copies of question 2; where a second number stands in brackets or in a last column, it is without them.
 
 **Fates** (380 constraints, 24 sketches):
 
-| Fate | Before | The first version | After | After, no helper copies |
-|---|---|---|---|---|
-| Written | 93 | 184 | 176 | 170 |
-| Entry | 0 | 12 | 12 | 12 |
-| Shared | 155 | 155 | 176 (92 by a point, 63 by copies, 1 an end of the curve, 20 by the cut) | 176 |
-| Twice | 1 | 5 | 5 (4 mirrors of two points that a mirror of their lines already writes, 1 coincidence) | 5 |
-| Implied | 0 | 0 | 5 | 5 |
-| Lost | 131 | 24 | 6 | 12 |
+| Fate | Before | The first version | The first revision | Now | Now, no helper copies |
+|---|---|---|---|---|---|
+| Written | 93 | 184 | 176 | 181 (2 of them with one constraint removed as implied) | 175 |
+| Entry | 0 | 12 | 12 | 12 | 12 |
+| Shared | 155 | 155 | 176 | 176 (92 by a point, 63 by copies, 1 an end of the curve, 20 by the cut) | 176 |
+| Twice | 1 | 5 | 5 | 5 (4 mirrors of two points that a mirror of their lines already writes, 1 coincidence) | 5 |
+| Implied | 0 | 0 | 5 | 0 | 0 |
+| Lost | 131 | 24 | 6 | 6 | 12 |
 
 The helper copies add, outside the 380: 2 sketches, 18 constraints, 12 written (2 as numbers) and 6 shared.
 
 **The lost, by cause:**
 
-| Cause | Before | The first version | After | By what |
+| Cause | Before | The first version | Now | By what |
 |---|---|---|---|---|
 | A curve the converter split | 37 | 0 | 0 | `split` (6e) |
 | The origin | 31 | 0 | 0 | `origin`, `origin/x` (6a2) |
@@ -487,7 +579,7 @@ The helper copies add, outside the 380: 2 sketches, 18 constraints, 12 written (
 
 **The sketches:**
 
-| | Before | The first version | After |
+| | Before | The first version | Now |
 |---|---|---|---|
 | In the first step of the ladder | 24 of 24 | 24 of 24 | 24 of 24 (the 2 helper copies one by one) |
 | Status `ok`, conflicting constraints | 24, 0 | 24, 0 | 24, 0 |
@@ -496,12 +588,14 @@ The helper copies add, outside the 380: 2 sketches, 18 constraints, 12 written (
 | Regions | | the same number in every sketch as before; the largest difference of an area 6.5e-8 mm² | the same; Onshape's number in 23 (the disc 7 of 8) |
 | Degrees of freedom, all sketches | 771 | 159 | 10 (20 without the helper copies) |
 | Fully determined sketches | 0 | 11 | 21 (17) |
-| Constraints the engine lists as redundant | 2 | 10 | 1 |
+| Constraints the solver lists as redundant | 2 | 10 | 7 (the diagnosis counted 45 before the two removals) |
 | Own curves, own points | 520, 409 | 275, 208 | 347 (72 of them spokes), 208 |
-| Constraints in the document, entries | 93, 0 | 175, 19 | 322, 25 |
-| Parameter changes that break a sketch or a feature | 0 of 40 | 3 of 48 | 0 of 56 (0 of 48) |
+| Constraints in the document, entries | 93, 0 | 175, 19 | 329, 25 |
+| Changes of a parameter that break, of the probe of its time | 0 of 40 jumps | 3 of 48 jumps | 0 of 56 walks (2 of 48, not back) |
+| Changes of a literal dimension that break | 0 of 62 | | 14 of 96 (Motor Shell 1 and 3) |
+| Changes after which a pattern is no longer its seed turned | 6 of 40 walks, 8 of 62 dimensions | | 0 |
 
-The three sketches that keep freedom: the disc's (8; its splines are left out), Input Shaft 2 (1, and none beside today's `E`), and Motor Shell 2 (1; the two midpoints that stay lost).
+The three sketches that keep freedom: the disc's (8; its splines are left out), Input Shaft 2 (1; along a walk of `E` the count reads 0 once and 1 again, gap 8), and Motor Shell 2 (1; the two midpoints that stay lost).
 
 **The parts** (with the override of the disc; volumes in mm³ of the baseline):
 
@@ -514,7 +608,7 @@ The three sketches that keep freedom: the disc's (8; its splines are left out), 
 | Input Shaft | 891.154 | Hex Standoff | 224.294 |
 | Motor Shaft | 2561.152 | | |
 
-The largest difference of a volume between the baseline and the trial is 6.9e-6 mm³ (3.1e-10 of the part, Housing Middle), in the first version and in this one. The same 4 of 10 chamfers convert, with the same refusals; 31 starts at a face are `from`; the loaded document has 335 bodies with the override of the disc and 333 without (counted by the first review).
+The largest difference of a volume between the baseline and the trial is 6.9e-6 mm³ (3.1e-10 of the part, Housing Middle), in every version of the trial. The same 4 of 10 chamfers convert, with the same refusals; 31 starts at a face are `from`; the loaded document has 335 bodies with the override of the disc and 333 without (counted by the reviews).
 
 **The tolerances of the contacts**: over all sketches of the dump, 475 pairs of a point and a curve, or of two curves, are in contact, the worst by 2.8e-14 mm; the nearest pair that is not is 0.42 mm apart.
 
@@ -526,7 +620,7 @@ The largest difference of a volume between the baseline and the trial is 6.9e-6 
 | MIDPOINT of two points | 2 | Backlog row, a kind of constraint |
 | A constraint of a derived sketch on the skeleton sketch | 0, or 6 with "no" to question 2 | With "no": the row says that `HOUSING_MOUNTPATTERN` then drives nothing and the mounting holes of Housing and Motor Shell are free |
 
-Not lost and not Onshape's either, so listed in the report: the count of the 9 patterns by spokes is a number; one diameter of each helper copy is a number.
+Not lost and not as Onshape has it either, so listed in the report: the 9 patterns by spokes cannot be counted again; one diameter of each helper copy is a number; the 14 changes of a literal dimension that Motor Shell 1 and 3 cannot follow; the 7 constraints the solver still lists as redundant; the 6 welds of an instance point with a point outside its pattern that no constraint backs.
 
 ## Engine gaps
 
@@ -537,8 +631,17 @@ Rows of `docs/backlog.md` the closing point adds; none is fixed here.
 3. **A midpoint of two points; a distance of two parallel lines as a constraint of two lines, and from a line to a circle.**
 4. **A sketch of thousands of spline pieces**: 108 s for 6,285 pieces (18,855 free points), where 256 take 77 ms. Either a spline refitted within a tolerance, or the cost of the sketch step with many free points looked into; which part is slow was not measured.
 5. **A sketch of another document projected**: a derived sketch stays a copy that drifts from its source, and a helper copy with it.
-6. **Redundant constraints.** A consistent set with a redundant constraint conflicts when a dimension changes (Motor Shell Sketch 1 with four redundant `symmetric`: `sketchConflict` at any other `HOUSING_DIAMETER`). And the engine's list of them is not a set that can be removed: it names some members of each dependent group, and one it names can be a constraint whose removal gives a freedom back. A tool "remove what is implied" would do in the engine what the converter does by trial.
+6. **Over-determined sketches.** A consistent set with redundant constraints can refuse every change of a dimension: Motor Shell Sketch 1 as Onshape wrote it (seven mirrors of lines whose ends lie on circles) answers a change of `HOUSING_DIAMETER`, of its 58 mm diameter and of its two angles with `sketchConflict`, and Motor Shell 3 a change of any of its four literal dimensions. What the engine offers does not cure it:
+    - the solver's list of redundant constraints (`SketchResult.redundant`) is partial: 4 and 2 there, where the diagnosis counts 22 and 12;
+    - the diagnosis's set that can be removed at once without a change of freedom (`diagnoseSketch().removable`) is judged at today's position: removing it (25 constraints over the model) leaves Motor Shell 1 in conflict and breaks Input Shaft 2, whose mirror it calls removable;
+    - six sets of removals tried by hand on Motor Shell 1 (the second round) follow at most one of its four dimensions.
+
+    The converter removes two constraints by trial and gets the parameter to work, not the dimensions. What would serve: a solver that drops what is dependent while it solves, or a tool that says which constraints are implied by the others for every value and not only at this one.
 7. **The solver out of memory is reported as a conflict.** 769 fixed points (1,538 equations) abort the solver; the sketch gets `sketchConflict` with no constraint named. The solver works again afterwards, but a large solve leaves less for the next (150 pieces failed right after 140, where 160 alone passed). `fixed` on a few hundred points is also slow (1.7 s for 385).
+8. **A sketch does not always come back.** Set to a value and back, a sketch can stay in conflict (Input Shaft 2 under the first revision's removal), and its count of freedom can read differently along the way (1, 0, 1, 1 along a walk of `E`, with and without that removal): the solver starts from where the last solve left the points, and the count is of a rank at one position.
+9. **A cut sketch holds its topology.** After `split` a sketch is its pieces; when a parameter moves two curves apart that were cut where they met, the pieces cannot exist and the sketch gives `sketchConflict` with nothing named, where Onshape forms other regions (Housing 1 follows `Phi_R` only from 0.931 to 1.103 of its 58 mm; the second round, with and without spokes).
+10. **A profile that names the regions of copies breaks when the count goes down** (`noProfile`, D68): a way to say "the regions of every copy of this entry" is missing.
+11. **Two failures of the kernel beside today's values**: Chamfer 1 of Housing at `HOUSING_DIAMETER` − 1 % and Extrude 8 of Motor Shell at − 4 % (`kernelFailure`; the second round's walks of 1 %). They pass at 3 % and 6 %. The first does not occur in the baseline (the review's guess, not checked: Sketch 2 now follows the diameter, so the chamfer meets a shape the baseline never made). Not looked into here.
 
 Found on the way and not an engine gap: `fetch.ts` does not dump what the external operands of sketch constraints are ("Open", question 3); the skeleton studio's geometry in the dump has a diameter that its variable does not give (72 against `HOUSING_DIAMETER` = 70).
 
@@ -546,10 +649,14 @@ Found on the way and not an engine gap: `fetch.ts` does not dump what the extern
 
 1. **`docs/onshape-import.md` has the tables of "Measured"**: fates and causes, before and after, as the implementation's runs give them. The "before" column is taken by the first point of work with the converter otherwise unchanged. If the implementation's numbers differ from this text's, the run is the evidence: the difference is explained and the text corrected, in either direction.
 2. **No sketch is split by the converter**: `splitAtCrossings` is gone; every sketch of the model has a valid profile after `split`, nothing in `ids.uncut`, no contact without a fix, and Onshape's number of regions (the disc's sketch excepted, by its splines); no constraint has the cause `split`.
-3. **The parts are unchanged**, by the comparator over two `summary.json` files (the baseline's and the run's): every volume within 1e-3 mm³, the same number of regions in every sketch with areas within 1e-6 mm², the same chamfers and fillets with the same edges kept, the same starts written as `from`, the same number of bodies in the loaded document, no feature newly in error, no key missing.
+3. **The parts are unchanged**, by the strict scope of the comparator over two `summary.json` files (the baseline's and the run's): every volume within 1e-3 mm³, the same number of regions in every one of the 24 sketches with areas within 1e-6 mm², the same chamfers and fillets with the same number of edges kept, the same starts written as `from`, the same number of bodies in the loaded document, no feature newly in error, no part missing.
 4. **The lost are at most 6** (12 with "no" to question 2), by the causes of "What stays lost". A higher number is explained cause by cause in the notes, not accepted silently.
-5. **No parameter change of the probe breaks a sketch or a feature** that it does not break in the baseline; every note of the probe (a changed number of regions or of degrees of freedom) is listed with its cause in `docs/onshape-import.md`.
-6. **Every constraint still listed as redundant is listed in the notes** with why it could not go.
+5. **The document's probe**:
+    - no change of a parameter gives "cannot follow", "invalid profile", "reference" or "not back", and no assertion fails at any state. This is the part that must pass;
+    - a "kernel" verdict is named apart with its feature, and is no failure of this point;
+    - the changes of literal dimensions and of counts are listed in `docs/onshape-import.md` with their verdicts and causes. They cannot all pass today: Motor Shell 1 and 3 (gap 6), and a count that goes down (gap 10). A verdict there that the notes do not explain by one of the named gaps fails the acceptance;
+    - what drives nothing is listed.
+6. **Every constraint the solver still lists as redundant is in the notes**, with the sketch's probe (what breaks with it, what was tried), and the diagnosis's count beside it.
 
 ## Where the code lives
 
@@ -559,7 +666,7 @@ All in `tools/onshape/`; nothing in `packages/`.
 |---|---|
 | `fates.ts` (new) | `Fate`, `Cause`, the record of a constraint, `Tally`; the tables of the report; `summary.json` and its comparator |
 | `check.ts` (new) | What passes, the units, the ladder, the implied constraints |
-| `probe.ts` (new) | The parameter probe over a converted document |
+| `probe.ts` (new) | The changes, the verdict of a state and the assertions, shared by the sketch's probe inside the converter and the document's probe after it |
 | `constraints.ts` (new) | The mapping of constraints, moved out of `sketch.ts`: the table, the angle, the symmetry of a mirror, the spokes |
 | `operands.ts` (new) | What an external ID is: the decode and its self-test, the origin, the axis of a default plane, an entity of a sketch, an edge of a body; the pick |
 | `derived.ts` (new) | The rule of the entry, the entries `pattern` |
@@ -578,13 +685,13 @@ Each point is closed as CLAUDE.md says: implemented, tested, documented, reviewe
 | Point | What | Lost after | Review |
 |---|---|---|---|
 | 1 | **The count.** `fates.ts` with the records, the report, `summary.json` and the comparator, the weld count, the decode used only to name the cause of an external operand (12 in a sketch, 1 on an edge), `probe.ts`. The document written must be byte for byte the baseline's. The "before" tables and the baseline's probe (40 changes, none breaks) into `docs/onshape-import.md` | 131 | Full, focused on the classification and the records: it is new code that defines every number of the acceptance, so "anything else" of CLAUDE.md's table. The first version said light; two reviews objected |
-| 2 | **The check.** `check.ts`: what passes (status, radii, 1e-6), units, the ladder with numbers per unit, implied constraints; `shared` established from identity, the weld by distance, `twice` by `constraintKey`, a point on its own end `shared` | 131 | Full |
+| 2 | **The check.** `check.ts`: what passes (status, radii, 1e-6), units, the ladder with numbers per unit, the sketch's probe and the implied constraints; `shared` established from identity, the weld by distance, `twice` in the canonical form, a point on its own end `shared`. Until point 3 the probe and the removal run after `splitAtCrossings`. The document changes here for the first time, and only by this: the one point held on its own end is no longer written (one of the two constraints the baseline lists as redundant); nothing is removed as implied, since every sketch of the baseline follows its probe | 131 | Full |
 | 3 | **Crossing curves** by `split`, previewed and checked; duplicates redirected; `splitAtCrossings` removed | 94 | Full |
 | 4 | **Known operands and kinds**: the origin, the default planes for everything but mirrors of curves, the angle, horizontal and vertical of two points, the distance of two lines, an arc's kind, Onshape's horizontal by the matrix, `expression` | 51 (the 8 mirrors of curves about a default plane wait for point 6) | Full |
 | 5 | **Found operands**: the decode as the filter, entities of sketches, edges of bodies, all sketches of an `importDerived`, the helper copies if the owner says yes | 38 (44 without the helper copies) | Full |
 | 6 | **Mirrors and patterns**: the rule of the entry, the entries, `symmetric`, spokes; `matchRegion` over `solvedCurves` | 6 (12) | Full |
 | 7 | **Splines**, with `FIX` and the chains in `matchRegion` | 6 (12) | Full; small |
-| 8 | **The close**: the "after" tables, the sections "Sketches" and "Gaps" of `docs/onshape-import.md`, the backlog rows, "As implemented" here | | Light: documents only |
+| 8 | **The close**: the "after" tables, the sections "Sketches" and "Gaps" of `docs/onshape-import.md`, the backlog rows, "As implemented" here | | Full by CLAUDE.md's table (it has no row for documents, so "anything else"), and narrow: the reviewer checks every number of `docs/onshape-import.md` against the run's `summary.json` and the backlog rows against "Engine gaps". No code changes in this point; if the owner wants it light, that is an exception for the owner to make |
 
 Points 5 and 6 are the risky ones. If the review of a point finds more than six issues with three serious ones, it gets a second round (CLAUDE.md, "Further rounds").
 
@@ -594,21 +701,23 @@ The unit tests run in the root run and read no dump: each builds a part studio o
 
 **A test of a shape no dump has shown is named "from knowledge"** (a linear and an open pattern, a turned sketch, an arc with a constraint, a spline under the budget, a vertex of a body), and the converter writes a note the first time a real dump takes such a path, so the owner knows that the case ran on real data for the first time.
 
-1. **The tally and the summary**: the fates of a sketch add up to its constraints; the tables as text; the reason kept apart from the operand's category; the comparator fails on a missing part, a value that is not finite, a changed outcome; a small assembly written, loaded again and its bodies counted.
-2. **The check**: a diameter with a wrong value (a radius changes, no point moves): refused; a solver failure with nothing named: not passed; a wrong dimension among good constraints: the others keep their expressions, the one falls to its number, and one that fits no number is `refused`; a mirror whose second half fails: the whole unit dropped; two dimensions of one key with different values.
-3. **Implied constraints**: a centre on the origin and also horizontal with it (the second `implied`); four mirrors of a four-fold symmetry (the sketch follows its diameter afterwards); a constraint the cut added is never removed; a listed constraint whose removal frees the sketch stays.
-4. **The probe**: a parameter that breaks a profile is reported as a break; a count is changed by one; a parameter nothing uses is listed as unused.
-5. **Crossing curves**: a line through a circle that has a diameter and a point held on it: two D-shaped regions, the diameter written, the point `shared` by the cut; a line that touches a circle: not cut; a crossing with two partly overlapping lines beside it: the tool's `ok` not taken for a valid profile; two identical circles: one, both IDs usable; a construction line on an outline line: both kept; a reversed duplicate line under an angle.
-6. **Welds**: two points 2e-7 apart are one, two 9.8e-5 apart are two; a coincidence of two points that stand apart is written, not `shared`; a weld without a constraint is counted.
-7. **The origin and the default planes**: coincident, horizontal and vertical of a point, a horizontal distance with a parameter, on sketches on XY and on XZ with a flipped normal; the table of "What an external ID is" on the three base planes and an offset plane; a plane parallel to the sketch; a mirror and an angle to each axis; a sketch turned in its plane (from knowledge).
-8. **The decode**: IDs of each kind and of several lengths; the self-test failing on a studio whose `created` contradicts it; a vertex ID with a curve through the place (the point, never the curve); an edge ID with a point at the place (the curve).
-9. **Another sketch**: one candidate; two at two places (unresolved, lost with the candidates); the same place twice (one answer); a point beyond the end of a line and on a circle (the circle); an arc cut from a circle under EQUAL; a derived copy whose operand is in a sketch not derived, with and without the helper copy; two sketches from one `importDerived`; a source on a parallel offset plane.
-10. **An edge**: a point on the rim of an extrusion (the entry, the slide along the rim kept when the sketch under it changes); a circle equal to a circular edge; a circular edge whose axis is not the sketch's normal (no candidate); a point on the end of a straight edge (from knowledge).
-11. **Mirrors**: an image that nothing names (an entry); a mirrored line with the MIRRORs of its ends (an entry); the first curve named and the second not (the second is the copy); an image with a tangent line (by `symmetric`, the profile valid after the cut); a mirror of a mirror; a point on the mirror line and on the origin; two arcs (three `symmetric`, the surplus implied).
-12. **Patterns**: holes on a circle with the count a parameter (an entry; the count changed, the body follows); a hexagon of one side (spokes, a tree of angles, the hexagon follows its across-flats dimension); a ring closed only by coincidences of two instances (no entry); pockets across a circle (spokes, cut by `split`, the regions as Onshape's, the pockets follow the circle's diameter); instances that overlap each other (no entry, by rule 2 or 6); a pattern of a pattern (the outer an entry); an external pivot; an entry whose copies do not land, and one with a copy too many (dropped by rule 5); an open and a linear pattern (from knowledge).
-13. **The angle**: the four forms; a value that fits none; 90° with a parameter and `clockwise` either way, and the sketch after the parameter changes; 0° and 180°; a plain number at 90°.
-14. **Splines**: a uniform cubic of six points (one spline); a non-uniform one (a chain, its area against the polygon of its samples); rational, periodic, unclamped, a repeated inner knot, end points that disagree (each listed); 193 and 194 points, and two splines that pass alone and not together; `FIX` of a chain; a region bounded by a chain of several pieces matched, and extruded.
-15. **`matchRegion`** with a copy in the outer loop.
+1. **The tally and the summary**: the fates of a sketch add up to its constraints; the tables as text; the reason kept apart from the operand's category; the comparator's three scopes (a missing part fails, a helper copy is listed, a changed fate is compared with the prediction), a value that is not finite, an outcome by edges kept and not by its text; the fingerprint unchanged by an output folder inside the dump; a small assembly written, loaded again and its bodies counted.
+2. **The check**: a diameter with a wrong value (a radius changes, no point moves): refused; a solver failure with nothing named: not passed; a wrong dimension among good constraints: the others keep their expressions, the one falls to its number and is listed under "Expressions dropped", and one that fits no number is `refused`; a mirror whose second half fails: the whole unit dropped.
+3. **`twice`**: `(A, B, d)` and `(B, A, −d)` of a signed distance and of an angle are `twice`; `(A, B, d)` and `(B, A, d)` are not, the second `refused`; a `twice` whose written constraint is consumed by the cut is `shared` with it.
+4. **Implied constraints**: a sketch with a redundant constraint that follows everything: nothing removed, the constraint in the notes; a four-fold symmetry by mirrors of mirrors that cannot follow its diameter: the removal makes it follow, and the removed relations hold at every state; a point fixed by numbers and also by a dimension that a parameter drives, the dimension listed as redundant (a review's example): not a candidate, and the parameter still moves the point; a constraint whose removal passes one step and breaks at the second and on the return (the shape of Input Shaft 2): kept; a removal that cures one change and breaks another: undone; a constraint the cut added is never a candidate; a unit that keeps one of its two constraints is `written`.
+5. **The document's probe**: each verdict made on purpose (a conflict; a profile that turns invalid; a later feature that loses its region; a state that does not come back); a count changed by one both ways; a parameter that only a helper copy reads listed as driving nothing; a zero parameter; a pattern by sizes alone (the rejected variant, built by hand) caught by the assertion while every status is `ok`; two studios that derive one sketch and are made to disagree, caught.
+6. **Crossing curves**: a line through a circle that has a diameter and a point held on it: two D-shaped regions, the diameter written, the point `shared` by the cut; the four reasons of `ids.removed`, each with its fate; a line that touches a circle: not cut; a crossing with two partly overlapping lines beside it: the tool's `ok` not taken for a valid profile; two identical circles: one, both IDs usable; a construction line on an outline line: both kept; a reversed duplicate line under an angle.
+7. **Welds**: two points 2e-7 apart are one, two 9.8e-5 apart are two; three points in a chain of steps under 1e-6 whose ends are further apart (one cluster, reported); a coincidence of two points that stand apart is written, not `shared`; a weld without a constraint is recorded by its class.
+8. **The origin and the default planes**: coincident, horizontal and vertical of a point, a horizontal distance with a parameter, on sketches on XY and on XZ with a flipped normal; the table of "What an external ID is" on the three base planes and an offset plane; a plane parallel to the sketch; a mirror and an angle to each axis; a sketch turned in its plane (from knowledge).
+9. **The decode**: IDs of each kind and of several lengths; the self-test failing on a studio whose `created` contradicts it (no operand resolved there); an operation `created` does not know (`unknown`, no search); an operation of a plane feature; a vertex ID with a curve through the place (the point, never the curve); an edge ID with a point at the place (the curve).
+10. **Another sketch**: one candidate; two at two places, and two distinct entities at one place (both unresolved, lost with the candidates); two Onshape points welded into one (one answer); a point beyond the end of a line and on a circle (the circle); an arc cut from a circle under EQUAL; **an own sketch held on a derived copy, with an extrusion over that copy before it** (the copy's entity, not an edge of the body); a derived copy whose operand is in a sketch not derived, with and without the helper copy; a helper copy whose own operand is in a further sketch (lost, no second helper); two derived sketches that need one helper (one copy); two sketches from one `importDerived`; a source on a parallel offset plane.
+11. **An edge**: a point on the rim of an extrusion (the entry, the slide along the rim kept when the sketch under it changes); the two rims of one extrusion (one answer) and of a tapered one (unresolved); two edges of two bodies at one place (unresolved); a circle equal to a circular edge; a circular edge whose axis is not the sketch's normal (no candidate); a point on the end of a straight edge (from knowledge).
+12. **Mirrors**: an image that nothing names (an entry); a mirrored line with the MIRRORs of its ends (an entry); the first curve named and the second not (the second is the copy); an image with a tangent line (by `symmetric`, the profile valid after the cut); a mirror of a mirror; a point on the mirror line and on the origin; two arcs by three `symmetric`, a parameter changed under them (the sketch follows; nothing asks that a `symmetric` is removed).
+13. **Patterns**: holes on a circle with the count a parameter (an entry; the count raised, the copies follow; lowered, the extrusion's lost region reported as the known limit it is); a hexagon of one side (spokes, a tree of angles, the hexagon follows its across-flats dimension and its opposite sides stay parallel); a ring closed only by coincidences of two instances (no entry); pockets across a circle (spokes, cut by `split`, the regions as Onshape's, the pockets follow the circle's diameter); instances that overlap each other (no entry, by rule 2 or 6); a pattern of a pattern (the outer an entry); a pattern by spokes about a projected pivot (the own point), with an arc centred on the pivot (no spoke there), of two instances (`pi`), on a sketch seen from the other side (the sense), and with a parameter as its count (from knowledge: a number, the note); an entry whose copies do not land, and one with a copy too many (dropped by rule 5); an open and a linear pattern (from knowledge).
+14. **The angle**: the four forms; a value that fits none; 90° with a parameter (the number, listed as ambiguous; from knowledge of the flags, which are only recorded); 0° and 180°; a plain number at 90° (the expression kept); the same angles on a sketch seen from the other side.
+15. **The distance of two lines**: parallel through other constraints (one `distancePointLine`); free to turn (the probe finds them parting, `parallel` joins the unit); not parallel in the geometry (lost).
+16. **Splines**: a uniform cubic of six points (one spline); a non-uniform one (a chain, its area against the polygon of its samples); rational, periodic, unclamped, a repeated inner knot, end points that disagree (each listed); 193 and 194 points counted after the decomposition, and two splines that pass alone and not together; `FIX` of a chain; a region bounded by a chain of several pieces matched in either direction, with a curved piece whose engine polyline is more than 1e-3 off its middle, and extruded.
+17. **`matchRegion`** with a copy in the outer loop.
 
 The run on the dump is the acceptance, made by hand at every point and recorded in `docs/onshape-import.md`.
 
@@ -616,11 +725,11 @@ The run on the dump is the acceptance, made by hand at every point and recorded 
 
 For a reviewer, the riskiest first.
 
-1. **The removal of implied constraints is a search by trial over a list the engine does not promise.** It may drop a constraint that is redundant only at today's values, or keep the sketch from following a parameter by keeping the wrong member of a group. The check before and after, the count of freedom and the probe guard it; all three are at or near one state.
-2. **The decode is read off one dump.** If Onshape encodes otherwise elsewhere, the self-test catches a wrong kind, not a wrong operation. A wrong pick within the decoded sketch still holds at today's positions; the report names every pick as inferred.
+1. **The probes decide, and they are small.** What is removed as implied, and what the acceptance passes, rests on two steps of 3 % of one value at a time and on four assertions. A constraint that matters only further away, or only with two values changed, is not seen; an over-determined sketch is reported, not repaired.
+2. **The decode is read off one dump**, with studios of at most 50 operations and one digit for them. If Onshape encodes otherwise elsewhere, the self-test catches a wrong kind of a face or a body, not a wrong operation and not a vertex or an edge. A wrong pick within the decoded sketch still holds at today's positions; the report names every pick as inferred, and an ID the rules do not cover is lost, not guessed.
 3. **The rule of the entry.** Rules 1 to 4 are the converter's reading; what they miss is caught by rules 5 and 6 only where the engine sees it now. A copy that meets nothing today and would after a parameter change is seen by the probe at 3 %, not beyond.
 4. **Spokes** make sketches larger (Housing 1 and Motor Shell 3 gain 16 construction lines each) and write the count as a number. A pattern whose count is a parameter stops following it, and says so only in the report.
-5. **A recovered constraint that holds now and misbehaves later**: an angle written as `pi - (e)` is right at today's value and wrong in sense if the design flips; the flag rule for ambiguous angles rests on six samples.
+5. **A recovered constraint that holds now and misbehaves later**: an angle written as `pi - (e)` is right at today's value and wrong in sense if the design flips. An angle at an ambiguous value loses its expression rather than guess.
 6. **The helper copy is a second copy of a copy.** It drifts from its source like the derived sketch does, and one of its dimensions is a number because the dump's geometry and variable disagree.
 7. **The volumes are checked on one model.** The unit tests cover the shapes of this model and the cases it lacks; a second real model was not converted.
 8. **Removing `splitAtCrossings`** removes the repair of partly overlapping collinear lines, which the tool refuses. Not on this model.
@@ -632,7 +741,11 @@ For a reviewer, the riskiest first.
 - **Every pattern and mirror as an entry, as the outline says.** Nine patterns and eleven mirrors have a copy that is constrained or met by a curve. As entries, three sketches would be left with an invalid profile (the housing's bore is crossed by fifteen copies that cannot be cut), which changes the parts, and the constraints on images would be lost in place of the pattern.
 - **Every mirror by `symmetric`, no mirror entry.** One mechanism, and it always works. Not taken: the two mirrors that can be entries cost nothing beyond the rule the patterns need anyway, and an entry is what a person would draw.
 - **A pattern that is no entry left lost**, as the first version had it, or held only by `equalRadius` and `equalLength` with its seed: measured in "Otherwise".
-- **Keeping the redundant constraints**, as the first version had it, and the other rules for removing them: measured in "Implied constraints".
+- **Keeping the redundant constraints**, as the first version had it; **removing them by rank**, as the first revision had it; **the engine's removable set**: all measured in "Implied constraints".
+- **Choosing an ambiguous angle's form by the flag `clockwise`**, as the first revision had it: no sample at an ambiguous value, the flag confounded with `flipped`, the frame's handedness not in it.
+- **Taking the first of several candidates at one place**, as the first revision had it: two edges that project onto each other today are not one dependency. Only what is the same by construction is one answer.
+- **A search by geometry over all kinds when the decode fails**: the ranking of the first version by another door.
+- **`parallel` always beside the distance of two lines**: where the pair is parallel through other constraints it is a redundant constraint of the kind gap 6 is about. It is added only where the probe shows the pair parting.
 - **Closing a hexagon on its seed**: replacing the coincidence on a copy by two spokes to the ends of the seed and their angle of 2π/n, so the pattern could be an entry. It is a recognition of one shape; the distance across flats names a copy as well.
 - **The search by geometry over all earlier sketches, ranked** (a point before a curve, the earliest sketch), as the first version had it: it can turn a point held on an edge into a coincidence with a sketch point at the same place, and can never find an edge of a body, since nearly every edge has a sketch curve under it.
 - **A stand-in for an edge of a body** (the sketch curve the edge was extruded from): it behaves the same only while that extrusion stays as it is.
@@ -643,10 +756,14 @@ For a reviewer, the riskiest first.
 
 ## Known limits
 
-- **A pattern by spokes has a fixed count**, and a pattern or mirror by constraints is heavier than Onshape's one constraint. A linear pattern that is no entry is lost.
-- **"Implied" is judged at today's values**, and which member of a dependent group goes is the search's choice.
-- **The probe is ± 3 % of one parameter at a time.** What breaks further away, or only when two parameters change together, is not found.
-- **An operand is picked by geometry within what its ID decodes to**; of several entities of one kind at one place in one sketch the first is taken.
+- **A pattern by spokes cannot be counted again**, by a parameter or by hand, and a pattern or mirror by constraints is heavier than Onshape's one constraint. A linear pattern that is no entry is lost.
+- **The count of an entry can go up, not down**, as long as extrusions name the region of each copy.
+- **Two sketches of the model cannot take a change of their literal dimensions** (Motor Shell 1 and 3, 14 changes of 96); they follow their parameter.
+- **A cut sketch holds its topology**: a change that parts two curves which were cut where they met leaves a conflict with nothing named. Housing 1 follows `Phi_R` from 0.931 to 1.103 of its value.
+- **Removal as implied is judged on what the sketch's probe tries**: 3 % and 6 % of one value at a time.
+- **The probe is two steps of 3 %, one value at a time.** What breaks between the steps, further away, or only when two values change together, is not found.
+- **An operand is picked by geometry within what its ID decodes to.** An ID whose operation is not one base-64 digit, or belongs to a feature the rules do not name, is lost.
+- **A weld without a constraint** (76 places, all at instance points) ties what Onshape holds together only by today's geometry.
 - **Partly overlapping collinear lines** are refused by `split` and reported; the old converter cut them.
 - **Splines of more than 193 control points in a sketch are left out**, and a region bounded by them is not converted, as today.
 - **A chain of Bezier pieces is smooth only as written.** Its control points are free points; once one moves, nothing holds the tangents of neighbouring pieces together (D70 has no such constraint). `FIX` holds an imported one in place.
@@ -659,9 +776,9 @@ For a reviewer, the riskiest first.
 
 **Three choices are the owner's. None holds the implementation up: the design goes ahead with the recommendation unless the owner says otherwise.**
 
-1. **The angle, "horizontal of two points" and the distance of two lines in this point**, though the plan names the angle and other distances among the kinds left to the backlog. *Recommendation: yes, all three.* Five of the six angles are to a default plane and step 4 cannot recover them otherwise; all six map with their expressions, the three two-point constraints by a dimension of 0, the three distances of two lines by one `distancePointLine` each (added after the first review; they are the hexagons' driving dimensions). Without them the lost are 18, not 6. *The reviewers:* all three say yes; the first adds the distance of two lines, the second asks for the handling of ambiguous angles that "Kinds taken along" now has.
-2. **Copy the skeleton sketch that the derived sketches are held on** (a helper copy of Global Sketch 1 in Housing and in Motor Shell). *Recommendation: yes; changed from "no" in the first version.* The first version saw six constraints "on a sketch of another studio" and a third copied sketch. The first review showed what they are: the link from `HOUSING_MOUNTPATTERN` to the mounting holes of two mating parts, which without the copy no parameter drives. Measured with the copy: lost 6, not 12; that parameter moves the holes of both parts with no conflict; the two derived sketches have no freedom left; the 380 stay the same set, the copies' 18 constraints counted apart. The cost is one sketch of four construction curves in two studios, a second copy that can drift from its source, and one diameter written as a number. *The reviewers:* the first says yes, for the reason above; the second and the third say no, as a boundary of scope (no closure of dependencies in 6h, the six reported precisely). If the owner says no, "What stays lost" names the parameter that drives nothing.
-3. **What an external ID is, from Onshape.** One FeatureScript call per studio (`sketchEntityQuery` for every entity of every sketch, and the geometry of the IDs that are no sketch entity) would say it exactly; `fetch.ts` would write it to a file of its own and the converter would prefer it. *Recommendation: not in 6h, and the decode in its place now.* The decode needs no call, identifies the kind and the sketch of all 13 operands and leaves one candidate for each of the 12 in a sketch; every pick is reported as inferred, and operands with candidates at several places stay unresolved. The call needs the API (about 8 calls of the FeatureScript budget of about 150) and is worth making before a second model is converted, because the decode is read off this dump and not documented. *The reviewers:* the first says not in 6h, use the decode; the third says not in 6h; the second would bring it forward, or else leave ambiguous picks unresolved and name the others inferred, which the design now does.
+1. **The angle, "horizontal of two points" and the distance of two lines in this point**, though the plan names the angle and other distances among the kinds left to the backlog. *Recommendation: yes, all three.* Five of the six angles are to a default plane and step 4 cannot recover them otherwise; all six map with their expressions, the three two-point constraints by a dimension of 0, the three distances of two lines by one `distancePointLine` each (they are the hexagons' driving dimensions, and the hexagons follow them). Without them the lost are 18, not 6. *The reviewers:* all five reviews of the two rounds say yes. The conditions of the second round are in the design: an angle at an ambiguous value is written as a number and not chosen by a flag; the distance of two lines is written alone only while the probe finds the pair parallel at every state, else with `parallel`.
+2. **Copy the skeleton sketch that the derived sketches are held on** (a helper copy of Global Sketch 1 in Housing and in Motor Shell). *Recommendation: yes.* The six constraints are the link from `HOUSING_MOUNTPATTERN` to the mounting holes of two mating parts, which without the copy no parameter drives. Measured with the copy: lost 6, not 12; that parameter moves the holes of both parts with no conflict, and the copies in the two studios stay point for point the same at every step of the probe; the two derived sketches have no freedom left, where without the copy one of them wanders (a walk of `M3_NUT_SIZE` in Motor Shell does not come back to the same volume); the 380 stay the same set, the copies' 18 constraints counted apart. The cost is one sketch of four construction curves in two studios, a second copy that can drift from its source, and one diameter written as a number. *The reviewers:* in the first round one yes and two no (a boundary of scope); **in the second round both say yes**, with conditions that are in the design: one level only, one copy per destination and source, the numeric diameter reported apart, a parameter that only the copy reads not counted as driving the part, and the agreement of the two parts tested, not only that they recompute. If the owner says no, "What stays lost" names the parameter that drives nothing.
+3. **What an external ID is, from Onshape.** One FeatureScript call per studio (`sketchEntityQuery` for every entity of every sketch, and the geometry of the IDs that are no sketch entity) would say it exactly; `fetch.ts` would write it to a file of its own and the converter would prefer it, keeping the decode as a check. *Recommendation: not in 6h; the decode in its place now, with nothing guessed.* The decode needs no call, identifies the kind and the owner of all 13 operands and leaves one candidate for each of the 12 in a sketch; the thirteenth has two edges that are the same by construction. What the decode does not settle is not chosen among and not searched otherwise: it is lost and listed, so a wrong dependency cannot come from it; on this model that costs nothing. The call needs the API (about 8 calls of the FeatureScript budget of about 150). **It is due before a second model is converted, and before any studio with more than 64 operations** (the decode is read off studios of at most 50, with one digit for the operation). *The reviewers:* the first round one "use the decode", one "not in 6h", one "bring it forward"; in the second round one says not in 6h with the trigger above, and the other still prefers it brought forward as an optional cached file, or else every ambiguous operand left unresolved with the lost count adjusted, which is what the design does (the count is unchanged, since the one operand with two candidates is not ambiguous by the rule of "the same by construction"; if the owner reads that rule as too generous, `JQx` is lost and the lost are 7).
 
 For the owner to know, since they follow from the measurements and not from the plan:
 
@@ -669,17 +786,22 @@ For the owner to know, since they follow from the measurements and not from the 
 - **Nine patterns are written by spokes**, not as Onshape's one constraint, by a limit of D68 (engine gap 1).
 - **The disc's splines convert, and are not used**: 108 s a recompute.
 - **The baseline `summary.json` is not committed** ("Rejected").
+- **Two sketches of the Motor Shell cannot take a change of their own literal dimensions**, in any form the converter can write them (engine gap 6). They are valid, they give the right part, and they follow `HOUSING_DIAMETER`.
+- **The count of a pattern can be raised and not lowered** in a converted document, and a pattern by spokes not at all.
+- **Point 8 has a full, narrow review** by CLAUDE.md's table; making it light is the owner's exception to give.
 - **In the dump, the skeleton studio's housing circle is 72 mm where `HOUSING_DIAMETER` is 70.** Nothing converted uses that circle.
 
 ## Reviews
 
-Three independent reviews read the first version (`314188c`) on 2026-11-25: a subagent with the dump and the trial (called the first below; it ran probes of its own), codex without the dump (the second; three probes on the engine), and agy without the dump (the third). Together 43 findings, 24 of them rated serious. All were checked; none was refuted outright, a few were taken in another form than proposed. What changed:
+### The first round
+
+Three independent reviews read the first version (`314188c`) on 2026-11-25: a subagent with the dump and the trial (called the first below; it ran probes of its own), codex without the dump (the second; three probes on the engine), and agy without the dump (the third). Together 43 findings, 24 of them rated serious. All were checked; none was refuted outright, a few were taken in another form than proposed. What changed in the first revision (three of its answers were withdrawn after the second round, which the rows say):
 
 | Finding | By | What changed |
 |---|---|---|
-| Redundant constraints freeze a sketch against its parameter (Motor Shell 1) | 1 (S1) | Confirmed. The fate `implied` and the removal after the cut ("Implied constraints"). The proposed rule (skip what is listed right after adding) was tried and frees 13 degrees of freedom; the rule taken was chosen among five measured. Engine gap 6 |
+| Redundant constraints freeze a sketch against its parameter (Motor Shell 1) | 1 (S1) | Confirmed. The fate `implied` and a removal after the cut. The proposed rule (skip what is listed right after adding) was tried and frees 13 degrees of freedom; the first revision removed by rank, which the second round showed to be unsound, and the rule is now by behaviour ("Implied constraints"). Engine gap 6 |
 | Nothing is tested away from today's values (Output Shaft 6) | 1 (S3) | Confirmed. The probe is part of the report, `summary.json` and the acceptance. For a pattern that is no entry the proposed `equalRadius` and `equalLength` were measured (no break, the pattern crooked) against spokes (exact), and spokes taken; such a pattern is now `written` |
-| The ID decodes; `JQx` is an edge of a body; the ranking can pick wrong; picks must be named inferred | 1 (S2), 2 (6), 3 (7) | Confirmed on the dump. The decode with its self-test is the filter; the ranking is gone; candidates at several places stay unresolved; every operand is reported; a line holds a point within its extent first; arcs, the fit per kind of constraint, the frames for `sketchMap` and the scope of an ID by studio are said. `JQx` is an `edge` entry (1 of 2 edges at one place) |
+| The ID decodes; `JQx` is an edge of a body; the ranking can pick wrong; picks must be named inferred | 1 (S2), 2 (6), 3 (7) | Confirmed on the dump. The decode with its self-test is the filter; the ranking is gone; candidates at several places stay unresolved (after the second round: all that are not the same by construction); every operand is reported; a line holds a point within its extent first; arcs, the fit per kind of constraint, the frames for `sketchMap` and the scope of an ID by studio are said. `JQx` is an `edge` entry (1 of 2 edges at one place) |
 | The six constraints on Global Sketch 1 tie the mounting pattern to its variable | 1 (S4) | Confirmed. The helper copy is designed and measured; the recommendation of question 2 changed to yes |
 | The rule of the entry: coincidences across instances, contacts among copies and with seeds, mixed tolerances, external pivots, mirrored lines, the seed of a mirror, points of images, a one-way rule 5 | 1 (S5), 2 (4, 5), 3 (5) | Rule 1 exempts only one instance with one seed point, and the MIRRORs of a mirrored line's ends; rule 2 covers seeds and other instances; rule 5 is two-way with kind and construction flag; rule 6 lets the engine judge; the pivot may be external; a mirror takes as its copy the curve nothing names. On this model no entry changes (measured); the 63 `shared` coincidences are all of one instance |
 | The check: solver failures with nothing named, radii, the status, 1e-4 against 1e-6 | 2 (2), 3 (1), 1 (S6) | "What passes": status `ok` without warnings, radii, 1e-6. A solver failure of exactly that shape was then met in the spline trial (engine gap 7) |
@@ -689,19 +811,44 @@ Three independent reviews read the first version (`314188c`) on 2026-11-25: a su
 | `twice` by a key that drops values and sorts operands; fates before the cut | 2 (9), 3 (12), 1 (M3, M1) | `constraintKey` with the value; one record per constraint, final after the last step; consumed by the cut is `shared` (20); the reason kept apart from the operand's category |
 | Splines: unclamped knots, repeated knots, end points; `matchRegion` and `FIX` over several pieces; what the cap counts; `fixed` not timed; smoothness | 2 (10, 11, 14), 3 (3), 1 (M4) | Rule 1 validates; chains for regions and `FIX`; the budget is 193 control points over the sketch, all or none; `fixed` timed, which lowered the budget from 256 pieces and found engine gap 7; the smoothness is a known limit |
 | Duplicate curves: the construction flag, direction, redirecting the ID | 2 (13), 3 (6) | "Exact duplicates first" |
-| Two arcs mirrored by three `symmetric` are over-constrained; one lookup of positions for own and projected geometry; a point on the axis | 3 (2) | The surplus goes as implied (the model has no mirrored arcs, a fixture; its mirrored lines lose a `symmetric` the same way); one lookup over `solvedCurves`; the origin on an axis handled |
+| Two arcs mirrored by three `symmetric` are over-constrained; one lookup of positions for own and projected geometry; a point on the axis | 3 (2) | The three are written; the first revision promised that the surplus goes as implied, which the second round corrected (the surplus is one equation, not one `symmetric`); one lookup over `solvedCurves`; the origin on an axis handled |
 | An `edge` entry is not its points; a circular edge needs its axis along the normal | 3 (4) | "What an external ID is", rule 4 |
 | Arcs: the cause table and "To verify" disagreed | 3 (8) | An arc gets the kind `arc` in point 4; the cause is empty before and after |
 | `studio.ts` keeps one sketch per `importDerived` | 3 (11) | All are kept, by source studio and feature |
 | HORIZONTAL of two points against a point and the origin; the dot product's sign; `*deg` and `*mm` | 3 (13, 14) | The origin form first; the absolute value; units as factors |
-| The angle is ambiguous at 0, 90° and 180° | 1 (M1), 2 (7) | The flag `clockwise` decides between two fitting forms when the expression has a parameter; reported; the flags recorded. Not degraded to a number, as the second review would have it: the flag agrees with all six angles of the model |
+| The angle is ambiguous at 0, 90° and 180° | 1 (M1), 2 (7) | In the first revision the flag `clockwise` decided between two fitting forms. Withdrawn after the second round: such an angle is written as its number, as the second review asked from the start; the flags are recorded |
 | `summary.json` lacks what the acceptance compares; keys not unique; no comparator | 1 (M2), 2 (12), 3 (9) | The fields, studio-qualified keys, the fingerprint, the comparator. The files are not committed ("Rejected") |
 | DISTANCE of two lines is one `distancePointLine` | 1 (M5) | Taken, measured (3 of 3), put to the owner with question 1 |
 | Points of work: point 1 is not a light review; the check belongs before the cut; point 3 was three things; dependencies between points; "the count is wrong, not the text" | 1 (M6), 2 (15), 3 (10) | Eight points: the count (full review), the check, the cut, known operands, found operands, mirrors and patterns, splines, the close; what each is expected to leave lost; the run corrects the text |
 | Tests on shapes nobody saw | 1 (M7), 2 (15) | Named "from knowledge", with a note at the first real use; the fixtures the second review lists are in "Tests" |
 | Errors of the text | 1 (M8) | Global Sketch 3 has 13 degrees of freedom with entries alone; 335 bodies with the override; the four mirrors not nested are kept out by COINCIDENT (3) and HORIZONTAL (1); 3,145 or 3,146 control points; the 380 are the set of today's report; the tolerances of the contact tests named |
 
-Not taken as proposed: the fate of a pattern that is no entry staying `lost` (it is `written` by spokes); an ambiguous angle degraded to a number; the summaries in the repository; the exact identity of external IDs brought into 6h (question 3).
+Not taken as proposed in the first round: the fate of a pattern that is no entry staying `lost` (it is `written` by spokes); the summaries in the repository; the exact identity of external IDs brought into 6h (question 3). Taken in the first revision and withdrawn in the second: the removal of implied constraints by rank; an ambiguous angle chosen by a flag; the first of several candidates at one place.
+
+### The second round
+
+Two reviews read the first revision (`2f7eb2f`) on 2026-11-25 (the third reviewer was out of quota): the subagent with the dump, which ran the trial again byte for byte, changed it by switches and probed the result (the first below), and codex without the dump, with probes on the engine (the second). The first found 3 serious and 10 minor points, the second 7 and 4. Both confirmed that the first round is resolved in the text and that the headline numbers reproduce. Both found the two mechanisms added in the first revision unsound as specified, and they were right:
+
+| Finding | By | What changed |
+|---|---|---|
+| The removal of implied constraints is judged by rank at one state: it harms Input Shaft 2 at a second step of `E`, cures nothing in 7 of 9 removals, leaves Motor Shell 1 and 3 unable to take their literal dimensions, can remove the relation a parameter drives; "none listed" is not "none redundant"; the engine's `removable` set exists and does not serve either | 1 (S1), 2 (1) | Confirmed by the designer's trial. "Implied constraints" is rewritten: lazy, judged by the sketch's probe, a dimension of a parameter never a candidate, the removed relation asserted at every state, the changes listed before any removal. Measured: 2 removals in place of 9, Input Shaft 2 whole, no constraint `implied` as a whole. What stays is engine gap 6 and is named in the report; partial removal is the stated exception to whole units; the diagnosis's count is recorded beside the solver's list |
+| The acceptance probe is too thin: one jump, parameters only, symptoms and not geometry | 1 (S2), 2 (2) | "The probes": two steps each way and the return, literal dimensions, counts of entries, verdicts by kind with the kernel's apart, "drives nothing" by volume and points, and four assertions on the solved geometry (instances are their seeds turned, lines of a distance parallel, removed relations hold, the two copies of a derived sketch agree). Measured on the new document, and on the baseline, which passes every status and fails the pattern assertion in 6 of 40 walks. Acceptance 5 says which part must pass and which is listed. Not taken: walks of 1 % as the standing probe (four times the cost; the second step and the return are what found the break); the two kernel failures they found are gap 11 |
+| The decode sends an operand on a derived sketch to "a body" | 1 (S3) | The owner of the operation decides by its feature type; a test with an extrusion over the derived copy |
+| The operation is one digit; the self-test tests two kinds; the fallback over all kinds | 1 (M1), 2 (4) | The limit is named and is the trigger of question 3; IDs are judged one by one; there is no fallback search; "one place" is a distance |
+| "The same place" hides an ambiguity (the two rims of `JQx`) | 2 (4) | Several candidates are one answer only when the same by construction: one written entity, or edges on one side face of an untapered extrusion along the normal. `JQx` qualifies and stays written; anything else is unresolved |
+| `constraintKey` sorts the operands of signed kinds, so "the same key and value" is wrong both ways | 2 (3) | Confirmed in the engine. `twice` is by a canonical form with the sign; a `twice` record follows the fate of the constraint that was written |
+| The angle at an ambiguous value: no sample validates the flag, `clockwise` is confounded with `flipped`, the frame's handedness | 2 (5), 1 (M7) | The flag rule is withdrawn: such an angle is written as its number and listed; the flags and the frame's sign are recorded. Unambiguous angles are measured in the converter's frame, which holds the handedness |
+| Spokes: a projected pivot cannot end a line; a point at the pivot; the sense after the frame; a count of 2; the count branch never ran; cannot be counted again | 2 (6), 1 (M6) | An own point tied to the pivot; no spoke for the pivot itself; the sense from the written positions; `pi` for two; the parameter branch named from knowledge; the limit said in full |
+| The spline's match is tighter than the engine's polyline | 2 (7) | The converter samples the chain itself to 1e-4; either direction; the budget counts points after the decomposition |
+| Three statements did not match the runs | 1 (M2) | The volumes after `HOUSING_MOUNTPATTERN` (those quoted were of a run before the spokes were tied as a tree), the freedom of Input Shaft 2, and a row of the table of rules: corrected or gone |
+| The cut freezes the topology | 1 (M3) | Engine gap 9, a known limit, and a line of the report when a conflict names nothing in a cut sketch |
+| The comparator: strict keys contradict what the points add; outcomes by text; the fingerprint over a folder that holds the output | 1 (M4), 2 (10) | Three scopes; outcomes by edges kept; a manifest of the raw input |
+| `ids.removed` has four reasons | 1 (M5) | A fate per reason |
+| Mirrored arcs cannot shed a whole `symmetric` | 2 (8) | The promise is gone; the fixture asks only that the sketch follows |
+| Welds: identity is made by the weld; record all; not evidence | 2 (9), 1 (M10) | Every weld without a constraint recorded by class, the classes that reach outside a pattern listed; clusters by single linkage; `shared` says how it was realised. Not taken: exercising such welds in the probe, which cannot show what Onshape would do with them |
+| The helper copy: one level; the dump contradicting itself; cache and provenance; agreement of the mating parts; a parameter "in use" that drives nothing | 1 (M9, S2d), 2 (open 2) | All in "Derived sketches and the skeleton" and the probe; the agreement is measured (0 mm over 56 pairs) |
+| The distance of two lines only while parallelism is kept | 2 (open 1) | Asserted by the probe at every state; `parallel` joins the unit where it fails. Measured: holds for the three |
+| Points of work: point 8 light is not in CLAUDE.md's table; the removal "after the cut" in a point before the cut | 1 (M8), 2 (11) | Point 8 full and narrow; point 2 says what it runs on and what it changes |
 
 ## To verify in the implementation
 
@@ -710,8 +857,10 @@ Nothing stands in the way of the first point. What the trial did not cover, so t
 1. **Rule 5 of the entry** as a two-way match: the trial relied on the regions and the volumes, which agreed.
 2. **A mirror with the second curve as its seed**: how many of the 11 mirrors become entries.
 3. **The cut inside the test of a unit, and an entry dropped by rule 5 or 6**: no sketch of the model needs either.
-4. **The weld by distance**: the trial kept the rounded cells; on this model the two agree.
-5. **A vertex of a body, a linear and an open pattern, an arc with a constraint, a sketch on Front or Right or turned in its plane, a spline under the budget**: none in the model.
-6. **The numbers of point 1** against "Before"; the run corrects the text if they differ.
-7. **`sketchMap` for a source on another parallel plane**: every pair of the model is on one plane.
-8. **The intermediate numbers of "Points of work"**: predicted from the causes, not each measured.
+4. **The weld by distance and in clusters, the canonical form of `twice`**: the trial kept the rounded cells and the engine's key; on this model nothing differs.
+5. **The decode by the type of the owning feature, a pivot that is projected, a pattern point at its pivot, a count that is a parameter, a helper copy that names a further sketch**: none in the model.
+6. **A vertex of a body, a linear and an open pattern, an arc with a constraint, a sketch on Front or Right or turned in its plane, a spline under the budget, an angle at 0, 90° or 180°**: none in the model.
+7. **The numbers of point 1** against "Before"; the run corrects the text if they differ.
+8. **`sketchMap` for a source on another parallel plane**: every pair of the model is on one plane.
+9. **The intermediate numbers of "Points of work"**: predicted from the causes, not each measured.
+10. **The cost of the sketch's probe on a sketch with many dimensions**: 240 executed changes for the worst of this model (Motor Shell 3, with nine trial removals); it grows with the product of changes and candidates.

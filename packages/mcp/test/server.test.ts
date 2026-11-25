@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { CONSTRAINTS, type Command } from '@trymesh/engine';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { readZip } from '../../engine/test/zip-reader';
-import { type Bridge, startBridge } from '../src/bridge';
+import { type Bridge, DEFAULT_BRIDGE_PORT, bridgeHolder, openBridge, startBridge } from '../src/bridge';
 import { type BridgeStatus, connectBridge } from '../src/bridge-client';
 import { connect, newEngine } from './kit';
 
@@ -54,7 +54,7 @@ describe('MCP server', () => {
   it('the list of tools: the general tools of the engine and the tools for files, with an input schema', async () => {
     const session = await connect();
     const { tools } = await session.client.listTools();
-    expect(tools.map((tool) => tool.name)).toEqual(['describe_api', 'get_model', 'get_document', 'get_sketch', 'get_parameters', 'explain_constraint', 'get_body', 'check_interference', 'query', 'execute', 'preview', 'sketch_tool', 'undo', 'redo', 'session_status', 'open_document', 'save_document', 'import_outline', 'import_mesh', 'insert_document', 'export_stl', 'export', 'view_image']); // the last: the operations of the app
+    expect(tools.map((tool) => tool.name)).toEqual(['describe_api', 'get_model', 'get_document', 'get_sketch', 'get_parameters', 'explain_constraint', 'get_body', 'check_interference', 'query', 'execute', 'preview', 'sketch_tool', 'new_document', 'undo', 'redo', 'session_status', 'open_document', 'save_document', 'import_outline', 'import_mesh', 'insert_document', 'export_stl', 'export', 'view_image']); // the last: the operations of the app
     for (const tool of tools) {
       expect(tool.description, tool.name).not.toBe('');
       expect(tool.inputSchema.type).toBe('object');
@@ -62,9 +62,13 @@ describe('MCP server', () => {
     // internal tools cannot be called from outside
     expect(await session.call('_load', { json: '{}' })).toEqual({ error: 'unknown tool "_load"' });
     expect(await session.call('nope')).toEqual({ error: 'unknown tool "nope"' });
-    const api = await session.text('describe_api');
+    // the index, and each section within what one answer of a tool can carry (D73)
+    const index = await session.text('describe_api');
+    expect(index).toContain('## Sections');
+    const api = await session.text('describe_api', { section: 'constraints' });
     for (const type of Object.keys(CONSTRAINTS)) expect(api, type).toContain(`- ${type} (`);
-    expect(api).toContain('```ts');
+    expect(await session.text('describe_api', { section: 'types-commands' })).toContain('```ts');
+    expect(await session.call('describe_api', { section: 'nope' })).toEqual({ error: expect.stringMatching(/^there is no section "nope"; the sections are: conventions, modelling, /) });
     await session.close();
   });
 
@@ -203,7 +207,7 @@ describe('MCP server: bodies', () => {
     expect(await session.call('check_interference', { bodies: ['base', 'base'] })).toEqual({ error: expect.stringContaining('at least two different bodies') });
     expect(await session.call('check_interference', { bodies: [] })).toEqual({ error: expect.stringContaining('at least two different bodies') });
     // an argument the tool does not have is refused, not ignored (it would check all bodies instead)
-    expect(await session.call('check_interference', { body: 'base' })).toEqual({ error: 'unknown argument "body"; the tool takes bodies, threshold, at' });
+    expect(await session.call('check_interference', { body: 'base' })).toEqual({ error: 'unknown argument "body"; the tool takes bodies, threshold, at, after' });
     expect(await session.call('check_interference', { threshold: '0.5' })).toEqual({ error: 'argument "threshold": a number is expected' });
     expect(await session.call('check_interference', { bodies: { 0: 'base' } })).toEqual({ error: 'argument "bodies": a list is expected' });
     expect(await session.call('execute', { command: 'undo' })).toEqual({ error: 'argument "command": an object is expected' });
@@ -350,7 +354,7 @@ describe('MCP server: bodies', () => {
     expect(await session.call('export', { format: 'stl', path: nowhere, options: ['perBody'] })).toEqual({ error: 'argument "options": an object is expected' });
     expect(await session.call('export', { format: 'stl', path: nowhere, overwrite: 'yes' })).toEqual({ error: 'argument "overwrite": true or false is expected' });
     expect(await session.call('export', { format: 'step', path: nowhere })).toEqual({ error: 'invalidArguments: there is no export format "step"; the formats are stl, 3mf, dxf, svg, partsCsv, urdf, mjcf' });
-    expect(await session.call('export', { format: 'stl', path: nowhere, options: { perbody: true } })).toEqual({ error: 'invalidArguments: stl: perbody: there is no such argument' });
+    expect(await session.call('export', { format: 'stl', path: nowhere, options: { perbody: true } })).toEqual({ error: 'invalidArguments: stl: perbody: there is no argument "perbody"; the arguments are: bodies, perBody' });
     expect(await session.call('export', { format: 'stl', path: nowhere, options: { bodies: ['nope'] } })).toEqual({ error: 'notAvailable: stl: bodies[0]: the body "nope" is not in the state asked about' });
     expect(await session.call('export', { format: 'stl', path: nowhere, at: 'nope' })).toEqual({ error: 'notAvailable: stl: `at`: the feature "nope" is not in the document' });
     expect(await session.call('export', { format: 'stl', path: nowhere, after: { type: 'removeFeature', id: 'nope' } })).toEqual({ error: expect.stringMatching(/^after: /) });
@@ -759,10 +763,10 @@ describe('the bridge to the running app', () => {
     expect(before).toHaveLength(2);
     // a sketch tool runs in the engine of the app and returns the IDs it generated there
     const input = { first: { at: [0, 0], snap: { kind: 'point', id: 'origin' } }, opposite: { at: [40, 30] } };
-    expect(await session.call('sketch_tool', { sketch: 's', tool: 'rectangle', input })).toMatchObject({ ok: true, ids: { points: ['origin', 'p2', 'p1', 'p3'], lines: ['c1', 'c2', 'c3', 'c4'] }, sketches: [{ id: 's', regions: 1 }] });
+    expect(await session.call('sketch_tool', { sketch: 's', tool: 'rectangle', input })).toMatchObject({ ok: true, ids: { points: ['origin', 'p1', 'p2', 'p3'], lines: ['c1', 'c2', 'c3', 'c4'] }, sketches: [{ id: 's', regions: 1 }] });
     expect(before[2]).toEqual(['sketch_tool', { sketch: 's', tool: 'rectangle', input }]);
     expect(Object.keys((app.getState().document.features[0] as { curves: object }).curves)).toEqual(['c1', 'c2', 'c3', 'c4']);
-    expect(await session.call('sketch_tool', { sketch: 's', tool: 'rectangle', input: { first: input.first } })).toEqual({ error: 'rectangle: the input "opposite" is missing' });
+    expect(await session.call('sketch_tool', { sketch: 's', tool: 'rectangle', input: { first: input.first } })).toEqual({ error: 'rectangle: `opposite` is needed unless `width` and `height` are both given' });
     await session.call('undo');
     // an exception after the run: the answer arrives and the connection stays
     failAfter = true;
@@ -841,7 +845,140 @@ describe('the bridge to the running app', () => {
     await session.close();
   });
 
+  // the second review of D73: a new_document in the app erased the record of the server's own emptied document
+  it('new_document in the app leaves alone the file the server keeps for its own emptied document', async () => {
+    const file = join(dir, 'server-emptied.json');
+    const session = await connect({ bridge });
+    await session.call('execute', { command: { type: 'setParameter', name: 'w', expr: '1' } });
+    await session.call('save_document', { path: file });
+    expect(await session.call('new_document', { discard: true })).toMatchObject({ ok: true, discarded: { parameters: 1 } });
+    // the app connects and its document is emptied too
+    const app = newEngine();
+    expect(app.execute({ type: 'setParameter', name: 'a', expr: '2' }).ok).toBe(true);
+    let status: BridgeStatus = 'off';
+    const connection = connectBridge(app, { url: `http://127.0.0.1:${bridge.port}`, retryMs: 20, onStatus: (next) => (status = next) });
+    await until(() => status === 'connected' && bridge.connected(), 'the app connected');
+    expect(await session.call('new_document', { discard: true })).toMatchObject({ ok: true, discarded: { parameters: 1 } });
+    expect(app.getState().document.parameters).toEqual([]);
+    connection.stop();
+    await until(() => !bridge.connected(), 'the app disconnected');
+    // the undo of the server's own document still brings its file back
+    await session.call('undo');
+    expect(await session.call('session_status')).toMatchObject({ engine: 'server', file });
+    await session.close();
+  });
+
   it('a port in use: the bridge does not open and the server can run without it', async () => {
     await expect(startBridge(bridge.port)).rejects.toThrow();
+  });
+});
+
+// D73: a port held by another server is said, and taken once it is free; an empty document
+describe('the bridge and the document (D73)', () => {
+  it('a bridge that cannot listen: session_status says why and what to do; the port is taken only when asked; the first answer after a switch says so', async () => {
+    const holder = await startBridge(0);
+    const port = holder.port;
+    const opened = await openBridge(port);
+    expect(opened).toEqual({ failure: { port, code: 'EADDRINUSE', message: expect.stringContaining('EADDRINUSE') } });
+    // the holder of the process (main.ts): it closes whichever bridge it opened, also a late one
+    const mine = bridgeHolder(port);
+    expect('failure' in (await mine.open())).toBe(true);
+    let tries = 0;
+    const session = await connect({
+      bridgeFailure: 'failure' in opened ? opened.failure : undefined,
+      reopenBridge: () => {
+        tries++;
+        return mine.open();
+      },
+    });
+    const held = await session.call('session_status');
+    expect(held).toMatchObject({ engine: 'server', bridge: null, bridgeError: { port, code: 'EADDRINUSE', advice: expect.stringContaining(`Another program holds 127.0.0.1:${port}, most likely another trymesh MCP server`) } });
+    expect(held.bridgeError.advice).toContain(`--port or TRYMESH_BRIDGE_PORT (the app connects to ${DEFAULT_BRIDGE_PORT} only)`);
+    expect(held.bridgeError.advice).toContain('session_status with `openBridge: true` takes it');
+    expect(held.note).toContain('see bridgeError');
+    // the review of D73: nothing tries the port by itself, also after it is free
+    await holder.close();
+    await session.call('get_model');
+    expect(await session.call('session_status')).toMatchObject({ engine: 'server', bridge: null });
+    expect(tries).toBe(0);
+    // asked to, it takes the port and says so
+    const free = await session.call('session_status', { openBridge: true });
+    expect(tries).toBe(1);
+    expect(free).toMatchObject({ engine: 'server', bridge: { port, appConnected: false }, openBridge: { result: 'opened', port } });
+    expect(free.bridgeError).toBeUndefined();
+    expect((await session.call('session_status', { openBridge: true })).openBridge).toEqual({ result: 'openAlready', port });
+    expect(tries).toBe(1);
+    // the app connects: the first answer after the switch says that the tools now work in the app
+    const texts = async (name: string, args: Record<string, unknown> = {}): Promise<string[]> => ((await session.client.callTool({ name, arguments: args })) as { content: { text: string }[] }).content.map((item) => item.text);
+    const app = newEngine();
+    let status: BridgeStatus = 'off';
+    const connection = connectBridge(app, { url: `http://127.0.0.1:${port}`, retryMs: 20, onStatus: (next) => (status = next) });
+    await until(() => status === 'connected' && mine.current()?.connected() === true, 'the app connected');
+    const switched = await texts('execute', { command: { type: 'setParameter', name: 'w', expr: '5' } });
+    expect(switched).toHaveLength(2);
+    expect(switched[1]).toMatch(/^Note: the app connected through the bridge\. The tools now work on the document open in the app; the answers before were about the server's own document/);
+    expect(app.getState().document.parameters.map((parameter) => parameter.name)).toEqual(['w']);
+    expect(await texts('get_parameters')).toHaveLength(1);
+    // and back
+    connection.stop();
+    await until(() => mine.current()?.connected() === false, 'the app disconnected');
+    const back = await texts('get_parameters');
+    expect(back[1]).toMatch(/^Note: the app is no longer connected\. The tools now work on the server's own document/);
+    expect(await texts('get_parameters')).toHaveLength(1);
+    await session.close();
+    // the end of the process closes the bridge it opened late: the port is free again
+    await mine.close();
+    const again = await startBridge(port);
+    await again.close();
+  });
+
+  it('without a bridge to open, `openBridge` says so', async () => {
+    const session = await connect();
+    expect((await session.call('session_status', { openBridge: true })).openBridge).toEqual({ result: 'noBridge', note: 'this server was started without a bridge (--no-bridge)' });
+    expect(await session.call('session_status', { openBridge: 'yes' })).toEqual({ error: expect.stringContaining('openBridge') });
+    await session.close();
+  });
+
+  it('new_document: refused while the document holds anything unless discard; one undo brings it back; the file is forgotten', async () => {
+    const session = await connect();
+    expect(await session.call('new_document')).toEqual({ ok: true, discarded: {}, note: 'The document is empty already; nothing changed.' });
+    await session.call('execute', {
+      command: {
+        type: 'batch',
+        commands: [
+          { type: 'setParameter', name: 'w', expr: '20' },
+          { type: 'addFeature', feature: { id: 's', type: 'sketch', plane: { kind: 'base', plane: 'XY' } } },
+          { type: 'addCurve', sketch: 's', id: 'k', curve: { type: 'circle', center: 'origin' }, radius: 5 },
+          { type: 'addFeature', feature: { id: 'a', type: 'extrude', profile: { type: 'regions', sketch: 's', regions: [{ outerLoop: ['k'] }] }, extent: { type: 'distance', start: 0, distance: 'w' }, operation: 'new' } },
+          { type: 'setBodyProperties', body: 'a', patch: { color: '#ff0000' } },
+          { type: 'setLink', id: 'base', bodies: [] },
+          { type: 'setLink', id: 'arm', bodies: ['a'] },
+          { type: 'setJoint', id: 'j', joint: { type: 'revolute', parent: 'base', child: 'arm', axis: { kind: 'sketchPoint', sketch: 's', point: 'origin' }, value: 0, lower: -1, upper: 1 } },
+          { type: 'setCheck', name: 'wide', expr: 'w > 1' },
+        ],
+      },
+    });
+    const file = join(dir, 'new-document.json');
+    await session.call('save_document', { path: file });
+    const saved = session.engine.save();
+    expect(await session.call('new_document')).toEqual({ error: 'the document is not empty, it holds 2 features, 1 parameter, 1 check, 1 entry of body properties, 2 links, 1 joint; new_document with `discard: true` replaces it with an empty one (one undo step brings it back), or save it first with save_document' });
+    expect(session.engine.save()).toBe(saved);
+    const emptied = await session.call('new_document', { discard: true });
+    expect(emptied).toMatchObject({ ok: true, features: 0, bodies: [], problems: [], discarded: { features: 2, parameters: 1, checks: 1, bodyProperties: 1, links: 2, joints: 1 } });
+    // the document is an empty one with the settings it had
+    expect(JSON.parse(session.engine.save())).toEqual(JSON.parse(newEngine().save()));
+    // the file of the old document is not the file of this one
+    expect(await session.call('save_document')).toEqual({ error: 'the document has no file; give "path"' });
+    await session.call('undo');
+    expect(session.engine.save()).toBe(saved);
+    // the review of D73: the undo that brings the document back brings its file back; a redo
+    // empties it again and forgets the file again
+    expect(await session.call('session_status')).toMatchObject({ file });
+    await session.call('redo');
+    expect(await session.call('save_document')).toEqual({ error: 'the document has no file; give "path"' });
+    await session.call('undo');
+    expect(await session.call('save_document')).toMatchObject({ file });
+    expect(await readFile(file, 'utf8')).toBe(saved);
+    await session.close();
   });
 });

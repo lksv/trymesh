@@ -192,6 +192,9 @@ describe('the operation view_image', () => {
     // a face of a body that the earlier state does not have: the query checks the plane in that state
     const early = imageRequest(host, { width: 800, height: 600, section: { plane: { kind: 'face', body: 'late', face: { feature: 'late', role: 'endCap' } }, offset: 0 } }, engine.getState('pin'));
     expect(early).toMatchObject({ ok: false, error: { code: 'notAvailable', arg: ['section', 'plane', 'body'], message: expect.stringMatching(/^section\.plane\.body: /) } });
+    // the colours of the model go to the view; the palette is its default (D73)
+    expect(imageRequest(host, { width: 800, height: 600, colors: 'model' }, engine.getState())).toMatchObject({ colors: 'model' });
+    expect(imageRequest(host, { width: 800, height: 600, colors: 'palette' }, engine.getState())).not.toHaveProperty('colors');
     expect(imageRequest(host, { width: 800, height: 600, bodies: ['disc', 'late'] }, engine.getState('pin'))).toEqual({ ok: false, error: { code: 'notAvailable', message: 'bodies[1]: the body "late" is not in the state asked about', arg: ['bodies', 1] } });
   });
 
@@ -324,7 +327,7 @@ describe('a picture on its way to a client', () => {
     const tool = (await session.client.listTools()).tools.find((entry) => entry.name === 'view_image');
     expect(tool?.description).toMatch(/^A picture of the model, to check its shape by eye/);
     expect(tool?.description).toMatch(/It runs in the app: without a connected app it answers notAvailable\.$/);
-    expect(Object.keys((tool?.inputSchema as { properties: object }).properties)).toEqual(['view', 'bodies', 'section', 'width', 'height', 'at', 'after']);
+    expect(Object.keys((tool?.inputSchema as { properties: object }).properties)).toEqual(['view', 'bodies', 'section', 'width', 'height', 'colors', 'at', 'after']);
     expect((tool?.inputSchema as { required: string[] }).required).toEqual([]);
     // no app: nothing to draw with, whatever the document of the server holds
     session.engine.execute(MODEL);
@@ -339,7 +342,9 @@ describe('a picture on its way to a client', () => {
     const answer = await session.client.callTool({ name: 'view_image', arguments: { view: 'front', bodies: ['pin'], section: { plane: XZ, offset: -1 }, width: 320, height: 240 } });
     expect(answer.isError).toBeUndefined();
     const content = answer.content as { type: string; data?: string; mimeType?: string; text?: string }[];
-    expect(content).toHaveLength(2);
+    // the third: the first answer after the app connected says that the tools switched (D73, review)
+    expect(content).toHaveLength(3);
+    expect(content[2].text).toMatch(/^Note: the app connected through the bridge/);
     expect(content[0]).toEqual({ type: 'image', data: 'UE5H', mimeType: 'image/png' });
     expect(JSON.parse(content[1].text ?? '')).toEqual({ width: 320, height: 240, scale: 0.123457, bodies: [{ body: 'pin', color: '#000000', colorName: 'colour 0' }], section: { cut: ['pin'], cutAway: [] } });
     expect(requests).toHaveLength(1);

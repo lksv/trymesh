@@ -6,7 +6,7 @@ import { basename, dirname, resolve } from 'node:path';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { type Command, EXPORT_FORMATS, type Engine, IMPORT_FORMATS, type Document, type ImportFormat, type MeshReport, documentIds, exportPathProblem, OUTLINE_FORMATS, OUTLINE_LIMITS, fileStemOf, idFromFile, importFormatOf, importMesh, meshNameOf, namedBySections } from '@trymesh/engine';
-import type { Bridge } from './bridge';
+import { type Bridge, type BridgeFailure, DEFAULT_BRIDGE_PORT } from './bridge';
 import { Failure, type OutFile, type Wording, writeExport } from './export-writer';
 import { hostOperations } from './api';
 import { HOST_OPERATIONS, type HostOperationSet, hostOperationProblems, isHostOperation, noAppText } from './host';
@@ -15,6 +15,11 @@ import { type Json, type JsonSchema, OUTLINE_BRIDGE_TOOL, type ToolAnswer, type 
 export interface TrymeshServerOptions {
   engine: Engine; // the server's own engine; used when no app is connected
   bridge?: Bridge;
+  // Why the bridge could not be opened at the start (D73), and how to try again. The server tries
+  // only when asked (session_status with `openBridge: true`): the port it would take is the one the
+  // app connects to, and taking it by itself could take the owner's app from another session.
+  bridgeFailure?: BridgeFailure;
+  reopenBridge?: () => Promise<{ bridge: Bridge } | { failure: BridgeFailure }>;
   file?: string; // the file the document of the own engine comes from
   operations?: HostOperationSet; // the operations of the app offered as tools; the registry by default (tests give their own)
 }
@@ -47,7 +52,41 @@ const rounded = (value: unknown): unknown =>
   typeof value === 'number' ? Math.round(value * 1e6) / 1e6 + 0 : Array.isArray(value) ? value.map(rounded) : typeof value === 'object' && value !== null ? Object.fromEntries(Object.entries(value).map(([key, item]) => [key, rounded(item)])) : value;
 
 export function createTrymeshServer(options: TrymeshServerOptions): Server {
-  const { engine, bridge } = options;
+  const { engine } = options;
+  let bridge = options.bridge;
+  let bridgeFailure = options.bridgeFailure;
+  // Another try at the port of the bridge (D73), only when session_status is asked to: the app
+  // connects to whichever server listens there, so taking it by itself could take the owner's app
+  // from the session that had it. Tries that overlap share one.
+  let trying: Promise<Json> | undefined;
+  const openBridgeNow = (): Promise<Json> => {
+    const reopen = options.reopenBridge;
+    if (bridge) return Promise.resolve({ result: 'openAlready', port: bridge.port });
+    if (!reopen) return Promise.resolve({ result: 'noBridge', note: 'this server was started without a bridge (--no-bridge)' });
+    trying ??= reopen()
+      .then((opened): Json => {
+        if ('bridge' in opened) {
+          [bridge, bridgeFailure] = [opened.bridge, undefined];
+          return { result: 'opened', port: opened.bridge.port, note: 'the bridge listens; the app connects to it within a few seconds while its button AI is on, and the tools then work on the document open in the app (the answer after the switch says so)' };
+        }
+        bridgeFailure = opened.failure;
+        return { result: 'failed', note: 'the port is still taken: see bridgeError' };
+      })
+      .finally(() => {
+        trying = undefined;
+      });
+    return trying;
+  };
+  const bridgeError = (failure: BridgeFailure): Json => ({
+    port: failure.port,
+    ...(failure.code ? { code: failure.code } : {}),
+    message: failure.message,
+    advice:
+      (failure.code === 'EADDRINUSE'
+        ? `Another program holds 127.0.0.1:${failure.port}, most likely another trymesh MCP server (of another session or working tree), and the app is bridged to that one. Stop it to bridge this server, or start this one with --port or TRYMESH_BRIDGE_PORT (the app connects to ${DEFAULT_BRIDGE_PORT} only). `
+        : `The bridge cannot listen on 127.0.0.1:${failure.port}. `) +
+      'The tools work on the own document of this server, and it does not try the port again by itself: once the port is free, session_status with `openBridge: true` takes it (only when the app should be bridged to this server, not to the session that had it).',
+  });
   const operations = options.operations ?? HOST_OPERATIONS;
   // Each document has its own file: one for the server's own document, another for the document in the app.
   // The app's file holds only for the duration of one connection and only for the document that was open
@@ -59,9 +98,25 @@ export function createTrymeshServer(options: TrymeshServerOptions): Server {
   // calls a tool of the app first (_save, _ping).
   const fileOf = (session: number | undefined): string | undefined =>
     session === undefined ? serverFile : appFile?.session === session && appFile.document === bridge?.document() ? appFile.path : undefined;
+  const forget = (session: number | undefined) => {
+    if (session === undefined) serverFile = undefined;
+    else appFile = undefined;
+  };
   const remember = (session: number | undefined, path: string) => {
     if (session === undefined) serverFile = path;
     else appFile = { session, document: bridge?.document(), path };
+  };
+  // The file of the server's own document that new_document emptied (D73, review), with the
+  // document before and after: an undo that brings that document back brings its file back, and
+  // a redo that empties it again forgets the file again. The own engine changes only by the tools,
+  // so looking after each tool is enough; the document of the app is not followed (its file stays
+  // forgotten).
+  let emptied: { path: string; before: Document; after: Document } | undefined;
+  const followEmptied = () => {
+    if (!emptied || bridge?.session() !== undefined) return;
+    const now = engine.getState().document;
+    if (now === emptied.before) serverFile ??= emptied.path;
+    else if (now === emptied.after) serverFile = undefined;
   };
 
   // A tool runs over the app's engine when it is connected, otherwise over the own one. `session` is
@@ -98,19 +153,24 @@ export function createTrymeshServer(options: TrymeshServerOptions): Server {
   const fileTools: FileTool[] = [
     {
       name: 'session_status',
-      description: 'What the tools work on: the running app (the user sees the changes at once), or the server\'s own engine with a document from a file.',
-      inputSchema: { type: 'object', properties: {}, additionalProperties: false },
-      run: async () => {
+      description:
+        'What the tools work on: the running app (the user sees the changes at once), or the server\'s own engine with a document from a file. ' +
+        'When the bridge could not listen (`bridgeError`, its port held by another server), `openBridge: true` tries the port now and says how it went (`openBridge`); the server never tries by itself. Take the port only when the app should be bridged to this server.',
+      inputSchema: { type: 'object', properties: { openBridge: { type: 'boolean', description: 'try now to listen on the port of the bridge, when this server could not' } }, additionalProperties: false },
+      run: async (args) => {
+        const opened = args.openBridge === true ? await openBridgeNow() : undefined;
         const session = bridge?.session();
         if (session !== undefined) await call(session, '_ping'); // the app may have replaced the document in the meantime
         return {
           engine: session === undefined ? 'server' : 'app',
           file: fileOf(session) ?? null,
           bridge: bridge ? { port: bridge.port, appConnected: session !== undefined } : null,
+          ...(!bridge && bridgeFailure ? { bridgeError: bridgeError(bridgeFailure) } : {}),
+          ...(opened ? { openBridge: opened } : {}),
           note:
             session !== undefined
               ? 'The tools work with the document open in the app. `file` is the file that was opened into the app or saved from it by this server.'
-              : `No app is connected; the tools work with the server's own document${bridge ? ' (in the app the connection is switched on by the button AI)' : ''}. open_document opens a document from a file.`,
+              : `No app is connected; the tools work with the server's own document${bridge ? ' (in the app the connection is switched on by the button AI)' : bridgeFailure ? ' (the bridge is not open: see bridgeError)' : ''}. open_document opens a document from a file.`,
         };
       },
     },
@@ -460,6 +520,24 @@ export function createTrymeshServer(options: TrymeshServerOptions): Server {
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name } = request.params;
     const args = (request.params.arguments ?? {}) as Record<string, unknown>;
+    // the first answer after the tools switched engines says so (D73, review)
+    const note = switched(bridge?.session());
+    const answered = await respond(name, args);
+    followEmptied();
+    return note === undefined ? answered : { ...answered, content: [...answered.content, { type: 'text' as const, text: note }] };
+  });
+  // What the last tool worked on: the server's own engine, or the app of one connection.
+  let target: string | undefined;
+  const switched = (session: number | undefined): string | undefined => {
+    const now = session === undefined ? 'server' : `app ${session}`;
+    const before = target;
+    target = now;
+    if (before === undefined || before === now) return undefined;
+    if (session === undefined) return 'Note: the app is no longer connected. The tools now work on the server\'s own document, not on the app\'s, which the answers before were about (see session_status).';
+    if (before === 'server') return 'Note: the app connected through the bridge. The tools now work on the document open in the app; the answers before were about the server\'s own document (see session_status).';
+    return 'Note: the app connected anew (another connection of the bridge). The tools now work on the document open in the app now connected, which may be another one than before (see session_status).';
+  };
+  const respond = async (name: string, args: Record<string, unknown>) => {
     const fileTool = fileTools.find((tool) => tool.name === name);
     try {
       if (fileTool) {
@@ -473,14 +551,23 @@ export function createTrymeshServer(options: TrymeshServerOptions): Server {
         return outcome.ok ? answer(name, outcome.result as ToolAnswer) : reply(outcome.error, true);
       }
       if (name.startsWith('_')) return reply(`unknown tool "${name}"`, true);
-      const outcome = await call(bridge?.session(), name, args);
+      const session = bridge?.session();
+      const own = session === undefined ? engine.getState().document : undefined;
+      const outcome = await call(session, name, args);
       if (!outcome.ok) return reply(outcome.error, true);
+      // an empty document is no longer the one of the file: a save without a path must not write it there
+      if (name === 'new_document' && (outcome.result as { discarded?: object }).discarded && Object.keys((outcome.result as { discarded: object }).discarded).length > 0) {
+        const file = fileOf(session);
+        forget(session);
+        // the record is of the server's own document: emptying the app's leaves it alone (review)
+        if (own) emptied = file !== undefined ? { path: file, before: own, after: engine.getState().document } : undefined;
+      }
       // a note beside the result (the pose a query answered for, D49) is a second text
       return outcome.about === undefined ? reply(outcome.result) : { content: [...reply(outcome.result).content, { type: 'text' as const, text: print(outcome.about) }] };
     } catch (error) {
       if (error instanceof Failure) return reply(error.message, true);
       return reply(`the tool ${name} failed: ${error instanceof Error ? error.message : String(error)}`, true);
     }
-  });
+  };
   return server;
 }

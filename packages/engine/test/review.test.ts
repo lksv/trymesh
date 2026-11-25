@@ -1653,3 +1653,24 @@ describe('the second review of the implementation of 6f (D72): the import', () =
     expect(outcome.report.notes.join(' ')).toContain('ANSI_1250 of its header');
   });
 });
+
+// The review of the implementation of D73: with the defaults of `NewFeature` a misspelt optional
+// field would end in success without effect.
+describe('the review of the implementation of D73: addFeature refuses a field the type does not know', () => {
+  const sketchInput = { id: 's', type: 'sketch', plane: { kind: 'base', plane: 'XY' } };
+  const added = (feature: Record<string, unknown>) => applyCommand(emptyDocument(), { type: 'addFeature', feature: feature as never });
+  it('a typo of a field left to its default, or of a part of a sketch, is refused, naming the key and the fields', () => {
+    for (const key of ['supressed', 'nmae', 'point']) {
+      expect(() => added({ ...sketchInput, [key]: key === 'point' ? { a: { x: 1, y: 2 } } : key === 'nmae' ? 'Top' : true })).toThrow(`addFeature.feature.${key}: a feature of the type sketch has no field "${key}"; its fields are type, id, name, plane, suppressed, points, external, curves, radii, constraints, solved, expressions`);
+    }
+    // the fields themselves, an expression map and a key without a value are fine
+    expect(added({ ...sketchInput, name: 'Top', suppressed: true, points: { a: { x: 1, y: 2 } } }).features[0]).toMatchObject({ name: 'Top', suppressed: true, points: { a: { x: 1, y: 2 } } });
+    expect(added({ ...sketchInput, nmae: undefined }).features[0].name).toBe('s');
+    // another type: a field of a sketch on a plane
+    expect(() => added({ id: 'P', type: 'plane', base: { kind: 'base', plane: 'XY' }, offset: 5, plane: { kind: 'base', plane: 'XY' } })).toThrow(/^addFeature\.feature\.plane: a feature of the type plane has no field "plane"; its fields are type, id, name, suppressed, /);
+  });
+  it('updateFeature was strict already: a key the patch does not know is refused', () => {
+    const doc = applyCommand(emptyDocument(), { type: 'addFeature', feature: { id: 'P', type: 'plane', base: { kind: 'base', plane: 'XY' }, offset: 5 } as never });
+    expect(() => applyCommand(doc, { type: 'updateFeature', id: 'P', patch: { ofset: 3 } as never })).toThrow('updateFeature.patch.ofset: this plane has no such field');
+  });
+});

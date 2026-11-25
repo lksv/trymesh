@@ -41,6 +41,53 @@ function allowedOrigin(origin: string | undefined): string | undefined | false {
   }
 }
 
+// Why the bridge could not be opened (D73): the port, the code of the error (EADDRINUSE when
+// another server holds the port) and its message. session_status reports it.
+export interface BridgeFailure {
+  port: number;
+  code?: string;
+  message: string;
+}
+
+// The bridge, or why it could not be opened; never rejects.
+export async function openBridge(port: number = DEFAULT_BRIDGE_PORT): Promise<{ bridge: Bridge } | { failure: BridgeFailure }> {
+  try {
+    return { bridge: await startBridge(port) };
+  } catch (error) {
+    const code = (error as { code?: unknown }).code;
+    return { failure: { port, ...(typeof code === 'string' ? { code } : {}), message: error instanceof Error ? error.message : String(error) } };
+  }
+}
+
+// The bridge of a server process (main.ts, D73): `open` at the start and again when session_status
+// is asked to (`openBridge: true`); `close` at the end of the process closes whichever bridge it
+// opened, also one opened late, so that the port does not outlive the server.
+export interface BridgeHolder {
+  current(): Bridge | undefined;
+  open(): Promise<{ bridge: Bridge } | { failure: BridgeFailure }>;
+  close(): Promise<void>;
+}
+export function bridgeHolder(port: number, opened?: (bridge: Bridge) => void): BridgeHolder {
+  let bridge: Bridge | undefined;
+  return {
+    current: () => bridge,
+    async open() {
+      if (bridge) return { bridge };
+      const result = await openBridge(port);
+      if ('bridge' in result) {
+        bridge = result.bridge;
+        opened?.(bridge);
+      }
+      return result;
+    },
+    async close() {
+      const closing = bridge;
+      bridge = undefined;
+      await closing?.close();
+    },
+  };
+}
+
 // port 0 = the system assigns a free port. When the port cannot be opened (another server runs), the
 // promise is rejected.
 export function startBridge(port: number = DEFAULT_BRIDGE_PORT): Promise<Bridge> {

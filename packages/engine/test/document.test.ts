@@ -45,6 +45,23 @@ describe('commands of the timeline', () => {
     expect(next.features[1]).toBe(doc.features[0]); // the unchanged parts are shared
   });
 
+  // D73: what a command may leave out of a new feature, and that a document keeps every field
+  it('addFeature fills in the name, the suppression and the empty parts of a sketch; a load does not', () => {
+    const doc = base();
+    const next = run(doc, { type: 'addFeature', feature: { id: 'S2', type: 'sketch', plane: XY } }, { type: 'addFeature', feature: { id: 'E2', type: 'extrude', profile: { type: 'regions', sketch: 'S1', regions: [{ outerLoop: ['l1', 'l2', 'l3', 'l4'] }] }, extent: { type: 'distance', start: 0, distance: 5 }, operation: 'new' } });
+    expect(next.features.find((f) => f.id === 'S2')).toEqual(emptySketch('S2', 'S2', XY));
+    expect(next.features.find((f) => f.id === 'E2')).toEqual(extrude('E2', 'S1', { extent: { type: 'distance', start: 0, distance: 5 } }));
+    // what is given is kept; a part of a sketch given is checked as before
+    const named = applyCommand(doc, { type: 'addFeature', feature: { id: 'S3', name: 'Top', suppressed: true, type: 'sketch', plane: XY, points: { q1: { x: 1, y: 2 } } } });
+    expect(named.features.find((f) => f.id === 'S3')).toMatchObject({ name: 'Top', suppressed: true, points: { q1: { x: 1, y: 2 } }, curves: {}, solved: { inputs: '', external: {} } });
+    invalid(doc, { type: 'addFeature', feature: { id: 'S4', type: 'sketch', plane: XY, curves: { c: { type: 'line', a: 'x', b: 'y' } } } }, /S4|c/);
+    invalid(doc, { type: 'addFeature', feature: { id: 'S4', name: 7, type: 'sketch', plane: XY } as never }, /name/);
+    // a document keeps the full shape: a feature without its name does not load
+    const stored = JSON.parse(JSON.stringify(next)) as { features: Record<string, unknown>[] };
+    delete stored.features[2].name;
+    expect(() => validateDocument(stored as never)).toThrow(/name/);
+  });
+
   it('an ID must be unique in the whole document and follow the conventions', () => {
     const doc = base();
     invalid(doc, { type: 'addFeature', feature: emptySketch('E1', 'x', XY) }, /is already in the document/);

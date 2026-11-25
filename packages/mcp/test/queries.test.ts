@@ -73,7 +73,7 @@ const ARGUMENTS: { [N in QueryName]: { [K in keyof Required<QueryArgs<N>>]: {} e
   measure: { from: 'required', to: 'required' },
   section: { plane: 'required', offset: 'optional', flip: 'optional', bodies: 'optional', outline: 'optional', maxPoints: 'optional' },
   gap: { bodies: 'optional', within: 'optional', maxPairs: 'optional' },
-  mass: { bodies: 'required', density: 'optional', densities: 'optional', fill: 'optional', about: 'optional' },
+  mass: { bodies: 'optional', density: 'optional', densities: 'optional', fill: 'optional', about: 'optional' },
   print: { bodies: 'optional', orientations: 'required', bed: 'optional', overhang: 'optional', minArea: 'optional', maxFaces: 'optional' },
   hardwareHole: { use: 'required', size: 'required', fit: 'optional', allowance: 'optional' },
   mechanism: { beyond: 'optional' },
@@ -218,6 +218,59 @@ describe('the query partsList through the tool (D57)', () => {
     const before = engine.save();
     expect(call(engine, { query: 'partsList', after: { type: 'setField', feature: 'row', path: 'transform/count', value: 3 } }).printed[0].count).toBe(3);
     expect(engine.save()).toBe(before);
-    expect(call(engine, { query: 'partsList', args: { bodies: ['low'] } })).toEqual({ error: 'invalidArguments: partsList: bodies: there is no such argument' });
+    expect(call(engine, { query: 'partsList', args: { bodies: ['low'] } })).toEqual({ error: 'invalidArguments: partsList: bodies: there is no argument "bodies"; there are no arguments' });
+  });
+});
+
+// D73: what the session that built a gearbox through MCP stumbled over
+describe('the consistency of the queries (D73)', () => {
+  it('mass without bodies weighs every body; an auxiliary one is skipped, a reference part counts', () => {
+    const engine = model();
+    const all = call(engine, { query: 'mass', args: { density: 1.24 } });
+    expect(all).toEqual(call(engine, { query: 'mass', args: { bodies: ['low', 'high'], density: 1.24 } }));
+    execute(engine, { type: 'setBodyProperties', body: 'high', patch: { use: 'auxiliary' } });
+    const one = call(engine, { query: 'mass', args: { density: 1.24 } });
+    expect(one.bodies.map((body: { body: string }) => body.body)).toEqual(['low']);
+    expect(one.skipped).toEqual([{ body: 'high', reason: 'auxiliary' }]);
+    execute(engine, { type: 'setBodyProperties', body: 'high', patch: { use: 'reference', mass: 50 } });
+    expect(call(engine, { query: 'mass', args: { density: 1.24 } }).bodies.map((body: { body: string; from: string }) => [body.body, body.from])).toEqual([['low', 'argument'], ['high', 'mass']]);
+    // review of D73: a reference part with no mass of its own is not weighed as the printed parts
+    // are; skipped with the reason, unless it is listed or `densities` names it
+    execute(engine, { type: 'setBodyProperties', body: 'high', patch: { mass: null } });
+    const bare = call(engine, { query: 'mass', args: { density: 1.24, fill: 0.3 } });
+    expect(bare.bodies.map((body: { body: string }) => body.body)).toEqual(['low']);
+    expect(bare.skipped).toEqual([{ body: 'high', reason: 'noMassOfItsOwn' }]);
+    expect(call(engine, { query: 'mass', args: { density: 1.24, densities: { high: 7.8 } } }).bodies.map((body: { body: string; from: string }) => [body.body, body.from])).toEqual([['low', 'argument'], ['high', 'densities']]);
+    expect(call(engine, { query: 'mass', args: { bodies: ['low', 'high'], density: 1.24 } }).skipped).toBeUndefined();
+    execute(engine, { type: 'setBodyProperties', body: 'low', patch: { use: 'reference' } });
+    expect(call(engine, { query: 'mass', args: { density: 1.24 } }).error).toMatch(/^failed: mass: bodies: no body has a mass: low \(a reference part with no mass or density of its own: .*\), high \(/);
+    execute(engine, { type: 'setBodyProperties', body: 'low', patch: { use: null } });
+    execute(engine, { type: 'setBodyProperties', body: 'low', patch: { use: 'auxiliary' } });
+    execute(engine, { type: 'setBodyProperties', body: 'high', patch: { use: 'auxiliary' } });
+    expect(call(engine, { query: 'mass' })).toEqual({ error: 'failed: mass: bodies: every body is auxiliary and has no mass (low, high)' });
+    expect(call(newEngine(), { query: 'mass', args: { density: 1 } })).toEqual({ error: 'failed: mass: bodies: the state asked about has no body' });
+  });
+
+  it('check_interference takes `after` as the tool query does, with the same answer', () => {
+    const engine = model();
+    const before = engine.save();
+    // the discs moved apart by a previewed command: no pair, nothing written
+    const apart = { type: 'setField', feature: 'high', path: 'extent/start', value: 12 };
+    const tool = callTool(engine, 'check_interference', { after: apart, threshold: 0 });
+    expect(tool).toMatchObject({ ok: true, result: { pairs: [], checked: 1 } });
+    expect(engine.save()).toBe(before);
+    const queried = call(engine, { query: 'interference', args: { threshold: 0 }, after: apart });
+    expect((tool as unknown as { result: { pairs: unknown } }).result.pairs).toEqual(queried.pairs);
+    // without it the slice they share is a collision
+    expect(callTool(engine, 'check_interference', { threshold: 0 })).toMatchObject({ ok: true, result: { pairs: [{ a: 'high', b: 'low' }] } });
+    // a body only the previewed command makes can be named; a command that does not apply is said
+    const third: Command = { type: 'addFeature', feature: { id: 'third', type: 'extrude', profile: { type: 'regions', sketch: 's', regions: [{ outerLoop: ['k'] }] }, extent: { type: 'distance', start: 5, distance: 2 }, operation: 'new' } };
+    expect(callTool(engine, 'check_interference', { after: third, bodies: ['low', 'third'] })).toMatchObject({ ok: true, result: { pairs: [{ a: 'low', b: 'third' }] } });
+    expect(callTool(engine, 'check_interference', { after: { type: 'removeFeature', id: 'nope' } })).toEqual({ ok: false, error: expect.stringMatching(/^after: invalidCommand: /) });
+    expect(callTool(engine, 'check_interference', { after: third, bodies: ['low', 'nope'] })).toEqual({ ok: false, error: expect.stringMatching(/^notAvailable: interference: bodies\[1\]: /) });
+  });
+
+  it('an argument a query does not have is told with the arguments it has', () => {
+    expect(call(model(), { query: 'catalog', args: { catalog: 'materials' } })).toEqual({ error: 'invalidArguments: catalog: catalog: there is no argument "catalog"; the arguments are: name, key' });
   });
 });

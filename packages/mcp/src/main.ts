@@ -6,7 +6,7 @@ import { createPakoDeflater } from '@trymesh/deflate-pako';
 import { createEngine } from '@trymesh/engine';
 import { createManifoldKernel } from '@trymesh/kernel-manifold';
 import { createPlanegcsSolver } from '@trymesh/solver-planegcs';
-import { type Bridge, DEFAULT_BRIDGE_PORT, startBridge } from './bridge';
+import { type BridgeFailure, DEFAULT_BRIDGE_PORT, bridgeHolder } from './bridge';
 import { createTrymeshServer } from './server';
 
 // Standard output belongs to the protocol; messages for a person go to standard error.
@@ -48,18 +48,20 @@ if (options.file !== undefined) {
   if (!result.ok) fail(`the file ${options.file} cannot be loaded: ${result.error.message}`, false);
 }
 
-let bridge: Bridge | undefined;
+// The bridge: opened at the start; when another server holds the port, again only when
+// session_status is asked to (D73). The holder closes whichever it opened at the end.
+const holder = bridgeHolder(port, (bridge) => log(`the bridge for the app listens on http://127.0.0.1:${bridge.port}`));
+let failure: BridgeFailure | undefined;
 if (options.bridge) {
-  try {
-    bridge = await startBridge(port);
-    log(`the bridge for the app listens on http://127.0.0.1:${bridge.port}`);
-  } catch (error) {
-    // Another MCP server holds the port. This one will work only over its own document.
-    log(`the bridge on port ${port} cannot be opened (${error instanceof Error ? error.message : String(error)}); the server works with files only`);
+  const opened = await holder.open();
+  if ('failure' in opened) {
+    // another MCP server holds the port: this one works on its own document
+    failure = opened.failure;
+    log(`the bridge cannot be opened on the port ${port} (${failure.code ?? failure.message}); the server works on its own document (session_status with openBridge: true tries the port again)`);
   }
 }
 
-const server = createTrymeshServer({ engine, bridge, file: options.file });
+const server = createTrymeshServer({ engine, bridge: holder.current(), file: options.file, ...(options.bridge ? { bridgeFailure: failure, reopenBridge: () => holder.open() } : {}) });
 await server.connect(new StdioServerTransport());
 log('ready');
 
@@ -69,7 +71,7 @@ let closing = false;
 const shutdown = () => {
   if (closing) return;
   closing = true;
-  void Promise.allSettled([bridge?.close(), server.close()]).finally(() => process.exit(0));
+  void Promise.allSettled([holder.close(), server.close()]).finally(() => process.exit(0));
 };
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);

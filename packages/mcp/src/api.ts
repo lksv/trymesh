@@ -41,10 +41,11 @@ import {
 import typesSource from '../../engine/src/types.ts?raw';
 import { HOST_OPERATIONS, type HostOperationSet, OPERATION_STATE_ARGS } from './host';
 
+// The general conventions: units, IDs, sketches, constraints, names, parameters, errors (section `conventions`).
 const CONVENTIONS = [
   'Lengths are in millimetres, angles in radians. Sketch coordinates are in its plane (the X and Y axes of the sketch); the origin of the sketch is a fixed point with the ID `origin`.',
   'The document is a timeline of features. Geometry is always derived by replaying it; commands change the document and the engine recomputes what depends on the change. A plane, an extrusion and a pattern are changed by the command updateFeature: the fields given merge with the feature, so it is enough to send only what changes (for example `{ extent: { distance: 12 } }`).',
-  'IDs are chosen by the caller. They must be unique in the whole document (features as well as the entities of all sketches), must not contain `/` and must not be `origin`.',
+  'IDs are chosen by the caller. They must be unique in the whole document (features as well as the entities of all sketches), must not contain `/` and must not be `origin`. In addFeature `name` may be left out (the name is then the ID) and so may `suppressed` (false); a new sketch needs only `id`, `type` and `plane` (`{ id: "s1", type: "sketch", plane: { kind: "base", plane: "XY" } }`): its points, curves, constraints and entries start empty and are added by the commands of a sketch.',
   'A sketch is drawn roughly and its geometry is determined by constraints and dimensions: points are given as an estimate, and after every command the solver moves them so that the constraints hold. Several commands for a sketch are better sent as one command `batch`; it is then solved once.',
   'Curves refer to points: a line has `a`, `b`; a circle `center` and a radius (the parameter `radius` of the command addCurve); an arc `center`, `start`, `end` and runs counter-clockwise. Curves are joined by sharing a point or by the constraint coincident.',
   "Every sketch has the lines `origin/x` and `origin/y` through its origin along its X and Y (from `origin` towards +X and +Y). A constraint may name one with at least one own operand (a point on it, two points symmetric about it, a distance to it, parallel, perpendicular, an angle, a tangent circle); `midpoint` and `equalLength` do not take them (an axis is a whole line, with no length and no middle). `{ kind: 'sketchLine', sketch, line: 'origin/x' }` is an axis of a revolve, a pattern, a tilted plane or a joint. A sketch tool snaps to them as to any curve (`snap: { kind: 'curve', id: 'origin/y' }`). get_sketch does not list them.",
@@ -53,6 +54,18 @@ const CONVENTIONS = [
   'Closed regions of a sketch (`regions` in the result of get_sketch) are extruded by the command addFeature with a feature of type extrude: `profile` is `{ type: "regions", sketch, regions }`, where `regions` is a list of `{ outerLoop }` taken from get_sketch. The extent is one of three variants (the third, `upTo`, below). `{ type: "distance", start, distance }`: `start` is the offset of the start along the normal of the sketch plane, from the sketch plane or from `from` (below; usually 0, may be negative), `distance` is measured from the start; a positive one points along the normal of the sketch plane, for a sketch on a face out of the body. `{ type: "throughAll", side }` is for the operation `cut` only: the tool passes through all target bodies and its length follows them at every recompute. `side` is `forward` (along the normal of the sketch plane), `backward` (against it) or `both`; on a face of a body an ordinary hole is `backward`; without `from`, `both` is the safe default unless the body reaches to both sides of the plane and only one part should be cut, and with `from` the side is `forward` or `backward`. ' +
     'Any extent may start from a plane instead of the sketch plane: `from`, a plane reference as for a sketch (a planar face `{ kind: "face", body, face }`, `{ kind: "plane", feature }`, `{ kind: "base", plane }`; for a face the whole plane it lies in), parallel to the sketch plane. So one layout sketch serves every height of a part: `{ type: "distance", from: <the top of the plate>, start: 0, distance: 12 }` is a boss standing on the plate, `{ type: "distance", from: <the top>, start: -0.6, distance: -3 }` a cavity under a skin of 0.6, and `{ type: "throughAll", side: "forward", from: <the top of the plate> }` cuts through a lid above the plate and leaves the plate whole, which a cut through all from the sketch plane would also cut (through all goes through every target on its side of the start, so `backward` from the top of a lid cuts the plate below it too). `start` stays measured along the normal of the sketch plane, whichever way the face points. The plane is resolved at every recompute, so the start follows the face; `facts.startLevel` tells where the tool starts (from the sketch plane along its normal). A plane tilted against the sketch, or parallel to the direction, is the error invalidExtent (put the sketch on that face instead); a face that is gone is brokenReference, a round one nonPlanarFace. `updateFeature` with `{ extent: { from: null } }` returns to the sketch plane.',
   'The ID of a body is the ID of the extrusion with the operation `new` or of the split that cut it off; a copy of a body made by a pattern has the ID `<pattern>/<number>` (numbered from 1; the numbers of a grid have gaps, so read them from `bodies` of the pattern in get_model rather than compose them by counting), listed in `bodies` of the pattern in get_model. The operations `add` and `cut` need `targets`: exactly one body for `add`, one or more for `cut` (a screw hole through two bolted parts is one cut with both bodies as targets). A cut that would remove a whole target is an error and changes none of them; a target the tool does not reach is left unchanged and the warning `noEffect` lists it in `refs`.',
+  'Every body in get_model and get_body has its volume in mm³ and its bounding box (`min`, `max`); use them to verify what you built. check_interference tells which bodies collide (`pairs`) and should follow any change to parts that must not overlap. Bodies that only touch do not count; a pin in a hole of the same diameter may be listed in `fits`, which is not a collision: round faces are polygons and their corners need not coincide. Each pair has a `depth`, how deep one body reaches into the other; a fit is no deeper than the chord tolerance (`tolerance` in the answer). export_stl saves the printed bodies into one file, or with `perBody` one file per body for printing.',
+  'Faces and edges are named by their origin: a face `{ feature, role: side, curve }` came from a curve of the sketch (for a generated profile `curve` is the side name from the generator catalog, for a gear `teeth`; such a face is not planar), `startCap` is the cap at the start of the extent (in the sketch plane when `start` is zero), `endCap` the opposite cap. A face of a copy made by a pattern has the same name with `copy: [{ pattern, index }]` added (the pattern and the number of the copy; a pattern of a pattern appends another entry); faces of the original have no `copy`. An edge is a pair of face names `{ a, b }`, in either order: a command stores them in one order. The names valid for a body are returned by get_body.',
+  'Parameters: the document has a table of named parameters (command setParameter, a name and an expression). A numeric field of a feature and the value of a driving dimension accept an expression as a string instead of a number, for example `{ extent: { distance: "thickness * 2" } }` or `value: "module * Zs"`. The section Numeric fields lists those fields; elsewhere a string in place of a number is an error. The engine evaluates the expression, fills the number into the field and stores the expression in `expressions` of the feature under the field address. After a parameter changes the model is recomputed.',
+  'An expression in a feature field must evaluate right away (the parameters it uses must exist), otherwise the command is invalid. A parameter itself may refer to a parameter that does not exist yet; get_parameters returns its state. A number sent to a field with an expression removes the expression; fields updateFeature does not mention keep theirs. The command setField (`{ feature, path, value }`) changes a single field.',
+  'Angles are in radians both as a number and in an expression; degrees are written with the function `deg()`: an angle of 30° is `"deg(30)"`. Angle fields have ranges in radians, so a value entered in degrees by mistake is an invalid command.',
+  'Checks (command setCheck) are expressions with a comparison that are supposed to hold, for example `Zs % 3 == 0`. A check that fails does not stop the model; execute returns it in `failedChecks`.',
+  'A recompute error (a broken reference, conflicting constraints, an expression that can no longer be evaluated) is not a command error: the command is carried out and the problem is in the feature state. After every execute check `problems`, `failedChecks` and `parameterErrors`.',
+  'Diagnosis of a sketch: get_sketch returns the degrees of freedom, the free entities, the redundant constraints and advice on what is missing; explain_constraint says what a constraint follows from.',
+];
+
+// How the kinds of features and the parts of the document are used (section `modelling`).
+const MODELLING = [
   'A profile of regions may be moved by an offset: `profile: { type: "regions", sketch, regions, offset }`, in millimetres, a number or an expression. A positive offset grows the profile (the outer outline moves outwards, holes shrink), a negative one shrinks it, so the cavity of a box is its own outline with `offset: "-wall"` cut from the floor up. The regions are moved together as one outline (a curve two selected regions share is not part of it); every curve keeps its side face and its name, lines stay planes and arcs cylinders, and corners are mitres. The topology never changes: an offset that makes a curve vanish (an inward offset not smaller than a corner radius, or larger than half the width), that makes loops touch or a hole leave its outline, ends the feature in the error invalidProfile; its message names the curves and says what to do (a smaller offset, a larger corner radius, or the moved outline drawn in the sketch). The field `profile/offset` is optional: a feature without it has no offset; setField with the path `profile/offset` adds it to a profile of regions that has none, and updateFeature with `{ profile: { offset: null } }` removes it. In the section Numeric fields an optional field of a feature is one with a default that is not a parameter of a profile generator (`profile/params/...`, whose default is stored when the parameter is left out), and a parameter of a generator its catalog marks optional (the `shift` of a gear: stored only when given, absent means its default, `null` removes it).',
   'An extent may end in a plane: `extent: { type: "upTo", plane, start, gap }`, where `plane` is a plane reference as for a sketch (`{ kind: "face", body, face }` for a planar face, `{ kind: "plane", feature }`, `{ kind: "base", plane }`). For a face it is the whole plane the face lies in: the tool ends there also where its profile passes beside the face. There is no side: the tool runs from its start (`start` from the sketch plane, or from `from`: standoffs from the floor of a case up to the underside of a lid are `{ type: "upTo", from: <the floor>, start: 0, plane: <the underside> }`) to the plane on whichever side of the start it lies; the plane may be tilted against the sketch, and the end cap then lies in it (a sketch can stand on it). The plane is resolved at every recompute, so screw posts up to the underside of a lid follow the lid; each copy of a pattern of features runs from its own start to that same plane, while the start itself moves with the copy (a pattern of a body copies the body as it is). With `from` the refusals below and the lengths of `facts` are about the start, `from` plus `start`. `gap` (optional, mm) stops the tool that far before the plane, measured across it; a negative gap passes it by as much. The result tells the lengths in `facts`: `lengthMin`, `lengthMax` (equal when the plane is parallel to the sketch) and `forward` (true along the normal of the sketch plane). For every operation; no taper. Errors: brokenReference, nonPlanarFace, and invalidExtent when the plane is parallel to the direction (or within 0.01 rad of it), passes through the start of the tool, or the gap reaches the start.',
   'A wall (a rib, a partition, a ring) is extruded from curves that close no region: `profile: { type: "wall", sketch, curves, thickness }`. `curves` are IDs of own curves of the sketch (lines, arcs, or one circle; construction curves are fine and usual, projected geometry is not allowed) that form one chain: each joined to the next at an end point by a shared point or a coincident constraint, without a branch. The chain is moved by half the `thickness` to each side; an open chain gets a straight end at each free end, a closed chain or a circle gives a band with a hole. The sketch needs no closed region and no valid profile, so the centre line of a rib may end inside the wall it stiffens. Faces of a wall: `{ feature, role: "wallSide", curve, side }`, where `side` is `left` or `right` of the curve in its own direction (a line from `a` to `b`; an arc and a circle counter-clockwise, so `left` is the side of the centre), `{ feature, role: "wallEnd", point }` for the straight end at the sketch point the chain ends at, and the caps `startCap` and `endCap`. Curves that do not form one chain, or a bend tighter than half the thickness, end in invalidProfile with a message that names the curves; a curve that is no longer in the sketch is a brokenReference.',
@@ -62,7 +75,6 @@ const CONVENTIONS = [
   'Edges are chamfered and rounded by the feature types chamfer and fillet: `{ type: "chamfer", body, edges, distance }` and `{ type: "fillet", body, edges, radius }`, the size a number or an expression in mm. `edges` lists edges of that one body, each `{ a, b }` named by its two faces as the query `body` lists them (the order of the two does not matter). An edge that can take one: a straight edge between two planes (kind line), or a circular edge between faces about one axis that are planes across it, cylinders or cones (kind circle: the rim of a hole, a boss, a bore, a turned part); not an edge of the kind other, and not the rim of a sphere or a torus. A convex edge is cut, a concave one (an inner corner, the foot of a boss) gets material added. An edge that runs on smoothly into another (a line of an outline with round corners into the arc of the corner) needs that edge in the same feature: round the whole loop of a rounded box in one feature, and the error names the edge to add. A convex and a concave edge that meet at a vertex go into two features. An edge may end at a plane, or run out past a round face it crosses at 10° or more (D67): into a hole, a pocket or a boss (a cylinder of any axis for a straight edge, one parallel to its axis for a circular edge; the rim of a bore into pin pockets, an edge into a hole that breaks it, the concave foot of a rib into a boss), out through a round wall into the air outside it (the edges of a slot through a shaft), and a circular edge also past a plane parallel to its axis (the rim of a bore into a keyway); the chamfer or fillet then ends on that face. Refused with the end face in the refs: a stop (a convex edge into a wall, a concave edge past a rim; blend before the feature that makes the face), a bridge (the corner passes behind the face before crossing it, as a hole that notches the edge less deep than the size; blend before the hole or use a smaller size), a crossing under 10°, an end at a cone, sphere or torus, and (blendDoesNotFit) a run-out that would cut or add material beyond the face (a pin in the pocket, a pocket shallower than the size). Several edges in one feature meet at their vertices: in their mitre at the same angle, three chamfers exactly at a corner, three fillets in a crease. Each edge gets one new face `{ feature, role: "chamfer" | "fillet", edge: <its place in edges, from 0> }` (a plane, a cone, a cylinder or a torus; a sketch stands on the plane of a chamfer of a straight edge); keep the order of the list, since removing an edge from the middle renames the faces after it. The faces of the edge keep their names. The result tells `facts["setback/<i>"]` (how far from edge i the new face meets its faces) and `facts["cut/<i>"]` (true where material was cut). Errors: unsupportedEdge (the edge, or a pair of edges, cannot be chamfered or filleted here; the message says why) and blendDoesNotFit (a face would vanish, the tool reaches material it must not touch, the blend reaches the axis of a circular edge, a run-out would cut or add beyond its end face).',
   'Instead of regions, the profile of an extrusion may come from a profile generator: `profile` is `{ type: "generated", generator, sketch, operands, params, refs }` (section Profile generators). `operands` name entities of the sketch, `params` take numbers, expressions and flags (what is left out gets its default), `refs` name earlier features. An operand is a circle (the pitch circle of a gear, the circle of the ring pins of a cycloidal disc) or a point (the centre of a GT2 pulley: an own point, `origin`, or a point of projected geometry such as `<id>/center`). The generator reads only the solved operands, so the sketch needs no closed regions; pitch circles of gears in mesh touch and should be construction circles. Operation, extent and targets work as for any extrusion. The result of the feature carries `facts` (for a gear its module, diameters and the rotation used): read them with get_model to verify what was built. updateFeature merges the dictionaries by entry: `{ profile: { params: { teeth: 24 } } }` changes one parameter, `null` returns a parameter to its default or removes a reference.',
   'Gears: a gear is an extrusion with the generator involuteGear over its pitch circle; the module follows from the circle diameter and the tooth count, so dimension the circle with an expression such as `"module * Zs"`. Give every gear after the first one `refs: { meshWith: <the gear it meshes with> }`: the rotation is then computed and stays right when tooth counts change. A ring gear is a cut with `internal: true` into solid material. The warnings gearMesh (the reference could not be used, the parameter rotation was used) and gearInterference show up in `problems`. A pinion with few teeth that interferes gets a positive profile shift `shift` (for example 0.3) and its mate the opposite one (−0.3); a gear inside a ring has the same shift as the ring. Gears in mesh keep the reference centre distance, so shifts that do not balance are the warning gearMesh; a shifted centre distance is not supported.',
-  'Every body in get_model and get_body has its volume in mm³ and its bounding box (`min`, `max`); use them to verify what you built. check_interference tells which bodies collide (`pairs`) and should follow any change to parts that must not overlap. Bodies that only touch do not count; a pin in a hole of the same diameter may be listed in `fits`, which is not a collision: round faces are polygons and their corners need not coincide. Each pair has a `depth`, how deep one body reaches into the other; a fit is no deeper than the chord tolerance (`tolerance` in the answer). export_stl saves the printed bodies into one file, or with `perBody` one file per body for printing.',
   'Body properties (command setBodyProperties, section Sections of the document) say what a body is: a name, a colour `#rrggbb`, a material label, and its use: `part` (printed; the default), `reference` (a bought or given part such as a motor: not printed by an export or a print query that gets no list of bodies, but it has a mass) or `auxiliary` (kept-free space, an envelope: neither printed nor weighed, still checked for collisions). Give a printed part its material from the catalog with setBodyMaterial (it copies the density, do not type a density from memory); give a bought part its `mass` in grams from its data sheet, and a weighed part its weighed mass. A copy made by a pattern of a body takes after its source (colour, material, use, and the density and the mass as a pair), so set the source and only what a copy does differently. The mass query reads these properties. get_model shows them per body; an entry whose body is gone stays (listed in `bodyPropertiesWithoutBody`) and is taken over by a body made again under that ID. execute lists in `takenOver` the IDs the command used again while body properties still named them (a feature, or a sketch point or curve under such an ID); remove the properties first when the ID is meant for something else.',
   'The parts list is the query `partsList` (no arguments) and, as a file, the export format `partsCsv`: printed parts (bodies with the use `part`), bought parts (use `reference`, with the mass of their data sheet) and hardware. ' +
     'Hardware is counted from the labels of the hole features, one piece per hole of the model, so `label` should name the piece that goes into the hole. The label the query `hardwareHole` gives is a start: add what the catalog does not know, such as the length of the screw ("M3x10 countersunk screw"). ' +
@@ -97,26 +109,21 @@ const CONVENTIONS = [
     'Body properties come from what the inserted document states (colour, material, use, density and mass) unless setBodyProperties sets them here; a bought part should be `use: "reference"` with the mass of its data sheet in its own document. The warning insertedIssues lists the features of the inserted document in error and its checks that fail. get_document prints a stored document shortened (`stored` prints one whole), save_document with `stored` writes one to a file of its own, and insert_document with `replace` brings a revision back.',
   'Finished bodies are combined by the feature type combine: `{ type: "combine", operation, target, tools, keepTools }` with `operation` `union`, `difference` or `intersection`; the target keeps its ID, its properties and its link, the tools are made with one after another, and `keepTools` (no default) says whether the tool bodies stay or leave the model (a later feature that names a tool that left is a brokenReference). Model a part without a thought for what it must hold, then subtract the bought part (a motor, a board) from it: with `keepTools: true` the part stays a body, and a `clearance` (mm, a difference only; absent or 0 is none) subtracts every tool moved outwards by that much, each face along its own surface, corners sharp. The faces of such a pocket are the faces of the tool with a copy tag `{ pattern: <the combine>, index: <the tool in tools, from 1> }`, exact planes, cylinders and cones, so a sketch stands on the floor of the pocket. A tool that cannot be moved without a change of its shape (a hole no wider than twice the clearance, a slot, two pins or the tips of a C nearer than twice the clearance) is the error invalidClearance naming the faces, and so is a clearance too small to tell from none (under ten precisions of the coordinates, or not more than twice the chord tolerance on a tool with round faces). Verify a pocket with the queries gap (round faces are polygons, so it is short of the clearance by up to the chord tolerance) and measure (between two planes it is exact). A projected edge of a tool that was used up only warns (brokenProjection) and keeps its place. Without a clearance a face of the result keeps its name from the target or the tool. A result the kernel gets wrong (its volume against the volumes of the two and what they share, faces left back to back) is kernelFailure; two parts cut apart and joined again by a union may be refused so or keep a remnant of the cut face. ' +
     'A body is cut into two by the feature type split: `{ type: "split", body, plane, side }`, `plane` a plane reference as for a sketch. The body keeps its ID and the part on the other side than `side`; the part on the side `side` (`forward`: where the normal of the plane points) is a new body with the ID of the split, taking after the body (colour, material, use, density and mass) and in no link until one lists it. Both parts get the cut face `{ feature: <the split>, role: "splitFace" }`, a plane a sketch stands on, where the plane passes through material (a body of pieces on both sides of it is only taken apart). Later features that name the body work on the part that kept the ID, without a word: a cut meant for both parts lists both bodies, so put a split after what both parts should have.',
-  'Faces and edges are named by their origin: a face `{ feature, role: side, curve }` came from a curve of the sketch (for a generated profile `curve` is the side name from the generator catalog, for a gear `teeth`; such a face is not planar), `startCap` is the cap at the start of the extent (in the sketch plane when `start` is zero), `endCap` the opposite cap. A face of a copy made by a pattern has the same name with `copy: [{ pattern, index }]` added (the pattern and the number of the copy; a pattern of a pattern appends another entry); faces of the original have no `copy`. An edge is a pair of face names. The names valid for a body are returned by get_body.',
   'Mirror and pattern in a sketch (D68; section Entries of a sketch, kind `pattern`): constrain the sources, not the copies; a copy is never an operand of a constraint of its sketch, a point of a curve, or what a sketch tool cuts or snaps to. A count follows a parameter (`count: "vents"`); a feature that should follow the count names a region the copies lie in (they are its holes), while a feature that names a region of a copy names that copy, and a copy above the count is a broken reference of that feature (noProfile) until the count comes back. A projection or a copy is no source. The copies of a mirrored outline close with the source only where their ends meet within 1e-6 mm: hold the end of the source on the axis by a constraint (`pointOnCurve` with the axis); get_sketch says which ends stayed open.',
   'Projected geometry (section Entries of a sketch, the reference kinds `edge` and `sketch`): an entry of a reference kind is fixed for the solver and follows its source at every recompute; a curve is the entry itself and its points are `<id>/a`, `<id>/b`, `<id>/center`, `<id>/start`, `<id>/end`; when the source is gone it keeps its last place (brokenProjection; for a projection from a sketch the message says why) and constraints on it keep acting. Constrain own geometry to it with at least one own operand. A projection from a sketch with `regions: true` bounds regions as an own curve does, and the ends of such curves join at their place, with each other and with an own end there (get_sketch says which ends stayed open). Such a curve is never cut by the sketch tools: an outline to be trimmed is drawn as own curves over the projections, which the sketch tool projectSketch with `as: "own"` does in one batch, taking over an entry named in `entities` that projects the curve with the flag already (its flag switched off, and the features that read the regions along it or its side face renamed to the own curve in the same batch, `ids.patched`; a run over the whole sketch skips such an entry) (by hand: an own point coincident with the projected end at each corner, an own line between two of them, an own arc with a centre of its own, a construction line from that centre to the arc\'s start and the projected centre on that line by pointOnCurve; not equalRadius, which has a second solution). What a sketch can project, and where each entity would land, says the query sketchSources: `{ query: "sketchSources", args: { sketch, from } }`; one entity is `addExternal { sketch, id, ref: { type: "sketch", sketch: <earlier sketch>, entity, kind } }`. An imported outline (kind `outline`, the tool import_outline, D72) is placed by its fields `x`, `y`, `turn` and `anchor`; its entities are `<entry>/<local>` (`board/l1`, `board/l1/a`, `board/c1/center`), the query entryCurves lists them, and a revised file keeps the IDs by kind and order.',
-  'Parameters: the document has a table of named parameters (command setParameter, a name and an expression). A numeric field of a feature and the value of a driving dimension accept an expression as a string instead of a number, for example `{ extent: { distance: "thickness * 2" } }` or `value: "module * Zs"`. The section Numeric fields lists those fields; elsewhere a string in place of a number is an error. The engine evaluates the expression, fills the number into the field and stores the expression in `expressions` of the feature under the field address. After a parameter changes the model is recomputed.',
-  'An expression in a feature field must evaluate right away (the parameters it uses must exist), otherwise the command is invalid. A parameter itself may refer to a parameter that does not exist yet; get_parameters returns its state. A number sent to a field with an expression removes the expression; fields updateFeature does not mention keep theirs. The command setField (`{ feature, path, value }`) changes a single field.',
-  'Angles are in radians both as a number and in an expression; degrees are written with the function `deg()`: an angle of 30° is `"deg(30)"`. Angle fields have ranges in radians, so a value entered in degrees by mistake is an invalid command.',
-  'Checks (command setCheck) are expressions with a comparison that are supposed to hold, for example `Zs % 3 == 0`. A check that fails does not stop the model; execute returns it in `failedChecks`.',
-  'A recompute error (a broken reference, conflicting constraints, an expression that can no longer be evaluated) is not a command error: the command is carried out and the problem is in the feature state. After every execute check `problems`, `failedChecks` and `parameterErrors`.',
-  'Diagnosis of a sketch: get_sketch returns the degrees of freedom, the free entities, the redundant constraints and advice on what is missing; explain_constraint says what a constraint follows from.',
 ];
 
-// The types of the document, of the result of the recompute and of commands. The ports (the interfaces
-// of the solver and of the kernel) are not needed by the AI.
+// The types of the document, of the result of a recompute and of the commands. The ports (the
+// interfaces of the solver and of the kernel) are left out: the AI does not need them. A note on
+// what was left out opens the part of the results.
 export function engineTypes(): string {
   const marker = (name: string) => new RegExp(`^// -+ ${name}$`, 'm');
   const [ports, evaluation] = [typesSource.search(marker('ports')), typesSource.search(marker('recompute'))];
   if (ports < 0 || evaluation < ports) return typesSource;
-  const note = '// (The interfaces of the solver and of the geometric kernel are left out. `Solid` is the triangle mesh of a body:\n// positions, triangles, faceIds; it is not passed through the tools, a body is described by get_body.)\n\n';
+  const results = typesSource.indexOf('\n', evaluation) + 1;
+  const note = '\n// (The interfaces of the solver and of the geometric kernel are left out. `Solid` is the triangle\n// mesh of a body: positions, triangles, faceIds; it does not travel through the tools, get_body\n// describes a body.)\n';
   // an import of the source file is not part of the description
-  return (typesSource.slice(0, ports) + note + typesSource.slice(evaluation)).replace(/^import type .*\n/gm, '');
+  return (typesSource.slice(0, ports) + typesSource.slice(evaluation, results) + note + typesSource.slice(results)).replace(/^import type .*\n/gm, '');
 }
 
 export interface ConstraintDescription {
@@ -220,6 +227,7 @@ export function featureCatalog(): FeatureDescription[] {
 
 export function apiDescription(): {
   conventions: string[];
+  modelling: string[];
   features: FeatureDescription[];
   generators: GeneratorDescription[];
   constraints: ConstraintDescription[];
@@ -238,6 +246,7 @@ export function apiDescription(): {
 } {
   return {
     conventions: CONVENTIONS,
+    modelling: MODELLING,
     features: featureCatalog(),
     generators: generatorCatalog(),
     constraints: constraintCatalog(),
@@ -305,13 +314,15 @@ export interface SketchToolDescription {
   summary: string;
   inputs: { name: string; description: string; required: boolean }[];
   ids: { name: string; description: string }[];
+  oneOf: string[][]; // groups of inputs of which exactly one is given
   example: Record<string, unknown>;
 }
 const TOOL_EXAMPLES: Record<SketchToolName, Record<string, unknown>> = {
-  rectangle: { first: { at: [0, 0], snap: { kind: 'point', id: 'origin' } }, opposite: { at: [40, 30] } },
+  rectangle: { first: { at: [0, 0], snap: { kind: 'point', id: 'origin' } }, opposite: { at: [40, 30] }, width: 40, height: 30 },
   polygon: { center: { at: [0, 0], snap: { kind: 'point', id: 'origin' } }, vertex: { at: [3.2, 0] }, sides: 6, sizeKind: 'acrossFlats', size: 5.5 },
-  // the corner `opposite` of the example of the rectangle, drawn into an empty sketch
-  fillet: { corner: 'p1', radius: 5 },
+  // the corners `opposite` and the one after it of the example of the rectangle, drawn into an
+  // empty sketch (its first corner is `origin`, so its new points are p1, p2, p3)
+  fillet: { corners: ['p2', 'p3'], radius: 5 },
   // the three below after the rectangle of its example and a line `x` from (20, 15) to (60, 15)
   // across its right side: the part of `x` outside goes (found by the place alone); `x` grows to
   // the left side; both are cut. `repair: 'on'` cuts the other crossings of the outline too, as an
@@ -329,6 +340,8 @@ export function sketchToolCatalog(): SketchToolDescription[] {
       ? 'anchor `{ at: [x, y], snap? }`'
       : input.kind === 'point'
         ? 'the ID of a point of the sketch (an own point or `origin`)'
+        : input.kind === 'points'
+          ? 'a list of IDs of points of the sketch (own points or `origin`), none twice'
         : input.kind === 'option'
           ? `one of ${input.options.map((option) => `"${option}"`).join(', ')}`
           : input.kind === 'curve'
@@ -344,7 +357,8 @@ export function sketchToolCatalog(): SketchToolDescription[] {
     tool,
     title: SKETCH_TOOLS[tool].title,
     summary: SKETCH_TOOLS[tool].summary,
-    inputs: Object.entries(SKETCH_TOOLS[tool].inputs).map(([name, input]) => ({ name, description: describe(input), required: input.kind === 'anchor' || input.kind === 'point' || input.kind === 'sketch' || input.optional !== true })),
+    inputs: Object.entries(SKETCH_TOOLS[tool].inputs).map(([name, input]) => ({ name, description: describe(input), required: input.kind === 'sketch' || input.optional !== true })),
+    oneOf: (SKETCH_TOOLS[tool].oneOf ?? []).map((group) => [...group]),
     ids: Object.entries(SKETCH_TOOLS[tool].ids).map(([name, description]) => ({ name, description })),
     example: TOOL_EXAMPLES[tool],
   }));
@@ -472,118 +486,316 @@ export function outlineFormats(): { format: string; title: string; summary: stri
   }));
 }
 
-// The same description as continuous text: this is how the AI gets it.
-export function apiText(): string {
-  const { conventions, features, generators, constraints, expressions, numericFields: fields, sketchTools, queries, operations, catalogs, exports, imports, outlines, sections, entries, types } = apiDescription();
-  const queryText = (entry: QueryDescription): string =>
-    [`- ${entry.query} (${entry.title}): ${entry.summary}`, ...(entry.args.length ? ['  args:', ...entry.args.map((arg) => `  - ${arg.name}${arg.required ? '' : ' (optional)'}: ${arg.description}`)] : ['  args: none']), `  returns: ${entry.returns}`].join('\n');
-  const sketchToolText = (entry: SketchToolDescription): string =>
-    [
-      `- ${entry.tool} (${entry.title}): ${entry.summary}`,
-      '  input:',
-      ...entry.inputs.map((input) => `  - ${input.name}${input.required ? '' : ' (optional)'}: ${input.description}`),
-      '  ids in the result:',
-      ...entry.ids.map((id) => `  - ${id.name}: ${id.description}`),
-      `  example of input: ${JSON.stringify(entry.example)}`,
-    ].join('\n');
-  const generator = (entry: GeneratorDescription): string =>
-    [
-      `- ${entry.generator} (${entry.title}): ${entry.summary}`,
-      `  operands: ${entry.operands.map((operand) => `${operand.name}: ${operand.kinds.join(' | ')}`).join(', ')}`,
-      '  params:',
-      ...entry.params.map((param) => `  - ${param.name}${param.required ? ' (required)' : ''}: ${param.description}`),
-      ...(entry.refs.length ? ['  refs:', ...entry.refs.map((ref) => `  - ${ref.name} (${ref.title}): ${ref.summary}`)] : []),
-      `  side faces: ${entry.sides.join(', ')}`,
-      '  facts in the feature result:',
-      ...entry.facts.map((fact) => `  - ${fact.name}: ${fact.description}`),
-      `  example: ${JSON.stringify(entry.example)}`,
-    ].join('\n');
-  const feature = (entry: FeatureDescription): string => {
-    const body = entry.bodies === 'self' ? ' May create a body with its own ID.' : entry.bodies === 'derived' ? ' May create bodies with the IDs `<id>/<number>`.' : '';
-    const update = entry.updatable.length > 0 ? ` updateFeature changes the fields: ${entry.updatable.join(', ')}.` : ' Its content is changed by its own commands, not by updateFeature.';
-    return `- ${entry.type} (${entry.title}): ${entry.summary}${body}${update}`;
-  };
-  const constraint = (entry: ConstraintDescription): string => {
-    const operands = entry.operands.map((operand) => `${operand.field}: ${operand.kinds.join(' | ')}`).join(', ');
-    const value = entry.value ? `; value: ${entry.value.rule}, ${entry.value.unit}` : (entry.values ?? []).map((named) => `; ${named.name}: ${named.rule}, ${named.unit}`).join('');
-    return `- ${entry.type} (${entry.title}) { ${operands}${value} }: ${entry.summary}\n  example: ${JSON.stringify(entry.example)}`;
-  };
-  return [
-    '# Conventions',
-    ...conventions.map((line) => `- ${line}`),
-    '',
-    '# Features',
-    'A feature is the object `feature` of the command addFeature; its exact shape is in the types below.',
-    ...features.map(feature),
-    '',
-    '# Profile generators',
-    'A generator builds the profile of an extrusion from entities of a sketch and parameters: `profile` of the extrusion is `{ type: "generated", generator, sketch, operands, params, refs }`. Numeric parameters are numeric fields at `profile/params/<name>`.',
-    ...generators.map(generator),
-    '',
-    '# Constraints and dimensions',
-    'A constraint is the object `constraint` of the command addConstraint. Operands are IDs of sketch entities of the given kind; dimensions also have `value` and `driving`.',
-    ...constraints.map(constraint),
-    '',
-    '# Expressions',
-    expressions.syntax,
-    'Functions:',
-    ...expressions.functions.map((fn) => `- ${fn.signature}: ${fn.summary}`),
-    'Constants:',
-    ...expressions.constants.map((constant) => `- ${constant.name}: ${constant.summary}`),
-    '',
-    '# Sections of the document',
-    'Parts of the document beside the timeline, keyed by an ID; a change of one recomputes no geometry, but for a stored mesh, which the mesh features that place it read. Each is changed by its own commands (shapes in the types below) and read from `evaluation` of the state and from get_model.',
-    ...sections.map((entry) => [`- ${entry.section} (${entry.title}): ${entry.summary}`, `  commands: ${entry.commands.join(', ')}`, ...(entry.fields.length ? [`  numeric fields: ${entry.fields.join('; ')}`] : [])].join('\n')),
-    '',
-    '# Entries of a sketch',
-    'The entries of `external` of a sketch (commands addExternal, updateExternal with the whole entry in its input form, removeExternal; setField on the sketch for one number). Reference geometry is computed before the sketch is solved and may be constrained to; derived geometry is computed after it and may not. ' + ENTRY_KIND_FIXTURE,
-    ...entries.map((entry) =>
-      [
-        `- ${entry.type} (${entry.title}, ${entry.source === 'reference' ? 'reference geometry' : 'derived geometry'}): ${entry.summary}`,
-        ...(entry.fields.length ? [`  numeric fields of the example: ${entry.fields.join('; ')}`] : []),
-        `  example: ${JSON.stringify(entry.example)}`,
-      ].join('\n'),
-    ),
-    '',
-    '# Numeric fields',
-    'Fields that accept an expression instead of a number. The field address (`path`) is the key in `expressions` of the feature and the argument of the command setField; a field of an entry of a section is given in its command (setBodyProperties) and keeps its expression in `expressions` of the entry under the field name.',
-    ...fields.map((field) => `- ${field.owner}: ${field.path} (${field.description})`),
-    '',
-    '# Sketch tools',
-    'A sketch tool draws a whole shape with its constraints from a few inputs; run it with the tool sketch_tool `{ sketch, tool, input }`. An anchor is a place in the sketch, `{ at: [x, y] }`, optionally snapped: `snap: { kind: "point", id }` uses that point (an own point or `origin` is used as it is, a point of projected geometry gets a new point with a coincident constraint; `at` must still be given, a rough position is enough, and the place of the point is used) and `snap: { kind: "curve", id }` puts the point on that curve nearest to `at`. The result lists the IDs of what was made (`ids`), to be used in the next commands: the lines as regions of an extrusion, a line for a horizontal constraint, the size dimension for setField.',
-    'A tool may also change what is drawn: the fillet re-points two lines (setCurvePoint) and changes the features of the document that read them in the same batch (`updateFeature`); its `ids` say which features it changed and which to look at, and the answer of sketch_tool lists the problems of the model after the batch, so run it with `preview: true` first when the sketch carries other features.',
-    'A profile with crossing curves (a circle drawn across an outline, an imported sketch) is repaired by `split` without a curve (every crossing becomes a common point, constraints kept, the regions of the features followed) and then `trim` of the pieces that should go, each by a place on it (`at`, without `curve`); `extend` moves an end of a line or an arc to the next curve. The query sketchContacts says where the curves meet and what cannot be cut. An AI that computes its own end points does not need the tools.',
-    ...sketchTools.map(sketchToolText),
-    '',
-    '# Queries',
-    'A query reads the model and changes nothing; ask it with the tool query `{ query, args, at?, after? }`. `at` is a feature ID (the state after it); `after` is a command to preview first, so that a change can be asked about without being written. ' +
-      'An answer is the result, or an error with a code: invalidArguments (an argument has the wrong shape or range), notAvailable (something named is not in the state asked about), failed (the computation gave up).',
-    ...queries.map(queryText),
-    '',
-    '# Operations of the app',
-    'What only the running app can do. Each is a tool of its own, named as here, with these arguments; without a connected app it answers notAvailable. Every operation takes `at` and `after` as the tool query does: its other arguments are checked in that state and it works on it, and nothing is written.',
-    ...(operations.length ? operations.map((entry) => [`- ${entry.query} (${entry.title}): ${entry.summary}`, ...(entry.args.length ? ['  arguments:', ...entry.args.map((arg) => `  - ${arg.name}${arg.required ? '' : ' (optional)'}: ${arg.description}`)] : ['  arguments: none']), `  returns: ${entry.returns}`].join('\n')) : ['(none yet)']),
-    '',
-    '# Catalogs',
-    'Tables of data the engine carries; read one with the query `catalog` `{ name, key? }`. A catalog fills in fields: the document stores the numbers, not a reference to a row.',
-    ...(catalogs.length ? catalogs.map((entry) => `- ${entry.catalog} (${entry.title}): ${entry.summary}`) : ['(none yet)']),
-    '',
-    '# Export formats',
-    'The tool export `{ format, path, options?, overwrite?, at?, after? }` writes the model in one of these formats (it needs a disk, so it is a tool of the server). Bodies are exported as modelled. All options are optional unless said otherwise.',
-    ...exports.map((entry) => [`- ${entry.format} (${entry.title}): ${entry.summary}`, ...(entry.options.length ? ['  options:', ...entry.options.map((option) => `  - ${option.name}: ${option.description}`)] : ['  options: none'])].join('\n')),
-    '',
-    '# Import formats',
-    `The tool import_mesh \`{ path, format?, options?, id?, name? }\` reads a file of one of these formats into a stored mesh (it needs a disk, so it is a tool of the server); without \`format\` the extension of the path decides. The file has to hold a closed solid; the import leaves out the walls between solids stacked in the file and turns over shells written inside out, and refuses anything else that is not closed. At most ${MESH_LIMITS.triangles} triangles.`,
-    ...imports.map((entry) => [`- ${entry.format} (${entry.title}, .${entry.extensions.join(', .')}): ${entry.summary}`, ...(entry.options.length ? ['  options:', ...entry.options.map((option) => `  - ${option.name}: ${option.description}`)] : ['  options: none'])].join('\n')),
-    '',
-    '# Outline formats',
-    `The tool import_outline \`{ path, format?, options?, sketch?, id?, replace?, remove?, name?, x?, y?, turn?, anchor?, regions? }\` reads a 2D outline of one of these formats (it needs a disk, so it is a tool of the server); without \`format\` the extension of the path decides. Without \`sketch\` it answers with the report only; with it, the curves become an entry \`outline\` of the sketch (section Entries of a sketch). The weld puts an open end on an end of another curve within \`weld\` mm, so a file written with few digits closes; no end moves further, and ends that meet are left alone. At most ${OUTLINE_LIMITS.curves} curves and ${OUTLINE_LIMITS.control} control points of splines, ${OUTLINE_LIMITS.bytes} bytes.`,
-    ...outlines.map((entry) => [`- ${entry.format} (${entry.title}, .${entry.extensions.join(', .')}): ${entry.summary}`, ...(entry.options.length ? ['  options:', ...entry.options.map((option) => `  - ${option.name}: ${option.description}`)] : ['  options: none'])].join('\n')),
-    '',
-    '# Types (TypeScript, from the engine source)',
-    'A command is a value of the type Command; a document of the type Document.',
-    '```ts',
-    types.trim(),
-    '```',
+
+// ---------------------------------------------------------------- the text for the AI, in sections
+
+// The description is too large for one answer of a tool (D73), so describe_api answers with an index
+// and each section on request. A section is a part of the text as it was before, with its heading;
+// `apiText` joins them all (the whole description, for the tests). The types of types.ts are cut
+// into sections at the markers `// ---- <name>` of the source, so a new marker there makes a new
+// section; `TYPE_SECTIONS` gives the known ones a key and a line for the index.
+export interface ApiSection {
+  key: string; // what describe_api takes in `section`
+  title: string; // the heading; describe_api takes it in `section` as well
+  summary: string; // one line of the index
+  text: string;
+}
+
+const TYPE_SECTIONS: Record<string, { key: string; summary: string }> = {
+  document: { key: 'types-document', summary: 'Document and its sections beside the timeline (stored documents and meshes, the mechanism, body properties), parameters, checks.' },
+  features: { key: 'types-features', summary: 'Feature (the union of the feature types), FeatureBase, PlaneFeature.' },
+  sketch: { key: 'types-sketch', summary: 'SketchFeature: points, curves, constraints and dimensions, the entries of `external` (projections, outlines, mirrors and patterns of a sketch).' },
+  extrusion: { key: 'types-extrusion', summary: 'PlaneRef, ExtrudeFeature with its profiles (regions, wall, generated), PatternFeature, HoleFeature, CombineFeature, SplitFeature.' },
+  revolve: { key: 'types-revolve', summary: 'RevolveFeature, ChamferFeature, FilletFeature, the shapes and extents of a hole, MeshFeature, InsertFeature.' },
+  placement: { key: 'types-placement', summary: 'FrameRef, BodyPlacement, the transforms of a pattern, AxisRef, Extent.' },
+  names: { key: 'types-names', summary: 'FaceName and EdgeName: the stable names of faces and edges.' },
+  recompute: { key: 'types-results', summary: 'What a recompute gives: Evaluation, FeatureResult, SketchResult, bodies, issues and error codes, interference.' },
+  API: { key: 'types-commands', summary: 'Command (every command execute takes), Input<T>, FeaturePatch, CommandResult, EngineState.' },
+  queries: { key: 'types-queries', summary: 'EntityRef and the shapes the queries share.' },
+  engine: { key: 'types-engine', summary: 'The interface Engine.' },
+};
+
+const typeKey = (name: string): string => TYPE_SECTIONS[name]?.key ?? `types-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+
+// The types of types.ts cut at its markers: [marker name, text], the head of the file with the first.
+export function typeChunks(): [string, string][] {
+  const chunks: [string, string][] = [];
+  let name = '';
+  let lines: string[] = [];
+  for (const line of engineTypes().split('\n')) {
+    const marker = /^\/\/ -{10,} (.+)$/.exec(line);
+    if (marker && name !== '') {
+      chunks.push([name, lines.join('\n').trim()]);
+      lines = [];
+    }
+    if (marker) name = marker[1];
+    lines.push(line);
+  }
+  if (name !== '') chunks.push([name, lines.join('\n').trim()]);
+  return chunks;
+}
+
+// The sketch tools that cut curves, described in a section of their own; any other tool draws.
+const CUTTING: readonly string[] = ['trim', 'extend', 'split'] satisfies SketchToolName[];
+
+const queryText = (entry: QueryDescription): string =>
+  [`- ${entry.query} (${entry.title}): ${entry.summary}`, ...(entry.args.length ? ['  args:', ...entry.args.map((arg) => `  - ${arg.name}${arg.required ? '' : ' (optional)'}: ${arg.description}`)] : ['  args: none']), `  returns: ${entry.returns}`].join('\n');
+const sketchToolText = (entry: SketchToolDescription): string =>
+  [
+    `- ${entry.tool} (${entry.title}): ${entry.summary}`,
+    '  input:',
+    ...entry.inputs.map((input) => `  - ${input.name}${input.required ? '' : ' (optional)'}: ${input.description}`),
+    ...entry.oneOf.map((group) => `  exactly one of: ${group.join(', ')}`),
+    '  ids in the result:',
+    ...entry.ids.map((id) => `  - ${id.name}: ${id.description}`),
+    `  example of input: ${JSON.stringify(entry.example)}`,
   ].join('\n');
+const generatorText = (entry: GeneratorDescription): string =>
+  [
+    `- ${entry.generator} (${entry.title}): ${entry.summary}`,
+    `  operands: ${entry.operands.map((operand) => `${operand.name}: ${operand.kinds.join(' | ')}`).join(', ')}`,
+    '  params:',
+    ...entry.params.map((param) => `  - ${param.name}${param.required ? ' (required)' : ''}: ${param.description}`),
+    ...(entry.refs.length ? ['  refs:', ...entry.refs.map((ref) => `  - ${ref.name} (${ref.title}): ${ref.summary}`)] : []),
+    `  side faces: ${entry.sides.join(', ')}`,
+    '  facts in the feature result:',
+    ...entry.facts.map((fact) => `  - ${fact.name}: ${fact.description}`),
+    `  example: ${JSON.stringify(entry.example)}`,
+  ].join('\n');
+const featureText = (entry: FeatureDescription): string => {
+  const body = entry.bodies === 'self' ? ' May create a body with its own ID.' : entry.bodies === 'derived' ? ' May create bodies with the IDs `<id>/<number>`.' : '';
+  const update = entry.updatable.length > 0 ? ` updateFeature changes the fields: ${entry.updatable.join(', ')}.` : ' Its content is changed by its own commands, not by updateFeature.';
+  return `- ${entry.type} (${entry.title}): ${entry.summary}${body}${update}`;
+};
+const constraintText = (entry: ConstraintDescription): string => {
+  const operands = entry.operands.map((operand) => `${operand.field}: ${operand.kinds.join(' | ')}`).join(', ');
+  const value = entry.value ? `; value: ${entry.value.rule}, ${entry.value.unit}` : (entry.values ?? []).map((named) => `; ${named.name}: ${named.rule}, ${named.unit}`).join('');
+  return `- ${entry.type} (${entry.title}) { ${operands}${value} }: ${entry.summary}\n  example: ${JSON.stringify(entry.example)}`;
+};
+const formatText = (entry: { format: string; title: string; summary: string; extensions?: string[]; options: { name: string; description: string }[] }): string =>
+  [`- ${entry.format} (${entry.title}${entry.extensions ? `, .${entry.extensions.join(', .')}` : ''}): ${entry.summary}`, ...(entry.options.length ? ['  options:', ...entry.options.map((option) => `  - ${option.name}: ${option.description}`)] : ['  options: none'])].join('\n');
+const operationText = (entry: QueryDescription): string =>
+  [`- ${entry.query} (${entry.title}): ${entry.summary}`, ...(entry.args.length ? ['  arguments:', ...entry.args.map((arg) => `  - ${arg.name}${arg.required ? '' : ' (optional)'}: ${arg.description}`)] : ['  arguments: none']), `  returns: ${entry.returns}`].join('\n');
+
+// The sections in the order of the whole text.
+export function apiSections(): ApiSection[] {
+  const { conventions, modelling, features, generators, constraints, expressions, numericFields: fields, sketchTools, queries, operations, catalogs, exports, imports, outlines, sections, entries } = apiDescription();
+  const section = (key: string, title: string, summary: string, lines: string[]): ApiSection => ({ key, title, summary, text: [`# ${title}`, ...lines].join('\n') });
+  return [
+    section('conventions', 'Conventions', 'Units, IDs, how a sketch is drawn and solved, constraints, regions and bodies, names of faces and edges, parameters, expressions, checks, errors. Read first.', conventions.map((line) => `- ${line}`)),
+    section(
+      'modelling',
+      'Modelling',
+      'How each kind of feature and part of the document is used: offsets, extents up to a plane, walls, tapers, holes, revolves, chamfers and fillets, generators and gears, body properties, the parts list, the mechanism, robots, patterns, meshes, inserted documents, combine, mirrors and projections in a sketch.',
+      modelling.map((line) => `- ${line}`),
+    ),
+    section('features', 'Features', 'The feature types of the registry: what each is, whether it makes a body, which fields updateFeature changes.', ['A feature is the object `feature` of the command addFeature; its exact shape is in the types (`describe_api { type: "<Type>Feature" }`).', ...features.map(featureText)]),
+    section('generators', 'Profile generators', 'Generated profiles of an extrusion (gears, cycloidal discs, GT2 pulleys): operands, parameters, references, facts, an example.', [
+      'A generator builds the profile of an extrusion from entities of a sketch and parameters: `profile` of the extrusion is `{ type: "generated", generator, sketch, operands, params, refs }`. Numeric parameters are numeric fields at `profile/params/<name>`.',
+      ...generators.map(generatorText),
+    ]),
+    section('constraints', 'Constraints and dimensions', 'Every constraint of a sketch with its operands, the rule of its value and an example.', ['A constraint is the object `constraint` of the command addConstraint. Its operands are IDs of entities of the sketch of the given kind; dimensions also have `value` and `driving`.', ...constraints.map(constraintText)]),
+    section('expressions', 'Expressions', 'The syntax of expressions, their functions and constants.', [expressions.syntax, 'Functions:', ...expressions.functions.map((fn) => `- ${fn.signature}: ${fn.summary}`), 'Constants:', ...expressions.constants.map((constant) => `- ${constant.name}: ${constant.summary}`)]),
+    section('document-sections', 'Sections of the document', 'The parts of the document beside the timeline (body properties, the mechanism, stored meshes and documents): what each holds, its commands, its numeric fields.', [
+      'Parts of the document beside the timeline, keyed by an ID; a change of one recomputes no geometry, but for a stored mesh, which the mesh features that place it read. Each is changed by its own commands (shapes in the types) and read from `evaluation` of the state and from get_model.',
+      ...sections.map((entry) => [`- ${entry.section} (${entry.title}): ${entry.summary}`, `  commands: ${entry.commands.join(', ')}`, ...(entry.fields.length ? [`  numeric fields: ${entry.fields.join('; ')}`] : [])].join('\n')),
+    ]),
+    section('sketch-entries', 'Entries of a sketch', 'The kinds of entries of `external` of a sketch (projected edges and sketches, imported outlines, mirrors and patterns): what each is, its numeric fields, an example.', [
+      'The entries of `external` of a sketch (commands addExternal, updateExternal with the whole entry in its input form, removeExternal; setField on the sketch for one number). Reference geometry is computed before the sketch is solved and may be constrained to; derived geometry is computed after it and may not. ' + ENTRY_KIND_FIXTURE,
+      ...entries.map((entry) =>
+        [
+          `- ${entry.type} (${entry.title}, ${entry.source === 'reference' ? 'reference geometry' : 'derived geometry'}): ${entry.summary}`,
+          ...(entry.fields.length ? [`  numeric fields of the example: ${entry.fields.join('; ')}`] : []),
+          `  example: ${JSON.stringify(entry.example)}`,
+        ].join('\n'),
+      ),
+    ]),
+    section('numeric-fields', 'Numeric fields', 'Every field that takes an expression: its address (for setField and `expressions`), unit, range and default.', [
+      'Fields that accept an expression instead of a number. The field address (`path`) is the key in `expressions` of the feature and the argument of the command setField; a field of an entry of a section is given in its command (setBodyProperties) and keeps its expression in `expressions` of the entry under the field name.',
+      ...fields.map((field) => `- ${field.owner}: ${field.path} (${field.description})`),
+    ]),
+    section('sketch-tools', 'Sketch tools', 'The tools of sketch_tool that draw (rectangle, polygon, fillet, projectSketch): inputs, the IDs they return, an example. One tool: `describe_api { tool: "<name>" }`.', [
+      'A sketch tool draws a whole shape with its constraints from a few inputs; run it with the tool sketch_tool `{ sketch, tool, input }`. An anchor is a place in the sketch, `{ at: [x, y] }`, optionally snapped: `snap: { kind: "point", id }` uses that point (an own point or `origin` is used as it is, a point of projected geometry gets a new point with a coincident constraint; `at` must still be given, a rough position is enough, and the place of the point is used) and `snap: { kind: "curve", id }` puts the point on that curve nearest to `at`. The result lists the IDs of what was made (`ids`), to be used in the next commands: the lines as regions of an extrusion, a line for a horizontal constraint, the size dimension for setField. The tools that cut curves (trim, extend, split) are in the section sketch-cuts.',
+      'A tool may also change what is drawn: the fillet re-points two lines (setCurvePoint) and changes the features of the document that read them in the same batch (`updateFeature`); its `ids` say which features it changed and which to look at, and the answer of sketch_tool lists the problems of the model after the batch, so run it with `preview: true` first when the sketch carries other features.',
+      ...sketchTools.filter((entry) => !CUTTING.includes(entry.tool)).map(sketchToolText),
+    ]),
+    section('sketch-cuts', 'Sketch tools that cut', 'The tools of sketch_tool that cut the curves of a sketch (trim, extend, split): inputs, the IDs they return, an example.', [
+      'These tools of sketch_tool cut the curves of a sketch; anchors and `ids` are as in the section sketch-tools.',
+      'A profile with crossing curves (a circle drawn across an outline, an imported sketch) is repaired by `split` without a curve (every crossing becomes a common point, constraints kept, the regions of the features followed) and then `trim` of the pieces that should go, each by a place on it (`at`, without `curve`); `extend` moves an end of a line or an arc to the next curve. The query sketchContacts says where the curves meet and what cannot be cut. An AI that computes its own end points does not need the tools.',
+      ...sketchTools.filter((entry) => CUTTING.includes(entry.tool)).map(sketchToolText),
+    ]),
+    section('queries', 'Queries', 'Every query of the tool query: its arguments and what it returns. One query: `describe_api { query: "<name>" }`.', [
+      'A query reads the model and changes nothing; ask it with the tool query `{ query, args, at?, after? }`. `at` is a feature ID (the state after it); `after` is a command to preview first, so that a change can be asked about without being written. ' +
+        'An answer is the result, or an error with a code: invalidArguments (an argument has the wrong shape or range), notAvailable (something named is not in the state asked about), failed (the computation gave up).',
+      ...queries.map(queryText),
+    ]),
+    section('operations', 'Operations of the app', 'What only the running app can do (a picture of the model), each a tool of its own.', [
+      'What only the running app can do. Each is a tool of its own, named as here, with these arguments; without a connected app it answers notAvailable. Every operation takes `at` and `after` as the tool query does: its other arguments are checked in that state and it works on it, and nothing is written.',
+      ...(operations.length ? operations.map(operationText) : ['(none yet)']),
+    ]),
+    section('catalogs', 'Catalogs', 'The tables of data of the engine (hardware, materials), read by the query catalog.', [
+      'Tables of data the engine carries; read one with the query `catalog` `{ name, key? }`. A catalog fills in fields: the document stores the numbers, not a reference to a row.',
+      ...(catalogs.length ? catalogs.map((entry) => `- ${entry.catalog} (${entry.title}): ${entry.summary}`) : ['(none yet)']),
+    ]),
+    section('export-formats', 'Export formats', 'The formats of the tool export with their options.', [
+      'The tool export `{ format, path, options?, overwrite?, at?, after? }` writes the model in one of these formats (it needs a disk, so it is a tool of the server). Bodies are exported as modelled. All options are optional unless said otherwise.',
+      ...exports.map(formatText),
+    ]),
+    section('import-formats', 'Import formats', 'The mesh formats of the tool import_mesh with their options.', [
+      `The tool import_mesh \`{ path, format?, options?, id?, name? }\` reads a file of one of these formats into a stored mesh (it needs a disk, so it is a tool of the server); without \`format\` the extension of the path decides. The file has to hold a closed solid; the import leaves out the walls between solids stacked in the file and turns over shells written inside out, and refuses anything else that is not closed. At most ${MESH_LIMITS.triangles} triangles.`,
+      ...imports.map(formatText),
+    ]),
+    section('outline-formats', 'Outline formats', 'The 2D formats of the tool import_outline with their options.', [
+      `The tool import_outline \`{ path, format?, options?, sketch?, id?, replace?, remove?, name?, x?, y?, turn?, anchor?, regions? }\` reads a 2D outline of one of these formats (it needs a disk, so it is a tool of the server); without \`format\` the extension of the path decides. Without \`sketch\` it answers with the report only; with it, the curves become an entry \`outline\` of the sketch (section Entries of a sketch). The weld puts an open end on an end of another curve within \`weld\` mm, so a file written with few digits closes; no end moves further, and ends that meet are left alone. At most ${OUTLINE_LIMITS.curves} curves and ${OUTLINE_LIMITS.control} control points of splines, ${OUTLINE_LIMITS.bytes} bytes.`,
+      ...outlines.map(formatText),
+    ]),
+    ...typeChunks().map(([name, text]) => {
+      const key = typeKey(name);
+      return section(key, `Types: ${key.slice('types-'.length)}`, TYPE_SECTIONS[name]?.summary ?? `The types of types.ts under "${name}".`, [
+        'TypeScript from the source of the engine. A command is a value of the type Command (section types-commands), a document of the type Document (section types-document). One declaration: `describe_api { type: "<Name>" }`; one command: `describe_api { command: "<type>" }`.',
+        '```ts',
+        text,
+        '```',
+      ]);
+    }),
+  ];
+}
+
+// The whole description: every section, in order.
+export function apiText(): string {
+  return apiSections()
+    .map((entry) => entry.text)
+    .join('\n\n');
+}
+
+// What the index says before the list of sections: the few conventions every call needs.
+const ESSENTIALS = [
+  'Lengths are millimetres, angles radians (in an expression `deg(30)`); coordinates of a sketch are in its plane, its origin is the point `origin`.',
+  'The document is a timeline of features; geometry is derived by replaying it. execute writes a command (one undo step; `batch` for several), preview only computes it; an invalid command changes nothing and says why.',
+  'IDs are chosen by the caller: unique in the whole document, no `/`, not `origin`. sketch_tool generates its own.',
+  'A sketch is drawn roughly and set by constraints and dimensions; get_sketch says what is free. A face is named by the feature and the curve or role that made it, an edge by its two faces.',
+  'A numeric field of a feature takes a number or an expression over the parameters (setParameter).',
+  'After every execute read `problems`, `failedChecks` and `parameterErrors`: a recompute error is not a command error.',
+];
+
+// The answer of describe_api without arguments.
+export function apiIndex(): string {
+  const sections = apiSections();
+  return [
+    '# The API of trymesh: index',
+    'This is the index of the description; every part is generated from the sources of the engine, so it is valid for this build. Ask for a section by its key: `describe_api { section: "conventions" }`. Read `conventions` before the first execute; `types-commands` holds the type Command.',
+    'Lookups: `{ command: "addFeature" }` (one command with its comment and the types it names), `{ type: "ExtrudeFeature" }` (one declaration of the types), `{ query: "mass" }`, `{ tool: "rectangle" }` (a sketch tool), `{ section: "queries" }`.',
+    '',
+    '## Essentials',
+    ...ESSENTIALS.map((line) => `- ${line}`),
+    '',
+    '## Sections (key, characters: what it holds)',
+    ...sections.map((entry) => `- ${entry.key} (${entry.text.length}): ${entry.summary}`),
+  ].join('\n');
+}
+
+// The declarations of types.ts by name (an exported type or interface with the comment above it,
+// up to the next declaration or marker), in the text describe_api shows.
+function declarations(): Map<string, { text: string; section: string }> {
+  const found = new Map<string, { text: string; section: string }>();
+  for (const [name, chunk] of typeChunks()) {
+    const section = typeKey(name);
+    const lines = chunk.split('\n');
+    const starts = lines.flatMap((line, i) => (/^export (type|interface) /.test(line) ? [i] : []));
+    for (const [n, start] of starts.entries()) {
+      let first = start;
+      while (first > 0 && lines[first - 1].startsWith('//') && !/^\/\/ -{10,}/.test(lines[first - 1])) first--;
+      let end = n + 1 < starts.length ? starts[n + 1] : lines.length;
+      // the comment of the next declaration is not part of this one
+      while (end > start + 1 && (lines[end - 1].startsWith('//') || lines[end - 1].trim() === '')) end--;
+      const name = /^export (?:type|interface) (\w+)/.exec(lines[start])?.[1] as string;
+      found.set(name, { text: lines.slice(first, end).join('\n'), section });
+    }
+  }
+  return found;
+}
+
+// The names of declared types the code of a text mentions, but `exclude`. Of its comments only
+// what is in backticks counts (`Mechanism` in "see `Mechanism`" is named on purpose); the rest
+// of a comment names types in passing ("Command input" about the input form).
+const typesNamed = (text: string, known: Map<string, unknown>, exclude: string): string[] => {
+  const comments = text.match(/\/\/.*$/gm) ?? [];
+  const quoted = comments.flatMap((comment) => comment.match(/`[^`]*`/g) ?? []);
+  const code = text.replace(/\/\/.*$/gm, '');
+  return [...new Set([code, ...quoted].flatMap((part) => part.match(/\b[A-Z]\w+\b/g) ?? []))].filter((name) => name !== exclude && known.has(name));
+};
+
+// The lines of the union Command in the types.
+function commandLines(): string[] {
+  const lines = engineTypes().split('\n');
+  const start = lines.findIndex((line) => line.startsWith('export type Command ='));
+  const end = lines.findIndex((line, i) => i > start && line.includes("{ type: 'batch';"));
+  return start < 0 || end < 0 ? [] : lines.slice(start + 1, end + 1);
+}
+
+// One command of the union Command: its line with the comment that leads it. A comment right above
+// the line is its own. Above other commands of its group, a comment leads it only when it is the
+// header of the group (one line: `// sketch`) or names the command: the comment of setCurvePoint
+// is not about addConstraint below it (D73, review).
+function commandText(type: string): string | undefined {
+  const lines = commandLines();
+  const command = (line: string): boolean => /^\s*\|/.test(line);
+  const comment = (line: string): boolean => /^\s*\/\//.test(line);
+  const at = lines.findIndex((line) => command(line) && line.includes(`{ type: '${type}';`));
+  if (at < 0) return undefined;
+  let first = at;
+  while (first > 0 && command(lines[first - 1])) first--;
+  let top = first;
+  while (top > 0 && comment(lines[top - 1])) top--;
+  const block = lines.slice(top, first);
+  const leads = first === at || block.length === 1 || block.some((line) => new RegExp(`\\b${type}\\b`).test(line));
+  return leads ? lines.slice(top, at + 1).join('\n') : lines[at];
+}
+
+export function commandTypes(): string[] {
+  return commandLines().flatMap((line) => {
+    const found = /^\s*\| \{ type: '(\w+)';/.exec(line);
+    return found ? [found[1]] : [];
+  });
+}
+
+// The answer of describe_api with an argument: a section, a command, a declaration, a query or a
+// sketch tool. Returns the text, or the problem with what exists.
+export function apiLookup(args: { section?: string; command?: string; type?: string; query?: string; tool?: string }): { ok: true; text: string } | { ok: false; error: string } {
+  const given = Object.entries(args).filter(([, value]) => value !== undefined && value !== null);
+  if (given.length > 1) return { ok: false, error: `give one of section, command, type, query, tool; given: ${given.map(([name]) => name).join(', ')}` };
+  if (given.length === 0) return { ok: true, text: apiIndex() };
+  const [kind, value] = given[0] as [string, string];
+  switch (kind) {
+    case 'section': {
+      const sections = apiSections();
+      const wanted = value.trim().toLowerCase();
+      const found = sections.find((entry) => entry.key === wanted || entry.title.toLowerCase() === wanted);
+      return found ? { ok: true, text: found.text } : { ok: false, error: `there is no section "${value}"; the sections are: ${sections.map((entry) => entry.key).join(', ')}` };
+    }
+    case 'command': {
+      const text = commandText(value);
+      if (text === undefined) return { ok: false, error: `there is no command "${value}"; the commands are: ${commandTypes().join(', ')}` };
+      const known = declarations();
+      const named = typesNamed(text, known, '');
+      return { ok: true, text: [`# The command ${value}`, 'A member of the union Command (section types-commands); `Input<T>` is the input form, in which a numeric field takes an expression as a string.', '```ts', text, '```', ...(named.length ? [`Types it names (describe_api { type }): ${named.join(', ')}`] : [])].join('\n') };
+    }
+    case 'type': {
+      const known = declarations();
+      const found = known.get(value);
+      if (!found) return { ok: false, error: `there is no declared type "${value}"; the types are: ${[...known.keys()].join(', ')}` };
+      const named = typesNamed(found.text, known, value);
+      return { ok: true, text: [`# The type ${value} (section ${found.section})`, '```ts', found.text, '```', ...(named.length ? [`Types it names: ${named.join(', ')}`] : [])].join('\n') };
+    }
+    case 'query': {
+      const found = queryCatalog().find((entry) => entry.query === value);
+      return found ? { ok: true, text: queryText(found) } : { ok: false, error: `there is no query "${value}"; the queries are: ${Object.keys(QUERIES).join(', ')}` };
+    }
+    case 'tool': {
+      const found = sketchToolCatalog().find((entry) => entry.tool === value);
+      return found ? { ok: true, text: sketchToolText(found) } : { ok: false, error: `there is no sketch tool "${value}"; the tools are: ${Object.keys(SKETCH_TOOLS).join(', ')}` };
+    }
+    default:
+      return { ok: false, error: `unknown lookup "${kind}"` };
+  }
 }

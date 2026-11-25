@@ -172,7 +172,7 @@ describe('a circular pattern of features', () => {
     nearPoint(middle(state, 'A', copy(hole, ['P', 1])), [-12, 0, 2.5]);
     // a sketch in the YZ plane: its normal is X. The point (3, 0) of the sketch is (0, 3, 0) in the
     // model, so half a turn moves the hole from (12, 0) to (12, 6).
-    run(engine, { type: 'addFeature', feature: { ...extrude('x', 'S3', [], 1), id: 'S4', name: 'S4', type: 'sketch', plane: { kind: 'base', plane: 'YZ' }, points: {}, radii: {}, curves: {}, constraints: {}, external: {}, solved: { inputs: '', external: {} } } as never, index: 4 });
+    run(engine, { type: 'addFeature', feature: { id: 'S4', type: 'sketch', plane: { kind: 'base', plane: 'YZ' } }, index: 4 });
     run(engine, { type: 'addPoint', sketch: 'S4', id: 'w', x: 3, y: 0 });
     state = run(engine, { type: 'updateFeature', id: 'P', patch: { transform: { axis: { kind: 'sketchPoint', sketch: 'S4', point: 'w' } } } });
     expectAllOk(state);
@@ -302,7 +302,7 @@ describe('a circular pattern of features', () => {
 
     // A small pin above the block where the second copy lands: the copy would remove it whole. The
     // pattern is atomic, so the block keeps even the hole that copy would have made.
-    run(engine, { type: 'addFeature', feature: { ...extrude('x', 'S1', [], 1), id: 'S3', name: 'S3', type: 'sketch', plane: XY, points: {}, radii: {}, curves: {}, constraints: {}, external: {}, solved: { inputs: '', external: {} } } as never, index: 2 });
+    run(engine, { type: 'addFeature', feature: { id: 'S3', type: 'sketch', plane: XY }, index: 2 });
     run(engine, circle('S3', 'c', 15, 0, 1.5), { type: 'addFeature', feature: { ...extrude('C', 'S3', [['c']], 5), extent: { type: 'distance', start: 10, distance: 5 } }, index: 3 });
     state = run(engine, { type: 'updateFeature', id: 'H', patch: { targets: ['A', 'C'] } });
     expect(status(state)).toMatchObject({ H: 'warning:noEffect', P: 'error:emptyResult' });
@@ -503,7 +503,7 @@ describe('a circular pattern of a body', () => {
     expect(quarter({ kind: 'base', axis: 'Y' })).toEqual([0, -2, -14, 6, 2, -10]);
     // A sketch in the XZ plane has the normal -Y, so its point turns the other way than the base
     // axis Y: counter-clockwise in the coordinates of the sketch (its x is X, its y is Z).
-    const sketchOn = (plane: 'XY' | 'XZ' | 'YZ'): Command[] => [{ type: 'addFeature', feature: { ...extrude('x', 'S1', [], 1), id: 'S2', name: 'S2', type: 'sketch', plane: { kind: 'base', plane }, points: {}, radii: {}, curves: {}, constraints: {}, external: {}, solved: { inputs: '', external: {} } } as never }];
+    const sketchOn = (plane: 'XY' | 'XZ' | 'YZ'): Command[] => [{ type: 'addFeature', feature: { id: 'S2', type: 'sketch', plane: { kind: 'base', plane } } }];
     const origin: Transform['axis'] = { kind: 'sketchPoint', sketch: 'S2', point: 'origin' };
     expect(quarter(origin, sketchOn('XZ'))).toEqual([-6, -2, 10, 0, 2, 14]);
     expect(quarter(origin, sketchOn('XY'))).toEqual(quarter({ kind: 'base', axis: 'Z' }));

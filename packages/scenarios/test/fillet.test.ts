@@ -390,3 +390,117 @@ describe('the fillet tool: a fillet under later changes', () => {
     expect(bad.state.evaluation.features.E.status).toBe('ok');
   });
 });
+
+// D73: several corners in one call, one radius, one batch (one undo step); each corner is filleted
+// in the state the corners before it left.
+describe('the fillet tool: several corners in one call (D73)', () => {
+  const corners = (state: EngineState, sketch: Id, list: Id[], radius: number | string, prefix = 'f_'): SketchToolResult => {
+    const context = { sketch: sketchOf(state, sketch), result: state.evaluation.features[sketch].sketch, parameters: state.evaluation.parameters, document: state.document, features: state.evaluation.features };
+    return sketchTool('fillet', context, { corners: list, radius }, freshIds(state.document, prefix));
+  };
+
+  it('the four corners of the plate an extrusion reads: the same model as four calls, the lists per corner, one undo', () => {
+    const one = plate();
+    for (const [i, corner] of ['o1', 'o2', 'o3', 'o4'].entries()) fillet(one, 's', corner, 6, `f${i}_`);
+    const engine = plate();
+    const before = engine.getState();
+    const made = corners(before, 's', ['o1', 'o2', 'o3', 'o4'], 6) as Made;
+    expect(made.ok).toBe(true);
+    // four arcs, two lines and two ends per corner, the extrusion patched once
+    expect(made.ids.corners).toEqual(['o1', 'o2', 'o3', 'o4']);
+    expect(made.ids.arc).toHaveLength(4);
+    expect(made.ids.center).toHaveLength(4);
+    expect(made.ids.radius).toHaveLength(4);
+    expect(made.ids.lines).toEqual(['oa', 'od', 'oa', 'ob', 'ob', 'oc', 'oc', 'od']);
+    expect(made.ids.ends).toHaveLength(8);
+    expect(made.ids.constraints).toHaveLength(16);
+    expect(made.ids).toMatchObject({ patched: ['E'], moved: [], shortened: [], entries: [] });
+    // the region of E names every arc: the later corners saw the patch of the earlier ones
+    const update = made.commands.filter((command) => command.type === 'updateFeature');
+    expect(update).toHaveLength(4);
+    run(engine, batch(...made.commands));
+    const state = engine.getState();
+    expectAllOk(state);
+    expect((state.document.features.find((f) => f.id === 'E') as ExtrudeFeature).profile).toMatchObject({ regions: [{ outerLoop: ['oa', 'ob', 'oc', 'od', ...made.ids.arc].sort() }] });
+    expect(volume(state.evaluation.bodies.E.solid)).toBeCloseTo(volume(one.getState().evaluation.bodies.E.solid), 6);
+    expect(state.evaluation.features.s.sketch!.degreesOfFreedom).toBe(0);
+    expect(engine.diagnoseSketch('s').redundant).toEqual([]);
+    // each arc stands where its corner is rounded
+    for (const [i, corner] of made.ids.corners.entries()) {
+      const [cx, cy] = at(state, 's', made.ids.center[i]);
+      const [px, py] = at(state, 's', corner);
+      expect(Math.abs(Math.abs(cx - px) - 6) + Math.abs(Math.abs(cy - py) - 6)).toBeLessThan(1e-9);
+    }
+    engine.undo();
+    expect(engine.getState().document).toBe(before.document);
+  });
+
+  it('corners that patch, move and shorten different features: each feature once, in the order of the timeline', () => {
+    // the plate with a sketch and a plane on the side face of `ob` (it starts at o2), a sketch on
+    // that of `oc` (it starts at o3) between them, and a projected edge of `ob` both corners shorten
+    const engine = plate();
+    const top: FaceName = { feature: 'E', role: 'endCap' };
+    run(
+      engine,
+      addSketch('onOb', onFace('E', side('E', 'ob'))),
+      addSketch('onOc', onFace('E', side('E', 'oc'))),
+      { type: 'addFeature', feature: { id: 'P', type: 'plane', base: onFace('E', side('E', 'ob')), offset: 1 } },
+      addSketch('t', onFace('E', top)),
+      { type: 'addExternal', sketch: 't', id: 'edge', ref: { type: 'edge', body: 'E', edge: { a: top, b: side('E', 'ob') }, kind: 'line' } },
+    );
+    expect(tool(engine.getState(), 's', 'o2', 4)).toMatchObject({ ok: true, ids: { patched: ['E'], moved: ['onOb', 'P'], shortened: ['t'] } });
+    expect(tool(engine.getState(), 's', 'o3', 4)).toMatchObject({ ok: true, ids: { patched: ['E'], moved: ['onOc'], shortened: ['t'] } });
+    // corner by corner the lists would be onOb, P, onOc; the timeline has onOc before P
+    const made = corners(engine.getState(), 's', ['o2', 'o3'], 4) as Made;
+    expect(made.ids).toMatchObject({ patched: ['E'], moved: ['onOb', 'onOc', 'P'], shortened: ['t'], entries: [] });
+    run(engine, batch(...made.commands));
+    expectAllOk(engine.getState());
+  });
+
+  it('a line two corners share: each corner sees the line the one before it shortened', () => {
+    const engine = plate();
+    // the right side `ob` is 50 long: 26 fits at one end of it, not at both
+    expect(corners(engine.getState(), 's', ['o3'], 26).ok).toBe(true);
+    const refused = corners(engine.getState(), 's', ['o2', 'o3'], 26);
+    expect(refused.ok).toBe(false);
+    if (!refused.ok) expect(refused.message).toMatch(/^corner "o3": the radius 26 does not fit: the lines are 24 and 80 long/);
+    expect(corners(engine.getState(), 's', ['o2', 'o3'], 24).ok).toBe(true);
+  });
+
+  it('refused: one corner refuses the whole call, named; a corner twice; corner and corners together; nothing is drawn', () => {
+    const engine = plate();
+    const message = (list: Id[], radius: number | string = 4): string => {
+      const made = corners(engine.getState(), 's', list, radius);
+      if (made.ok) throw new Error('should have been refused');
+      return made.message;
+    };
+    run(engine, { type: 'addPoint', sketch: 's', id: 'loose', x: 20, y: 20 });
+    expect(message(['o1', 'loose'])).toBe('corner "loose": "loose" is not the common end of exactly two lines: no curve ends there');
+    expect(message(['o1', 'nope'])).toBe('corners[1]: the sketch has no point "nope"');
+    expect(message(['o1', 'o2', 'o1'])).toBe('corners[2]: "o1" is in the list twice');
+    expect(message([])).toBe('corners: a non-empty list of IDs of points of the sketch is expected');
+    const state = engine.getState();
+    const context = { sketch: sketchOf(state, 's'), result: state.evaluation.features.s.sketch, parameters: state.evaluation.parameters, document: state.document, features: state.evaluation.features };
+    expect(sketchTool('fillet', context, { corner: 'o1', corners: ['o2'], radius: 4 }, freshIds(state.document))).toEqual({ ok: false, message: 'Fillet takes exactly one of corner, corners; given: corner, corners' });
+    expect(sketchTool('fillet', context, { radius: 4 }, freshIds(state.document))).toEqual({ ok: false, message: 'Fillet takes exactly one of corner, corners' });
+  });
+
+  it('corners of lines a mirror copies: the arcs join the entry once, and the copies are filleted too', () => {
+    const engine = newEngine();
+    const S = 's';
+    // an open chain a-c-d-e right of the Y axis, every point fixed, mirrored about the Y axis
+    run(engine, addSketch(S, XY), point(S, 'a', 2, 0), point(S, 'c', 10, 0), point(S, 'd', 10, 8), point(S, 'e', 4, 12), line(S, 'A', 'a', 'c'), line(S, 'B', 'c', 'd'), line(S, 'C', 'd', 'e'));
+    run(engine, ...['a', 'c', 'd', 'e'].map((p): Command => ({ type: 'addConstraint', sketch: S, id: `fx_${p}`, constraint: { type: 'fixed', point: p } }) as Command));
+    run(engine, { type: 'addExternal', sketch: S, id: 'm', ref: { type: 'pattern', sources: ['A', 'B', 'C'], transform: { type: 'mirror', axis: 'origin/y' } } } as Command);
+    const made = corners(engine.getState(), S, ['c', 'd'], 1) as Made;
+    expect(made.ok).toBe(true);
+    expect(made.ids.entries).toEqual(['m']);
+    run(engine, batch(...made.commands));
+    const state = engine.getState();
+    expect(state.evaluation.features[S].status).toBe('ok');
+    const sources = (sketchOf(state, S).external.m as { sources: Id[] }).sources;
+    for (const arc of made.ids.arc) expect(sources).toContain(arc);
+    // the copies of both arcs are curves of the result
+    for (const arc of made.ids.arc) expect(state.evaluation.features[S].sketch!.curves[`m/1/${arc}`]).toBeDefined();
+  });
+});

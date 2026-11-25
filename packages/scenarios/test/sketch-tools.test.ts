@@ -11,7 +11,7 @@ const free = (x: number, y: number): Anchor => ({ at: [x, y] });
 const onPoint = (id: Id): Anchor => ({ at: [1e3, 1e3], snap: { kind: 'point', id } }); // the position comes from the point
 // Runs a tool in the sketch `S` with IDs the document does not have and executes its batch.
 function draw<K extends SketchToolName>(engine: Engine, tool: K, input: SketchToolInputs[K], sketch: Id = 'S'): Made {
-  const made = sketchTool(tool, { sketch: sketchOf(engine, sketch), result: solved(engine, sketch), document: engine.getState().document, features: engine.getState().evaluation.features }, input, freshIds(engine.getState().document));
+  const made = sketchTool(tool, { sketch: sketchOf(engine, sketch), result: solved(engine, sketch), parameters: engine.getState().evaluation.parameters, document: engine.getState().document, features: engine.getState().evaluation.features }, input, freshIds(engine.getState().document));
   if (!made.ok) throw new Error(made.message);
   run(engine, batch(...made.commands));
   return made;
@@ -48,13 +48,22 @@ describe('the catalog of sketch tools', () => {
     expect(SKETCH_TOOLS.trim.inputs).toEqual({ at: { kind: 'place' }, curve: { kind: 'curve', optional: true }, with: { kind: 'curve', reference: true, optional: true }, repair });
     expect(SKETCH_TOOLS.extend.inputs).toEqual({ curve: { kind: 'curve' }, end: { kind: 'option', options: ['a', 'b', 'start', 'end'] }, with: { kind: 'curve', reference: true, optional: true }, repair });
     expect(SKETCH_TOOLS.split.inputs).toEqual({ curve: { kind: 'curve', optional: true }, with: { kind: 'curve', reference: true, optional: true }, at: { kind: 'place', optional: true } });
-    expect(SKETCH_TOOLS.fillet.inputs).toMatchObject({ corner: { kind: 'point' }, radius: { kind: 'number', spec: { unit: 'mm', min: { value: 0, open: true } }, expression: true } });
-    expect(Object.keys(SKETCH_TOOLS.fillet.ids)).toEqual(['arc', 'center', 'lines', 'ends', 'constraints', 'radius', 'patched', 'moved', 'shortened', 'entries']);
-    expect(Object.keys(SKETCH_TOOLS.rectangle.inputs)).toEqual(['first', 'opposite']);
-    expect(Object.keys(SKETCH_TOOLS.rectangle.ids)).toEqual(['points', 'lines', 'constraints']);
+    expect(SKETCH_TOOLS.fillet.inputs).toMatchObject({ corner: { kind: 'point', optional: true }, corners: { kind: 'points', optional: true }, radius: { kind: 'number', spec: { unit: 'mm', min: { value: 0, open: true } }, expression: true } });
+    expect(SKETCH_TOOLS.fillet.oneOf).toEqual([['corner', 'corners']]);
+    expect(Object.keys(SKETCH_TOOLS.fillet.ids)).toEqual(['corners', 'arc', 'center', 'lines', 'ends', 'constraints', 'radius', 'patched', 'moved', 'shortened', 'entries']);
+    expect(Object.keys(SKETCH_TOOLS.rectangle.inputs)).toEqual(['first', 'center', 'opposite', 'width', 'height']);
+    expect(SKETCH_TOOLS.rectangle.oneOf).toEqual([['first', 'center']]);
+    expect(Object.keys(SKETCH_TOOLS.rectangle.ids)).toEqual(['points', 'lines', 'constraints', 'center', 'diagonal', 'width', 'height']);
     expect(SKETCH_TOOLS.polygon.inputs).toMatchObject({ center: { kind: 'anchor' }, vertex: { kind: 'anchor' }, sides: { kind: 'number', spec: { integer: true, min: { value: 3 }, max: { value: MAX_POLYGON_SIDES } } }, sizeKind: { kind: 'option', options: ['circumscribed', 'acrossFlats'], optional: true }, size: { kind: 'number', optional: true, expression: true } });
     expect(Object.keys(SKETCH_TOOLS.polygon.ids)).toEqual(['center', 'circle', 'points', 'lines', 'constraints', 'size']);
     for (const spec of Object.values(SKETCH_TOOLS)) expect(spec.title.length * spec.summary.length).toBeGreaterThan(0);
+    // a group of `oneOf` names optional inputs only (D73, review): a required one would always be given
+    for (const [tool, spec] of Object.entries(SKETCH_TOOLS)) {
+      for (const group of spec.oneOf ?? []) {
+        expect(group.length, `${tool}: ${group.join(', ')}`).toBeGreaterThan(1);
+        for (const name of group) expect(spec.inputs[name], `${tool}.${name}`).toMatchObject({ optional: true });
+      }
+    }
   });
 });
 
@@ -101,7 +110,12 @@ describe('the rectangle tool', () => {
     const engine = sketched();
     expect(refused(engine, 'rectangle', { first: free(1, 1), opposite: free(1, 9) })).toMatch(/must differ in both coordinates/);
     expect(refused(engine, 'rectangle', { first: onPoint('origin'), opposite: onPoint('origin') })).toMatch(/must differ/);
-    expect(refused(engine, 'rectangle', { first: free(1, 1) })).toMatch(/input "opposite" is missing/);
+    expect(refused(engine, 'rectangle', { first: free(1, 1) })).toBe('`opposite` is needed unless `width` and `height` are both given');
+    expect(refused(engine, 'rectangle', { first: free(1, 1), width: 4 })).toMatch(/^`opposite` is needed/);
+    expect(refused(engine, 'rectangle', { opposite: free(1, 1) })).toBe('Rectangle takes exactly one of first, center');
+    expect(refused(engine, 'rectangle', { first: free(0, 0), center: free(1, 1), opposite: free(5, 5) })).toBe('Rectangle takes exactly one of first, center; given: first, center');
+    expect(refused(engine, 'rectangle', { center: free(1, 1), opposite: free(1, 5) })).toMatch(/the centre and the corner must differ in both coordinates/);
+    expect(refused(engine, 'rectangle', { first: free(1, 1), width: 0, height: 2 })).toMatch(/^width: /);
     expect(refused(engine, 'rectangle', { first: free(1, 1), opposite: free(5, 5), sides: 4 })).toMatch(/Rectangle has no input "sides"/);
     expect(refused(engine, 'rectangle', { first: { at: [1] }, opposite: free(5, 5) })).toMatch(/first: `at` must be two finite numbers/);
     expect(refused(engine, 'rectangle', { first: { at: [1, NaN] }, opposite: free(5, 5) })).toMatch(/first: `at`/);
@@ -111,6 +125,55 @@ describe('the rectangle tool', () => {
     expect(refused(engine, 'rectangle', null)).toMatch(/must be an object/);
     expect(refused(engine, 'star' as never, {})).toMatch(/unknown sketch tool "star"; the tools are rectangle, polygon/);
     expect(Object.keys(sketchOf(engine, 'S').points)).toEqual([]);
+  });
+});
+
+// D73: the sizes, the centre and the order of the IDs
+describe('the rectangle tool: width, height and centre (D73)', () => {
+  it('new points are numbered in the order of the result', () => {
+    const engine = sketched();
+    const made = draw(engine, 'rectangle', { first: free(1, 2), opposite: free(31, 22) });
+    expect(made.ids).toEqual({ points: ['p1', 'p2', 'p3', 'p4'], lines: ['c1', 'c2', 'c3', 'c4'], constraints: ['k1', 'k2', 'k3', 'k4'] });
+    expect(made.ids.points.map((id) => at(engine, id))).toEqual([[1, 2], [31, 2], [31, 22], [1, 22]]);
+  });
+
+  it('by a corner on the origin with width and height: drawn at that size towards `opposite`, fully determined', () => {
+    const engine = sketched();
+    const made = draw(engine, 'rectangle', { first: onPoint('origin'), opposite: free(-3, 5), width: 40, height: 25 });
+    expect(made.ids.points.map((id) => at(engine, id))).toEqual([[0, 0], [-40, 0], [-40, 25], [0, 25]]);
+    const constraints = sketchOf(engine, 'S').constraints;
+    expect(constraints[made.ids.width[0]]).toEqual({ type: 'distance', a: 'origin', b: made.ids.points[1], value: 40, driving: true });
+    expect(constraints[made.ids.height[0]]).toEqual({ type: 'distance', a: made.ids.points[1], b: made.ids.points[2], value: 25, driving: true });
+    expect(made.ids.constraints).not.toContain(made.ids.width[0]);
+    expect(engine.diagnoseSketch('S')).toMatchObject({ status: 'solved', degreesOfFreedom: 0, redundant: [] });
+  });
+
+  it('by its centre on the origin with expressions and no opposite: a construction diagonal, fully determined', () => {
+    const engine = sketched();
+    run(engine, { type: 'setParameter', name: 'W', expr: '60' }, { type: 'setParameter', name: 'H', expr: 'W / 2' });
+    const made = draw(engine, 'rectangle', { center: onPoint('origin'), width: 'W', height: 'H' });
+    expect(made.ids.center).toEqual(['origin']);
+    expect(made.ids.points.map((id) => at(engine, id))).toEqual([[-30, -15], [30, -15], [30, 15], [-30, 15]]);
+    const sketch = sketchOf(engine, 'S');
+    expect(sketch.curves[made.ids.diagonal[0]]).toEqual({ type: 'line', a: made.ids.points[0], b: made.ids.points[2], construction: true });
+    expect(made.ids.constraints.map((id) => sketch.constraints[id].type)).toEqual(['horizontal', 'vertical', 'horizontal', 'vertical', 'midpoint']);
+    expect(sketch.expressions).toMatchObject({ [`constraints/${made.ids.width[0]}/value`]: 'W', [`constraints/${made.ids.height[0]}/value`]: 'H' });
+    expect(engine.diagnoseSketch('S')).toMatchObject({ status: 'solved', degreesOfFreedom: 0, redundant: [] });
+    // one region, the diagonal is a construction line; the size follows the parameter
+    expect(solved(engine, 'S').regions).toHaveLength(1);
+    run(engine, { type: 'setParameter', name: 'W', expr: '80' });
+    expect(made.ids.points.map((id) => at(engine, id))).toEqual([[-40, -20], [40, -20], [40, 20], [-40, 20]].map(([x, y]) => [expect.closeTo(x, 6), expect.closeTo(y, 6)]));
+  });
+
+  it('a free centre is the centre of the corners; an opposite that snaps keeps its place', () => {
+    const engine = sketched();
+    run(engine, { type: 'addPoint', sketch: 'S', id: 'q', x: 50, y: 40 });
+    const made = draw(engine, 'rectangle', { center: free(40, 30), opposite: onPoint('q') });
+    expect(made.ids.points[2]).toBe('q');
+    expect(made.ids.points.map((id) => at(engine, id))).toEqual([[30, 20], [50, 20], [50, 40], [30, 40]]);
+    expect(at(engine, made.ids.center[0])).toEqual([40, 30]);
+    // free: the point q (2) and the two sizes (2); the centre is held by the midpoint
+    expect(engine.diagnoseSketch('S')).toMatchObject({ status: 'solved', degreesOfFreedom: 4, redundant: [] });
   });
 });
 
@@ -398,7 +461,7 @@ describe('the polygon tool', () => {
     expect(made.ids.constraints[0]).toBe('k2');
     // a prefix keeps the IDs of one part of the model together
     const named = sketchTool('rectangle', { sketch: sketchOf(engine, 'S'), result: solved(engine, 'S'), document: engine.getState().document, features: engine.getState().evaluation.features }, { first: free(40, 0), opposite: free(50, 5) }, freshIds(engine.getState().document, 'nut_'));
-    expect((named as Made).ids.points).toEqual(['nut_p1', 'nut_p3', 'nut_p2', 'nut_p4']); // the two clicked corners get their IDs first
+    expect((named as Made).ids.points).toEqual(['nut_p1', 'nut_p2', 'nut_p3', 'nut_p4']); // numbered in the order of the result (D73)
     expect(engine.execute(batch(...(named as Made).commands)).ok).toBe(true);
   });
 

@@ -82,7 +82,7 @@ describe('Engine.query', () => {
     expect(failure(engine.query('interference', { bodies: ['LOW', 'HIGH'] }, { at: 'LOW' }))).toEqual(['notAvailable', ['bodies', 1], expect.any(String)]); // not yet there
     expect(failure(engine.query('interference', { threshold: -1 }))).toEqual(['invalidArguments', ['threshold'], 'interference: threshold: the value must not be negative']);
     expect(failure(engine.query('interference', { bodies: 'LOW' } as never))).toEqual(['invalidArguments', ['bodies'], 'interference: bodies: a list is expected']);
-    expect(failure(engine.query('interference', { body: 'LOW' } as never))).toEqual(['invalidArguments', ['body'], 'interference: body: there is no such argument']);
+    expect(failure(engine.query('interference', { body: 'LOW' } as never))).toEqual(['invalidArguments', ['body'], 'interference: body: there is no argument "body"; the arguments are: bodies, threshold']);
     expect(failure(engine.query('sketchDiagnosis', {} as never))).toEqual(['invalidArguments', ['sketch'], 'sketchDiagnosis: sketch: the argument is required']);
     expect(failure(engine.query('sketchDiagnosis', { sketch: 'LOW' }))).toEqual(['notAvailable', ['sketch'], expect.any(String)]);
     expect(failure(engine.query('constraintExplanation', { sketch: 'S2', constraint: 'nope' }))).toEqual(['notAvailable', ['constraint'], 'constraintExplanation: constraint: the sketch "S2" has no constraint "nope"']);

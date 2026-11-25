@@ -67,6 +67,8 @@ export interface ImageRequest {
   bodies?: readonly Id[];
   camera: ViewCamera | 'current';
   cut?: ImageCut;
+  // `model` (D73): a body in the colour of its body properties, else in that of the palette
+  colors?: 'palette' | 'model';
   width: number; // pixels
   height: number;
 }
@@ -75,7 +77,10 @@ export interface RenderedImage {
   width: number;
   height: number;
   scale: number; // mm per pixel
-  bodies: ({ body: Id; color: string; colorName: string } | { body: Id; color: string; colorName: string; cutColor: string })[]; // `#rrggbb` and what a person calls it
+  // `#rrggbb` and what a person calls it; with the colours of the model, `colorFrom` says whether
+  // the body has a colour of its own (`model`) or one of the palette
+  // `sharedWith`: the other drawn bodies of the same colour by name, which the picture does not tell apart.
+  bodies: { body: Id; color: string; colorName: string; cutColor?: string; colorFrom?: 'model' | 'palette'; sharedWith?: Id[] }[];
   cutAway: Id[];
 }
 export interface ViewCapability {
@@ -115,6 +120,7 @@ export const VIEW_IMAGE_ARGS = {
   },
   width: { kind: 'number', title: 'Width', optional: true, spec: { title: 'Width in pixels', unit: 'count', integer: true, min: { value: 64 }, max: { value: 1600 }, default: 800 } },
   height: { kind: 'number', title: 'Height', optional: true, spec: { title: 'Height in pixels', unit: 'count', integer: true, min: { value: 64 }, max: { value: 1600 }, default: 600 } },
+  colors: { kind: 'choice', options: ['palette', 'model'], title: 'Colours', summary: 'palette without it: every body in a colour of a fixed palette, so bodies are told apart. model: every body in the colour its body properties give it (`color`), and a body without one in that of the palette; the legend says which (`colorFrom`).', optional: true },
 } as const satisfies ArgSpecs;
 export type ViewImageArgs = RunArgsOf<typeof VIEW_IMAGE_ARGS>;
 
@@ -157,7 +163,7 @@ export function imageRequest(host: Host, args: ViewImageArgs, state: EngineState
   const missing = (args.bodies ?? []).findIndex((id) => !Object.prototype.hasOwnProperty.call(state.evaluation.bodies, id));
   if (missing >= 0) return refused('notAvailable', `bodies[${missing}]: the body "${args.bodies?.[missing]}" is not in the state asked about`, ['bodies', missing]);
   const camera = args.view === undefined ? VIEWS.iso : args.view === 'current' ? 'current' : VIEWS[args.view];
-  const request: ImageRequest = { state, camera, width: args.width, height: args.height, ...(args.bodies ? { bodies: args.bodies } : {}) };
+  const request: ImageRequest = { state, camera, width: args.width, height: args.height, ...(args.bodies ? { bodies: args.bodies } : {}), ...(args.colors === 'model' ? { colors: 'model' } : {}) };
   if (!args.section) return request;
   const blocked = blockedBodies(state, args.bodies ?? Object.keys(state.evaluation.bodies));
   if (blocked.length) return refused('failed', blockedSectionText(state, blocked, args.bodies ?? Object.keys(state.evaluation.bodies), after), ['section']);
@@ -231,9 +237,9 @@ function poseAbout(state: EngineState, drawn: readonly Id[]): { pose?: Record<Id
 export const viewImage: HostOperation<typeof VIEW_IMAGE_ARGS> = {
   title: 'View image',
   summary:
-    'A picture of the model, to check its shape by eye: a named view fitted to the bodies drawn, optionally only some bodies (leave out a housing to see inside), optionally cut by a plane; with `at` the model as it was after a feature, with `after` a state that is not written (a pose: `after: { type: "setPose", values: { … } }`). Every body has its own colour, listed with the picture. It shows the model, not the screen of the user: no selection, sketches, planes or dimensions.',
+    'A picture of the model, to check its shape by eye: a named view fitted to the bodies drawn, optionally only some bodies (leave out a housing to see inside), optionally cut by a plane; with `at` the model as it was after a feature, with `after` a state that is not written (a pose: `after: { type: "setPose", values: { … } }`). Every body has its own colour from a palette, listed with the picture, or with `colors: "model"` the colour of its body properties. It shows the model, not the screen of the user: no selection, sketches, planes or dimensions.',
   returns:
-    'a PNG image, and next to it as text: `width` and `height` in pixels, `scale` in millimetres per pixel, and `bodies`: the bodies of which something is drawn, each with its colour (`color` as #rrggbb and `colorName`) and, when the section goes through it, the colour its cut is filled with (`cutColor`, a darker shade of its colour). The edges of the bodies are drawn. With a section also `section.cut`, the bodies the plane goes through, and `section.cutAway`, the bodies it removes whole: a picture with nothing in it usually has the offset or the flip the wrong way round. A body has the colour of its place among the bodies of the state drawn, so a legend belongs to its own picture. In a pose also `pose`, the joints that move the model with their values, and `blocked`: each joint without a motion with the drawn bodies beyond it, which are drawn with the joint at zero (with a section such a body is refused).',
+    'a PNG image, and next to it as text: `width` and `height` in pixels, `scale` in millimetres per pixel, and `bodies`: the bodies of which something is drawn, each with its colour (`color` as #rrggbb and `colorName`, the name of the nearest named colour; with `colors: "model"` also `colorFrom`: `model` for the colour of its body properties, `palette` for a body without one, which takes a colour of the palette no body has of its own) and, when the section goes through it, the colour its cut is filled with (`cutColor`, a darker shade of its colour); `sharedWith` lists the other drawn bodies of the same colour by name (the same `colorName`), which the picture does not tell apart. The edges of the bodies are drawn. With a section also `section.cut`, the bodies the plane goes through, and `section.cutAway`, the bodies it removes whole: a picture with nothing in it usually has the offset or the flip the wrong way round. A body of the palette has the colour of its place among the bodies of the state drawn, so a legend belongs to its own picture. In a pose also `pose`, the joints that move the model with their values, and `blocked`: each joint without a motion with the drawn bodies beyond it, which are drawn with the joint at zero (with a section such a body is refused).',
   args: VIEW_IMAGE_ARGS,
   async run(host, args, state, path) {
     if (!host.view) return refused('notAvailable', 'the app that is connected has no view to draw a picture with. The queries section and body describe the shape in numbers without it.');

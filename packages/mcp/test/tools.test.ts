@@ -1,11 +1,11 @@
 // The tools for the AI over the real engine: the API description comes from the sources of the
 // engine, queries on the model and the sketch return what the engine computed, and commands pass
 // unchanged.
-import { CONSTRAINTS, FEATURE_TYPE_INFO, GENERATORS, SKETCH_TOOLS, type Command, type Constraint, type Engine, type SolidKernel, createEngine } from '@trymesh/engine';
+import { CONSTRAINTS, FEATURE_TYPE_INFO, GENERATORS, SKETCH_TOOLS, type Command, type Constraint, type Engine, type SolidKernel, createEngine, importMesh } from '@trymesh/engine';
 import { createManifoldKernel } from '@trymesh/kernel-manifold';
 import { createPlanegcsSolver } from '@trymesh/solver-planegcs';
 import { describe, expect, it } from 'vitest';
-import { apiDescription, apiText, constraintCatalog, engineTypes, sketchToolCatalog } from '../src/api';
+import { apiDescription, apiIndex, apiSections, apiText, commandTypes, constraintCatalog, engineTypes, sketchToolCatalog } from '../src/api';
 import { MUTATING, callTool, changesDocument, tools } from '../src/tools';
 import { newEngine } from './kit';
 
@@ -91,8 +91,10 @@ describe('the API description', () => {
   });
 
   it('describe_api returns the conventions, the catalog and the types; the list of tools does not show internal tools', () => {
-    const description: string = ok(newEngine(), 'describe_api');
-    expect(description).toBe(apiText());
+    // without arguments the index; the whole text is the sections one after another (D73)
+    expect(ok(newEngine(), 'describe_api')).toBe(apiIndex());
+    const description = apiText();
+    expect(description).toBe(apiSections().map((entry) => ok(newEngine(), 'describe_api', { section: entry.key })).join('\n\n'));
     expect(description).toMatch(/^# Conventions\n- Lengths are in millimetres/);
     expect(description).toContain('export type Command =');
     for (const [type, spec] of Object.entries(CONSTRAINTS)) expect(description, type).toContain(`- ${type} (${spec.title}) {`);
@@ -131,10 +133,77 @@ describe('the API description', () => {
     expect(description).toMatch(/- chamfer \(Chamfer\):.*run out past a round face it crosses at 10° or more/);
     expect(description).toContain('// - Run-outs (D67): an edge may also end at a round face C');
     const listed = tools().filter((tool) => !tool.hidden).map((tool) => tool.name);
-    expect(listed).toEqual(['describe_api', 'get_model', 'get_document', 'get_sketch', 'get_parameters', 'explain_constraint', 'get_body', 'check_interference', 'query', 'execute', 'preview', 'sketch_tool', 'undo', 'redo']);
+    expect(listed).toEqual(['describe_api', 'get_model', 'get_document', 'get_sketch', 'get_parameters', 'explain_constraint', 'get_body', 'check_interference', 'query', 'execute', 'preview', 'sketch_tool', 'new_document', 'undo', 'redo']);
     // the description of execute lists the constraints of the catalog
     const executeTool = tools().find((tool) => tool.name === 'execute')!;
     for (const type of Object.keys(CONSTRAINTS)) expect(executeTool.description).toContain(type);
+  });
+});
+
+// D73: the description is too large for one answer, so describe_api answers with an index and
+// a section, a command, a type, a query or a sketch tool on request.
+describe('describe_api in sections (D73)', () => {
+  // an answer of a tool well within what a client takes in one piece
+  const LIMIT = 50_000;
+  it('the index lists every section with its size; every section is within the limit and the sections make the whole text', () => {
+    const index: string = ok(newEngine(), 'describe_api');
+    expect(index.length).toBeLessThan(8_000);
+    const sections = apiSections();
+    expect(new Set(sections.map((entry) => entry.key)).size).toBe(sections.length);
+    for (const entry of sections) {
+      expect(entry.text.length, entry.key).toBeLessThan(LIMIT);
+      expect(index).toContain(`- ${entry.key} (${entry.text.length}): ${entry.summary}`);
+      // by key and by title, as the conventions name sections by their titles
+      expect(ok(newEngine(), 'describe_api', { section: entry.key })).toBe(entry.text);
+      expect(ok(newEngine(), 'describe_api', { section: entry.title })).toBe(entry.text);
+    }
+    // the types of every marker of types.ts are in a section of their own, but the ports
+    expect(sections.filter((entry) => entry.key.startsWith('types-')).map((entry) => entry.key)).toEqual(['types-document', 'types-features', 'types-sketch', 'types-extrusion', 'types-revolve', 'types-placement', 'types-names', 'types-results', 'types-commands', 'types-queries', 'types-engine']);
+    expect(apiText()).not.toContain('interface SolidKernel');
+    expect(apiText()).toContain('The interfaces of the solver and of the geometric kernel are left out');
+  });
+
+  it('a command, a type, a query and a sketch tool by name; an unknown name lists the names there are', () => {
+    const engine = newEngine();
+    const add: string = ok(engine, 'describe_api', { command: 'addFeature' });
+    expect(add).toContain("| { type: 'addFeature';");
+    expect(add).toMatch(/Types it names \(describe_api \{ type \}\): .*Feature/);
+    // a command of a group gets the comment that leads the group
+    const material: string = ok(engine, 'describe_api', { command: 'setBodyMaterial' });
+    expect(material).toContain('// - setBodyMaterial takes the row `material` of the catalog `materials`');
+    expect(material).toContain("| { type: 'setBodyMaterial'; body: Id; material: string }");
+    expect(material).not.toContain("type: 'removeBodyProperties'");
+    // every command of the union is found
+    for (const type of commandTypes()) expect(ok(engine, 'describe_api', { command: type }), type).toContain(`{ type: '${type}';`);
+    expect(commandTypes()).toContain('batch');
+    const extrude: string = ok(engine, 'describe_api', { type: 'ExtrudeFeature' });
+    expect(extrude).toMatch(/^# The type ExtrudeFeature \(section types-extrusion\)/);
+    expect(extrude).toContain('export interface ExtrudeFeature extends FeatureBase {');
+    expect(extrude).toContain('Types it names: FeatureBase, ProfileSource, Extent, Id');
+    // the comment above a declaration is part of it, the comment of the next one is not
+    const joint: string = ok(engine, 'describe_api', { type: 'Joint' });
+    expect(joint).toContain('// A joint moves its child link');
+    expect(joint).not.toContain('export interface JointBase');
+    expect(ok(engine, 'describe_api', { query: 'mass' })).toMatch(/^- mass \(/);
+    expect(ok(engine, 'describe_api', { tool: 'rectangle' })).toMatch(/^- rectangle \(Rectangle\)/);
+    expect(callTool(engine, 'describe_api', { command: 'addFeatur' })).toEqual({ ok: false, error: expect.stringMatching(/^there is no command "addFeatur"; the commands are: addFeature, removeFeature, /) });
+    expect(callTool(engine, 'describe_api', { type: 'Nope' })).toEqual({ ok: false, error: expect.stringMatching(/^there is no declared type "Nope"; the types are: .*ExtrudeFeature/) });
+    expect(callTool(engine, 'describe_api', { query: 'nope' })).toEqual({ ok: false, error: expect.stringMatching(/^there is no query "nope"; the queries are: .*mass/) });
+    expect(callTool(engine, 'describe_api', { tool: 'nope' })).toEqual({ ok: false, error: expect.stringMatching(/^there is no sketch tool "nope"; the tools are: rectangle, /) });
+    expect(callTool(engine, 'describe_api', { section: 'queries', query: 'mass' })).toEqual({ ok: false, error: 'give one of section, command, type, query, tool; given: section, query' });
+  });
+});
+
+describe('a new feature with its defaults (D73)', () => {
+  it('execute takes a sketch of id, type and plane and an extrusion without name and suppressed', () => {
+    const engine = newEngine();
+    const made = ok(engine, 'execute', { command: { type: 'addFeature', feature: { id: 's', type: 'sketch', plane: { kind: 'base', plane: 'XY' } } } });
+    expect(made).toMatchObject({ ok: true, problems: [], sketches: [{ id: 's' }] });
+    ok(engine, 'sketch_tool', { sketch: 's', tool: 'rectangle', input: { first: { at: [0, 0] }, opposite: { at: [10, 5] } } });
+    const lines = ok(engine, 'get_sketch', { sketch: 's' }).curves.map((c: { id: string }) => c.id);
+    expect(ok(engine, 'execute', { command: { type: 'addFeature', feature: { id: 'E', type: 'extrude', profile: { type: 'regions', sketch: 's', regions: [{ outerLoop: lines }] }, extent: { type: 'distance', start: 0, distance: 2 }, operation: 'new' } } })).toMatchObject({ ok: true, bodies: ['E'], problems: [] });
+    expect(ok(engine, 'get_document', { feature: 'E' })).toMatchObject({ id: 'E', name: 'E', suppressed: false });
+    expect(ok(engine, 'describe_api', { section: 'conventions' })).toContain('a new sketch needs only `id`, `type` and `plane`');
   });
 });
 
@@ -180,8 +249,10 @@ describe('sketch tools', () => {
       else expect(made.sketches, entry.tool).toMatchObject([{ id: 's', solved: true }]);
       // the cuts leave a valid profile (trim and extend with `repair: 'on'`): one region, two after the extend
       if (entry.tool === 'trim' || entry.tool === 'extend' || entry.tool === 'split') expect(made.sketches, entry.tool).toMatchObject([{ profileValid: true, regions: entry.tool === 'extend' ? 2 : 1 }]);
-      // the IDs the description promises are the IDs the tool returns (`size` only with a dimension)
-      expect(Object.keys(made.ids).sort()).toEqual(Object.keys(spec.ids).filter((name) => name !== 'size' || 'size' in entry.example).sort());
+      // the IDs the description promises are the IDs the tool returns (a list that only an input makes, only with that input)
+      const madeBy: Record<string, Record<string, string>> = { polygon: { size: 'size' }, rectangle: { center: 'center', diagonal: 'center', width: 'width', height: 'height' }, fillet: { corners: 'corners' } };
+      const only = (name: string): boolean => !(name in (madeBy[entry.tool] ?? {})) || madeBy[entry.tool][name] in entry.example;
+      expect(Object.keys(made.ids).sort()).toEqual(Object.keys(spec.ids).filter(only).sort());
     }
     const polygon = catalog.find((entry) => entry.tool === 'polygon')!;
     expect(polygon.inputs).toEqual([
@@ -193,9 +264,12 @@ describe('sketch tools', () => {
     ]);
     expect(text).toContain('  - size (optional): a number, positive, mm, or an expression');
     expect(catalog.find((entry) => entry.tool === 'fillet')!.inputs).toEqual([
-      { name: 'corner', description: 'the ID of a point of the sketch (an own point or `origin`)', required: true },
+      { name: 'corner', description: 'the ID of a point of the sketch (an own point or `origin`)', required: false },
+      { name: 'corners', description: 'a list of IDs of points of the sketch (own points or `origin`), none twice', required: false },
       { name: 'radius', description: 'a number, positive, mm, or an expression', required: true },
     ]);
+    expect(text).toContain('  exactly one of: corner, corners');
+    expect(text).toContain('  exactly one of: first, center');
     // the two input kinds of trim, extend and split (D65)
     expect(catalog.find((entry) => entry.tool === 'trim')!.inputs).toEqual([
       { name: 'at', description: 'a place `[x, y]` in the sketch (coordinates; nothing snaps to it)', required: true },
@@ -279,12 +353,12 @@ describe('sketch tools', () => {
       ],
     });
     const first = ok(engine, 'sketch_tool', { sketch: 's', tool: 'rectangle', input: { first: { at: [0, 0] }, opposite: { at: [40, 30] } } });
-    expect(first.ids).toEqual({ points: ['p2', 'p4', 'p3', 'p5'], lines: ['c2', 'c3', 'c4', 'c5'], constraints: ['k1', 'k3', 'k4', 'k5'] });
+    expect(first.ids).toEqual({ points: ['p2', 'p3', 'p4', 'p5'], lines: ['c2', 'c3', 'c4', 'c5'], constraints: ['k1', 'k3', 'k4', 'k5'] });
     const second = ok(engine, 'sketch_tool', { sketch: 's', tool: 'rectangle', prefix: 'slot_', input: { first: { at: [5, 5] }, opposite: { at: [9, 8] } } });
-    expect(second.ids).toEqual({ points: ['slot_p1', 'slot_p3', 'slot_p2', 'slot_p4'], lines: ['slot_c1', 'slot_c2', 'slot_c3', 'slot_c4'], constraints: ['slot_k1', 'slot_k2', 'slot_k3', 'slot_k4'] });
+    expect(second.ids).toEqual({ points: ['slot_p1', 'slot_p2', 'slot_p3', 'slot_p4'], lines: ['slot_c1', 'slot_c2', 'slot_c3', 'slot_c4'], constraints: ['slot_k1', 'slot_k2', 'slot_k3', 'slot_k4'] });
     // the same prefix again goes on counting
     const third = ok(engine, 'sketch_tool', { sketch: 's', tool: 'rectangle', prefix: 'slot_', input: { first: { at: [15, 5] }, opposite: { at: [19, 8] } } });
-    expect(third.ids.points).toEqual(['slot_p5', 'slot_p7', 'slot_p6', 'slot_p8']);
+    expect(third.ids.points).toEqual(['slot_p5', 'slot_p6', 'slot_p7', 'slot_p8']);
     expect(third).toMatchObject({ ok: true, problems: [], sketches: [{ id: 'c1' }, { id: 's', solved: true, regions: 3 }] });
   });
 
@@ -365,7 +439,7 @@ describe('sketch tools', () => {
     // a new rectangle elsewhere must not become the profile of that extrusion
     const second = ok(engine, 'sketch_tool', { sketch: 's', tool: 'rectangle', input: { first: { at: [100, 100] }, opposite: { at: [105, 103] } } });
     expect(second.ids.lines).toEqual(['c5', 'c6', 'c7', 'c8']);
-    expect(second.ids.points).toEqual(['p1', 'p3', 'p2', 'p4']); // nothing refers to the removed points, their IDs are free
+    expect(second.ids.points).toEqual(['p1', 'p2', 'p3', 'p4']); // nothing refers to the removed points, their IDs are free
     expect(second.problems).toEqual([expect.objectContaining({ id: 'e' })]);
     expect(ok(engine, 'get_model').bodies).toEqual([]);
   });
@@ -407,7 +481,7 @@ describe('sketch tools', () => {
     expect(changesDocument(engine, 'execute', { command: sketch('other'), extra: 1 })).toBe(false);
     expect(changesDocument(engine, 'sketch_tool', { sketch: 's', tool: 'polygon', input: hexagon, dryRun: true })).toBe(false);
     expect(changesDocument(engine, 'undo', { steps: 2 })).toBe(false);
-    expect(MUTATING).toEqual(['execute', 'sketch_tool', 'undo', 'redo', '_load', '_outline']);
+    expect(MUTATING).toEqual(['execute', 'sketch_tool', 'undo', 'redo', 'new_document', '_load', '_outline']);
     expect(engine.save()).toBe(before);
   });
 
@@ -575,9 +649,9 @@ describe('queries on a sketch', () => {
 
   it('the axes of the origin (D71): named by describe_api, a constraint on one through execute, not listed by get_sketch', () => {
     const engine = newEngine();
-    const description: string = ok(engine, 'describe_api');
+    const description: string = ok(engine, 'describe_api', { section: 'conventions' });
     expect(description).toContain('Every sketch has the lines `origin/x` and `origin/y` through its origin along its X and Y');
-    expect(description).toContain('every sketch has the lines `origin/x` and `origin/y` through its origin along');
+    expect(apiText()).toContain('every sketch has the lines `origin/x` and `origin/y` through its origin along');
     rectangle(engine, false);
     // the rectangle centred on the Y axis and standing on the X axis
     const result = execute(engine, {
@@ -1271,7 +1345,7 @@ describe('the model, bodies and commands', () => {
 describe('a spline over MCP (D70)', () => {
   const points = (list: [string, number, number][]): Command[] => list.map(([id, x, y]) => ({ type: 'addPoint', sketch: 's', id, x, y }));
   it('describe_api names the curve and says where it runs', () => {
-    const description: string = ok(newEngine(), 'describe_api');
+    const description = apiText();
     expect(description).toContain("{ type: 'spline'; points: Id[] }");
     expect(description).toContain('`get_sketch` says where the curve');
   });
@@ -1367,5 +1441,101 @@ describe('a spline over MCP (D70)', () => {
     expect(answer.contacts).toHaveLength(1);
     expect(answer.contacts[0]).toMatchObject({ kind: 'crossing', curves: ['k', 'k'], fix: 'none' });
     expect(answer.reason).toMatch(/the spline "k" crosses or touches itself/);
+  });
+});
+
+describe('new_document (D73)', () => {
+  it('empties a document with a stored mesh and a stored document placed by features; changesDocument says when it changes', () => {
+    const part = newEngine();
+    const disc: Command = {
+      type: 'batch',
+      commands: [
+        { type: 'addFeature', feature: { id: 's', type: 'sketch', plane: { kind: 'base', plane: 'XY' } } },
+        { type: 'addCurve', sketch: 's', id: 'k', curve: { type: 'circle', center: 'origin' }, radius: 5 },
+        { type: 'addFeature', feature: { id: 'a', type: 'extrude', profile: { type: 'regions', sketch: 's', regions: [{ outerLoop: ['k'] }] }, extent: { type: 'distance', start: 0, distance: 3 }, operation: 'new' } },
+      ],
+    };
+    expect(part.execute(disc).ok).toBe(true);
+    const imported = importMesh('stl', part.exportMesh('stl', ['a']));
+    if (!imported.ok) throw new Error(imported.error.message);
+    const engine = newEngine();
+    expect(changesDocument(engine, 'new_document', { discard: true })).toBe(false);
+    const placement = { frame: { kind: 'base', plane: 'XY' } };
+    ok(engine, 'execute', {
+      command: {
+        type: 'batch',
+        commands: [
+          { type: 'addMesh', id: 'm', mesh: imported.mesh },
+          { type: 'addDocument', id: 'd', document: JSON.parse(part.save()) },
+          { type: 'addFeature', feature: { id: 'mf', type: 'mesh', mesh: 'm', placement } },
+          { type: 'addFeature', feature: { id: 'ins', type: 'insert', document: 'd', placement } },
+        ],
+      },
+    });
+    expect(changesDocument(engine, 'new_document', {})).toBe(false);
+    expect(changesDocument(engine, 'new_document', { discard: true })).toBe(true);
+    const before = engine.save();
+    expect(ok(engine, 'new_document', { discard: true })).toMatchObject({ discarded: { features: 2, meshes: 1, documents: 1 }, note: 'Discarded 2 features, 1 mesh, 1 document; undo brings them back.' });
+    expect(JSON.parse(engine.save())).toEqual(JSON.parse(newEngine().save()));
+    ok(engine, 'undo');
+    expect(engine.save()).toBe(before);
+  });
+});
+
+// D73: what the session that built a gearbox asked about the answers of MCP
+describe('edges, one feature of get_model, and the facts in the answer of execute (D73)', () => {
+  const box = (engine: Engine) => {
+    ok(engine, 'execute', { command: { type: 'addFeature', feature: { id: 's', type: 'sketch', plane: { kind: 'base', plane: 'XY' } } } });
+    ok(engine, 'sketch_tool', { sketch: 's', tool: 'rectangle', input: { center: { at: [0, 0], snap: { kind: 'point', id: 'origin' } }, width: 40, height: 30 } });
+    return ok(engine, 'execute', { command: { type: 'addFeature', feature: { id: 'E', type: 'extrude', profile: { type: 'regions', sketch: 's', regions: [{ outerLoop: ['c1', 'c2', 'c3', 'c4'] }] }, extent: { type: 'distance', start: 0, distance: 10 }, operation: 'new' } } });
+  };
+
+  it('an edge is taken with its two faces in either order and stored in one order', () => {
+    const engine = newEngine();
+    box(engine);
+    const [cap, side] = [{ feature: 'E', role: 'endCap' }, { feature: 'E', role: 'side', curve: 'c1' }];
+    const chamfer = (id: string, a: object, b: object) => ok(engine, 'preview', { command: { type: 'addFeature', feature: { id, type: 'chamfer', body: 'E', edges: [{ a, b }], distance: 1 } } });
+    expect(chamfer('ch1', cap, side)).toMatchObject({ problems: [] });
+    expect(chamfer('ch1', side, cap)).toMatchObject({ problems: [] });
+    ok(engine, 'execute', { command: { type: 'addFeature', feature: { id: 'ch', type: 'chamfer', body: 'E', edges: [{ a: side, b: cap }], distance: 1 } } });
+    const stored = ok(engine, 'get_document', { feature: 'ch' }).edges;
+    ok(engine, 'undo');
+    ok(engine, 'execute', { command: { type: 'addFeature', feature: { id: 'ch', type: 'chamfer', body: 'E', edges: [{ a: cap, b: side }], distance: 1 } } });
+    expect(ok(engine, 'get_document', { feature: 'ch' }).edges).toEqual(stored);
+    // a projected edge and a query take either order as well
+    const projected = (edge: object) => {
+      ok(engine, 'execute', { command: { type: 'batch', commands: [{ type: 'addFeature', feature: { id: 'top', type: 'sketch', plane: { kind: 'plane', feature: 'pl' } }, index: 3 }, { type: 'addExternal', sketch: 'top', id: 'x', ref: { type: 'edge', body: 'E', edge, kind: 'line' } }] } });
+      const entry = ok(engine, 'get_document', { feature: 'top' }).external.x;
+      ok(engine, 'undo');
+      return entry;
+    };
+    ok(engine, 'execute', { command: { type: 'addFeature', feature: { id: 'pl', type: 'plane', base: { kind: 'base', plane: 'XY' }, offset: 15 }, index: 2 } });
+    expect(projected({ a: side, b: cap })).toEqual(projected({ a: cap, b: side }));
+    const measure = (edge: object) => ok(engine, 'query', { query: 'measure', args: { from: { kind: 'edge', body: 'E', edge }, to: { kind: 'face', body: 'E', face: { feature: 'E', role: 'startCap' } } }, at: 'E', geometry: 'modelled' });
+    expect(measure({ a: side, b: cap })).toEqual(measure({ a: cap, b: side }));
+  });
+
+  it('get_model of some features; the facts of the features a command added or changed in its answer', () => {
+    const engine = newEngine();
+    box(engine);
+    ok(engine, 'execute', { command: { type: 'addFeature', feature: { id: 'gs', type: 'sketch', plane: { kind: 'base', plane: 'XY' } } } });
+    ok(engine, 'execute', { command: { type: 'addCurve', sketch: 'gs', id: 'pitch', curve: { type: 'circle', center: 'origin', construction: true }, radius: 9 } });
+    const gear = { type: 'addFeature', feature: { id: 'g', type: 'extrude', profile: { type: 'generated', generator: 'involuteGear', sketch: 'gs', operands: { circle: 'pitch' }, params: { teeth: 18 } }, extent: { type: 'distance', start: 20, distance: 5 }, operation: 'new' } };
+    // only the feature the command added, with its facts; the box it did not touch has none
+    const made = ok(engine, 'execute', { command: gear });
+    expect(Object.keys(made.facts)).toEqual(['g']);
+    expect(made.facts.g).toMatchObject({ module: 1, teeth: 18, pitchDiameter: 18 });
+    expect(made.factsNotListed).toBeUndefined();
+    expect(ok(engine, 'preview', { command: { type: 'setField', feature: 'g', path: 'profile/params/teeth', value: 20 } }).facts.g).toMatchObject({ teeth: 20 });
+    // a command that touches no feature with facts says none
+    expect(ok(engine, 'execute', { command: { type: 'setParameter', name: 'p', expr: '1' } })).not.toHaveProperty('facts');
+    // one feature of the model, with the bodies it makes
+    const one = ok(engine, 'get_model', { features: ['g'] });
+    expect(Object.keys(one)).toEqual(['features', 'bodies']);
+    expect(one.features).toEqual([ok(engine, 'get_model').features.find((f: { id: string }) => f.id === 'g')]);
+    expect(one.bodies.map((body: { id: string }) => body.id)).toEqual(['g']);
+    expect(ok(engine, 'get_model', { features: ['s', 'E'] }).features.map((f: { id: string }) => f.id)).toEqual(['s', 'E']);
+    expect(callTool(engine, 'get_model', { features: ['g'], at: 'E' })).toEqual({ ok: false, error: 'argument "features": the state has no feature "g"; it has s, E' });
+    expect(callTool(engine, 'get_model', { features: [] })).toEqual({ ok: false, error: 'argument "features": a list of feature IDs that is not empty is expected' });
   });
 });

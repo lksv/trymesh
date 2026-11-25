@@ -71,7 +71,7 @@ describe('arguments of a query: the check against a state', () => {
     expect(problem(specs, { depth: 1, note: 3 })[2]).toBe('note: a text is expected');
     expect(problem(specs, { depth: 1, mode: 'slow' })[2]).toBe('mode: one of fast, exact is expected');
     expect(problem(specs, { depth: 1, up: [0, 1] })[2]).toBe('up: three finite numbers are expected');
-    expect(problem(specs, { depth: 1, dpeth: 2 })).toEqual(['invalidArguments', 'dpeth', 'dpeth: there is no such argument']);
+    expect(problem(specs, { depth: 1, dpeth: 2 })).toEqual(['invalidArguments', 'dpeth', 'dpeth: there is no argument "dpeth"; the arguments are: depth, count, limit, deep, note, mode, up']);
     expect(problem(specs, [1])[0]).toBe('invalidArguments');
     expect(problem(specs, 'depth')[2]).toBe('arguments: an object with the named arguments is expected');
   });
@@ -99,6 +99,8 @@ describe('arguments of a query: the check against a state', () => {
     const nested = { pair: { kind: 'fields', title: 'Pair', fields: { sketch: { kind: 'sketch' }, constraint: { kind: 'constraint', of: 'sketch' } } } } as const satisfies ArgSpecs;
     expect(value(nested, { pair: { sketch: 'S1', constraint: 'r' } })).toEqual({ pair: { sketch: 'S1', constraint: 'r' } });
     expect(problem(nested, { pair: { sketch: 'S1', constraint: 'q' } })[1]).toBe('pair.constraint');
+    // a name a record of fields does not have is told with the names it has (D73)
+    expect(problem(nested, { pair: { sketch: 'S1', constrain: 'r' } })).toEqual(['invalidArguments', 'pair.constrain', 'pair.constrain: there is no field "constrain"; the fields are: sketch, constraint']);
   });
 
   it('entities, planes and axes: the shape by the validators of the document, the thing by the state', () => {

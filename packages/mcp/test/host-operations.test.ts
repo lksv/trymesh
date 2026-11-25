@@ -16,11 +16,11 @@ import { connect, newEngine } from './kit';
 // The test checks them against the description; the operation itself needs the app to run, so
 // its package tests it there (`view_image`: view-image.test.ts).
 const FIXTURES: { [N in HostOperationName]: HostOperationArgs<N> } = {
-  view_image: { view: 'top', bodies: ['disc'], section: { plane: { kind: 'base', plane: 'XY' }, offset: 5, flip: true }, width: 640, height: 480 },
+  view_image: { view: 'top', bodies: ['disc'], section: { plane: { kind: 'base', plane: 'XY' }, offset: 5, flip: true }, width: 640, height: 480, colors: 'model' },
 };
 // Every argument of every operation and whether a caller may leave it out, as the type says.
 const ARGUMENTS: { [N in HostOperationName]: { [K in keyof Required<HostOperationArgs<N>>]: {} extends Pick<HostOperationArgs<N>, K> ? 'optional' : 'required' } } = {
-  view_image: { view: 'optional', bodies: 'optional', section: 'optional', width: 'optional', height: 'optional' },
+  view_image: { view: 'optional', bodies: 'optional', section: 'optional', width: 'optional', height: 'optional', colors: 'optional' },
 };
 const ENTRIES = Object.entries(HOST_OPERATIONS as Record<string, AnyHostOperation>);
 
@@ -151,7 +151,7 @@ describe('an operation of the app', () => {
     expect(widths).toEqual([320, 64]);
     // the arguments are checked by the app in the state of its document, before the operation runs
     expect(await session.call('view_image', {})).toEqual({ error: 'invalidArguments: view_image: body: the argument is required' });
-    expect(await session.call('view_image', { body: 'disc', height: 3 })).toEqual({ error: 'invalidArguments: view_image: height: there is no such argument' });
+    expect(await session.call('view_image', { body: 'disc', height: 3 })).toEqual({ error: 'invalidArguments: view_image: height: there is no argument "height"; the arguments are: body, width' });
     expect(await session.call('view_image', { body: 'disc', width: 0 })).toEqual({ error: expect.stringMatching(/^invalidArguments: view_image: width: /) });
     expect(await session.call('view_image', { body: 'nope' })).toEqual({ error: 'notAvailable: view_image: body: the body "nope" is not in the state asked about' });
     expect(seen).toHaveLength(2);

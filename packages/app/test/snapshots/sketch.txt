@@ -39,7 +39,7 @@
           option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, spheres, tori, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
           option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
           option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
-          option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
+          option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece (all bodies of the state without `bodies`). A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`, and so is a reference part without `bodies` when it states neither a mass nor a density; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
           option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
           option value="hardwareHole" title="The shape of a hole for a screw, a nut or a heat-set insert of a size, from the hardware catalogs: put `shape` and `label` of the answer into a feature of the type hole (and for an insert `depth` into its extent). The heads and the nut are the largest sizes the standards allow and nothing is added to them; room for the printer is the allowance, best a parameter. The catalogs are clearanceHoles, socketHeadScrews, countersunkScrews, hexNuts and heatSetInserts; the query `catalog` shows their rows and sources.": "Hole for a piece of hardware"
           option value="mechanism" title="The links and joints of the model as resolved for the state asked about: where each link stands in the pose, the numbers and the axis of each joint, and what is in error. With `beyond`, what hangs on that joint. Asked with `after: { type: "setPose", … }` it answers for a pose that is not written.": "Mechanism"
@@ -172,7 +172,7 @@
     -     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, spheres, tori, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
     -     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
     -     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
-    -     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
+    -     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece (all bodies of the state without `bodies`). A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`, and so is a reference part without `bodies` when it states neither a mass nor a density; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
     -     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
     -     option value="hardwareHole" title="The shape of a hole for a screw, a nut or a heat-set insert of a size, from the hardware catalogs: put `shape` and `label` of the answer into a feature of the type hole (and for an insert `depth` into its extent). The heads and the nut are the largest sizes the standards allow and nothing is added to them; room for the printer is the allowance, best a parameter. The catalogs are clearanceHoles, socketHeadScrews, countersunkScrews, hexNuts and heatSetInserts; the query `catalog` shows their rows and sources.": "Hole for a piece of hardware"
     -     option value="mechanism" title="The links and joints of the model as resolved for the state asked about: where each link stands in the pose, the numbers and the axis of each joint, and what is in error. With `beyond`, what hangs on that joint. Asked with `after: { type: "setPose", … }` it answers for a pose that is not written.": "Mechanism"
@@ -259,15 +259,15 @@
   engine: diagnoseSketch("s1")
   engine: getState("s1")
   engine: diagnoseSketch("s1")  (x2)
-  engine: execute({"type":"batch","commands":[{"type":"addPoint","sketch":"s1","id":"p1","x":40,"y":30},{"type":"addPoint","sketch":"s1","id":"p2","x":40,"y":0},{"type":"addPoint","sketch":"s1","id":"p3","x":0,"y":30},{"type":"addCurve","sketch":"s1","id":"c1","curve":{"type":"line","a":"origin","b":"p2"}},{"type":"addConstraint","sketch":"s1","id":"k1","constraint":{"type":"horizontal","line":"c1"}},{"type":"addCurve","sketch":"s1","id":"c2","curve":{"type":"line","a":"p2","b":"p1"}},{"type":"addConstraint","sketch":"s1","id":"k2","constraint":{"type":"vertical","line":"c2"}},{"type":"addCurve","sketch":"s1","id":"c3","curve":{"type":"line","a":"p1","b":"p3"}},{"type":"addConstraint","sketch":"s1","id":"k3","constraint":{"type":"horizontal","line":"c3"}},{"type":"addCurve","sketch":"s1","id":"c4","curve":{"type":"line","a":"p3","b":"origin"}},{"type":"addConstraint","sketch":"s1","id":"k4","constraint":{"type":"vertical","line":"c4"}}]}) -> ok
+  engine: execute({"type":"batch","commands":[{"type":"addPoint","sketch":"s1","id":"p1","x":40,"y":0},{"type":"addPoint","sketch":"s1","id":"p2","x":40,"y":30},{"type":"addPoint","sketch":"s1","id":"p3","x":0,"y":30},{"type":"addCurve","sketch":"s1","id":"c1","curve":{"type":"line","a":"origin","b":"p1"}},{"type":"addConstraint","sketch":"s1","id":"k1","constraint":{"type":"horizontal","line":"c1"}},{"type":"addCurve","sketch":"s1","id":"c2","curve":{"type":"line","a":"p1","b":"p2"}},{"type":"addConstraint","sketch":"s1","id":"k2","constraint":{"type":"vertical","line":"c2"}},{"type":"addCurve","sketch":"s1","id":"c3","curve":{"type":"line","a":"p2","b":"p3"}},{"type":"addConstraint","sketch":"s1","id":"k3","constraint":{"type":"horizontal","line":"c3"}},{"type":"addCurve","sketch":"s1","id":"c4","curve":{"type":"line","a":"p3","b":"origin"}},{"type":"addConstraint","sketch":"s1","id":"k4","constraint":{"type":"vertical","line":"c4"}}]}) -> ok
   engine: diagnoseSketch("s1")
   feature s1:
-    + point p1: {"x":40,"y":30}
-    + point p2: {"x":40,"y":0}
+    + point p1: {"x":40,"y":0}
+    + point p2: {"x":40,"y":30}
     + point p3: {"x":0,"y":30}
-    + curve c1: {"type":"line","a":"origin","b":"p2"}
-    + curve c2: {"type":"line","a":"p2","b":"p1"}
-    + curve c3: {"type":"line","a":"p1","b":"p3"}
+    + curve c1: {"type":"line","a":"origin","b":"p1"}
+    + curve c2: {"type":"line","a":"p1","b":"p2"}
+    + curve c3: {"type":"line","a":"p2","b":"p3"}
     + curve c4: {"type":"line","a":"p3","b":"origin"}
     + constraint k1: {"type":"horizontal","line":"c1"}
     + constraint k2: {"type":"vertical","line":"c2"}
@@ -276,7 +276,7 @@
   panel:
     +   p.badge.open: "Degrees of freedom: 2"
     +   p.hint: "Closed regions: 1"
-    + p.hint: "Free (blue in the view): points p1, p2, p3. Fixing the position of the point p1 fully constrains the sketch: for example by two dimensions from the origin."
+    + p.hint: "Free (blue in the view): points p1, p2, p3. Fixing the position of the point p2 fully constrains the sketch: for example by two dimensions from the origin."
     + div.buttons
     +   button title="Selects the free points and the circles with a free radius": "Select free"
     -   p.badge.open: "Empty sketch"
@@ -314,7 +314,7 @@
     - line #8b9bb4 width 1: 24 numbers, sum 339.482
     - line #8b9bb4 width 1: 24 numbers, sum 169.741
     - line #64748b width 1.5 dashed onTop: 24 numbers, sum 900
-    + points #1d4ed8 size 7: 9 numbers, sum 290
+    + points #1d4ed8 size 7: 9 numbers, sum 380
     + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 17.5
     + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 17.5
     + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 17.5
@@ -352,7 +352,7 @@
     +   p.badge.open: "Degrees of freedom: 5"
     -   p.badge.open: "Degrees of freedom: 2"
     + p.hint: "Free (blue in the view): points p1, p2, p3, p4, p5."
-    - p.hint: "Free (blue in the view): points p1, p2, p3. Fixing the position of the point p1 fully constrains the sketch: for example by two dimensions from the origin."
+    - p.hint: "Free (blue in the view): points p1, p2, p3. Fixing the position of the point p2 fully constrains the sketch: for example by two dimensions from the origin."
     + h2: "Constraints and dimensions (5)"
     - h2: "Constraints and dimensions (4)"
     + div.constraint.clickable title="A click shows whether the constraint follows from others"
@@ -372,8 +372,8 @@
     - line #8b9bb4 width 1: 24 numbers, sum 122.5
     - line #1d4ed8 width 2 onTop: 24 numbers, sum 1400
     - line #f97316 width 1.5 dashed onTop: 6 numbers, sum 450
-    + points #1d4ed8 size 7: 15 numbers, sum 1060
-    - points #1d4ed8 size 7: 9 numbers, sum 290
+    + points #1d4ed8 size 7: 15 numbers, sum 1150
+    - points #1d4ed8 size 7: 9 numbers, sum 380
     + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 29.904
     + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 29.904
     + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 29.904
@@ -423,8 +423,8 @@
     - line #8b9bb4 width 1: 24 numbers, sum 209.328
     - line #1d4ed8 width 2 onTop: 30 numbers, sum 2260
     - line #f97316 width 1.5 dashed onTop: 6 numbers, sum 595
-    + points #1d4ed8 size 7: 18 numbers, sum 1325
-    - points #1d4ed8 size 7: 15 numbers, sum 1060
+    + points #1d4ed8 size 7: 18 numbers, sum 1415
+    - points #1d4ed8 size 7: 15 numbers, sum 1150
     + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 30.562
     + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 30.562
     + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 30.562
@@ -462,8 +462,8 @@
   scene:
     + line #1d4ed8 width 2 onTop: 618 numbers, sum 30709.212
     - line #1d4ed8 width 2 onTop: 42 numbers, sum 3890
-    + points #1d4ed8 size 7: 21 numbers, sum 1515
-    - points #1d4ed8 size 7: 18 numbers, sum 1325
+    + points #1d4ed8 size 7: 21 numbers, sum 1605
+    - points #1d4ed8 size 7: 18 numbers, sum 1415
     + fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 530 | 110 numbers, sum 7601.703
     - fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 530
     + fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 110 numbers, sum 7604.457
@@ -508,8 +508,8 @@
     - line #8b9bb4 width 1: 24 numbers, sum 213.937
     - line #1d4ed8 width 2 onTop: 618 numbers, sum 30709.212
     - line #64748b width 1.5 dashed onTop: 150 numbers, sum 24726.147
-    + points #1d4ed8 size 7: 30 numbers, sum 2695
-    - points #1d4ed8 size 7: 21 numbers, sum 1515
+    + points #1d4ed8 size 7: 30 numbers, sum 2785
+    - points #1d4ed8 size 7: 21 numbers, sum 1605
     + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 35.424
     + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 35.424
     + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 35.424
@@ -699,8 +699,8 @@
     - line #8b9bb4 width 1: 24 numbers, sum 495.942
     - line #8b9bb4 width 1: 24 numbers, sum 247.971
     - line #1d4ed8 width 2 onTop: 762 numbers, sum 54731.708
-    + points #1d4ed8 size 7: 57 numbers, sum 7567.541
-    - points #1d4ed8 size 7: 30 numbers, sum 2695
+    + points #1d4ed8 size 7: 57 numbers, sum 7657.541
+    - points #1d4ed8 size 7: 30 numbers, sum 2785
     + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 47.897
     + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 47.897
     + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 47.897
@@ -761,8 +761,8 @@
   scene:
     + line #b45309 width 1.5 dashed onTop: 582 numbers, sum 100578.424
     - line #b45309 width 1.5 dashed onTop: 576 numbers, sum 99758.424
-    + points #1d4ed8 size 7: 63 numbers, sum 8237.541
-    - points #1d4ed8 size 7: 57 numbers, sum 7567.541
+    + points #1d4ed8 size 7: 63 numbers, sum 8327.541
+    - points #1d4ed8 size 7: 57 numbers, sum 7657.541
 
 === 16. a point
   engine: getState("s1")
@@ -785,8 +785,8 @@
   status: Click the place of the point.
   view: 3 scene(s) set
   scene:
-    + points #1d4ed8 size 7: 66 numbers, sum 8447.541
-    - points #1d4ed8 size 7: 63 numbers, sum 8237.541
+    + points #1d4ed8 size 7: 66 numbers, sum 8537.541
+    - points #1d4ed8 size 7: 63 numbers, sum 8327.541
 
 === 17. select: a curve under the pointer is highlighted
   engine: getState("s1")
@@ -830,20 +830,20 @@
 === 19. a dimension of the selected line
   engine: getState("s1")
   engine: diagnoseSketch("s1")  (x2)
-  engine: execute({"type":"batch","commands":[{"type":"addConstraint","sketch":"s1","id":"k24","constraint":{"type":"distance","a":"origin","b":"p2","value":40,"driving":true}}]}) -> ok
+  engine: execute({"type":"batch","commands":[{"type":"addConstraint","sketch":"s1","id":"k24","constraint":{"type":"distance","a":"origin","b":"p1","value":40,"driving":true}}]}) -> ok
   feature s1:
-    + constraint k24: {"type":"distance","a":"origin","b":"p2","value":40,"driving":true}
+    + constraint k24: {"type":"distance","a":"origin","b":"p1","value":40,"driving":true}
   panel:
     +   p.badge.open: "Degrees of freedom: 21"
     -   p.badge.open: "Degrees of freedom: 22"
-    + p.hint: "Free (blue in the view): points p1, p3, p4, p5, p6, p7, p8, p9 and 13 more; radius c8."
+    + p.hint: "Free (blue in the view): points p2, p3, p4, p5, p6, p7, p8, p9 and 13 more; radius c8."
     - p.hint: "Free (blue in the view): points p1, p2, p3, p4, p5, p6, p7, p8 and 14 more; radius c8."
     + h2: "Constraints and dimensions (24)"
     - h2: "Constraints and dimensions (23)"
     + div.constraint.clickable title="A click shows whether the constraint follows from others"
     +   span.name
     +     "Distance"
-    +     small: "origin, p2"
+    +     small: "origin, p1"
     +   input.value value="40" title="mm, or an expression"
     +   label.check title="A driving dimension drives the geometry, a reference one only measures it"
     +     input type=checkbox checked
@@ -854,7 +854,7 @@
   scene:
     + points #1c2430 size 7: 3 numbers, sum 40
     + points #1d4ed8 size 7: 63 numbers, sum 9483.93
-    - points #1d4ed8 size 7: 66 numbers, sum 8447.541
+    - points #1d4ed8 size 7: 66 numbers, sum 8537.541
     + label "40" driving at [20, 0, 0]
 
 === 20. select with Shift: two sides
@@ -971,12 +971,12 @@
   engine: diagnoseSketch("s1")  (x2)
   engine: execute({"type":"setConstraintValue","sketch":"s1","id":"k24","value":45}) -> ok
   feature s1:
-    + point p1: {"x":45,"y":30}
-    + point p2: {"x":45,"y":0}
-    - point p1: {"x":40,"y":30}
-    - point p2: {"x":40,"y":0}
-    + constraint k24: {"type":"distance","a":"origin","b":"p2","value":45,"driving":true}
-    - constraint k24: {"type":"distance","a":"origin","b":"p2","value":40,"driving":true}
+    + point p1: {"x":45,"y":0}
+    + point p2: {"x":45,"y":30}
+    - point p1: {"x":40,"y":0}
+    - point p2: {"x":40,"y":30}
+    + constraint k24: {"type":"distance","a":"origin","b":"p1","value":45,"driving":true}
+    - constraint k24: {"type":"distance","a":"origin","b":"p1","value":40,"driving":true}
   panel:
     +   input.value value="45" title="mm, or an expression"
     -   input.value value="40" title="mm, or an expression"
@@ -1001,13 +1001,13 @@
   engine: diagnoseSketch("s1")  (x2)
   engine: execute({"type":"setConstraintValue","sketch":"s1","id":"k24","driving":false}) -> ok
   feature s1:
-    + constraint k24: {"type":"distance","a":"origin","b":"p2","value":45,"driving":false}
-    - constraint k24: {"type":"distance","a":"origin","b":"p2","value":45,"driving":true}
+    + constraint k24: {"type":"distance","a":"origin","b":"p1","value":45,"driving":false}
+    - constraint k24: {"type":"distance","a":"origin","b":"p1","value":45,"driving":true}
   panel:
     +   p.badge.open: "Degrees of freedom: 21"
     -   p.badge.open: "Degrees of freedom: 20"
     + p.hint: "Free (blue in the view): points p1, p2, p3, p4, p5, p6, p7, p8 and 14 more; radius c8."
-    - p.hint: "Free (blue in the view): points p1, p3, p4, p5, p6, p7, p8, p9 and 13 more; radius c8."
+    - p.hint: "Free (blue in the view): points p2, p3, p4, p5, p6, p7, p8, p9 and 13 more; radius c8."
     +   input.value value="45" disabled title="mm, or an expression"
     -   input.value value="45" title="mm, or an expression"
     +     input type=checkbox unchecked
@@ -1017,7 +1017,7 @@
     + line #1d4ed8 width 2 onTop: 810 numbers, sum 63400.064
     - line #1c2430 width 2 onTop: 6 numbers, sum 180
     - line #1d4ed8 width 2 onTop: 804 numbers, sum 62425.83
-    + points #1d4ed8 size 7: 60 numbers, sum 7491.93
+    + points #1d4ed8 size 7: 60 numbers, sum 7581.93
     - points #1c2430 size 7: 3 numbers, sum 45
     - points #1d4ed8 size 7: 57 numbers, sum 8488.318
     + label "(45)" reference at [22.5, 0, 0]
@@ -1028,12 +1028,12 @@
   engine: diagnoseSketch("s1")  (x2)
   engine: execute({"type":"setConstraintValue","sketch":"s1","id":"k24","driving":true,"value":45}) -> ok
   feature s1:
-    + constraint k24: {"type":"distance","a":"origin","b":"p2","value":45,"driving":true}
-    - constraint k24: {"type":"distance","a":"origin","b":"p2","value":45,"driving":false}
+    + constraint k24: {"type":"distance","a":"origin","b":"p1","value":45,"driving":true}
+    - constraint k24: {"type":"distance","a":"origin","b":"p1","value":45,"driving":false}
   panel:
     +   p.badge.open: "Degrees of freedom: 20"
     -   p.badge.open: "Degrees of freedom: 21"
-    + p.hint: "Free (blue in the view): points p1, p3, p4, p5, p6, p7, p8, p9 and 13 more; radius c8."
+    + p.hint: "Free (blue in the view): points p2, p3, p4, p5, p6, p7, p8, p9 and 13 more; radius c8."
     - p.hint: "Free (blue in the view): points p1, p2, p3, p4, p5, p6, p7, p8 and 14 more; radius c8."
     +   input.value value="45" title="mm, or an expression"
     -   input.value value="45" disabled title="mm, or an expression"
@@ -1046,7 +1046,7 @@
     - line #1d4ed8 width 2 onTop: 810 numbers, sum 63400.064
     + points #1c2430 size 7: 3 numbers, sum 45
     + points #1d4ed8 size 7: 57 numbers, sum 8488.318
-    - points #1d4ed8 size 7: 60 numbers, sum 7491.93
+    - points #1d4ed8 size 7: 60 numbers, sum 7581.93
     + label "45" driving at [22.5, 0, 0]
     - label "(45)" reference at [22.5, 0, 0]
 
@@ -1299,8 +1299,8 @@
   panel:
     +   p.badge.open: "Degrees of freedom: 19"
     -   p.badge.open: "Degrees of freedom: 20"
-    + p.hint: "Free (blue in the view): points p1, p3, p4, p5, p6, p7, p8, p9 and 12 more; radius c8."
-    - p.hint: "Free (blue in the view): points p1, p3, p4, p5, p6, p7, p8, p9 and 13 more; radius c8."
+    + p.hint: "Free (blue in the view): points p2, p3, p4, p5, p6, p7, p8, p9 and 12 more; radius c8."
+    - p.hint: "Free (blue in the view): points p2, p3, p4, p5, p6, p7, p8, p9 and 13 more; radius c8."
     + h2: "Selection (0)"
     - h2: "Selection (1)"
     +   button disabled title="An own point of the sketch lies at the coordinates x, y of the sketch.": "Fixed point"
@@ -1379,8 +1379,8 @@
   panel:
     +   p.badge.open: "Degrees of freedom: 16"
     -   p.badge.open: "Degrees of freedom: 19"
-    + p.hint: "Free (blue in the view): points p1, p3, p4, p5, p6, p7, p8, p9 and 10 more; radius c8."
-    - p.hint: "Free (blue in the view): points p1, p3, p4, p5, p6, p7, p8, p9 and 12 more; radius c8."
+    + p.hint: "Free (blue in the view): points p2, p3, p4, p5, p6, p7, p8, p9 and 10 more; radius c8."
+    - p.hint: "Free (blue in the view): points p2, p3, p4, p5, p6, p7, p8, p9 and 12 more; radius c8."
     + h2: "Selection (0)"
     - h2: "Selection (1)"
     +   button disabled title="A line is parallel to the X axis of the sketch.": "Horizontal"
@@ -1461,8 +1461,8 @@
   panel:
     +   p.badge.open: "Degrees of freedom: 19"
     -   p.badge.open: "Degrees of freedom: 16"
-    + p.hint: "Free (blue in the view): points p1, p3, p4, p5, p6, p7, p8, p9 and 12 more; radius c8."
-    - p.hint: "Free (blue in the view): points p1, p3, p4, p5, p6, p7, p8, p9 and 10 more; radius c8."
+    + p.hint: "Free (blue in the view): points p2, p3, p4, p5, p6, p7, p8, p9 and 12 more; radius c8."
+    - p.hint: "Free (blue in the view): points p2, p3, p4, p5, p6, p7, p8, p9 and 10 more; radius c8."
     + h2: "Constraints and dimensions (25)"
     - h2: "Constraints and dimensions (24)"
     +     "Horizontal"
@@ -1492,8 +1492,8 @@
   panel:
     +   p.badge.open: "Degrees of freedom: 16"
     -   p.badge.open: "Degrees of freedom: 19"
-    + p.hint: "Free (blue in the view): points p1, p3, p4, p5, p6, p7, p8, p9 and 10 more; radius c8."
-    - p.hint: "Free (blue in the view): points p1, p3, p4, p5, p6, p7, p8, p9 and 12 more; radius c8."
+    + p.hint: "Free (blue in the view): points p2, p3, p4, p5, p6, p7, p8, p9 and 10 more; radius c8."
+    - p.hint: "Free (blue in the view): points p2, p3, p4, p5, p6, p7, p8, p9 and 12 more; radius c8."
     + h2: "Constraints and dimensions (24)"
     - h2: "Constraints and dimensions (25)"
     -     "Horizontal"
@@ -1551,7 +1551,7 @@
     +     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, spheres, tori, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
     +     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
     +     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
-    +     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece. A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
+    +     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece (all bodies of the state without `bodies`). A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`, and so is a reference part without `bodies` when it states neither a mass nor a density; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
     +     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
     +     option value="hardwareHole" title="The shape of a hole for a screw, a nut or a heat-set insert of a size, from the hardware catalogs: put `shape` and `label` of the answer into a feature of the type hole (and for an insert `depth` into its extent). The heads and the nut are the largest sizes the standards allow and nothing is added to them; room for the printer is the allowance, best a parameter. The catalogs are clearanceHoles, socketHeadScrews, countersunkScrews, hexNuts and heatSetInserts; the query `catalog` shows their rows and sources.": "Hole for a piece of hardware"
     +     option value="mechanism" title="The links and joints of the model as resolved for the state asked about: where each link stands in the pose, the numbers and the axis of each joint, and what is in error. With `beyond`, what hangs on that joint. Asked with `after: { type: "setPose", … }` it answers for a pose that is not written.": "Mechanism"
@@ -1588,7 +1588,7 @@
     -   p.badge.open: "Degrees of freedom: 16"
     -   p.hint: "Closed regions: 4"
     - p.issue.warning: "Surplus constraints: 1. They are marked in the list; a click on a constraint shows what it follows from."
-    - p.hint: "Free (blue in the view): points p1, p3, p4, p5, p6, p7, p8, p9 and 10 more; radius c8."
+    - p.hint: "Free (blue in the view): points p2, p3, p4, p5, p6, p7, p8, p9 and 10 more; radius c8."
     +   button.primary: "Edit feature"
     +   button: "Suppress"
     +   button: "Delete"
@@ -1747,7 +1747,7 @@
     - div.constraint.clickable title="A click shows whether the constraint follows from others"
     -   span.name
     -     "Distance"
-    -     small: "origin, p2"
+    -     small: "origin, p1"
     -   input.value value="45" title="mm, or an expression"
     -   label.check title="A driving dimension drives the geometry, a reference one only measures it"
     -     input type=checkbox checked

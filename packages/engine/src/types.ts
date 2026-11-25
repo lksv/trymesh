@@ -233,6 +233,8 @@ export interface Check {
   expr: Expr;
 }
 
+// ---------------------------------------------------------------- features
+
 export type Feature = PlaneFeature | SketchFeature | ExtrudeFeature | PatternFeature | HoleFeature | MeshFeature | CombineFeature | SplitFeature | RevolveFeature | ChamferFeature | FilletFeature | InsertFeature;
 
 export interface FeatureBase {
@@ -292,6 +294,8 @@ export interface PlaneFeature extends FeatureBase {
   midplaneWith?: PlaneRef;
   tilt?: { axis: AxisRef; angle: number };
 }
+
+// ---------------------------------------------------------------- sketch
 
 export interface SketchFeature extends FeatureBase {
   type: 'sketch';
@@ -665,6 +669,8 @@ export type DimensionShape =
 
 export type Dimension = { value: number; driving: boolean } & DimensionShape;
 
+// ---------------------------------------------------------------- extrusion
+
 export type PlaneRef =
   | { kind: 'base'; plane: 'XY' | 'XZ' | 'YZ' }
   | { kind: 'plane'; feature: Id } // PlaneFeature
@@ -849,6 +855,8 @@ export interface SplitFeature extends FeatureBase {
   plane: PlaneRef;
   side: 'forward' | 'backward';
 }
+
+// ---------------------------------------------------------------- revolve
 
 // A revolve (D58): a profile of a sketch turned about an axis that lies in the plane of the sketch.
 // - `profile`: regions of the sketch (with an optional offset) or a wall along curves, as an
@@ -1071,6 +1079,8 @@ export interface InsertFeature extends FeatureBase {
   parameters?: Record<string, number>;
   bodies?: Id[];
 }
+
+// ---------------------------------------------------------------- placement
 
 // A directed frame of the model: a plane as a sketch refers to one (a base plane: XY is (+X, +Y,
 // +Z), XZ is (+X, +Z, −Y), YZ is (+Y, +Z, +X); a plane feature; a planar face of a body, with the
@@ -1944,9 +1954,21 @@ export type CommandResult =
 // - The curves of an imported outline and the options it was read with hold numbers only (D72).
 export type Input<T> = T extends number ? number | Expr : T extends readonly (infer U)[] ? Input<U>[] : T extends { kind: string } | ImportedCurve | OutlineReadWith ? T : T extends object ? { [K in keyof T]: Input<T[K]> } : T;
 
+// A new feature in addFeature (D73): its input form, in which `name` (the ID when left out) and
+// `suppressed` (false) may be left out, and a sketch may leave out what starts empty (`points`,
+// `radii`, `curves`, `constraints`, `external`, `solved`): `{ id: 's1', type: 'sketch', plane: {
+// kind: 'base', plane: 'XY' } }` is a new sketch. The stored feature has every field.
+export type NewFeature = Input<Feature> extends infer F
+  ? F extends { type: 'sketch' }
+    ? Loose<F, 'name' | 'suppressed' | 'points' | 'radii' | 'curves' | 'constraints' | 'external' | 'solved'>
+    : Loose<F, 'name' | 'suppressed'>
+  : never;
+// `T` with the fields `K` optional.
+export type Loose<T, K extends PropertyKey> = Omit<T, K> & { [P in K & keyof T]?: T[P] };
+
 export type Command =
   // timeline
-  | { type: 'addFeature'; feature: Input<Feature>; index?: number } // without an index at the end
+  | { type: 'addFeature'; feature: NewFeature; index?: number } // without an index at the end
   | { type: 'removeFeature'; id: Id }
   | { type: 'moveFeature'; id: Id; index: number }
   | { type: 'renameFeature'; id: Id; name: string }
@@ -1968,9 +1990,10 @@ export type Command =
   | { type: 'updateFeature'; id: Id; patch: FeaturePatch }
   // One numeric field by its address (see fieldsOf); a number removes the expression, a string sets it.
   | { type: 'setField'; feature: Id; path: FieldPath; value: number | Expr }
-  // Parameters and checks. Only a syntax error (including a number where a comparison is expected)
-  // and a disallowed name make the command invalid; an unknown name and a cycle are accepted and
-  // show up in the recompute result (otherwise `Zr = Zs + 2 * Zp` could not be created before `Zs`).
+  // Parameters and checks (setParameter, renameParameter, removeParameter, setCheck, renameCheck,
+  // removeCheck). Only a syntax error (including a number where a comparison is expected) and a
+  // disallowed name make the command invalid; an unknown name and a cycle are accepted and show up
+  // in the recompute result (otherwise `Zr = Zs + 2 * Zp` could not be created before `Zs`).
   | { type: 'setParameter'; name: string; expr: Expr; index?: number } // creates or changes; index = position in the table
   | { type: 'renameParameter'; name: string; to: string } // rewrites the name in every expression as well
   | { type: 'removeParameter'; name: string } // expressions that use it end up as an error or a warning of their feature
@@ -2012,9 +2035,9 @@ export type Command =
   | { type: 'dragPoint'; sketch: Id; point: Id; x: number; y: number }
   // `ref` in its input form: a numeric field of an entry may be an expression (kept in the sketch's
   // `expressions` at `external/<id>/…`; setField with the sketch as the feature reaches one). An
-  // update replaces the whole entry: send the entry with its expressions as strings, or a number
+  // update (updateExternal) replaces the whole entry: send the entry with its expressions as strings, or a number
   // removes the expression; a string equal to the expression the field has counts as unchanged
-  // (an imported outline is the exception: fields left out keep what it has, SketchOutline). An
+  // (an imported outline is the exception: fields left out keep what it has, `SketchOutline`). An
   // update may not turn reference geometry into derived geometry or back. An update that keeps the
   // source (a projection from a sketch with the same `sketch`, `entity` and `kind`, its flag
   // switched; an edge projection to the same edge) checks no reference and keeps the last values,
@@ -2045,6 +2068,7 @@ export type Command =
   //   null` removes the name. A body that is in another link is an invalid command: take it out
   //   there first, in the same batch. Only bodies the link did not have before are checked.
   // - removeLink is refused while a joint names the link.
+  // - removeJoint removes the joint `id`.
   // - setJoint creates the joint `id` or replaces it in the input form: a numeric field takes
   //   a number or an expression, which has to evaluate now. A string equal to the expression the
   //   field already has is kept without evaluation. Only an axis the joint did not have before is

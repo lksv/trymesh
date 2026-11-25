@@ -38,6 +38,48 @@ describe('what a picture draws', () => {
     expect(model.clip).toBeUndefined();
   });
 
+  // D73: `colors: 'model'`
+  it('with the colours of the model: a body in the colour of its properties, the others in that of the palette, and the legend says which', () => {
+    const state = stateOf(3);
+    (state.evaluation as { bodyProperties: object }).bodyProperties = { b0: { name: 'b0', use: 'part', color: '#ff0000' }, b1: { name: 'b1', use: 'part' }, b2: { name: 'b2', use: 'part', color: '#101010' } };
+    const { model, bodies } = pictureModel(request({ state, colors: 'model' }));
+    expect(model.bodies.map((body) => body.color)).toEqual([0xff0000, PALETTE[1].color, 0x101010]);
+    expect(bodies).toEqual([
+      { body: 'b0', color: '#ff0000', colorName: 'red', colorFrom: 'model' },
+      { body: 'b1', color: '#f28e2b', colorName: 'orange', colorFrom: 'palette' },
+      { body: 'b2', color: '#101010', colorName: 'black', colorFrom: 'model' },
+    ]);
+    // the cut of a body is a darker shade of the colour it is drawn in
+    const section = pictureModel(request({ state, colors: 'model', cut: { frame: FRAME, regions: [{ body: 'b0', loops: [[0, 0, 1, 0, 1, 1]] }] } }));
+    expect(section.bodies[0]).toEqual({ body: 'b0', color: '#ff0000', colorName: 'red', cutColor: '#b30000', colorFrom: 'model' });
+    // without it the palette, whatever the properties say
+    expect(pictureModel(request({ state })).bodies.map((entry) => entry.color)).toEqual(['#4e79a7', '#f28e2b', '#e15759']);
+  });
+
+  // the review of D73: a body of the palette looked like a coloured one, and the legend did not say
+  // which bodies share a colour
+  it('with the colours of the model the palette leaves out the colours the bodies have of their own; bodies of one colour are named in the legend', () => {
+    const state = stateOf(3);
+    (state.evaluation as { bodyProperties: object }).bodyProperties = { b1: { name: 'b1', use: 'part', color: '#4e79a8' }, b2: { name: 'b2', use: 'part', color: '#f28e2b' } };
+    // b0 would take blue, the first colour of the palette; b1 is blue by name and b2 orange
+    expect(pictureModel(request({ state, colors: 'model' })).bodies).toEqual([
+      { body: 'b0', color: '#e15759', colorName: 'red', colorFrom: 'palette' },
+      { body: 'b1', color: '#4e79a8', colorName: 'blue', colorFrom: 'model' },
+      { body: 'b2', color: '#f28e2b', colorName: 'orange', colorFrom: 'model' },
+    ]);
+    (state.evaluation as { bodyProperties: object }).bodyProperties = { b0: { name: 'b0', use: 'part', color: '#00ff00' }, b2: { name: 'b2', use: 'part', color: '#00ff00' } };
+    const legend = pictureModel(request({ state, colors: 'model' })).bodies;
+    expect(legend.map((entry) => [entry.body, entry.sharedWith])).toEqual([['b0', ['b2']], ['b1', undefined], ['b2', ['b0']]]);
+    // the second round of the review: one colour by name, as the palette leaves colours out
+    (state.evaluation as { bodyProperties: object }).bodyProperties = { b0: { name: 'b0', use: 'part', color: '#ff0000' }, b2: { name: 'b2', use: 'part', color: '#fe0101' } };
+    expect(pictureModel(request({ state, colors: 'model' })).bodies.map((entry) => [entry.body, entry.colorName, entry.sharedWith])).toEqual([['b0', 'red', ['b2']], ['b1', 'orange', undefined], ['b2', 'red', ['b0']]]);
+    // only the bodies drawn count
+    expect(pictureModel(request({ state, colors: 'model', bodies: ['b0', 'b1'] })).bodies.every((entry) => entry.sharedWith === undefined)).toBe(true);
+    // the palette over: the twelfth body has the colour of the second
+    const many = pictureModel(request({ state: stateOf(12) })).bodies;
+    expect([many[1].sharedWith, many[11].sharedWith, many[5].sharedWith]).toEqual([['b11'], ['b1'], undefined]);
+  });
+
   it('only the bodies asked for, in the order of the state, each with the colour it has among all', () => {
     const { model, bodies } = pictureModel(request({ bodies: ['b2', 'b0', 'nope'] }));
     expect(bodies.map((entry) => [entry.body, entry.colorName])).toEqual([['b0', 'blue'], ['b2', 'red']]);

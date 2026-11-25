@@ -69,7 +69,7 @@ import {
   sketchTool,
   takenOver,
 } from '@trymesh/engine';
-import { apiText } from './api';
+import { apiLookup } from './api';
 
 export type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 export type JsonSchema = { [key: string]: unknown };
@@ -441,6 +441,23 @@ function modelSummary(state: EngineState, whole = true): unknown {
     ...documentProblems(state, whole),
     canUndo: state.canUndo,
     canRedo: state.canRedo,
+  };
+}
+
+// The rows of some features of get_model (D73), and the bodies they create, as the whole model
+// lists them; an ID that is not a feature of the state is an error that names the features there are.
+const has = (record: object, key: string): boolean => Object.prototype.hasOwnProperty.call(record, key);
+function featuresSummary(state: EngineState, ids: unknown): unknown {
+  if (!Array.isArray(ids) || ids.length === 0 || !ids.every((id) => typeof id === 'string')) throw new ToolError('argument "features": a list of feature IDs that is not empty is expected');
+  const { document, evaluation } = state;
+  const known = document.features.filter((feature) => has(evaluation.features, feature.id));
+  const missing = [...new Set(ids)].filter((id) => !known.some((feature) => feature.id === id));
+  if (missing.length) throw new ToolError(`argument "features": the state has no feature ${missing.map((id) => `"${id}"`).join(', ')}; it has ${known.map((feature) => feature.id).join(', ') || 'none'}`);
+  const listed = known.filter((feature) => ids.includes(feature.id));
+  const bodies = listed.flatMap((feature) => evaluation.features[feature.id]?.bodies ?? []).filter((id) => has(evaluation.bodies, id));
+  return {
+    features: listed.map((feature) => featureSummary(feature, evaluation.features[feature.id])),
+    bodies: bodies.map((id) => ({ id, ...solidInfo(evaluation.bodies[id]), faces: evaluation.bodies[id].faces.length, edges: evaluation.bodies[id].edges.length, ...propertiesInfo(state, id) })),
   };
 }
 
@@ -859,7 +876,28 @@ function commandProblem(result: Extract<CommandResult, { ok: false }>): string {
   return `${code}: ${message}${where}${commandIndex === undefined ? '' : ` (the command of the batch with the index ${commandIndex})`}`;
 }
 
-function outcome(result: CommandResult): unknown {
+// The facts of the features a command changed (D73): a feature of the state after it whose
+// result has facts that differ from those of the state before it, or whose status differs (a new
+// feature too). The recompute decides, not the command: a parameter that changes a sketch changes
+// the facts of the revolve that turns it, and a rename changes none. A result that is the object
+// it was before (the recompute memoises by identity) is the same without a comparison. So the
+// answer of a command that builds a gear says its module and diameters, and a batch that touches
+// many features says no more than FACTS_LISTED of them.
+export const FACTS_LISTED = 20;
+function touchedFacts(before: EngineState, state: EngineState): { facts?: Json; factsNotListed?: number } {
+  const facts = (result: FeatureResult | undefined): string | undefined => (result?.facts ? JSON.stringify(factsInfo(result).facts) : undefined);
+  const touched = state.document.features.filter((feature) => {
+    const [now, then] = [state.evaluation.features[feature.id], has(before.evaluation.features, feature.id) ? before.evaluation.features[feature.id] : undefined];
+    if (!now?.facts || now === then) return false;
+    return then === undefined || then.status !== now.status || facts(then) !== facts(now);
+  });
+  if (touched.length === 0) return {};
+  const listed = touched.slice(0, FACTS_LISTED);
+  return { facts: Object.fromEntries(listed.map((feature) => [feature.id, factsInfo(state.evaluation.features[feature.id]).facts as Json])), ...(touched.length > listed.length ? { factsNotListed: touched.length - listed.length } : {}) };
+}
+
+// `before`: the state the command was applied to, for the facts of what it changed.
+function outcome(result: CommandResult, before?: EngineState): unknown {
   // An invalid command did not change the document: it is an error of the call, not a result.
   if (!result.ok) throw new ToolError(commandProblem(result));
   const { document, evaluation } = result.state;
@@ -875,6 +913,7 @@ function outcome(result: CommandResult): unknown {
     sketches: document.features
       .filter((feature) => feature.type === 'sketch' && evaluation.features[feature.id]?.sketch)
       .map((feature) => ({ id: feature.id, ...sketchBrief(evaluation.features[feature.id]) })),
+    ...(before ? touchedFacts(before, result.state) : {}),
   };
 }
 
@@ -904,6 +943,50 @@ function sketchToolBatch(engine: Engine, args: Record<string, unknown>): { comma
   if (!made.ok) throw new ToolError(`${tool}: ${made.message}`);
   return { command: { type: 'batch', commands: made.commands }, ids: made.ids };
 }
+
+// The one command that empties a document (D73, the tool new_document), and what it holds by
+// kind, the kinds it holds none of left out. The joints go before their links, the features from
+// the last before the stored meshes and documents they place, so every command of the batch is
+// valid; the settings stay (no command changes them). One command, so one undo step brings the
+// document back.
+export function emptying(document: Document): { command: Command; holds: Record<string, number> } {
+  const { mechanism, bodyProperties, meshes, documents, features, parameters, checks } = document;
+  const commands: Command[] = [
+    ...Object.keys(mechanism.joints).map((id): Command => ({ type: 'removeJoint', id })),
+    ...Object.keys(mechanism.links).map((id): Command => ({ type: 'removeLink', id })),
+    ...Object.keys(bodyProperties).map((body): Command => ({ type: 'removeBodyProperties', body })),
+    ...[...features].reverse().map((feature): Command => ({ type: 'removeFeature', id: feature.id })),
+    ...Object.keys(meshes).map((id): Command => ({ type: 'removeMesh', id })),
+    ...Object.keys(documents ?? {}).map((id): Command => ({ type: 'removeDocument', id })),
+    ...parameters.map((parameter): Command => ({ type: 'removeParameter', name: parameter.name })),
+    ...checks.map((check): Command => ({ type: 'removeCheck', name: check.name })),
+  ];
+  const counts: [string, number][] = [
+    ['features', features.length],
+    ['parameters', parameters.length],
+    ['checks', checks.length],
+    ['bodyProperties', Object.keys(bodyProperties).length],
+    ['links', Object.keys(mechanism.links).length],
+    ['joints', Object.keys(mechanism.joints).length],
+    ['meshes', Object.keys(meshes).length],
+    ['documents', Object.keys(documents ?? {}).length],
+  ];
+  return { command: { type: 'batch', commands }, holds: Object.fromEntries(counts.filter(([, count]) => count > 0)) };
+}
+const HELD: Record<string, [string, string]> = {
+  features: ['feature', 'features'],
+  parameters: ['parameter', 'parameters'],
+  checks: ['check', 'checks'],
+  bodyProperties: ['entry of body properties', 'entries of body properties'],
+  links: ['link', 'links'],
+  joints: ['joint', 'joints'],
+  meshes: ['mesh', 'meshes'],
+  documents: ['document', 'documents'],
+};
+const holdsText = (holds: Record<string, number>): string =>
+  Object.entries(holds)
+    .map(([kind, count]) => `${count} ${HELD[kind][count === 1 ? 0 : 1]}`)
+    .join(', ');
 
 // Whether the call of a tool from MUTATING would change the document now. The app asks before the
 // call, to cancel an operation in progress only when the document really changes.
@@ -941,6 +1024,7 @@ export function changesDocument(engine: Engine, name: string, args: Record<strin
     );
   };
   if (name === 'undo') return state.canUndo;
+  if (name === 'new_document') return args.discard === true && Object.keys(emptying(state.document).holds).length > 0;
   if (name === 'redo') return state.canRedo;
   if (name === 'execute') return typeof args.command === 'object' && args.command !== null && changes(args.command as Command);
   if (name === OUTLINE_BRIDGE_TOOL) {
@@ -1150,14 +1234,14 @@ export function outlineSaid(answer: unknown): { text: string; error: boolean } |
 const NONE: JsonSchema = { type: 'object', properties: {}, additionalProperties: false };
 const COMMAND: JsonSchema = {
   type: 'object',
-  properties: { command: { type: 'object', description: 'A command of the engine, an object with the field `type`. The shapes of all commands are returned by describe_api.', required: ['type'] } },
+  properties: { command: { type: 'object', description: 'A command of the engine, an object with the field `type`. describe_api { command: "<type>" } gives the shape of one command; the section types-commands has them all.', required: ['type'] } },
   required: ['command'],
   additionalProperties: false,
 };
 
 // Tools that change the document (including the internal loading).
 // (`_export` and `query` preview a command of their caller; they write nothing.)
-export const MUTATING: readonly string[] = ['execute', 'sketch_tool', 'undo', 'redo', '_load', '_outline'];
+export const MUTATING: readonly string[] = ['execute', 'sketch_tool', 'undo', 'redo', 'new_document', '_load', '_outline'];
 
 // The list of tools. It is built on every query, because the descriptions come from the engine's catalog.
 export function tools(): Tool[] {
@@ -1166,19 +1250,42 @@ export function tools(): Tool[] {
     {
       name: 'describe_api',
       description:
-        'A description of what the engine can do: conventions, the shapes of the document and of commands (types in TypeScript) and the catalog of constraints with operands. Call it before the first execute or preview; the description is generated from the engine sources, so it holds for this version.',
-      inputSchema: NONE,
-      run: () => apiText(),
+        'What the engine can do, generated from its sources, so valid for this build. Without arguments it returns the index: the essential conventions and the list of sections with their size. Then ask for what you need: `section` (a key of the index, such as "conventions", "queries", "types-commands"), `command` (the shape of one command, such as "addFeature"), `type` (one declaration of the types, such as "ExtrudeFeature"), `query` (one query of the tool query) or `tool` (one sketch tool). Read the index and the section conventions before the first execute or preview.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          section: { type: 'string', description: 'The key of a section, as the index lists it (its title works too).' },
+          command: { type: 'string', description: 'The `type` of a command: its shape with its comment and the types it names.' },
+          type: { type: 'string', description: 'The name of a type declared in the types of the engine.' },
+          query: { type: 'string', description: 'The name of a query of the tool query.' },
+          tool: { type: 'string', description: 'The name of a sketch tool of sketch_tool.' },
+        },
+        additionalProperties: false,
+      },
+      run: (_engine, args) => {
+        const answer = apiLookup(args as Parameters<typeof apiLookup>[0]);
+        if (!answer.ok) throw new ToolError(answer.error);
+        return answer.text;
+      },
     },
     {
       name: 'get_model',
       description:
         'Model overview: features on the timeline with their state, errors and field expressions, bodies with volume and size (as modelled, whatever the pose) and what their body properties state (name, colour, material, use, density, mass in g, the body a copy takes after), the mechanism when it has a link (links with their bodies, joints with type, parent, child, axis, numbers and expressions, the roots when there are several), the stored meshes when there are any (ID, name, triangles, size of the bounds, the features that place each in `usedBy`), parameter values, checks that fail, and what is in error (`bodyPropertyErrors`: a density or a mass that cannot be evaluated). ' +
-        'Without `at` also `bodyPropertiesWithoutBody` (entries of body properties whose body is gone, which a body made again under that ID takes over), `jointErrors`, `jointDriveErrors` (a field of the drive of a joint whose expression fails: it blocks no pose, the export of a robot refuses it), `linksMissingBodies` and `bodiesInNoLink`. `at` = the state after the given feature.',
-      inputSchema: { type: 'object', properties: { at: { type: 'string', description: 'feature ID; the model is evaluated only up to it' } }, additionalProperties: false },
+        'Without `at` also `bodyPropertiesWithoutBody` (entries of body properties whose body is gone, which a body made again under that ID takes over), `jointErrors`, `jointDriveErrors` (a field of the drive of a joint whose expression fails: it blocks no pose, the export of a robot refuses it), `linksMissingBodies` and `bodiesInNoLink`. `at` = the state after the given feature. `features` (a list of feature IDs) answers with those features alone and the bodies they create, in the shape of the whole model.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          at: { type: 'string', description: 'feature ID; the model is evaluated only up to it' },
+          features: { type: 'array', items: { type: 'string' }, description: 'Feature IDs: only these features, with the bodies they create, instead of the whole model' },
+        },
+        additionalProperties: false,
+      },
       run: (engine, args) => {
         const at = optionalText(args, 'at');
-        return modelSummary(stateAt(engine, at), at === undefined);
+        const state = stateAt(engine, at);
+        if (args.features === undefined || args.features === null) return modelSummary(state, at === undefined);
+        return featuresSummary(state, args.features);
       },
     },
     {
@@ -1249,26 +1356,34 @@ export function tools(): Tool[] {
     {
       name: 'check_interference',
       description:
-        'Which bodies collide. `pairs` are the collisions: pairs of bodies that share a volume above the threshold, with the volume in mm³ and `depth` in mm, how deep one body reaches into the other. `fits` are pairs with round faces in which neither body reaches deeper into the other than the chord tolerance of the document (`tolerance` in the answer; the precision of the coordinates is added to it): round faces are polygons, so a pin in a hole of the same diameter overlaps the wall by slivers wherever the two polygons are turned differently; such a pair is not a collision of the design, and the model cannot tell it from a real overlap of round faces that shallow (two round faces that bulge towards each other may overlap by about twice the tolerance before they collide). Where a planar face of one body reaches into a planar face of the other, away from the slivers of a round face, the pair is a collision however shallow. Bodies that only touch (flush faces) and overlaps thinner than about two millionths of the largest coordinate of the pair are not reported at all. `pairs` and `fits` rest only on an intersection the kernel verified. When the kernel refuses to verify the intersection of a pair, the intersection as it computed it is measured by the same rule; it may only clear the pair: `cleared` (only when it has an entry) lists such pairs with `kind` (`nothing` or `fit`), `volume` and `depth`: clear, by a mesh nobody verified. `failed` lists pairs that are neither colliding nor clear: the kernel refused them and what it computed measures as a collision or could not be measured; the message gives the reason and, when measured, the volume and depth as computed, not verified. Use it after building or changing parts that must not overlap (gears in mesh, a pin in its bore).',
+        'Which bodies collide. `pairs` are the collisions: pairs of bodies that share a volume above the threshold, with the volume in mm³ and `depth` in mm, how deep one body reaches into the other. `fits` are pairs with round faces in which neither body reaches deeper into the other than the chord tolerance of the document (`tolerance` in the answer; the precision of the coordinates is added to it): round faces are polygons, so a pin in a hole of the same diameter overlaps the wall by slivers wherever the two polygons are turned differently; such a pair is not a collision of the design, and the model cannot tell it from a real overlap of round faces that shallow (two round faces that bulge towards each other may overlap by about twice the tolerance before they collide). Where a planar face of one body reaches into a planar face of the other, away from the slivers of a round face, the pair is a collision however shallow. Bodies that only touch (flush faces) and overlaps thinner than about two millionths of the largest coordinate of the pair are not reported at all. `pairs` and `fits` rest only on an intersection the kernel verified. When the kernel refuses to verify the intersection of a pair, the intersection as it computed it is measured by the same rule; it may only clear the pair: `cleared` (only when it has an entry) lists such pairs with `kind` (`nothing` or `fit`), `volume` and `depth`: clear, by a mesh nobody verified. `failed` lists pairs that are neither colliding nor clear: the kernel refused them and what it computed measures as a collision or could not be measured; the message gives the reason and, when measured, the volume and depth as computed, not verified. Use it after building or changing parts that must not overlap (gears in mesh, a pin in its bore). `at` and `after` as for the tool query: `after` previews a command (a pose, a parameter) and checks the bodies after it, writing nothing.',
       inputSchema: {
         type: 'object',
         properties: {
           bodies: { type: 'array', items: { type: 'string' }, description: 'Body IDs; only pairs among them are checked. All bodies by default.' },
           threshold: { type: 'number', description: `Volume in mm³ above which a pair is reported; ${INTERFERENCE_THRESHOLD} by default. Zero reports numeric noise as well.` },
           at: { type: 'string', description: 'Feature ID; the state after it' },
+          after: { type: 'object', description: 'A command (as for execute) to preview first; the bodies after it are checked and the document does not change (as for the tool query).' },
         },
         additionalProperties: false,
       },
       run: (engine, args) => {
         const at = optionalText(args, 'at');
-        const bodies = bodyList(engine, args, at);
+        // `after` as the tool query takes it (D73): the query interference in the previewed state,
+        // which checks the bodies there (a body only the command makes can be named)
+        const previewed = args.after === undefined || args.after === null ? undefined : askedState(engine, args).state;
+        const bodies = previewed ? (args.bodies ?? undefined) as string[] | undefined : bodyList(engine, args, at);
         const threshold = args.threshold ?? undefined;
         if (threshold !== undefined && (typeof threshold !== 'number' || !Number.isFinite(threshold) || threshold < 0)) throw new ToolError('argument "threshold": a volume in mm³, zero or more, is expected');
         // one body has nothing to collide with: an empty answer would read as "no collisions"
         if (bodies !== undefined && new Set(bodies).size < 2) throw new ToolError('argument "bodies": at least two different bodies are needed to check pairs; leave the list out to check all bodies');
         let report: ReturnType<Engine['interference']>;
         try {
-          report = engine.interference({ ...(bodies ? { bodies } : {}), ...(threshold === undefined ? {} : { threshold }), ...(at === undefined ? {} : { at }) });
+          if (previewed) {
+            const asked = engine.query('interference', { ...(bodies ? { bodies } : {}), ...(threshold === undefined ? {} : { threshold }) } as never, { state: previewed });
+            if (!asked.ok) throw new ToolError(`${asked.error.code}: ${asked.error.message}`);
+            report = asked.result as ReturnType<Engine['interference']>;
+          } else report = engine.interference({ ...(bodies ? { bodies } : {}), ...(threshold === undefined ? {} : { threshold }), ...(at === undefined ? {} : { at }) });
         } catch (error) {
           // a body beyond a joint that has no motion: its pose is not known (D49)
           if (error instanceof QueryFailure) throw new ToolError(`${error.code}: ${error.message}`);
@@ -1276,14 +1391,15 @@ export function tools(): Tool[] {
         }
         // significant digits, not decimal places: a volume above a small threshold must not round to zero
         const rounded = <T extends Pick<Interference, 'volume' | 'depth'>>(pair: T): T => ({ ...pair, volume: Number(pair.volume.toPrecision(6)), depth: Number(pair.depth.toPrecision(4)) });
-        const answer = { ...report, pairs: report.pairs.map(rounded), fits: report.fits.map(rounded), ...(report.cleared ? { cleared: report.cleared.map(rounded) } : {}), tolerance: engine.getState().document.settings.chordTolerance, ...(report.checked === 0 ? { note: 'The model has fewer than two bodies: nothing was checked.' } : {}) };
-        return posed(answer, stateAt(engine, at));
+        const state = previewed ?? stateAt(engine, at);
+        const answer = { ...report, pairs: report.pairs.map(rounded), fits: report.fits.map(rounded), ...(report.cleared ? { cleared: report.cleared.map(rounded) } : {}), tolerance: state.document.settings.chordTolerance, ...(report.checked === 0 ? { note: 'The model has fewer than two bodies: nothing was checked.' } : {}) };
+        return posed(answer, state);
       },
     },
     {
       name: 'query',
       description:
-        `Asks a query of the engine's catalog about the model: ${Object.keys(QUERIES).join(', ')}. The arguments of each query and what it returns are in describe_api, section Queries. ` +
+        `Asks a query of the engine's catalog about the model: ${Object.keys(QUERIES).join(', ')}. The arguments of each query and what it returns are in describe_api, section queries, or describe_api { query: "<name>" } for one. ` +
         'Without `at` and `after` the answer is for the current model. `at` asks about the state after that feature. `after` is a command: the answer is for the model the document would have after it, and nothing is written, ' +
         'so a parameter can be stepped and each step asked about (a pose: `after: { type: "setPose", values: { ... } }`). With both, the document after the command is evaluated up to `at`. Numbers in the answer are rounded to six decimal places. ' +
         'The answer is for the pose of the mechanism (also with `at`); when a link is moved, `pose` beside the answer names the joints that are not at zero. `geometry: "modelled"` asks about the model as modelled instead.',
@@ -1318,16 +1434,16 @@ export function tools(): Tool[] {
     },
     {
       name: 'execute',
-      description: `Carries out a command of the engine and writes it to the document (one undo step). Several commands at once can be composed by the command batch. An invalid command does not change the document and returns the reason. Constraint types: ${constraintTypes}. The exact shapes of commands are returned by describe_api.`,
+      description: `Carries out a command of the engine and writes it to the document (one undo step). Several commands at once can be composed by the command batch. An invalid command does not change the document and returns the reason. The answer sums up what is not in order, says for every sketch whether it is solved, and gives in \`facts\` the facts of the features the command added or changed (the module and diameters of a gear; at most ${FACTS_LISTED}, the rest counted in \`factsNotListed\`). Constraint types: ${constraintTypes}. The shape of a command: describe_api { command: "<type>" }.`,
       inputSchema: COMMAND,
       // `takenOver`: the IDs of features and sketch entities the command added while a section of
       // the document (body properties) still named them; a body made under such an ID takes the
       // properties, an entity of a sketch only shares the ID
       run: (engine, args) => {
-        const before = engine.getState().document;
+        const before = engine.getState();
         const given = command(args);
-        const answer = outcome(engine.execute(given)) as Record<string, unknown>;
-        const taken = takenOver(before, given);
+        const answer = outcome(engine.execute(given), before) as Record<string, unknown>;
+        const taken = takenOver(before.document, given);
         return taken.length ? { ...answer, takenOver: taken } : answer;
       },
     },
@@ -1335,11 +1451,11 @@ export function tools(): Tool[] {
       name: 'preview',
       description: 'Computes the result of a command but does not write it to the document. Useful for trying out a change.',
       inputSchema: COMMAND,
-      run: (engine, args) => outcome(engine.preview(command(args))),
+      run: (engine, args) => outcome(engine.preview(command(args)), engine.getState()),
     },
     {
       name: 'sketch_tool',
-      description: `Draws a whole shape into a sketch with its constraints from a few inputs, or cuts the curves of a sketch (trim, extend, split), and returns the IDs of what it made or changed (\`ids\`). The tools are ${Object.keys(SKETCH_TOOLS).join(', ')}; their inputs and the IDs they return are in describe_api, section Sketch tools. The shape is written as one command, so one undo takes it back; with \`preview: true\` it is only computed, as the tool preview does for a command. The IDs are generated so that the document does not have them: \`<prefix><kind><number>\` with the kinds p (point), c (curve) and k (constraint).`,
+      description: `Draws a whole shape into a sketch with its constraints from a few inputs, or cuts the curves of a sketch (trim, extend, split), and returns the IDs of what it made or changed (\`ids\`). The tools are ${Object.keys(SKETCH_TOOLS).join(', ')}; their inputs and the IDs they return are in describe_api, sections sketch-tools and sketch-cuts, or describe_api { tool: "<name>" } for one. The shape is written as one command, so one undo takes it back; with \`preview: true\` it is only computed, as the tool preview does for a command. The IDs are generated so that the document does not have them: \`<prefix><kind><number>\` with the kinds p (point), c (curve) and k (constraint).`,
       inputSchema: {
         type: 'object',
         properties: {
@@ -1354,7 +1470,20 @@ export function tools(): Tool[] {
       },
       run: (engine, args) => {
         const { command, ids } = sketchToolBatch(engine, args);
-        return { ids, ...(outcome(args.preview === true ? engine.preview(command) : engine.execute(command)) as object) };
+        const before = engine.getState();
+        return { ids, ...(outcome(args.preview === true ? engine.preview(command) : engine.execute(command), before) as object) };
+      },
+    },
+    {
+      name: 'new_document',
+      description:
+        'Replaces the document with an empty one (D73): one command, so one undo step brings the old document back. A document that holds anything (a feature, a parameter, a check, body properties, a link or a joint, a stored mesh or document) is replaced only with `discard: true`; without it the call is refused and says what the document holds (save it first with save_document if it is worth keeping). The answer says what was discarded. The settings (the chord tolerance) stay. Works on the document the tools work on (see session_status), and the file of that document is forgotten, so save_document then needs a path; on the server\'s own engine an undo that brings the document back brings its file back, in the app it does not.',
+      inputSchema: { type: 'object', properties: { discard: { type: 'boolean', description: 'true: discard what the document holds' } }, additionalProperties: false },
+      run: (engine, args) => {
+        const { command, holds } = emptying(engine.getState().document);
+        if (Object.keys(holds).length === 0) return { ok: true, discarded: {}, note: 'The document is empty already; nothing changed.' };
+        if (args.discard !== true) throw new ToolError(`the document is not empty, it holds ${holdsText(holds)}; new_document with \`discard: true\` replaces it with an empty one (one undo step brings it back), or save it first with save_document`);
+        return { ...(outcome(engine.execute(command)) as Record<string, unknown>), discarded: holds, note: `Discarded ${holdsText(holds)}; undo brings ${Object.values(holds).reduce((sum, count) => sum + count, 0) === 1 ? 'it' : 'them'} back.` };
       },
     },
     {

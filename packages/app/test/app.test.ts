@@ -183,14 +183,14 @@ describe('the app, driven as a user drives it', () => {
     h.record('the same dimension again is refused in words');
 
     // a dimension typed, made a reference one and back: the width of the rectangle
-    const value = (): HTMLInputElement => constraintRow(h, 'origin, p2').querySelector('input.value') as HTMLInputElement;
+    const value = (): HTMLInputElement => constraintRow(h, 'origin, p1').querySelector('input.value') as HTMLInputElement;
     h.type(value(), '1 +');
     h.record('a dimension: an incomplete expression is marked while typing');
     h.type(value(), '', true);
     h.record('a dimension: an empty field changes nothing');
     h.type(value(), '45', true);
     h.record('a dimension: a new value');
-    const driving = (): HTMLInputElement => constraintRow(h, 'origin, p2').querySelector('label.check input') as HTMLInputElement;
+    const driving = (): HTMLInputElement => constraintRow(h, 'origin, p1').querySelector('label.check input') as HTMLInputElement;
     driving().checked = false;
     h.type(driving(), '', true);
     h.record('a dimension made a reference one');

@@ -7,7 +7,7 @@
   engine: diagnoseSketch("s1")  (x5)
   engine: getState("s1")
   engine: diagnoseSketch("s1")  (x2)
-  engine: execute({"type":"batch","commands":[{"type":"addPoint","sketch":"s1","id":"p1","x":40,"y":30},{"type":"addPoint","sketch":"s1","id":"p2","x":40,"y":0},{"type":"addPoint","sketch":"s1","id":"p3","x":0,"y":30},{"type":"addCurve","sketch":"s1","id":"c1","curve":{"type":"line","a":"origin","b":"p2"}},{"type":"addConstraint","sketch":"s1","id":"k1","constraint":{"type":"horizontal","line":"c1"}},{"type":"addCurve","sketch":"s1","id":"c2","curve":{"type":"line","a":"p2","b":"p1"}},{"type":"addConstraint","sketch":"s1","id":"k2","constraint":{"type":"vertical","line":"c2"}},{"type":"addCurve","sketch":"s1","id":"c3","curve":{"type":"line","a":"p1","b":"p3"}},{"type":"addConstraint","sketch":"s1","id":"k3","constraint":{"type":"horizontal","line":"c3"}},{"type":"addCurve","sketch":"s1","id":"c4","curve":{"type":"line","a":"p3","b":"origin"}},{"type":"addConstraint","sketch":"s1","id":"k4","constraint":{"type":"vertical","line":"c4"}}]}) -> ok
+  engine: execute({"type":"batch","commands":[{"type":"addPoint","sketch":"s1","id":"p1","x":40,"y":0},{"type":"addPoint","sketch":"s1","id":"p2","x":40,"y":30},{"type":"addPoint","sketch":"s1","id":"p3","x":0,"y":30},{"type":"addCurve","sketch":"s1","id":"c1","curve":{"type":"line","a":"origin","b":"p1"}},{"type":"addConstraint","sketch":"s1","id":"k1","constraint":{"type":"horizontal","line":"c1"}},{"type":"addCurve","sketch":"s1","id":"c2","curve":{"type":"line","a":"p1","b":"p2"}},{"type":"addConstraint","sketch":"s1","id":"k2","constraint":{"type":"vertical","line":"c2"}},{"type":"addCurve","sketch":"s1","id":"c3","curve":{"type":"line","a":"p2","b":"p3"}},{"type":"addConstraint","sketch":"s1","id":"k3","constraint":{"type":"horizontal","line":"c3"}},{"type":"addCurve","sketch":"s1","id":"c4","curve":{"type":"line","a":"p3","b":"origin"}},{"type":"addConstraint","sketch":"s1","id":"k4","constraint":{"type":"vertical","line":"c4"}}]}) -> ok
   engine: diagnoseSketch("s1")
   engine: getState("s1")
   engine: diagnoseSketch("s1")  (x5)
@@ -40,15 +40,15 @@
   features: s1, e1
   feature s1:
       {"id":"s1","name":"Skica 1","suppressed":false,"type":"sketch","plane":{"kind":"base","plane":"XY"}}
-      point p1: {"x":40,"y":30}
-      point p2: {"x":40,"y":0}
+      point p1: {"x":40,"y":0}
+      point p2: {"x":40,"y":30}
       point p3: {"x":0,"y":30}
       point p4: {"x":15,"y":15}
       point p5: {"x":32,"y":22}
       radius c5: 4
-      curve c1: {"type":"line","a":"origin","b":"p2"}
-      curve c2: {"type":"line","a":"p2","b":"p1"}
-      curve c3: {"type":"line","a":"p1","b":"p3"}
+      curve c1: {"type":"line","a":"origin","b":"p1"}
+      curve c2: {"type":"line","a":"p1","b":"p2"}
+      curve c3: {"type":"line","a":"p2","b":"p3"}
       curve c4: {"type":"line","a":"p3","b":"origin"}
       curve c5: {"type":"circle","center":"p4"}
       constraint k1: {"type":"horizontal","line":"c1"}

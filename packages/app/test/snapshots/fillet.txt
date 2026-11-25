@@ -7,7 +7,7 @@
   engine: diagnoseSketch("s1")  (x5)
   engine: getState("s1")
   engine: diagnoseSketch("s1")  (x2)
-  engine: execute({"type":"batch","commands":[{"type":"addPoint","sketch":"s1","id":"p1","x":40,"y":30},{"type":"addPoint","sketch":"s1","id":"p2","x":40,"y":0},{"type":"addPoint","sketch":"s1","id":"p3","x":0,"y":30},{"type":"addCurve","sketch":"s1","id":"c1","curve":{"type":"line","a":"origin","b":"p2"}},{"type":"addConstraint","sketch":"s1","id":"k1","constraint":{"type":"horizontal","line":"c1"}},{"type":"addCurve","sketch":"s1","id":"c2","curve":{"type":"line","a":"p2","b":"p1"}},{"type":"addConstraint","sketch":"s1","id":"k2","constraint":{"type":"vertical","line":"c2"}},{"type":"addCurve","sketch":"s1","id":"c3","curve":{"type":"line","a":"p1","b":"p3"}},{"type":"addConstraint","sketch":"s1","id":"k3","constraint":{"type":"horizontal","line":"c3"}},{"type":"addCurve","sketch":"s1","id":"c4","curve":{"type":"line","a":"p3","b":"origin"}},{"type":"addConstraint","sketch":"s1","id":"k4","constraint":{"type":"vertical","line":"c4"}}]}) -> ok
+  engine: execute({"type":"batch","commands":[{"type":"addPoint","sketch":"s1","id":"p1","x":40,"y":0},{"type":"addPoint","sketch":"s1","id":"p2","x":40,"y":30},{"type":"addPoint","sketch":"s1","id":"p3","x":0,"y":30},{"type":"addCurve","sketch":"s1","id":"c1","curve":{"type":"line","a":"origin","b":"p1"}},{"type":"addConstraint","sketch":"s1","id":"k1","constraint":{"type":"horizontal","line":"c1"}},{"type":"addCurve","sketch":"s1","id":"c2","curve":{"type":"line","a":"p1","b":"p2"}},{"type":"addConstraint","sketch":"s1","id":"k2","constraint":{"type":"vertical","line":"c2"}},{"type":"addCurve","sketch":"s1","id":"c3","curve":{"type":"line","a":"p2","b":"p3"}},{"type":"addConstraint","sketch":"s1","id":"k3","constraint":{"type":"horizontal","line":"c3"}},{"type":"addCurve","sketch":"s1","id":"c4","curve":{"type":"line","a":"p3","b":"origin"}},{"type":"addConstraint","sketch":"s1","id":"k4","constraint":{"type":"vertical","line":"c4"}}]}) -> ok
   engine: diagnoseSketch("s1")
   engine: getState("s1")  (x2)
   engine: preview({"type":"addFeature","feature":{"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"operation":"new"},"index":1}, "e1") -> ok
@@ -18,12 +18,12 @@
   features: s1, e1
   feature s1:
       {"id":"s1","name":"Skica 1","suppressed":false,"type":"sketch","plane":{"kind":"base","plane":"XY"}}
-      point p1: {"x":40,"y":30}
-      point p2: {"x":40,"y":0}
+      point p1: {"x":40,"y":0}
+      point p2: {"x":40,"y":30}
       point p3: {"x":0,"y":30}
-      curve c1: {"type":"line","a":"origin","b":"p2"}
-      curve c2: {"type":"line","a":"p2","b":"p1"}
-      curve c3: {"type":"line","a":"p1","b":"p3"}
+      curve c1: {"type":"line","a":"origin","b":"p1"}
+      curve c2: {"type":"line","a":"p1","b":"p2"}
+      curve c3: {"type":"line","a":"p2","b":"p3"}
       curve c4: {"type":"line","a":"p3","b":"origin"}
       constraint k1: {"type":"horizontal","line":"c1"}
       constraint k2: {"type":"vertical","line":"c2"}
@@ -91,7 +91,7 @@
       div#sketch-status
         p.badge.open: "Stupně volnosti: 2"
         p.hint: "Uzavřených oblastí: 1"
-      p.hint: "Volné (v pohledu modře): body p1, p2, p3. Skicu dourčí určení polohy bodu p1: například dvěma kótami od počátku."
+      p.hint: "Volné (v pohledu modře): body p1, p2, p3. Skicu dourčí určení polohy bodu p2: například dvěma kótami od počátku."
       div.buttons
         button title="Vybere volné body a kružnice s volným poloměrem": "Vybrat volné"
       div.buttons
@@ -149,7 +149,7 @@
       line #1d4ed8 width 2 onTop: 24 numbers, sum 1400
       axis #8b9bb4 width 1 through [0, 0, 0] along [1, 0, 0]
       axis #8b9bb4 width 1 through [0, 0, 0] along [0, 1, 0]
-      points #1d4ed8 size 7: 9 numbers, sum 290
+      points #1d4ed8 size 7: 9 numbers, sum 380
       points #a21caf size 7: 3 numbers, sum 0
       fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 17.5
       fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 17.5
@@ -203,27 +203,27 @@
   engine: diagnoseSketch("s1")
   engine: getState("s1")
   engine: diagnoseSketch("s1")  (x2)
-  engine: execute({"type":"batch","commands":[{"type":"addPoint","sketch":"s1","id":"p4","x":40,"y":25},{"type":"addPoint","sketch":"s1","id":"p5","x":35,"y":30},{"type":"addPoint","sketch":"s1","id":"p6","x":35,"y":25},{"type":"setCurvePoint","sketch":"s1","id":"c2","point":"b","to":"p4"},{"type":"setCurvePoint","sketch":"s1","id":"c3","point":"a","to":"p5"},{"type":"addCurve","sketch":"s1","id":"c5","curve":{"type":"arc","center":"p6","start":"p4","end":"p5"}},{"type":"addConstraint","sketch":"s1","id":"k5","constraint":{"type":"tangent","a":"c2","b":"c5"}},{"type":"addConstraint","sketch":"s1","id":"k6","constraint":{"type":"tangent","a":"c3","b":"c5"}},{"type":"addConstraint","sketch":"s1","id":"k7","constraint":{"type":"pointOnCurve","point":"p1","curve":"c2"}},{"type":"addConstraint","sketch":"s1","id":"k8","constraint":{"type":"pointOnCurve","point":"p1","curve":"c3"}},{"type":"addConstraint","sketch":"s1","id":"k9","constraint":{"type":"radius","curve":"c5","value":5,"driving":true}},{"type":"updateFeature","id":"e1","patch":{"profile":{"regions":[{"outerLoop":["c1","c2","c3","c4","c5"]}]}}}]}) -> ok
+  engine: execute({"type":"batch","commands":[{"type":"addPoint","sketch":"s1","id":"p4","x":40,"y":25},{"type":"addPoint","sketch":"s1","id":"p5","x":35,"y":30},{"type":"addPoint","sketch":"s1","id":"p6","x":35,"y":25},{"type":"setCurvePoint","sketch":"s1","id":"c2","point":"b","to":"p4"},{"type":"setCurvePoint","sketch":"s1","id":"c3","point":"a","to":"p5"},{"type":"addCurve","sketch":"s1","id":"c5","curve":{"type":"arc","center":"p6","start":"p4","end":"p5"}},{"type":"addConstraint","sketch":"s1","id":"k5","constraint":{"type":"tangent","a":"c2","b":"c5"}},{"type":"addConstraint","sketch":"s1","id":"k6","constraint":{"type":"tangent","a":"c3","b":"c5"}},{"type":"addConstraint","sketch":"s1","id":"k7","constraint":{"type":"pointOnCurve","point":"p2","curve":"c2"}},{"type":"addConstraint","sketch":"s1","id":"k8","constraint":{"type":"pointOnCurve","point":"p2","curve":"c3"}},{"type":"addConstraint","sketch":"s1","id":"k9","constraint":{"type":"radius","curve":"c5","value":5,"driving":true}},{"type":"updateFeature","id":"e1","patch":{"profile":{"regions":[{"outerLoop":["c1","c2","c3","c4","c5"]}]}}}]}) -> ok
   feature s1:
     + point p4: {"x":40,"y":25}
     + point p5: {"x":35,"y":30}
     + point p6: {"x":35,"y":25}
-    + curve c2: {"type":"line","a":"p2","b":"p4"}
+    + curve c2: {"type":"line","a":"p1","b":"p4"}
     + curve c3: {"type":"line","a":"p5","b":"p3"}
-    - curve c2: {"type":"line","a":"p2","b":"p1"}
-    - curve c3: {"type":"line","a":"p1","b":"p3"}
+    - curve c2: {"type":"line","a":"p1","b":"p2"}
+    - curve c3: {"type":"line","a":"p2","b":"p3"}
     + curve c5: {"type":"arc","center":"p6","start":"p4","end":"p5"}
     + constraint k5: {"type":"tangent","a":"c2","b":"c5"}
     + constraint k6: {"type":"tangent","a":"c3","b":"c5"}
-    + constraint k7: {"type":"pointOnCurve","point":"p1","curve":"c2"}
-    + constraint k8: {"type":"pointOnCurve","point":"p1","curve":"c3"}
+    + constraint k7: {"type":"pointOnCurve","point":"p2","curve":"c2"}
+    + constraint k8: {"type":"pointOnCurve","point":"p2","curve":"c3"}
     + constraint k9: {"type":"radius","curve":"c5","value":5,"driving":true}
   feature e1:
     + {"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4","c5"]}]},"extent":{"type":"distance","start":0,"distance":10},"operation":"new"}
     - {"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"extent":{"type":"distance","start":0,"distance":10},"operation":"new"}
   panel:
-    + p.hint: "Volné (v pohledu modře): body p1, p2, p3, p4, p5, p6. Skicu dourčí určení polohy kteréhokoli z bodů p1, p4, p5, p6: například dvěma kótami od počátku."
-    - p.hint: "Volné (v pohledu modře): body p1, p2, p3. Skicu dourčí určení polohy bodu p1: například dvěma kótami od počátku."
+    + p.hint: "Volné (v pohledu modře): body p1, p2, p3, p4, p5, p6. Skicu dourčí určení polohy kteréhokoli z bodů p2, p4, p5, p6: například dvěma kótami od počátku."
+    - p.hint: "Volné (v pohledu modře): body p1, p2, p3. Skicu dourčí určení polohy bodu p2: například dvěma kótami od počátku."
     + h2: "Vazby a kóty (9)"
     - h2: "Vazby a kóty (4)"
     + div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
@@ -239,12 +239,12 @@
     + div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
     +   span.name
     +     "Bod na křivce"
-    +     small: "p1, c2"
+    +     small: "p2, c2"
     +   button.icon title="Smazat vazbu": "✕"
     + div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
     +   span.name
     +     "Bod na křivce"
-    +     small: "p1, c3"
+    +     small: "p2, c3"
     +   button.icon title="Smazat vazbu": "✕"
     + div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
     +   span.name
@@ -260,15 +260,15 @@
   scene:
     + line #1d4ed8 width 2 onTop: 168 numbers, sum 14267.179
     - line #1d4ed8 width 2 onTop: 24 numbers, sum 1400
-    + points #1d4ed8 size 7: 18 numbers, sum 1075
-    - points #1d4ed8 size 7: 9 numbers, sum 290
+    + points #1d4ed8 size 7: 18 numbers, sum 1165
+    - points #1d4ed8 size 7: 9 numbers, sum 380
     + fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 34 numbers, sum 4021.446
     + label "R5" driving at [38.536, 28.536, 0]
     - fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 530
 
 === 7. the same corner again is refused with the reason
   engine: diagnoseSketch("s1")
-  status: Fillet: "p1" is not the common end of exactly two lines: no curve ends there  [error]
+  status: Fillet: "p2" is not the common end of exactly two lines: no curve ends there  [error]
   view: 1 scene(s) set
   scene:
     + points #16a34a size 12: 3 numbers, sum 100
@@ -305,7 +305,7 @@
     +   p.badge.open: "Stupně volnosti: 4"
     -   p.badge.open: "Stupně volnosti: 2"
     + p.hint: "Volné (v pohledu modře): body p1, p2, p3, p4, p5, p6, p7."
-    - p.hint: "Volné (v pohledu modře): body p1, p2, p3, p4, p5, p6. Skicu dourčí určení polohy kteréhokoli z bodů p1, p4, p5, p6: například dvěma kótami od počátku."
+    - p.hint: "Volné (v pohledu modře): body p1, p2, p3, p4, p5, p6. Skicu dourčí určení polohy kteréhokoli z bodů p2, p4, p5, p6: například dvěma kótami od počátku."
     - h2: "Fillet"
     - label
     -   "Radius"
@@ -356,10 +356,10 @@
   engine: diagnoseSketch("s1")  (x2)
   engine: execute({"type":"setCurvePoint","sketch":"s1","id":"c1","point":"a","to":"p7"}) -> ok
   feature s1:
-    + point p2: {"x":40,"y":45}
-    - point p2: {"x":40,"y":0}
-    + curve c1: {"type":"line","a":"p7","b":"p2"}
-    - curve c1: {"type":"line","a":"origin","b":"p2"}
+    + point p1: {"x":40,"y":45}
+    - point p1: {"x":40,"y":0}
+    + curve c1: {"type":"line","a":"p7","b":"p1"}
+    - curve c1: {"type":"line","a":"origin","b":"p1"}
   toolbar:
     +   button disabled: "Export STL"
     -   button: "Export STL"
@@ -387,8 +387,8 @@
     + line #f97316 width 3 onTop: 6 numbers, sum 505
     - line #1d4ed8 width 2 onTop: 162 numbers, sum 13771.491
     - line #f97316 width 3 onTop: 6 numbers, sum 160
-    + points #1d4ed8 size 7: 18 numbers, sum 1300
-    - points #1d4ed8 size 7: 18 numbers, sum 1075
+    + points #1d4ed8 size 7: 18 numbers, sum 1255
+    - points #1d4ed8 size 7: 18 numbers, sum 1165
     - fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 34 numbers, sum 4021.446
 
 === 11. a circle and a point: the row offers the centre only
@@ -404,12 +404,12 @@
   engine: getState("s1")
   engine: diagnoseSketch("s1")  (x8)
   feature s1:
-    + point p2: {"x":40,"y":0}
-    - point p2: {"x":40,"y":45}
+    + point p1: {"x":40,"y":0}
+    - point p1: {"x":40,"y":45}
     + point p8: {"x":70,"y":10}
     + radius c6: 10
-    + curve c1: {"type":"line","a":"origin","b":"p2"}
-    - curve c1: {"type":"line","a":"p7","b":"p2"}
+    + curve c1: {"type":"line","a":"origin","b":"p1"}
+    - curve c1: {"type":"line","a":"p7","b":"p1"}
     + curve c6: {"type":"circle","center":"p8"}
   toolbar:
     +   button: "Export STL"
@@ -447,8 +447,8 @@
     - line #8b9bb4 width 1: 24 numbers, sum 147.51
     - line #1d4ed8 width 2 onTop: 162 numbers, sum 13861.491
     - line #f97316 width 3 onTop: 6 numbers, sum 505
-    + points #1d4ed8 size 7: 21 numbers, sum 1485
-    - points #1d4ed8 size 7: 18 numbers, sum 1300
+    + points #1d4ed8 size 7: 21 numbers, sum 1575
+    - points #1d4ed8 size 7: 18 numbers, sum 1255
     + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 29.126
     + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 29.126
     + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 29.126
@@ -520,8 +520,8 @@
     - line #8b9bb4 width 1: 24 numbers, sum 203.881
     - line #1d4ed8 width 2 onTop: 168 numbers, sum 14267.179
     - line #f97316 width 3 onTop: 576 numbers, sum 57418.686
-    + points #1d4ed8 size 7: 30 numbers, sum 2815
-    - points #1d4ed8 size 7: 21 numbers, sum 1485
+    + points #1d4ed8 size 7: 30 numbers, sum 2905
+    - points #1d4ed8 size 7: 21 numbers, sum 1575
     + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 41.597
     + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 41.597
     + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 41.597

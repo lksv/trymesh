@@ -50,12 +50,15 @@ export interface SketchToolCall extends SketchToolContext {
 }
 
 export interface SketchToolInputs {
-  rectangle: { first: Anchor; opposite: Anchor };
+  // D73: by `first` or by `center` (one of the two); `width` and `height` add the dimensions of
+  // the sides, and `opposite` may be left out when both are given.
+  rectangle: { first?: Anchor; center?: Anchor; opposite?: Anchor; width?: number | Expr; height?: number | Expr };
   // `vertex` gives the size and the rotation. `sizeKind` and `size` add a dimension: the diameter
   // of the circumscribed circle, or the size across flats (an even number of sides only).
   polygon: { center: Anchor; vertex: Anchor; sides: number; sizeKind?: 'circumscribed' | 'acrossFlats'; size?: number | Expr };
-  // `corner`: the point where two lines meet; `radius`: a number or an expression (D52).
-  fillet: { corner: Id; radius: number | Expr };
+  // `corner`: the point where two lines meet; `radius`: a number or an expression (D52). `corners`
+  // instead of `corner`: several corners with one radius in one batch, each after the one before (D73).
+  fillet: { corner?: Id; corners?: Id[]; radius: number | Expr };
   // D65: the piece of `curve` nearest to `at` goes; `with` selects which contacts bound it.
   trim: TrimInput;
   // D65: the end `end` of a line or an arc moves to the first curve its extension meets.
@@ -68,9 +71,11 @@ export interface SketchToolInputs {
 export type SketchToolName = keyof SketchToolInputs;
 
 export type SketchToolInput =
-  | { kind: 'anchor' }
+  | { kind: 'anchor'; optional?: boolean }
   // a point of the sketch by its ID: an own point or `origin`, not a point of projected geometry
-  | { kind: 'point' }
+  | { kind: 'point'; optional?: boolean }
+  // a list of such points, none twice (D73)
+  | { kind: 'points'; optional?: boolean }
   // `expression`: an expression over parameters is accepted too (it ends up in a dimension)
   | { kind: 'number'; spec: NumberSpec; optional?: boolean; expression?: boolean }
   | { kind: 'option'; options: readonly string[]; optional?: boolean }
@@ -88,6 +93,8 @@ export interface SketchToolSpec {
   title: string;
   summary: string;
   inputs: Record<string, SketchToolInput>;
+  // groups of optional inputs of which exactly one is given (D73: `first` or `center`)
+  oneOf?: readonly (readonly string[])[];
   ids: Record<string, string>; // what the tool returns in `ids`, and in which order
 }
 
@@ -101,12 +108,24 @@ export const MAX_POLYGON_SIDES = 64;
 export const SKETCH_TOOLS: Record<SketchToolName, SketchToolSpec> = {
   rectangle: {
     title: 'Rectangle',
-    summary: 'A rectangle from two opposite corners: four lines, two horizontal and two vertical. Its width and height stay free.',
-    inputs: { first: { kind: 'anchor' }, opposite: { kind: 'anchor' } },
+    summary:
+      'A rectangle: four lines, two horizontal and two vertical. By two opposite corners, `first` and `opposite`; or by its centre, `center` instead of `first`: the corner opposite `opposite` across the centre is then `points[0]`, and a construction diagonal from `points[0]` to `points[2]` has the centre as its midpoint. `width` and `height` (each a number or an expression) add a distance dimension between the corners of a horizontal and of a vertical side, and the rectangle is drawn at that size from `first` or `center` towards `opposite` (towards +x and +y without it; `opposite` may be left out when both are given; an `opposite` that snaps keeps its place). Without them the width and the height stay free. With `width`, `height` and `first` or `center` snapped to a point (such as `origin`) the rectangle is fully determined.',
+    inputs: {
+      first: { kind: 'anchor', optional: true },
+      center: { kind: 'anchor', optional: true },
+      opposite: { kind: 'anchor', optional: true },
+      width: { kind: 'number', spec: { title: 'Width', unit: 'mm', min: { value: 0, open: true } }, optional: true, expression: true },
+      height: { kind: 'number', spec: { title: 'Height', unit: 'mm', min: { value: 0, open: true } }, optional: true, expression: true },
+    },
+    oneOf: [['first', 'center']],
     ids: {
-      points: 'the corners: `first`, the corner beside it along x, `opposite`, the corner beside `first` along y',
+      points: 'the corners in order round the rectangle: `points[0]` (`first`, or the corner opposite `opposite` across the centre), the corner beside it along x, `points[2]` (`opposite`), the corner beside `points[0]` along y; new points are numbered in this order',
       lines: '`lines[i]` goes from `points[i]` to `points[i + 1]`, the last one back to `points[0]`; even ones are horizontal',
-      constraints: 'the constraints the tool added (horizontal, vertical and those of snapping)',
+      constraints: 'the constraints the tool added, without the dimensions (horizontal, vertical, those of snapping, and the midpoint of the centre)',
+      center: 'the centre point (with `center`)',
+      diagonal: 'the construction diagonal from `points[0]` to `points[2]` (with `center`)',
+      width: 'the width dimension, between `points[0]` and `points[1]` (with `width`)',
+      height: 'the height dimension, between `points[1]` and `points[2]` (with `height`)',
     },
   },
   polygon: {
@@ -133,8 +152,11 @@ export const SKETCH_TOOLS: Record<SketchToolName, SketchToolSpec> = {
     title: 'Fillet',
     summary:
       'A fillet of the corner where two lines meet: an arc of the given radius, tangent to both lines. The lines are shortened to the ends of the arc and keep their IDs, so the faces made from them keep their names. The corner point stays as the virtual corner, held on both lines: dimensions and constraints on it mean what they did, and a size of the outline is still measured between its sharp corners. `radius` becomes a radius dimension (`ids.radius`), a number or an expression; change it there. The arc is added to every region and wall of the document that passes the corner (`ids.patched`), in the same batch, so the features built on the sketch keep their profiles and get the round face named by the arc: `side` of an extrusion (a cylinder, or a cone when the extrusion is tapered) or of a revolve (a torus, or a sphere when the arc is centred on its axis), `wallSide` left and right of a wall. A region that has the corner only on the rim of a hole (a plate around a pocket) needs no patch, since a region is named by its outer loop: a feature that reads the corner through holes alone gets the round corner too and is in no list. Two lists name what reads the corner directly and is not patched; check them. `ids.moved`: sketches and plane features on a side face that starts at the corner (a side face starts where its line starts, at `a`); their plane has moved along the line, with everything dimensioned from its origin. `ids.shortened`: extrusions and revolves whose wall runs along one of the two lines only (the wall ends at the arc now), and sketches that project an edge of a side face of either line (the end of the projection at the corner has moved). Only features that read the corner directly are listed, by the names in the document: what is built on them follows them, and a listed feature may also be among the problems of the result. Refused: a point that is not the common end of exactly two lines (ends joined by a coincident constraint are two points: re-point one line onto the other point first, setCurvePoint), parallel lines, a radius the lines are too short for or one too small to draw, a line with an equalLength or midpoint constraint (it would measure the shortened line). A profile offset or a wall has to leave the arc a radius: an inward offset as large as the fillet is an error of that feature. Nothing keeps the arc a fillet afterwards: a later change that leaves it no room (a radius too large, a side too short) is often a conflict of the sketch or an invalid profile, but it can also be solved into an arc that runs past the end of a line, with no message and a body made from it, so look at the sketch after such a change. Of the curves that end at the corner the ones that are not construction curves are filleted; if there are none, the construction ones. A mirror or pattern of the sketch whose listed curves the arc stands between gets the arc as a source (`ids.entries`), so its copies are filleted too. A corner of copies is not filleted: fillet the corner of their source.',
-    inputs: { corner: { kind: 'point' }, radius: { kind: 'number', spec: { title: 'Radius', unit: 'mm', min: { value: 0, open: true } }, expression: true } },
+    inputs: { corner: { kind: 'point', optional: true }, corners: { kind: 'points', optional: true }, radius: { kind: 'number', spec: { title: 'Radius', unit: 'mm', min: { value: 0, open: true } }, expression: true } },
+    oneOf: [['corner', 'corners']],
     ids: {
+      corners:
+        'with `corners` (several corners in one batch and one undo step, D73): the corners in the order given. Each corner is filleted in the state the corners before it left, so two corners of one line share it; every list below then holds the lists of the corners one after another: `arc[i]`, `center[i]` and `radius[i]` belong to `corners[i]`, `lines` and `ends` have two entries per corner, `constraints` those of each corner in turn, and `patched`, `moved`, `shortened` and `entries` each feature or entry once, in the order of the timeline or of the entries. A corner that is refused refuses the whole call, with the corner named',
       arc: 'the arc',
       center: 'the centre point of the arc',
       lines: 'the two lines that were shortened, in the order of their IDs',
@@ -359,10 +381,14 @@ function curveInputProblem(context: SketchToolContext, v: unknown, reference: bo
 function inputProblem(spec: SketchToolSpec, context: SketchToolContext, input: unknown): string | undefined {
   if (!isObject(input)) return 'the input of a tool must be an object';
   for (const key of Object.keys(input)) if (!has(spec.inputs, key)) return `${spec.title} has no input "${key}"; it takes ${Object.keys(spec.inputs).join(', ')}`;
+  for (const group of spec.oneOf ?? []) {
+    const given = group.filter((name) => input[name] !== undefined);
+    if (given.length !== 1) return `${spec.title} takes exactly one of ${group.join(', ')}${given.length ? `; given: ${given.join(', ')}` : ''}`;
+  }
   for (const [name, kind] of Object.entries(spec.inputs)) {
     const value = input[name];
     if (value === undefined) {
-      if (kind.kind === 'anchor' || kind.kind === 'point' || kind.kind === 'sketch' || kind.optional !== true) return `the input "${name}" is missing`;
+      if (kind.kind === 'sketch' || kind.optional !== true) return `the input "${name}" is missing`;
       continue;
     }
     if (kind.kind === 'anchor') {
@@ -371,6 +397,13 @@ function inputProblem(spec: SketchToolSpec, context: SketchToolContext, input: u
     } else if (kind.kind === 'point') {
       const problem = pointProblem(context, value);
       if (problem) return `${name}: ${problem}`;
+    } else if (kind.kind === 'points') {
+      if (!Array.isArray(value) || value.length === 0) return `${name}: a non-empty list of IDs of points of the sketch is expected`;
+      for (const [i, point] of value.entries()) {
+        const problem = pointProblem(context, point);
+        if (problem) return `${name}[${i}]: ${problem}`;
+        if (value.indexOf(point) !== i) return `${name}[${i}]: "${String(point)}" is in the list twice`;
+      }
     } else if (kind.kind === 'curve') {
       const problem = curveInputProblem(context, value, kind.reference === true);
       if (problem) return `${name}: ${problem}`;
@@ -399,17 +432,49 @@ function inputProblem(spec: SketchToolSpec, context: SketchToolContext, input: u
 
 const failed = (message: string): SketchToolResult => ({ ok: false, message });
 
+// The value of a size given as a number or an expression, when it is known and positive: an
+// expression needs the values of the parameters.
+function sizeValue(context: SketchToolContext, value: number | Expr | undefined): number | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value === 'number') return value > 0 ? value : undefined;
+  if (!context.parameters) return undefined;
+  const known = evaluateNumber(value, context.parameters);
+  return known.ok && known.value > 0 ? known.value : undefined;
+}
+
 function rectangle(context: SketchToolContext, input: SketchToolInputs['rectangle'], newId: NewId): SketchToolResult {
   const sketch = context.sketch.id;
-  const a = placeAnchor(context, input.first, newId);
-  const c = placeAnchor(context, input.opposite, newId);
-  const [pa, pc] = [anchorPosition(context, input.first), anchorPosition(context, input.opposite)];
-  if (a.id === c.id || Math.abs(pa[0] - pc[0]) <= SAME_PLACE || Math.abs(pa[1] - pc[1]) <= SAME_PLACE) return failed('the two corners must differ in both coordinates');
-  const [b, d] = [newId('p'), newId('p')];
+  // `inputProblem` has made sure that exactly one of `first` and `center` is given
+  const byCenter = input.center !== undefined;
+  const from = (byCenter ? input.center : input.first) as Anchor;
+  const pf = anchorPosition(context, from);
+  const [width, height] = [sizeValue(context, input.width), sizeValue(context, input.height)];
+  const po = input.opposite && anchorPosition(context, input.opposite);
+  if (!po && (width === undefined || height === undefined)) return failed('`opposite` is needed unless `width` and `height` are both given (as numbers, or expressions the parameters give a value to)');
+  // The corner `opposite` as drawn: where it snaps, else at the given size (half of it from the
+  // centre) towards where it was given, else where it was given.
+  const reach = byCenter ? 0.5 : 1;
+  const towards = (axis: 0 | 1): number => (po && po[axis] < pf[axis] ? -1 : 1);
+  const sized = (axis: 0 | 1, size: number | undefined): number => (size !== undefined ? pf[axis] + towards(axis) * size * reach : (po as Vec2)[axis]);
+  const pc: Vec2 = po && input.opposite?.snap ? po : [sized(0, width), sized(1, height)];
+  const pa: Vec2 = byCenter ? [2 * pf[0] - pc[0], 2 * pf[1] - pc[1]] : pf;
+  if (Math.abs(pa[0] - pc[0]) <= SAME_PLACE || Math.abs(pa[1] - pc[1]) <= SAME_PLACE) return failed(byCenter ? 'the centre and the corner must differ in both coordinates' : 'the two corners must differ in both coordinates');
+  if ([pa, pc].some((q) => Math.abs(q[0]) > MAX_NUMBER || Math.abs(q[1]) > MAX_NUMBER)) return failed(`the rectangle reaches out of the range ±${MAX_NUMBER}`);
+  // the points in the order of the result, so that new IDs are numbered in it (D73)
+  const free = (at: Vec2): Placed => {
+    const id = newId('p');
+    return { id, commands: [{ type: 'addPoint', sketch, id, x: at[0], y: at[1] }], constraints: [] };
+  };
+  const a = byCenter ? free(pa) : placeAnchor(context, from, newId);
+  const b = newId('p');
+  const c = input.opposite?.snap ? placeAnchor(context, input.opposite, newId) : free(pc);
+  if (a.id === c.id) return failed('the two corners must differ in both coordinates');
+  const d = newId('p');
+  const center = byCenter ? placeAnchor(context, from, newId) : undefined;
   const points = [a.id, b, c.id, d];
-  const commands: Command[] = [...a.commands, ...c.commands, { type: 'addPoint', sketch, id: b, x: pc[0], y: pa[1] }, { type: 'addPoint', sketch, id: d, x: pa[0], y: pc[1] }];
+  const commands: Command[] = [...a.commands, { type: 'addPoint', sketch, id: b, x: pc[0], y: pa[1] }, ...c.commands, { type: 'addPoint', sketch, id: d, x: pa[0], y: pc[1] }, ...(center?.commands ?? [])];
   const lines: Id[] = [];
-  const constraints: Id[] = [...a.constraints, ...c.constraints];
+  const constraints: Id[] = [...a.constraints, ...c.constraints, ...(center?.constraints ?? [])];
   points.forEach((corner, i) => {
     const [line, constraint] = [newId('c'), newId('k')];
     lines.push(line);
@@ -417,7 +482,22 @@ function rectangle(context: SketchToolContext, input: SketchToolInputs['rectangl
     commands.push({ type: 'addCurve', sketch, id: line, curve: { type: 'line', a: corner, b: points[(i + 1) % 4] } });
     commands.push({ type: 'addConstraint', sketch, id: constraint, constraint: { type: i % 2 === 0 ? 'horizontal' : 'vertical', line } });
   });
-  return { ok: true, commands, ids: { points, lines, constraints } };
+  const ids: Record<string, Id[]> = { points, lines, constraints };
+  if (center) {
+    const [diagonal, midpoint] = [newId('c'), newId('k')];
+    commands.push({ type: 'addCurve', sketch, id: diagonal, curve: { type: 'line', a: a.id, b: c.id, construction: true } });
+    commands.push({ type: 'addConstraint', sketch, id: midpoint, constraint: { type: 'midpoint', point: center.id, line: diagonal } });
+    constraints.push(midpoint);
+    Object.assign(ids, { center: [center.id], diagonal: [diagonal] });
+  }
+  const dimension = (name: 'width' | 'height', value: number | Expr, p: Id, q: Id) => {
+    const id = newId('k');
+    commands.push({ type: 'addConstraint', sketch, id, constraint: { type: 'distance', a: p, b: q, value, driving: true } });
+    ids[name] = [id];
+  };
+  if (input.width !== undefined) dimension('width', input.width, a.id, b);
+  if (input.height !== undefined) dimension('height', input.height, b, c.id);
+  return { ok: true, commands, ids };
 }
 
 function polygon(context: SketchToolContext, input: SketchToolInputs['polygon'], newId: NewId): SketchToolResult {
@@ -553,9 +633,9 @@ function cornerLines(context: SketchToolContext, corner: Id): [Id, Id] | string 
   return [lines[0], lines[1]].sort() as [Id, Id];
 }
 
-function fillet(context: SketchToolCall, input: SketchToolInputs['fillet'], newId: NewId): SketchToolResult {
+// One corner (D52).
+function filletCorner(context: SketchToolCall, corner: Id, input: { radius: number | Expr }, newId: NewId): SketchToolResult {
   const { sketch, document } = context;
-  const corner = input.corner;
   const found = cornerLines(context, corner);
   if (typeof found === 'string') return failed(found);
   const lines = found;
@@ -677,6 +757,42 @@ function fillet(context: SketchToolCall, input: SketchToolInputs['fillet'], newI
   const readers = readersOf(document, id, changes, sketch);
   const shortened = document.features.map((f) => f.id).filter((feature) => walls.includes(feature) || readers.shortened.includes(feature));
   return { ok: true, commands, ids: { arc: [arc], center: [centre], lines: [...lines], ends: endIds, constraints, radius: [radiusId], patched, moved: readers.moved, shortened, entries } };
+}
+
+// The fillet of one corner, or of several in one batch (D73). Each corner is filleted in the state
+// the corners before it leave: the document after their commands (the sketch re-pointed, the
+// regions and walls patched, the entries joined) and the positions of the points they added, so a
+// line two corners share is shortened at both ends and a region gets both arcs. The lists of
+// `ids` are those of each corner one after another; the features and the entries once each.
+function fillet(context: SketchToolCall, input: SketchToolInputs['fillet'], newId: NewId): SketchToolResult {
+  if (input.corners === undefined) return filletCorner(context, input.corner as Id, input, newId);
+  let call = context;
+  const commands: Command[] = [];
+  const lists: Record<string, Id[]> = { corners: [...input.corners] };
+  for (const corner of input.corners) {
+    const made = filletCorner(call, corner, input, newId);
+    if (!made.ok) return failed(`corner "${corner}": ${made.message}`);
+    commands.push(...made.commands);
+    for (const [name, ids] of Object.entries(made.ids)) lists[name] = [...(lists[name] ?? []), ...ids];
+    let document: Document;
+    try {
+      document = applyCommand(call.document, { type: 'batch', commands: made.commands });
+    } catch (error) {
+      return failed(`corner "${corner}": ${error instanceof Error ? error.message : String(error)}`);
+    }
+    const sketch = document.features.find((f): f is SketchFeature => f.id === context.sketch.id) as SketchFeature;
+    const added = Object.fromEntries(made.commands.flatMap((command): [Id, Point2][] => (command.type === 'addPoint' ? [[command.id, { x: command.x, y: command.y }]] : [])));
+    call = { ...call, document, sketch, result: call.result && { ...call.result, points: { ...call.result.points, ...added } } };
+  }
+  // the features in the order of the timeline, the entries in the order of the sketch, each once
+  const timeline = call.document.features.map((f) => f.id);
+  const entries = Object.keys(call.sketch.external);
+  const ordered = (ids: Id[] | undefined, order: Id[]): Id[] => [...new Set(ids ?? [])].sort((x, y) => order.indexOf(x) - order.indexOf(y));
+  const ids: Record<string, Id[]> = {};
+  for (const name of Object.keys(SKETCH_TOOLS.fillet.ids)) {
+    ids[name] = name === 'patched' || name === 'moved' || name === 'shortened' ? ordered(lists[name], timeline) : name === 'entries' ? ordered(lists[name], entries) : (lists[name] ?? []);
+  }
+  return { ok: true, commands, ids };
 }
 
 // A short text of a number for a message.

@@ -7,7 +7,7 @@
   engine: diagnoseSketch("s1")  (x5)
   engine: getState("s1")
   engine: diagnoseSketch("s1")  (x2)
-  engine: execute({"type":"batch","commands":[{"type":"addPoint","sketch":"s1","id":"p1","x":40,"y":30},{"type":"addPoint","sketch":"s1","id":"p2","x":40,"y":0},{"type":"addPoint","sketch":"s1","id":"p3","x":0,"y":30},{"type":"addCurve","sketch":"s1","id":"c1","curve":{"type":"line","a":"origin","b":"p2"}},{"type":"addConstraint","sketch":"s1","id":"k1","constraint":{"type":"horizontal","line":"c1"}},{"type":"addCurve","sketch":"s1","id":"c2","curve":{"type":"line","a":"p2","b":"p1"}},{"type":"addConstraint","sketch":"s1","id":"k2","constraint":{"type":"vertical","line":"c2"}},{"type":"addCurve","sketch":"s1","id":"c3","curve":{"type":"line","a":"p1","b":"p3"}},{"type":"addConstraint","sketch":"s1","id":"k3","constraint":{"type":"horizontal","line":"c3"}},{"type":"addCurve","sketch":"s1","id":"c4","curve":{"type":"line","a":"p3","b":"origin"}},{"type":"addConstraint","sketch":"s1","id":"k4","constraint":{"type":"vertical","line":"c4"}}]}) -> ok
+  engine: execute({"type":"batch","commands":[{"type":"addPoint","sketch":"s1","id":"p1","x":40,"y":0},{"type":"addPoint","sketch":"s1","id":"p2","x":40,"y":30},{"type":"addPoint","sketch":"s1","id":"p3","x":0,"y":30},{"type":"addCurve","sketch":"s1","id":"c1","curve":{"type":"line","a":"origin","b":"p1"}},{"type":"addConstraint","sketch":"s1","id":"k1","constraint":{"type":"horizontal","line":"c1"}},{"type":"addCurve","sketch":"s1","id":"c2","curve":{"type":"line","a":"p1","b":"p2"}},{"type":"addConstraint","sketch":"s1","id":"k2","constraint":{"type":"vertical","line":"c2"}},{"type":"addCurve","sketch":"s1","id":"c3","curve":{"type":"line","a":"p2","b":"p3"}},{"type":"addConstraint","sketch":"s1","id":"k3","constraint":{"type":"horizontal","line":"c3"}},{"type":"addCurve","sketch":"s1","id":"c4","curve":{"type":"line","a":"p3","b":"origin"}},{"type":"addConstraint","sketch":"s1","id":"k4","constraint":{"type":"vertical","line":"c4"}}]}) -> ok
   engine: diagnoseSketch("s1")
   engine: getState("s1")  (x2)
   engine: preview({"type":"addFeature","feature":{"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"operation":"new"},"index":1}, "e1") -> ok
@@ -27,14 +27,14 @@
   features: s1, e1
   feature s1:
       {"id":"s1","name":"Skica 1","suppressed":false,"type":"sketch","plane":{"kind":"base","plane":"XY"}}
-      point p1: {"x":40,"y":30}
-      point p2: {"x":40,"y":0}
+      point p1: {"x":40,"y":0}
+      point p2: {"x":40,"y":30}
       point p3: {"x":0,"y":30}
       point p4: {"x":20,"y":-8}
       radius c5: 12
-      curve c1: {"type":"line","a":"origin","b":"p2"}
-      curve c2: {"type":"line","a":"p2","b":"p1"}
-      curve c3: {"type":"line","a":"p1","b":"p3"}
+      curve c1: {"type":"line","a":"origin","b":"p1"}
+      curve c2: {"type":"line","a":"p1","b":"p2"}
+      curve c3: {"type":"line","a":"p2","b":"p3"}
       curve c4: {"type":"line","a":"p3","b":"origin"}
       curve c5: {"type":"circle","center":"p4"}
       constraint k1: {"type":"horizontal","line":"c1"}
@@ -163,7 +163,7 @@
       axis #8b9bb4 width 1 through [0, 0, 0] along [1, 0, 0]
       axis #8b9bb4 width 1 through [0, 0, 0] along [0, 1, 0]
       points #dc2626 size 9: 6 numbers, sum 126.833
-      points #1d4ed8 size 7: 12 numbers, sum 318
+      points #1d4ed8 size 7: 12 numbers, sum 408
       points #a21caf size 7: 3 numbers, sum 0
       fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 19.31
       fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 19.31
@@ -207,19 +207,19 @@
   engine: query("sketchContacts", {"sketch":"s1"}) -> ok
   engine: getState("s1")
   engine: diagnoseSketch("s1")  (x2)
-  engine: execute({"type":"batch","commands":[{"type":"addPoint","sketch":"s1","id":"p5","x":11.05572809000084,"y":0},{"type":"addPoint","sketch":"s1","id":"p6","x":28.94427190999916,"y":0},{"type":"setCurvePoint","sketch":"s1","id":"c1","point":"b","to":"p5"},{"type":"removeEntity","sketch":"s1","id":"c5"},{"type":"addCurve","sketch":"s1","id":"c5","curve":{"type":"arc","center":"p4","start":"p6","end":"p5"}},{"type":"addCurve","sketch":"s1","id":"c6","curve":{"type":"line","a":"p5","b":"p6"}},{"type":"addCurve","sketch":"s1","id":"c7","curve":{"type":"line","a":"p6","b":"p2"}},{"type":"addConstraint","sketch":"s1","id":"k5","constraint":{"type":"pointOnCurve","point":"p6","curve":"c1"}},{"type":"addConstraint","sketch":"s1","id":"k6","constraint":{"type":"pointOnCurve","point":"p2","curve":"c1"}},{"type":"updateFeature","id":"e1","patch":{"profile":{"regions":[{"outerLoop":["c1","c2","c3","c4","c5","c7"]},{"outerLoop":["c5","c6"]}]}}}]}) -> ok
+  engine: execute({"type":"batch","commands":[{"type":"addPoint","sketch":"s1","id":"p5","x":11.05572809000084,"y":0},{"type":"addPoint","sketch":"s1","id":"p6","x":28.94427190999916,"y":0},{"type":"setCurvePoint","sketch":"s1","id":"c1","point":"b","to":"p5"},{"type":"removeEntity","sketch":"s1","id":"c5"},{"type":"addCurve","sketch":"s1","id":"c5","curve":{"type":"arc","center":"p4","start":"p6","end":"p5"}},{"type":"addCurve","sketch":"s1","id":"c6","curve":{"type":"line","a":"p5","b":"p6"}},{"type":"addCurve","sketch":"s1","id":"c7","curve":{"type":"line","a":"p6","b":"p1"}},{"type":"addConstraint","sketch":"s1","id":"k5","constraint":{"type":"pointOnCurve","point":"p6","curve":"c1"}},{"type":"addConstraint","sketch":"s1","id":"k6","constraint":{"type":"pointOnCurve","point":"p1","curve":"c1"}},{"type":"updateFeature","id":"e1","patch":{"profile":{"regions":[{"outerLoop":["c1","c2","c3","c4","c5","c7"]},{"outerLoop":["c5","c6"]}]}}}]}) -> ok
   feature s1:
     + point p5: {"x":11.05572809000084,"y":0}
     + point p6: {"x":28.94427190999916,"y":0}
     + curve c1: {"type":"line","a":"origin","b":"p5"}
     - radius c5: 12
-    - curve c1: {"type":"line","a":"origin","b":"p2"}
+    - curve c1: {"type":"line","a":"origin","b":"p1"}
     + curve c5: {"type":"arc","center":"p4","start":"p6","end":"p5"}
     + curve c6: {"type":"line","a":"p5","b":"p6"}
-    + curve c7: {"type":"line","a":"p6","b":"p2"}
+    + curve c7: {"type":"line","a":"p6","b":"p1"}
     - curve c5: {"type":"circle","center":"p4"}
     + constraint k5: {"type":"pointOnCurve","point":"p6","curve":"c1"}
-    + constraint k6: {"type":"pointOnCurve","point":"p2","curve":"c1"}
+    + constraint k6: {"type":"pointOnCurve","point":"p1","curve":"c1"}
   feature e1:
     + {"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4","c5","c7"]},{"outerLoop":["c5","c6"]}]},"extent":{"type":"distance","start":0,"distance":10},"operation":"new"}
     - {"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"extent":{"type":"distance","start":0,"distance":10},"operation":"new"}
@@ -247,7 +247,7 @@
     + div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
     +   span.name
     +     "Bod na křivce"
-    +     small: "p2, c1"
+    +     small: "p1, c1"
     +   button.icon title="Smazat vazbu": "✕"
   status: Trimmed; followed: Vysunutí 1.
   view: 2 scene(s) set
@@ -255,9 +255,9 @@
     + line #1d4ed8 width 2 onTop: 192 numbers, sum 6355.996
     - line #1d4ed8 width 2 onTop: 600 numbers, sum 10698.442
     - line #64748b width 1.5 dashed onTop: 426 numbers, sum 4538.412
-    + points #1d4ed8 size 7: 18 numbers, sum 442.223
+    + points #1d4ed8 size 7: 18 numbers, sum 532.223
     - points #dc2626 size 9: 6 numbers, sum 126.833
-    - points #1d4ed8 size 7: 12 numbers, sum 318
+    - points #1d4ed8 size 7: 12 numbers, sum 408
     - points #16a34a size 12: 3 numbers, sum -20
     + fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 52 numbers, sum 2533.807
     + fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 44 numbers, sum 1911.86
@@ -339,8 +339,8 @@
     + line #1d4ed8 width 2 onTop: 192 numbers, sum 6460.718
     + line #64748b width 1.5 dashed onTop: 6 numbers, sum 240
     - line #1d4ed8 width 2 onTop: 186 numbers, sum 6300.718
-    + points #1d4ed8 size 7: 24 numbers, sum 602.223
-    - points #1d4ed8 size 7: 18 numbers, sum 442.223
+    + points #1d4ed8 size 7: 24 numbers, sum 692.223
+    - points #1d4ed8 size 7: 18 numbers, sum 532.223
     + points #16a34a size 12: 3 numbers, sum 48
 
 === 8. a click extends it: the top side cut there
@@ -351,8 +351,8 @@
   feature s1:
     + point p9: {"x":10,"y":30}
     - point p8: {"x":10,"y":20}
-    + curve c3: {"type":"line","a":"p1","b":"p9"}
-    - curve c3: {"type":"line","a":"p1","b":"p3"}
+    + curve c3: {"type":"line","a":"p2","b":"p9"}
+    - curve c3: {"type":"line","a":"p2","b":"p3"}
     + curve c8: {"type":"line","a":"p7","b":"p9"}
     + curve c9: {"type":"line","a":"p9","b":"p3"}
     - curve c8: {"type":"line","a":"p7","b":"p8"}
@@ -378,8 +378,8 @@
     + line #1d4ed8 width 2 onTop: 198 numbers, sum 6720.718
     - line #1d4ed8 width 2 onTop: 192 numbers, sum 6460.718
     - line #64748b width 1.5 dashed onTop: 6 numbers, sum 240
-    + points #1d4ed8 size 7: 24 numbers, sum 622.223
-    - points #1d4ed8 size 7: 24 numbers, sum 602.223
+    + points #1d4ed8 size 7: 24 numbers, sum 712.223
+    - points #1d4ed8 size 7: 24 numbers, sum 692.223
     - points #16a34a size 12: 3 numbers, sum 48
     + fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 54 numbers, sum 2703.807
     - fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 52 numbers, sum 2533.807
@@ -465,8 +465,8 @@
     - line #8b9bb4 width 1: 24 numbers, sum 135.173
     - line #1d4ed8 width 2 onTop: 198 numbers, sum 6720.718
     + points #dc2626 size 9: 6 numbers, sum 235
-    + points #1d4ed8 size 7: 30 numbers, sum 997.223
-    - points #1d4ed8 size 7: 24 numbers, sum 622.223
+    + points #1d4ed8 size 7: 30 numbers, sum 1087.223
+    - points #1d4ed8 size 7: 24 numbers, sum 712.223
     + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 22.411
     + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 22.411
     + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 22.411
@@ -479,24 +479,24 @@
 === 11. every crossing of the outline cut; the extrusion keeps its body in two regions
   engine: getState("s1")
   engine: diagnoseSketch("s1")  (x2)
-  engine: execute({"type":"batch","commands":[{"type":"addPoint","sketch":"s1","id":"p12","x":35,"y":30},{"type":"addPoint","sketch":"s1","id":"p13","x":35,"y":0},{"type":"setCurvePoint","sketch":"s1","id":"c10","point":"b","to":"p13"},{"type":"setCurvePoint","sketch":"s1","id":"c3","point":"b","to":"p12"},{"type":"setCurvePoint","sketch":"s1","id":"c7","point":"b","to":"p13"},{"type":"addCurve","sketch":"s1","id":"c11","curve":{"type":"line","a":"p13","b":"p12"}},{"type":"addCurve","sketch":"s1","id":"c12","curve":{"type":"line","a":"p12","b":"p11"}},{"type":"addCurve","sketch":"s1","id":"c13","curve":{"type":"line","a":"p12","b":"p9"}},{"type":"addCurve","sketch":"s1","id":"c14","curve":{"type":"line","a":"p13","b":"p2"}},{"type":"addConstraint","sketch":"s1","id":"k10","constraint":{"type":"pointOnCurve","point":"p12","curve":"c10"}},{"type":"addConstraint","sketch":"s1","id":"k11","constraint":{"type":"pointOnCurve","point":"p11","curve":"c10"}},{"type":"addConstraint","sketch":"s1","id":"k12","constraint":{"type":"pointOnCurve","point":"p9","curve":"c3"}},{"type":"addConstraint","sketch":"s1","id":"k13","constraint":{"type":"pointOnCurve","point":"p2","curve":"c7"}},{"type":"updateFeature","id":"e1","patch":{"profile":{"regions":[{"outerLoop":["c11","c14","c2","c3"]},{"outerLoop":["c1","c11","c13","c4","c5","c7","c9"]}]}}}]}) -> ok
+  engine: execute({"type":"batch","commands":[{"type":"addPoint","sketch":"s1","id":"p12","x":35,"y":30},{"type":"addPoint","sketch":"s1","id":"p13","x":35,"y":0},{"type":"setCurvePoint","sketch":"s1","id":"c10","point":"b","to":"p13"},{"type":"setCurvePoint","sketch":"s1","id":"c3","point":"b","to":"p12"},{"type":"setCurvePoint","sketch":"s1","id":"c7","point":"b","to":"p13"},{"type":"addCurve","sketch":"s1","id":"c11","curve":{"type":"line","a":"p13","b":"p12"}},{"type":"addCurve","sketch":"s1","id":"c12","curve":{"type":"line","a":"p12","b":"p11"}},{"type":"addCurve","sketch":"s1","id":"c13","curve":{"type":"line","a":"p12","b":"p9"}},{"type":"addCurve","sketch":"s1","id":"c14","curve":{"type":"line","a":"p13","b":"p1"}},{"type":"addConstraint","sketch":"s1","id":"k10","constraint":{"type":"pointOnCurve","point":"p12","curve":"c10"}},{"type":"addConstraint","sketch":"s1","id":"k11","constraint":{"type":"pointOnCurve","point":"p11","curve":"c10"}},{"type":"addConstraint","sketch":"s1","id":"k12","constraint":{"type":"pointOnCurve","point":"p9","curve":"c3"}},{"type":"addConstraint","sketch":"s1","id":"k13","constraint":{"type":"pointOnCurve","point":"p1","curve":"c7"}},{"type":"updateFeature","id":"e1","patch":{"profile":{"regions":[{"outerLoop":["c11","c14","c2","c3"]},{"outerLoop":["c1","c11","c13","c4","c5","c7","c9"]}]}}}]}) -> ok
   feature s1:
     + point p12: {"x":35,"y":30}
     + point p13: {"x":35,"y":0}
-    + curve c3: {"type":"line","a":"p1","b":"p12"}
-    - curve c3: {"type":"line","a":"p1","b":"p9"}
+    + curve c3: {"type":"line","a":"p2","b":"p12"}
+    - curve c3: {"type":"line","a":"p2","b":"p9"}
     + curve c7: {"type":"line","a":"p6","b":"p13"}
-    - curve c7: {"type":"line","a":"p6","b":"p2"}
+    - curve c7: {"type":"line","a":"p6","b":"p1"}
     + curve c10: {"type":"line","a":"p10","b":"p13"}
     + curve c11: {"type":"line","a":"p13","b":"p12"}
     + curve c12: {"type":"line","a":"p12","b":"p11"}
     + curve c13: {"type":"line","a":"p12","b":"p9"}
-    + curve c14: {"type":"line","a":"p13","b":"p2"}
+    + curve c14: {"type":"line","a":"p13","b":"p1"}
     - curve c10: {"type":"line","a":"p10","b":"p11"}
     + constraint k10: {"type":"pointOnCurve","point":"p12","curve":"c10"}
     + constraint k11: {"type":"pointOnCurve","point":"p11","curve":"c10"}
     + constraint k12: {"type":"pointOnCurve","point":"p9","curve":"c3"}
-    + constraint k13: {"type":"pointOnCurve","point":"p2","curve":"c7"}
+    + constraint k13: {"type":"pointOnCurve","point":"p1","curve":"c7"}
   feature e1:
     + {"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c11","c14","c2","c3"]},{"outerLoop":["c1","c11","c13","c4","c5","c7","c9"]}]},"extent":{"type":"distance","start":0,"distance":10},"operation":"new"}
     - {"id":"e1","name":"Vysunutí 1","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4","c5","c7","c9"]}]},"extent":{"type":"distance","start":0,"distance":10},"operation":"new"}
@@ -534,16 +534,16 @@
     + div.constraint.clickable title="Kliknutím se ukáže, jestli vazba plyne z jiných"
     +   span.name
     +     "Bod na křivce"
-    +     small: "p2, c7"
+    +     small: "p1, c7"
     +   button.icon title="Smazat vazbu": "✕"
   status: Crossings split; followed: Vysunutí 1.
   view: 1 scene(s) set
   scene:
     + line #1d4ed8 width 2 onTop: 228 numbers, sum 8610.718
     - line #1d4ed8 width 2 onTop: 204 numbers, sum 7275.718
-    + points #1d4ed8 size 7: 36 numbers, sum 1432.223
+    + points #1d4ed8 size 7: 36 numbers, sum 1522.223
     - points #dc2626 size 9: 6 numbers, sum 235
-    - points #1d4ed8 size 7: 30 numbers, sum 997.223
+    - points #1d4ed8 size 7: 30 numbers, sum 1087.223
     + fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 710
     + fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 54 numbers, sum 2643.807
 

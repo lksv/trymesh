@@ -313,13 +313,15 @@ export interface SketchToolDescription {
   summary: string;
   inputs: { name: string; description: string; required: boolean }[];
   ids: { name: string; description: string }[];
+  oneOf: string[][]; // groups of inputs of which exactly one is given
   example: Record<string, unknown>;
 }
 const TOOL_EXAMPLES: Record<SketchToolName, Record<string, unknown>> = {
-  rectangle: { first: { at: [0, 0], snap: { kind: 'point', id: 'origin' } }, opposite: { at: [40, 30] } },
+  rectangle: { first: { at: [0, 0], snap: { kind: 'point', id: 'origin' } }, opposite: { at: [40, 30] }, width: 40, height: 30 },
   polygon: { center: { at: [0, 0], snap: { kind: 'point', id: 'origin' } }, vertex: { at: [3.2, 0] }, sides: 6, sizeKind: 'acrossFlats', size: 5.5 },
-  // the corner `opposite` of the example of the rectangle, drawn into an empty sketch
-  fillet: { corner: 'p1', radius: 5 },
+  // the corners `opposite` and the one after it of the example of the rectangle, drawn into an
+  // empty sketch (its first corner is `origin`, so its new points are p1, p2, p3)
+  fillet: { corners: ['p2', 'p3'], radius: 5 },
   // the three below after the rectangle of its example and a line `x` from (20, 15) to (60, 15)
   // across its right side: the part of `x` outside goes (found by the place alone); `x` grows to
   // the left side; both are cut. `repair: 'on'` cuts the other crossings of the outline too, as an
@@ -337,6 +339,8 @@ export function sketchToolCatalog(): SketchToolDescription[] {
       ? 'anchor `{ at: [x, y], snap? }`'
       : input.kind === 'point'
         ? 'the ID of a point of the sketch (an own point or `origin`)'
+        : input.kind === 'points'
+          ? 'a list of IDs of points of the sketch (own points or `origin`), none twice'
         : input.kind === 'option'
           ? `one of ${input.options.map((option) => `"${option}"`).join(', ')}`
           : input.kind === 'curve'
@@ -352,7 +356,8 @@ export function sketchToolCatalog(): SketchToolDescription[] {
     tool,
     title: SKETCH_TOOLS[tool].title,
     summary: SKETCH_TOOLS[tool].summary,
-    inputs: Object.entries(SKETCH_TOOLS[tool].inputs).map(([name, input]) => ({ name, description: describe(input), required: input.kind === 'anchor' || input.kind === 'point' || input.kind === 'sketch' || input.optional !== true })),
+    inputs: Object.entries(SKETCH_TOOLS[tool].inputs).map(([name, input]) => ({ name, description: describe(input), required: input.kind === 'sketch' || input.optional !== true })),
+    oneOf: (SKETCH_TOOLS[tool].oneOf ?? []).map((group) => [...group]),
     ids: Object.entries(SKETCH_TOOLS[tool].ids).map(([name, description]) => ({ name, description })),
     example: TOOL_EXAMPLES[tool],
   }));
@@ -539,6 +544,7 @@ const sketchToolText = (entry: SketchToolDescription): string =>
     `- ${entry.tool} (${entry.title}): ${entry.summary}`,
     '  input:',
     ...entry.inputs.map((input) => `  - ${input.name}${input.required ? '' : ' (optional)'}: ${input.description}`),
+    ...entry.oneOf.map((group) => `  exactly one of: ${group.join(', ')}`),
     '  ids in the result:',
     ...entry.ids.map((id) => `  - ${id.name}: ${id.description}`),
     `  example of input: ${JSON.stringify(entry.example)}`,

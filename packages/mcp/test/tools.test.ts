@@ -248,8 +248,10 @@ describe('sketch tools', () => {
       else expect(made.sketches, entry.tool).toMatchObject([{ id: 's', solved: true }]);
       // the cuts leave a valid profile (trim and extend with `repair: 'on'`): one region, two after the extend
       if (entry.tool === 'trim' || entry.tool === 'extend' || entry.tool === 'split') expect(made.sketches, entry.tool).toMatchObject([{ profileValid: true, regions: entry.tool === 'extend' ? 2 : 1 }]);
-      // the IDs the description promises are the IDs the tool returns (`size` only with a dimension)
-      expect(Object.keys(made.ids).sort()).toEqual(Object.keys(spec.ids).filter((name) => name !== 'size' || 'size' in entry.example).sort());
+      // the IDs the description promises are the IDs the tool returns (a list that only an input makes, only with that input)
+      const madeBy: Record<string, Record<string, string>> = { polygon: { size: 'size' }, rectangle: { center: 'center', diagonal: 'center', width: 'width', height: 'height' }, fillet: { corners: 'corners' } };
+      const only = (name: string): boolean => !(name in (madeBy[entry.tool] ?? {})) || madeBy[entry.tool][name] in entry.example;
+      expect(Object.keys(made.ids).sort()).toEqual(Object.keys(spec.ids).filter(only).sort());
     }
     const polygon = catalog.find((entry) => entry.tool === 'polygon')!;
     expect(polygon.inputs).toEqual([
@@ -261,9 +263,12 @@ describe('sketch tools', () => {
     ]);
     expect(text).toContain('  - size (optional): a number, positive, mm, or an expression');
     expect(catalog.find((entry) => entry.tool === 'fillet')!.inputs).toEqual([
-      { name: 'corner', description: 'the ID of a point of the sketch (an own point or `origin`)', required: true },
+      { name: 'corner', description: 'the ID of a point of the sketch (an own point or `origin`)', required: false },
+      { name: 'corners', description: 'a list of IDs of points of the sketch (own points or `origin`), none twice', required: false },
       { name: 'radius', description: 'a number, positive, mm, or an expression', required: true },
     ]);
+    expect(text).toContain('  exactly one of: corner, corners');
+    expect(text).toContain('  exactly one of: first, center');
     // the two input kinds of trim, extend and split (D65)
     expect(catalog.find((entry) => entry.tool === 'trim')!.inputs).toEqual([
       { name: 'at', description: 'a place `[x, y]` in the sketch (coordinates; nothing snaps to it)', required: true },
@@ -347,12 +352,12 @@ describe('sketch tools', () => {
       ],
     });
     const first = ok(engine, 'sketch_tool', { sketch: 's', tool: 'rectangle', input: { first: { at: [0, 0] }, opposite: { at: [40, 30] } } });
-    expect(first.ids).toEqual({ points: ['p2', 'p4', 'p3', 'p5'], lines: ['c2', 'c3', 'c4', 'c5'], constraints: ['k1', 'k3', 'k4', 'k5'] });
+    expect(first.ids).toEqual({ points: ['p2', 'p3', 'p4', 'p5'], lines: ['c2', 'c3', 'c4', 'c5'], constraints: ['k1', 'k3', 'k4', 'k5'] });
     const second = ok(engine, 'sketch_tool', { sketch: 's', tool: 'rectangle', prefix: 'slot_', input: { first: { at: [5, 5] }, opposite: { at: [9, 8] } } });
-    expect(second.ids).toEqual({ points: ['slot_p1', 'slot_p3', 'slot_p2', 'slot_p4'], lines: ['slot_c1', 'slot_c2', 'slot_c3', 'slot_c4'], constraints: ['slot_k1', 'slot_k2', 'slot_k3', 'slot_k4'] });
+    expect(second.ids).toEqual({ points: ['slot_p1', 'slot_p2', 'slot_p3', 'slot_p4'], lines: ['slot_c1', 'slot_c2', 'slot_c3', 'slot_c4'], constraints: ['slot_k1', 'slot_k2', 'slot_k3', 'slot_k4'] });
     // the same prefix again goes on counting
     const third = ok(engine, 'sketch_tool', { sketch: 's', tool: 'rectangle', prefix: 'slot_', input: { first: { at: [15, 5] }, opposite: { at: [19, 8] } } });
-    expect(third.ids.points).toEqual(['slot_p5', 'slot_p7', 'slot_p6', 'slot_p8']);
+    expect(third.ids.points).toEqual(['slot_p5', 'slot_p6', 'slot_p7', 'slot_p8']);
     expect(third).toMatchObject({ ok: true, problems: [], sketches: [{ id: 'c1' }, { id: 's', solved: true, regions: 3 }] });
   });
 
@@ -433,7 +438,7 @@ describe('sketch tools', () => {
     // a new rectangle elsewhere must not become the profile of that extrusion
     const second = ok(engine, 'sketch_tool', { sketch: 's', tool: 'rectangle', input: { first: { at: [100, 100] }, opposite: { at: [105, 103] } } });
     expect(second.ids.lines).toEqual(['c5', 'c6', 'c7', 'c8']);
-    expect(second.ids.points).toEqual(['p1', 'p3', 'p2', 'p4']); // nothing refers to the removed points, their IDs are free
+    expect(second.ids.points).toEqual(['p1', 'p2', 'p3', 'p4']); // nothing refers to the removed points, their IDs are free
     expect(second.problems).toEqual([expect.objectContaining({ id: 'e' })]);
     expect(ok(engine, 'get_model').bodies).toEqual([]);
   });

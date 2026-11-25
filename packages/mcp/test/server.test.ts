@@ -763,10 +763,10 @@ describe('most do běžící aplikace', () => {
     expect(before).toHaveLength(2);
     // a sketch tool runs in the engine of the app and returns the IDs it generated there
     const input = { first: { at: [0, 0], snap: { kind: 'point', id: 'origin' } }, opposite: { at: [40, 30] } };
-    expect(await session.call('sketch_tool', { sketch: 's', tool: 'rectangle', input })).toMatchObject({ ok: true, ids: { points: ['origin', 'p2', 'p1', 'p3'], lines: ['c1', 'c2', 'c3', 'c4'] }, sketches: [{ id: 's', regions: 1 }] });
+    expect(await session.call('sketch_tool', { sketch: 's', tool: 'rectangle', input })).toMatchObject({ ok: true, ids: { points: ['origin', 'p1', 'p2', 'p3'], lines: ['c1', 'c2', 'c3', 'c4'] }, sketches: [{ id: 's', regions: 1 }] });
     expect(before[2]).toEqual(['sketch_tool', { sketch: 's', tool: 'rectangle', input }]);
     expect(Object.keys((app.getState().document.features[0] as { curves: object }).curves)).toEqual(['c1', 'c2', 'c3', 'c4']);
-    expect(await session.call('sketch_tool', { sketch: 's', tool: 'rectangle', input: { first: input.first } })).toEqual({ error: 'rectangle: the input "opposite" is missing' });
+    expect(await session.call('sketch_tool', { sketch: 's', tool: 'rectangle', input: { first: input.first } })).toEqual({ error: 'rectangle: `opposite` is needed unless `width` and `height` are both given (as numbers, or expressions the parameters give a value to)' });
     await session.call('undo');
     // výjimka po provedení: odpověď dorazí a spojení zůstane
     failAfter = true;

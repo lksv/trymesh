@@ -60,7 +60,11 @@ interface ToolBase<O> {
 // - `finish`: what the key Enter does with the places kept, called only when some are kept; it
 //   returns the places to keep as `click` does (too few for the shape: a message, and they stay),
 //   and the mode redraws the scene. Escape drops them, for every tool.
-// - `infer`: the second place snaps horizontal or vertical from the first (the line).
+// - `infer`: the second place snaps horizontal or vertical from the first (`true`, the line), or
+//   onto the extension of a line that ends at the first place (`'extension'`, the spline, D70).
+// - A tool that picks in the sketch and does not hover (a drawing tool) does not snap to a curve
+//   that cannot hold a point (`holdsPoint`: a copy of 6c, a spline): such a curve is left out of
+//   its pick, so a line a little farther is still snapped to.
 // - `hovers`: the point or curve under the pointer is highlighted, and the tool draws no snap
 //   marker and no shape in progress (the select tool).
 // - `drags`: a press on an own point starts its drag (the select tool).
@@ -74,7 +78,7 @@ export interface SketchPlaceTool<O> extends ToolBase<O> {
   picks?: 'sketch' | 'curve' | { pick(host: SketchHost, event: { clientX: number; clientY: number }, context: SketchContext): Place | undefined };
   eligible?(curve: Id, context: SketchContext): boolean; // with `picks: 'curve'`; without it every curve
   clicks?: number;
-  infer?: boolean;
+  infer?: boolean | 'extension';
   hovers?: boolean;
   drags?: boolean;
   atClick?: boolean;

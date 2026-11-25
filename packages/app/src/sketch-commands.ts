@@ -37,7 +37,7 @@ import {
   sketchTool,
 } from '@trymesh/engine';
 import { entryEntities } from './references';
-import { type EntityKind, ORIGIN, type PointView, type SketchView, dist, kindOf, measure, takesConstraint, unreachable } from './sketch-view';
+import { type EntityKind, ORIGIN, type PointView, type SketchView, dist, holdsPoint, kindOf, measure, takesConstraint, unreachable } from './sketch-view';
 
 // The place of a click in the sketch with what it snapped to, and the supplier of new IDs: both
 // are the types of the sketch tools of the engine (D35, point 7), which the app shares with MCP.
@@ -95,7 +95,8 @@ export const CURVE_POINT_LABELS: Record<CurvePointName, string> = { a: 'Start', 
 // that is not a point of the curve already (a re-point onto it would change nothing or be refused).
 export function repointSelection(view: SketchView, selection: Id[]): { curve: Id; to: Id } | undefined {
   if (selection.length !== 2) return undefined;
-  const curve = selection.find((id) => view.curves.get(id)?.own);
+  // a spline has no named point to re-point (D70)
+  const curve = selection.find((id) => view.curves.get(id)?.own && view.curves.get(id)?.shape.type !== 'spline');
   const to = selection.find((id) => id !== curve && view.points.has(id) && (view.points.get(id)?.own || id === ORIGIN));
   return curve && to && !view.curves.get(curve)?.points.includes(to) ? { curve, to } : undefined;
 }
@@ -141,6 +142,68 @@ export function arcCommands(sketch: Id, view: SketchView, center: Anchor, start:
   const e = place(sketch, view, onRadius, newId);
   if (c.id === s.id || c.id === e.id || s.id === e.id) return undefined;
   return [...c.commands, ...s.commands, ...e.commands, { type: 'addCurve', sketch, id: newId('c'), curve: { type: 'arc', center: c.id, start: s.id, end: e.id } }];
+}
+
+// ---------------------------------------------------------------- the spline (D70)
+
+export const SPLINE_TOOL_PROBLEMS = {
+  tooFew: 'A spline needs at least three control points.',
+  twice: (place: number): string => `The control point ${place} is at a point the spline already has; a spline passes each of its control points once.`,
+};
+
+// The inferred tangent start of a spline: while the first place is snapped to a point at which
+// a line of the sketch that can hold a point ends (its `a` or its `b`; a line joined to the point by
+// a coincident does not count), a place beyond that end within `reach` of the line's extension is
+// moved onto the extension (the foot of the perpendicular). Of several lines the one whose
+// extension is nearest. One rule for the mode (the place under the pointer) and the batch (which
+// finds the case again by position).
+export function extensionOf(view: SketchView, first: Anchor, at: Vec2, reach: number): { at: Vec2; line: Id } | undefined {
+  if (first.snap?.kind !== 'point') return undefined;
+  const end = first.snap.id;
+  const p = view.points.get(end)?.at;
+  if (!p) return undefined;
+  let best: { at: Vec2; line: Id; off: number } | undefined;
+  for (const curve of view.curves.values()) {
+    if (curve.shape.type !== 'line' || isOriginAxis(curve.id) || !holdsPoint(view, curve.id)) continue;
+    const [a, b] = curve.points;
+    if (a !== end && b !== end) continue;
+    const other = view.points.get(a === end ? b : a)?.at;
+    if (!other) continue;
+    const length = dist(p, other);
+    if (!(length > SAME_PLACE)) continue;
+    const u: Vec2 = [(p[0] - other[0]) / length, (p[1] - other[1]) / length];
+    const along = (at[0] - p[0]) * u[0] + (at[1] - p[1]) * u[1];
+    const off = Math.abs((at[0] - p[0]) * u[1] - (at[1] - p[1]) * u[0]);
+    if (along <= reach || off > reach) continue;
+    if (!best || off < best.off) best = { at: [p[0] + u[0] * along, p[1] + u[1] * along], line: curve.id, off };
+  }
+  return best && { at: best.at, line: best.line };
+}
+
+// The batch that draws a spline through the places clicked: each place a control point by the rule
+// of the engine's sketch tools (`placeAnchor`: a point snapped is used again, a place on a line, an
+// arc or a circle a new point held on it), then `addCurve`; `closed` repeats the first point at the
+// end. When the second place is bare and lies on the extension of a line that ends at the first
+// point (`extensionOf` with the length tolerance: the mode put it there), its point is held on that
+// line, so the spline runs on smoothly from it. A message, with nothing sent, for fewer than three
+// places or two places at one point.
+export function splineCommands(sketch: Id, view: SketchView, places: Anchor[], closed: boolean, newId: NewId): { commands: Command[] } | { problem: string } {
+  if (places.length < 3) return { problem: SPLINE_TOOL_PROBLEMS.tooFew };
+  const at = places.map((p) => positionOf(view, p));
+  for (let j = 1; j < places.length; j++) {
+    for (let i = 0; i < j; i++) {
+      const [a, b] = [places[i].snap, places[j].snap];
+      const samePoint = a?.kind === 'point' && b?.kind === 'point' && a.id === b.id;
+      if (samePoint || dist(at[i], at[j]) <= SAME_PLACE) return { problem: SPLINE_TOOL_PROBLEMS.twice(j + 1) };
+    }
+  }
+  const placed = places.map((p) => place(sketch, view, p, newId));
+  const ids = placed.map((p) => p.id);
+  const commands: Command[] = placed.flatMap((p) => p.commands);
+  commands.push({ type: 'addCurve', sketch, id: newId('c'), curve: { type: 'spline', points: closed ? [...ids, ids[0]] : ids } });
+  const tangent = !places[1].snap ? extensionOf(view, places[0], at[1], SAME_PLACE) : undefined;
+  if (tangent) commands.push({ type: 'addConstraint', sketch, id: newId('k'), constraint: { type: 'pointOnCurve', point: ids[1], curve: tangent.line } });
+  return { commands };
 }
 
 // Kde přichycené kliknutí skutečně leží: the rule of the engine's sketch tools.

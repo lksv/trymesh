@@ -12,7 +12,7 @@ export const line: SketchPlaceTool<undefined> = {
   infer: true,
   click: (host, m, places, context) => {
     const [from, to] = places.map(anchor);
-    const made = lineCommands(m.id, context.view, from, to, host.newId, m.infer);
+    const made = lineCommands(m.id, context.view, from, to, host.newId, m.infer === 'extension' ? undefined : m.infer);
     // řetěz pokračuje z konce, dokud se nenapojí na existující bod
     if (made && drawn(host, m, made.commands) && to.snap?.kind !== 'point') return [{ at: to.at, snap: { kind: 'point', id: made.end } }];
   },

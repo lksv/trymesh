@@ -15,11 +15,12 @@ import { projectSketch } from './project-sketch';
 import { rect } from './rect';
 import { select } from './select';
 import { split } from './split';
+import { spline } from './spline';
 import type { SketchToolUi } from './spec';
 import { trim } from './trim';
 
 // Each entry is written with its own type of options; the table forgets it, as `FEATURE_UI` does.
-const TABLE = { select, point, line, rect, polygon, circle, arc, fillet, trim, extend, split, mirror, linearPattern, circularPattern, project, projectSketch };
+const TABLE = { select, point, line, rect, polygon, circle, arc, spline, fillet, trim, extend, split, mirror, linearPattern, circularPattern, project, projectSketch };
 
 export type SketchToolName = keyof typeof TABLE;
 export const SKETCH_TOOL_UI: { readonly [T in SketchToolName]: SketchToolUi<any> } = TABLE;

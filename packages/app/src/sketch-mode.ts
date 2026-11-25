@@ -5,10 +5,10 @@ import { type Command, type CommandResult, type Constraint, type ConstraintExpla
 import { fmt } from './dom';
 import { COLOR, pushPolyline, toWorld } from './draw';
 import { PICK_REACH, type PanelHost, type ViewPick, pickKey } from './host';
-import { deleteCommands } from './sketch-commands';
+import { type Anchor, deleteCommands, extensionOf } from './sketch-commands';
 import { freeEntities } from './sketch-diagnosis';
 import { type Place, SKETCH_TOOL_UI, type SketchPlaceTool, type SketchToolName, placePosition } from './sketch-tools';
-import { type SketchView, anchorOf, closestOn, hitCurve, hitPoint, kindOf, operandsOf, polyline, sketchView } from './sketch-view';
+import { type SketchView, anchorOf, closestOn, hitCurve, hitPoint, holdsPoint, kindOf, operandsOf, polyline, sketchView } from './sketch-view';
 import { hoverMarks } from './references';
 import type { SceneModel } from './viewport';
 
@@ -18,7 +18,7 @@ export interface SketchMode {
   tool: SketchToolName; // a tool of the bar (SKETCH_TOOL_UI)
   clicks: Place[]; // dosud zadané body rozpracovaného tvaru
   cursor?: Place;
-  infer?: 'horizontal' | 'vertical';
+  infer?: 'horizontal' | 'vertical' | 'extension'; // 'extension': on the extension of a line (the spline, D70)
   selection: Id[];
   hover?: Id;
   hoverConstraint?: Id;
@@ -125,13 +125,13 @@ export function dropPoint(host: SketchHost, m: SketchMode, point: Id, event: Poi
 }
 
 // Místo pod kurzorem ve skice a přichycení: bod má přednost před křivkou. A copy of a mirror or
-// pattern (D68) is snapped to only with `copies` (the select tool, to find its entry): a new point
-// cannot be tied to a copy.
+// pattern (D68) and a spline (D70) are snapped to only with `copies` (the select tool, which hovers
+// and selects them): a new point cannot be held on either (`holdsPoint`).
 function anchorAt(host: SketchHost, event: { clientX: number; clientY: number }, context: SketchContext, copies = false): Place | undefined {
   const p = host.planePoint(event, context.frame)?.at;
   if (!p) return undefined;
   const reach = PICK_REACH * host.pixelSize();
-  const skip = copies ? undefined : (id: Id): boolean => context.view.points.get(id)?.derived === true || context.view.curves.get(id)?.derived === true;
+  const skip = copies ? undefined : (id: Id): boolean => context.view.points.get(id)?.derived === true || (context.view.curves.has(id) && !holdsPoint(context.view, id));
   const point = hitPoint(context.view, p, reach, skip);
   if (point) return { at: point.at, snap: { kind: 'point', id: point.id } };
   const curve = hitCurve(context.view, p, reach, skip);
@@ -179,8 +179,14 @@ export function sketchMove(host: SketchHost, m: SketchMode, event: PointerEvent,
   const anchor = placeAt(host, tool, event, context);
   m.hover = tool.hovers && anchor?.snap?.kind !== 'foreign' ? anchor?.snap?.id : undefined;
   m.infer = undefined;
+  // the second control point of a spline beyond the end of a line at its first: on the extension
+  if (anchor && !anchor.snap && tool.infer === 'extension' && m.clicks.length === 1) {
+    const first = m.clicks[0];
+    const on = first.snap?.kind === 'foreign' ? undefined : extensionOf(context.view, first as Anchor, anchor.at, PICK_REACH * host.pixelSize());
+    if (on) [anchor.at, m.infer] = [on.at, 'extension'];
+  }
   // odvozená vazba: volný konec úsečky skoro vodorovně nebo svisle od začátku
-  if (anchor && !anchor.snap && tool.infer && m.clicks.length === 1) {
+  else if (anchor && !anchor.snap && tool.infer === true && m.clicks.length === 1) {
     const from = placePosition(context.view, m.clicks[0]);
     const reach = PICK_REACH * host.pixelSize();
     const [dx, dy] = [Math.abs(anchor.at[0] - from[0]), Math.abs(anchor.at[1] - from[1])];
@@ -340,6 +346,11 @@ export function sketchScene(host: SketchHost, m: SketchMode, model: SceneModel):
     pushPolyline(lines[bucket], frame, polyline(curve.shape));
   }
   model.axes = [...(model.axes ?? []), ...axes];
+  // the control polygon of every own spline (D70), thin and dashed, not picked; its control points
+  // are own points, drawn and dragged as every point
+  const control: number[] = [];
+  for (const curve of view.curves.values()) if (curve.own && curve.shape.type === 'spline') pushPolyline(control, frame, curve.shape.control);
+  if (control.length > 0) model.lines.push({ segments: control, color: COLOR.construction, width: 1, dashed: true, onTop: true });
   model.lines.push(
     { segments: lines.determined, color: COLOR.determined, width: 2, onTop: true },
     { segments: lines.own, color: COLOR.sketch, width: 2, onTop: true },
@@ -408,6 +419,6 @@ export function sketchScene(host: SketchHost, m: SketchMode, model: SceneModel):
     for (const points of tool.draw?.(places, cursor, context, toolOptions(host, m.tool)) ?? []) pushPolyline(rubber, frame, points);
     model.lines.push({ segments: rubber, color: m.infer ? COLOR.select : m.construction ? COLOR.construction : COLOR.rubber, width: 1.5, dashed: true, onTop: true });
     if (cursor.snap) model.points.push({ positions: toWorld(frame, at[0], at[1]), color: 0x16a34a, size: 12 });
-    if (m.infer) model.labels.push({ at: toWorld(frame, at[0], at[1]), text: m.infer === 'horizontal' ? 'vodorovně' : 'svisle', tone: 'reference' });
+    if (m.infer) model.labels.push({ at: toWorld(frame, at[0], at[1]), text: m.infer === 'horizontal' ? 'vodorovně' : m.infer === 'vertical' ? 'svisle' : 'tangent', tone: 'reference' });
   }
 }

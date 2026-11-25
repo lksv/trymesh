@@ -1,9 +1,9 @@
 // An Onshape sketch as a sketch of trymesh: its points, lines and circles in the frame of a base plane,
 // the curves split where they cross, and the constraints that have a counterpart.
 import type { Command, Engine, Id, PlaneRef, RegionRef } from '../../packages/engine/src/index';
-import { emptySketch } from '../../packages/engine/src/index';
+import { type SketchToolResult, constraintKey, emptySketch, freshIds, sketchTool, solvedCurves } from '../../packages/engine/src/index';
 import { type Report, type V2, type V3, dot, exec, expression, sane } from './common';
-import { type Expected, impliedConstraints, impliedLines, ladder } from './check';
+import { type Expected, TOLERANCE, impliedConstraints, impliedLines, ladder } from './check';
 import { type MapContext, mapConstraints, numberConstraints, onshapeKind, params, twiceByMeaning } from './constraints';
 import { type ConstraintRecord, FATES, type Fate, type SketchSummary, finalFate, sketchLines } from './fates';
 import { ORIGIN_ID, type StudioOperations, decode } from './operands';
@@ -73,42 +73,42 @@ export function convertSketch(engine: Engine, report: Report, id: Id, name: stri
   const welded = weldPoints((geom.entities as any[]).filter((e) => e.sketchEntityType === 'skPoint').map((e) => ({ src: e.sketchEntityId as string, id: P(e.sketchEntityId), at: toBase(frame, [e.position2d.x * 1000, e.position2d.y * 1000]) })));
   const { pos, rep } = welded;
   for (const w of welded.wide) report.later('Welds', `${place.studio}, ${name}: a cluster of welded points wider than ${WELD} mm: ${w}`);
-  const pointAt = (p: V2, want: Id): Id => {
-    for (const [pid, q] of pos) if (Math.hypot(q[0] - p[0], q[1] - p[1]) <= WELD) return pid;
-    pos.set(want, p);
-    return want;
-  };
   const kind = new Map<string, 'point' | 'line' | 'circle'>();
   for (const e of geom.entities) if (e.sketchEntityType === 'skPoint') kind.set(e.sketchEntityId, 'point');
-  const list: C[] = [];
+  const curves: C[] = [];
   const skipped: Record<string, number> = {};
+  // An exact duplicate (the same kind over the same points with the same construction flag; a
+  // circle: the same centre and radius) is written once; its Onshape entity points at the first, a
+  // line drawn the other way as "the same line, reversed".
+  const curveOf = new Map<string, { id: Id; reversed: boolean }>();
+  const same = (c: C, x: C) => c.construction === x.construction && (c.line && x.line ? (c.line[0] === x.line[0] && c.line[1] === x.line[1]) || (c.line[0] === x.line[1] && c.line[1] === x.line[0]) : c.circle && x.circle ? c.circle.c === x.circle.c && Math.abs(c.circle.r - x.circle.r) <= WELD : c.arc && x.arc ? c.arc.join() === x.arc.join() : false);
   for (const e of geom.entities) {
     const cid = P(e.sketchEntityId);
+    let c: C | undefined;
     if (e.sketchEntityType === 'skLineSegment') {
       const [a, b] = [rep.get(e.startPointId)!, rep.get(e.endPointId)!];
       if (a === b) continue;
       kind.set(e.sketchEntityId, 'line');
-      list.push({ id: cid, src: e.sketchEntityId, line: [a, b], construction: e.isConstruction });
+      c = { id: cid, src: e.sketchEntityId, line: [a, b], construction: e.isConstruction };
     } else if (e.sketchEntityType === 'skCircle' && !e.startPointId) {
       kind.set(e.sketchEntityId, 'circle');
-      list.push({ id: cid, src: e.sketchEntityId, circle: { c: rep.get(e.centerId)!, r: e.geometry.radius * 1000 }, construction: e.isConstruction });
+      c = { id: cid, src: e.sketchEntityId, circle: { c: rep.get(e.centerId)!, r: e.geometry.radius * 1000 }, construction: e.isConstruction };
     } else if (e.sketchEntityType === 'skCircle' || e.sketchEntityType === 'skArc') {
       // an arc: centre, start and end; trymesh turns counter-clockwise from the start
       const [s, t] = [rep.get(e.startPointId)!, rep.get(e.endPointId)!];
       const turned = e.geometry?.clockWise !== (frame.sign < 0);
-      list.push({ id: cid, src: e.sketchEntityId, arc: [rep.get(e.centerId)!, turned ? t : s, turned ? s : t], construction: e.isConstruction });
+      c = { id: cid, src: e.sketchEntityId, arc: [rep.get(e.centerId)!, turned ? t : s, turned ? s : t], construction: e.isConstruction };
     } else if (e.sketchEntityType !== 'skPoint') skipped[e.sketchEntityType] = (skipped[e.sketchEntityType] ?? 0) + 1;
+    if (!c) continue;
+    const first = curves.find((x) => same(c!, x));
+    if (first) {
+      curveOf.set(c.src, { id: first.id, reversed: !!(c.line && first.line && c.line[0] !== first.line[0]) });
+      report.later('Duplicates', `${place.studio}, ${name}: ${c.src} is ${first.src}${c.line && first.line && c.line[0] !== first.line[0] ? ', reversed' : ''}`);
+      continue;
+    }
+    curves.push(c);
   }
   if (Object.keys(skipped).length) report.note(`${name}: entities without a counterpart, left out: ${JSON.stringify(skipped)}`);
-
-  // Onshape makes regions of curves that cross; trymesh refuses such a profile (no trim yet, step 6).
-  // Every visible curve is split where another one crosses or touches it.
-  const curves = splitAtCrossings(list, pos, pointAt, id);
-  const split = list.filter((c) => !curves.some((x) => x.id === c.id));
-  if (split.length) {
-    report.note(`${name}: ${split.length} curve(s) split where curves cross (constraints on them dropped)`);
-    for (const c of split) kind.delete(c.src);
-  }
   const base: Command[] = [
     { type: 'addFeature', feature: emptySketch(id, name, plane) },
     ...[...pos].map(([pid, [x, y]]): Command => ({ type: 'addPoint', sketch: id, id: pid, x, y })),
@@ -122,7 +122,7 @@ export function convertSketch(engine: Engine, report: Report, id: Id, name: stri
   ];
   const conv: Converted = { id, frame, kind, rep };
   const entityType = new Map<string, string>((geom.entities as any[]).map((e) => [e.sketchEntityId, onshapeKind(e)]));
-  const ctx: MapContext = { studio: place.studio, sketch: id, name, helper: place.helper, kind, rep, pos, curves, entityType, split: new Set(split.map((c) => c.src)), ops: place.ops };
+  const ctx: MapContext = { studio: place.studio, sketch: id, name, helper: place.helper, kind, rep, pos, curves, curveOf, entityType, split: new Set(), ops: place.ops };
   const { records } = mapConstraints(ctx, feature.constraints ?? []);
   report.records.push(...records);
   twiceByMeaning(records, engine.getState().document.parameters);
@@ -132,12 +132,170 @@ export function convertSketch(engine: Engine, report: Report, id: Id, name: stri
   const units = records.filter((r) => !r.fate);
   const lad = ladder(engine, id, base, units, expected);
   if (!exec(engine, report, { type: 'batch', commands: [...base, ...lad.commands] }, name)) return undefined;
+  // Crossing curves: the sketch tool `split` once, its batch checked before it stays.
+  const cut = cutSketch(engine, report, id, name, base, units.filter((u) => u.fate === 'written'), expected, skipped, place.onshapeRegions);
   // Implied constraints, where the sketch's probe shows it cannot follow.
   const implied = impliedConstraints(engine, id, records.filter((r) => r.fate === 'written'), expected, { notChanged: new Set(report.promisesOf(place.studio).notChanged) });
   for (const r of implied.removed) report.promisesOf(place.studio).removed.push({ sketch: id, id: r.id, constraint: (records.flatMap((x) => x.commands as any[]).find((c) => c.id === r.id) as any).constraint });
   for (const line of impliedLines(`${place.studio}, ${name}`, implied)) report.later('Redundant constraints', line);
-  finishSketch(engine, report, conv, name, place, geom, feature, records, lad.step, pos.size, curves.length, { drift: { before: lad.drift }, probe: implied });
+  finishSketch(engine, report, conv, name, place, geom, feature, records, cut.step ?? lad.step, pos.size, curves.length, { drift: { before: lad.drift, after: cut.drift }, cut: cut.info, probe: implied });
   return conv;
+}
+
+// ---------------------------------------------------------------- crossing curves
+
+interface CutOutcome {
+  info: Record<string, unknown>;
+  drift?: number;
+  step?: string; // when the cut forced the units one by one
+}
+
+// The check after the cut: what passes, a valid profile, nothing uncut, no contact without a fix,
+// and Onshape's number of regions wherever every curve of the sketch was converted.
+function afterCut(engine: Engine, sketch: Id, expected: Expected, ids: Record<string, Id[]>, regions: number | undefined): { ok: boolean; why?: string; drift: number } {
+  const r = engine.getState().evaluation.features[sketch];
+  if (r.status !== 'ok' || !r.sketch) return { ok: false, why: `${r.status} ${r.warnings.map((w) => w.code).join(',')}`, drift: Infinity };
+  if (r.sketch.conflicting.length) return { ok: false, why: `conflicting: ${r.sketch.conflicting.join(', ')}`, drift: Infinity };
+  let drift = 0;
+  for (const [pid, [x, y]] of expected.points) { const q = r.sketch.points[pid]; if (q) drift = Math.max(drift, Math.hypot(q.x - x, q.y - y)); }
+  for (const [cid, r0] of expected.radii) { const v = r.sketch.radii[cid]; if (v !== undefined) drift = Math.max(drift, Math.abs(v - r0)); }
+  if (drift > TOLERANCE) return { ok: false, why: `a point or a radius moved by ${drift.toExponential(1)} mm`, drift };
+  if (!r.sketch.valid) return { ok: false, why: 'the profile is invalid', drift };
+  if (ids.uncut?.length) return { ok: false, why: `uncut: ${ids.uncut.join(', ')}`, drift };
+  const contacts: any = engine.query('sketchContacts', { sketch } as any);
+  const none = contacts.ok ? (contacts.result.contacts as any[]).filter((c) => c.fix === 'none') : [];
+  if (none.length) return { ok: false, why: `${none.length} contact(s) without a fix`, drift };
+  if (regions !== undefined && r.sketch.regions.length !== regions) return { ok: false, why: `${r.sketch.regions.length} regions, Onshape ${regions}`, drift };
+  return { ok: true, drift };
+}
+
+function runCut(engine: Engine, sketch: Id): { tool: ReturnType<typeof sketchTool>; ms: number } {
+  const st = engine.getState();
+  const sk = st.document.features.find((f) => f.id === sketch) as any;
+  const t0 = performance.now();
+  const tool = sketchTool('split', { sketch: sk, result: st.evaluation.features[sketch]?.sketch, parameters: st.evaluation.parameters, document: st.document, features: st.evaluation.features }, {}, freshIds(st.document, `${sketch}.cut.`));
+  return { tool, ms: performance.now() - t0 };
+}
+
+function contactRows(engine: Engine, sketch: Id): string {
+  const c: any = engine.query('sketchContacts', { sketch, max: 5 } as any);
+  if (!c.ok) return '';
+  return `${c.result.total} contact(s)${c.result.reason ? ` (${c.result.reason})` : ''}: ${(c.result.contacts as any[]).map((x) => `${x.curves.join(' × ')} at ${x.at.map((v: number) => v.toFixed(3)).join(',')} ${x.kind} fix ${x.fix}`).join('; ')}`;
+}
+
+// Cuts every contact of two outline curves (D65), checked after; when the check fails, the units
+// are settled one by one with the cut inside the test of each; a sketch whose bare geometry does
+// not pass after the cut stays as written and is reported. Sets the fates of what the cut removes.
+function cutSketch(engine: Engine, report: Report, sketch: Id, name: string, base: Command[], written: ConstraintRecord[], expected: Expected, skipped: Record<string, number>, onshapeRegions: number | undefined): CutOutcome {
+  const regions = Object.keys(skipped).length ? undefined : onshapeRegions;
+  const first = runCut(engine, sketch);
+  if (!first.tool.ok) {
+    report.later('Cuts', `${name}: split refused: ${first.tool.message.slice(0, 300)}; ${contactRows(engine, sketch)}`);
+    return { info: { refused: first.tool.message } };
+  }
+  if (!first.tool.commands.length) return { info: { commands: 0 } };
+  const counts = (ids: Record<string, Id[]>) => Object.fromEntries(Object.entries(ids).filter(([, v]) => v.length).map(([k, v]) => [k, v.length]));
+  // the cut executed and checked; undone when it does not pass (`applied`: it stays)
+  const tryCut = (tool: SketchToolResult): { ok: boolean; why?: string; drift: number; applied: boolean } => {
+    if (!tool.ok) return { ok: false, why: `split refused: ${tool.message}`, drift: Infinity, applied: false };
+    if (!tool.commands.length) return { ...afterCut(engine, sketch, expected, tool.ids, regions), applied: false };
+    const r = engine.execute({ type: 'batch', commands: tool.commands });
+    if (!r.ok) return { ok: false, why: `the batch is refused: ${r.error.message.slice(0, 200)}`, drift: Infinity, applied: false };
+    const j = afterCut(engine, sketch, expected, tool.ids, regions);
+    if (!j.ok) engine.undo();
+    return { ...j, applied: j.ok };
+  };
+  const j = tryCut(first.tool);
+  if (j.ok) {
+    settleRemoved(engine, sketch, written, first.tool.ids);
+    report.note(`${name}: cut by split: ${JSON.stringify(counts(first.tool.ids))}, ${first.tool.commands.length} commands, ${first.ms.toFixed(0)} ms`);
+    return { info: { ...counts(first.tool.ids), commands: first.tool.commands.length, ms: first.ms }, drift: j.drift };
+  }
+  const strip = ({ measured, record, dupOf, conflictsWith, ...c }: any): Command => c;
+  engine.undo(); // the sketch as written goes
+  // the bare geometry first: when it does not pass after the cut, no unit is to blame
+  engine.execute({ type: 'batch', commands: base });
+  const bare = tryCut(runCut(engine, sketch).tool);
+  if (!bare.ok) {
+    engine.undo();
+    engine.execute({ type: 'batch', commands: [...base, ...written.flatMap((u) => u.commands.map(strip))] });
+    report.later('Cuts', `${name}: the bare geometry does not pass after the cut (${bare.why}); left as written; ${contactRows(engine, sketch)}`);
+    return { info: { failed: bare.why }, step: 'the cut does not pass' };
+  }
+  if (bare.applied) engine.undo();
+  engine.undo();
+  // write, cut, check: the unit that breaks the cut is the one refused
+  report.note(`${name}: the cut does not pass (${j.why}); the units one by one with the cut`);
+  const kept: Command[] = [];
+  for (const u of written) {
+    const own = u.commands.map(strip);
+    const r = engine.execute({ type: 'batch', commands: [...base, ...kept, ...own] });
+    let k: { ok: boolean; why?: string } = { ok: false, why: r.ok ? undefined : r.error.message.slice(0, 200) };
+    if (r.ok) {
+      const t = tryCut(runCut(engine, sketch).tool);
+      k = t;
+      if (t.applied) engine.undo();
+      engine.undo();
+    }
+    if (k.ok) kept.push(...own);
+    else Object.assign(u, { fate: 'lost', cause: 'refused', ids: [], detail: `breaks the cut: ${k.why}` });
+  }
+  engine.execute({ type: 'batch', commands: [...base, ...kept] });
+  const last = runCut(engine, sketch);
+  const l = tryCut(last.tool);
+  if (!l.ok) {
+    report.later('Cuts', `${name}: the bare geometry does not pass after the cut (${l.why}); left as written; ${contactRows(engine, sketch)}`);
+    return { info: { failed: l.why }, step: 'the cut does not pass' };
+  }
+  if (last.tool.ok) settleRemoved(engine, sketch, written.filter((u) => u.fate === 'written'), last.tool.ids);
+  return { info: last.tool.ok ? { ...counts(last.tool.ids), commands: last.tool.commands.length, ms: last.ms } : {}, drift: l.drift, step: 'one by one with the cut' };
+}
+
+// A constraint the cut removed, by the reason read off the sketch after it: the point it held on a
+// curve became the shared point of the pieces (shared); it would repeat one the sketch has (twice);
+// it went with a curve the tool removed, or would name one curve twice (lost, refused).
+function settleRemoved(engine: Engine, sketch: Id, written: ConstraintRecord[], ids: Record<string, Id[]>) {
+  const removed = new Set(ids.removed ?? []);
+  if (!removed.size) return;
+  const f: any = engine.getState().document.features.find((x) => x.id === sketch);
+  const pieces = [...new Set([...(ids.changed ?? []), ...(ids.added ?? [])])];
+  const keyOwner = new Map<string, Id>();
+  for (const [cid, c] of Object.entries(f.constraints) as [Id, any][]) keyOwner.set(constraintKey(c), cid);
+  const recordOf = (cid: Id) => written.find((r) => r.ids.includes(cid));
+  for (const r of written) {
+    const gone = r.ids.filter((x) => removed.has(x));
+    if (!gone.length) continue;
+    r.ids = r.ids.filter((x) => !removed.has(x));
+    if (r.ids.length) continue;
+    const c: any = (r.commands as any[]).find((x) => x.id === gone[0])?.constraint;
+    let fate: Partial<ConstraintRecord> = { fate: 'lost', cause: 'refused', detail: 'removed by the cut: its curve went' };
+    const endOf = (p: Id, curve: any) => curve && (curve.a === p || curve.b === p || curve.start === p || curve.end === p);
+    if (c?.type === 'pointOnCurve' && f.points[c.point] && [c.curve, ...pieces].some((k) => endOf(c.point, f.curves[k]))) fate = { fate: 'shared', detail: 'by the cut' };
+    else if (c) {
+      const fields = Object.keys(c).filter((k) => typeof c[k] === 'string' && f.curves[c[k]] === undefined && (removed.has(c[k]) || pieces.length));
+      // the constraint moved onto the pieces: does it repeat one, or name one curve twice?
+      const curveFields = Object.keys(c).filter((k) => k !== 'type' && typeof c[k] === 'string' && (f.curves[c[k]] || pieces.includes(c[k]) || removed.has(c[k])));
+      let twiceOf: Id | undefined;
+      let selfRef = false;
+      const variants = (i: number, acc: any) => {
+        if (twiceOf) return;
+        if (i === curveFields.length) {
+          const ops = curveFields.map((k) => acc[k]);
+          if (new Set(ops).size < ops.length) { selfRef = true; return; }
+          const k = keyOwner.get(constraintKey(acc));
+          if (k) twiceOf = k;
+          return;
+        }
+        const field = curveFields[i];
+        for (const v of [c[field], ...pieces]) variants(i + 1, { ...acc, [field]: v });
+      };
+      if (curveFields.length && curveFields.length <= 2) variants(0, { ...c });
+      void fields;
+      if (twiceOf) { const of = recordOf(twiceOf); fate = { fate: 'twice', ...(of ? { twiceOf: of.key } : {}), detail: `the cut: it repeats ${twiceOf}` }; }
+      else if (selfRef) fate = { fate: 'lost', cause: 'refused', detail: 'removed by the cut: it would name one curve twice' };
+    }
+    Object.assign(r, fate);
+  }
 }
 
 // Points at one place: joined when a chain of steps of at most WELD links them (single linkage).
@@ -255,75 +413,6 @@ export function weldsOf(conv: Converted, geom: any, feature: any): SketchSummary
   return out;
 }
 
-// ---------------------------------------------------------------- crossings
-
-function splitAtCrossings(list: C[], pos: Map<Id, V2>, pointAt: (p: V2, want: Id) => Id, sketch: Id): C[] {
-  const P = (i: Id) => pos.get(i)!;
-  const visible = list.filter((c) => !c.construction && !c.arc); // arcs of Onshape are rare here; they stay as they are
-  const cuts = new Map<C, V2[]>();
-  const add = (c: C, p: V2) => { if (!cuts.has(c)) cuts.set(c, []); cuts.get(c)!.push(p); };
-  const onSeg = (c: C, [x, y]: V2) => {
-    const [a, b] = c.line!.map(P);
-    const L2 = (b[0] - a[0]) ** 2 + (b[1] - a[1]) ** 2;
-    const t = ((x - a[0]) * (b[0] - a[0]) + (y - a[1]) * (b[1] - a[1])) / L2;
-    return Math.abs((b[0] - a[0]) * (y - a[1]) - (b[1] - a[1]) * (x - a[0])) / Math.sqrt(L2) < 1e-5 && t > -1e-6 && t < 1 + 1e-6;
-  };
-  const onCirc = (c: C, [x, y]: V2) => { const o = P(c.circle!.c); return Math.abs(Math.hypot(x - o[0], y - o[1]) - c.circle!.r) < 1e-5; };
-  const on = (c: C, p: V2) => (c.line ? onSeg(c, p) : onCirc(c, p));
-  for (let i = 0; i < visible.length; i++)
-    for (let j = i + 1; j < visible.length; j++) {
-      const [u, v] = [visible[i], visible[j]];
-      const cand: V2[] = [];
-      if (u.line && v.line) {
-        const [a, b] = u.line.map(P), [c, d] = v.line.map(P);
-        const den = (b[0] - a[0]) * (d[1] - c[1]) - (b[1] - a[1]) * (d[0] - c[0]);
-        if (Math.abs(den) > 1e-12) { const t = ((c[0] - a[0]) * (d[1] - c[1]) - (c[1] - a[1]) * (d[0] - c[0])) / den; cand.push([a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])]); }
-        else cand.push(a, b, c, d); // collinear: the ends of each split the other
-      } else if (u.line || v.line) {
-        const [l, ci] = u.line ? [u, v] : [v, u];
-        const [a, b] = l.line!.map(P), o = P(ci.circle!.c), r = ci.circle!.r;
-        const [dx, dy, fx, fy] = [b[0] - a[0], b[1] - a[1], a[0] - o[0], a[1] - o[1]];
-        const [A, B, Cc] = [dx * dx + dy * dy, 2 * (fx * dx + fy * dy), fx * fx + fy * fy - r * r];
-        const disc = B * B - 4 * A * Cc;
-        if (disc >= -1e-9) for (const s of [-1, 1]) { const t = (-B + s * Math.sqrt(Math.max(0, disc))) / (2 * A); cand.push([a[0] + t * dx, a[1] + t * dy]); }
-      } else {
-        const [o1, o2, r1, r2] = [P(u.circle!.c), P(v.circle!.c), u.circle!.r, v.circle!.r];
-        const d = Math.hypot(o2[0] - o1[0], o2[1] - o1[1]);
-        if (d > 1e-9 && d <= r1 + r2 + 1e-9 && d >= Math.abs(r1 - r2) - 1e-9) {
-          const a = (r1 * r1 - r2 * r2 + d * d) / (2 * d), h = Math.sqrt(Math.max(0, r1 * r1 - a * a));
-          const [ex, ey] = [(o2[0] - o1[0]) / d, (o2[1] - o1[1]) / d];
-          for (const s of [-1, 1]) cand.push([o1[0] + a * ex - s * h * ey, o1[1] + a * ey + s * h * ex]);
-        }
-      }
-      for (const p of cand) if (on(u, p) && on(v, p)) { add(u, p); add(v, p); }
-    }
-  let n = 0;
-  const out: C[] = [];
-  for (const c of list) {
-    const cs = cuts.get(c) ?? [];
-    if (c.line) {
-      const [a, b] = c.line.map(P);
-      const L2 = (b[0] - a[0]) ** 2 + (b[1] - a[1]) ** 2;
-      const ts = [...new Set(cs.map(([x, y]) => ((x - a[0]) * (b[0] - a[0]) + (y - a[1]) * (b[1] - a[1])) / L2).filter((t) => t > 1e-7 && t < 1 - 1e-7).map((t) => Math.round(t * 1e9) / 1e9))].sort((p, q) => p - q);
-      if (!ts.length) { out.push(c); continue; }
-      const ids = [c.line[0], ...ts.map((t) => pointAt([a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])], `${sketch}.x${n++}`)), c.line[1]];
-      for (let k = 0; k + 1 < ids.length; k++) if (ids[k] !== ids[k + 1]) out.push({ ...c, id: `${c.id}~${k}`, line: [ids[k], ids[k + 1]] });
-    } else if (c.circle) {
-      const o = P(c.circle.c);
-      const angles = [...new Set(cs.map(([x, y]) => Math.round(Math.atan2(y - o[1], x - o[0]) * 1e9) / 1e9))].sort((p, q) => p - q);
-      const ids = [...new Set(angles.map((t) => pointAt([o[0] + c.circle!.r * Math.cos(t), o[1] + c.circle!.r * Math.sin(t)], `${sketch}.x${n++}`)))];
-      if (ids.length < 2) { out.push(c); continue; } // touched at one point (a tangent) stays whole
-      ids.forEach((s, k) => out.push({ ...c, id: `${c.id}~${k}`, circle: undefined, arc: [c.circle!.c, s, ids[(k + 1) % ids.length]] }));
-    } else out.push(c);
-  }
-  // collinear overlaps leave a segment twice
-  const seen = new Set<string>();
-  return out.filter((c) => {
-    const k = (c.construction ? 'k' : 's') + (c.line ? [...c.line].sort().join('|') : c.arc ? c.arc.join('|') : `${c.circle!.c}|${c.circle!.r.toFixed(6)}`);
-    return !seen.has(k) && !!seen.add(k);
-  });
-}
-
 // ---------------------------------------------------------------- regions
 
 const loopArea = (l: Float64Array) => { let s = 0; for (let i = 0; i < l.length; i += 2) { const j = (i + 2) % l.length; s += l[i] * l[j + 1] - l[j] * l[i + 1]; } return Math.abs(s / 2); };
@@ -338,10 +427,13 @@ export function matchRegion(engine: Engine, conv: Converted, region: any): Regio
   const res = st.evaluation.features[conv.id]?.sketch;
   const doc = st.document.features.find((f) => f.id === conv.id) as any;
   if (!res || !doc) return undefined;
-  const pt = (id: Id): V2 => { const q = res.points[id]; return [q.x, q.y]; };
+  // every curve of a loop, own (pieces of a cut too) or a copy of an entry
+  const solved = solvedCurves(doc, res);
+  const pt = (id: Id): V2 => { const q = solved.geometry.points[id]; return [q.x, q.y]; };
   const edges = (region.edges as any[]).map((e) => ({ ...e, a2: worldToBase(conv.frame, e.a), m2: worldToBase(conv.frame, e.m), b2: worldToBase(conv.frame, e.b), c2: e.center && worldToBase(conv.frame, e.center) }));
   const middle = (cid: Id): V2 | undefined => {
-    const c = doc.curves[cid];
+    const c: any = solved.curves.get(cid)?.shape;
+    if (!c) return undefined;
     if (c.type === 'line') { const [a, b] = [pt(c.a), pt(c.b)]; return [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]; }
     if (c.type === 'arc') {
       const [o, s, e] = [pt(c.center), pt(c.start), pt(c.end)];
@@ -368,10 +460,11 @@ export function matchRegion(engine: Engine, conv: Converted, region: any): Regio
     return norm(tm - ta) < norm(tb - ta) ? norm(tp - ta) <= norm(tb - ta) + 1e-9 : norm(ta - tp) <= norm(ta - tb) + 1e-9;
   };
   const curveOnRegion = (cid: Id): boolean => {
-    const c = doc.curves[cid];
-    if (c.type === 'circle') return edges.some((e) => e.curve === 'circle' && Math.hypot(pt(c.center)[0] - e.c2[0], pt(c.center)[1] - e.c2[1]) < 1e-3 && Math.abs(res.radii[cid] - e.radius) < 1e-3);
-    const m = middle(cid)!;
-    return edges.some((e) => onEdge(e, m));
+    const c: any = solved.curves.get(cid)?.shape;
+    if (!c) return false;
+    if (c.type === 'circle') return edges.some((e) => e.curve === 'circle' && Math.hypot(pt(c.center)[0] - e.c2[0], pt(c.center)[1] - e.c2[1]) < 1e-3 && Math.abs(solved.geometry.radii[cid] - e.radius) < 1e-3);
+    const m = middle(cid);
+    return !!m && edges.some((e) => onEdge(e, m));
   };
   const nearLoops = (loops: Float64Array[], [x, y]: V2) =>
     loops.some((l) => {

@@ -16,7 +16,8 @@ export interface MapContext {
   pos: Map<Id, V2>;
   curves: { id: string; src: string; line?: [string, string]; circle?: { c: string; r: number }; arc?: [string, string, string] }[];
   entityType: Map<string, string>; // Onshape entity -> its sketchEntityType (with arcs told from circles)
-  split: Set<string>; // Onshape curves the converter split
+  split: Set<string>; // Onshape curves the converter split (the baseline only; none since the cut by the tool)
+  curveOf: Map<string, { id: Id; reversed: boolean }>; // an exact duplicate -> the curve written for it
   ops: StudioOperations; // the decode of external IDs, in the studio that holds the constraint's own feature
 }
 
@@ -73,8 +74,9 @@ export function causeOf(rec: ConstraintRecord, mirrorOfCurves: boolean): { cause
 export function mapConstraints(ctx: MapContext, list: any[]): { records: ConstraintRecord[]; commands: any[] } {
   const out: any[] = [];
   const records: ConstraintRecord[] = [];
-  const curve = (id: string) => ctx.curves.find((c) => c.id === `${ctx.sketch}.${sane(id)}`);
-  const ent = (v: string | undefined) => (v === undefined ? undefined : { k: ctx.kind.get(v), id: `${ctx.sketch}.${sane(v)}` });
+  const curveId = (v: string) => ctx.curveOf.get(v)?.id ?? `${ctx.sketch}.${sane(v)}`;
+  const curve = (id: string) => ctx.curves.find((c) => c.id === curveId(id));
+  const ent = (v: string | undefined) => (v === undefined ? undefined : { k: ctx.kind.get(v), id: curveId(v) });
   const pt = (v: string) => ctx.rep.get(v) ?? `${ctx.sketch}.${sane(v)}`;
   const value = (q: any) => { const e = expression(q?.expression); return e === undefined ? undefined : numberOr(e); };
   const P = (i: Id) => ctx.pos.get(i)!;

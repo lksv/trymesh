@@ -254,6 +254,7 @@
   view: 4 scene(s) set
   scene:
     + line #64748b width 1.5 dashed onTop: 24 numbers, sum 900
+  view: mark at [0, 0, 0]
 
 === 5. rectangle: second corner
   engine: diagnoseSketch("s1")
@@ -322,6 +323,7 @@
     - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 24.249
     - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 24.249
     - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 24.249
+  view: mark at [40, 30, 0]
 
 === 6. line: a nearly horizontal end is inferred
   engine: getState("s1")
@@ -336,6 +338,7 @@
   scene:
     + line #f97316 width 1.5 dashed onTop: 6 numbers, sum 450
     + label "horizontal" reference at [80, 10, 0]
+  view: mark at [60, 10, 0]
 
 === 7. line: the chain goes on from the end, a nearly vertical end is inferred
   engine: diagnoseSketch("s1")
@@ -382,6 +385,7 @@
     - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 17.5
     + label "vertical" reference at [80, 35, 0]
     - label "horizontal" reference at [80, 10, 0]
+  view: mark at [80, 12, 0]
 
 === 8. line: joining an existing point ends the chain
   engine: diagnoseSketch("s1")
@@ -433,6 +437,8 @@
     - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 29.904
     + fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 6 numbers, sum 970
     - label "vertical" reference at [80, 35, 0]
+  view: mark at [81, 35, 0]
+  view: mark at [60, 10, 0]
 
 === 9. circle
   engine: getState("s1")
@@ -467,6 +473,8 @@
     + fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 530 | 110 numbers, sum 7601.703
     - fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 530
     + fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 110 numbers, sum 7604.457
+  view: mark at [20, 15, 0]
+  view: mark at [26, 15, 0]
 
 === 10. arc: centre and start, the rubber band shows the sweep
   engine: getState("s1")
@@ -480,6 +488,8 @@
   view: 6 scene(s) set
   scene:
     + line #64748b width 1.5 dashed onTop: 150 numbers, sum 24726.147
+  view: mark at [60, 50, 0]
+  view: mark at [72, 50, 0]
 
 === 11. arc
   engine: diagnoseSketch("s1")
@@ -516,6 +526,7 @@
     - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 30.562
     - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 30.562
     - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 30.562
+  view: mark at [60, 62, 0]
 
 === 12. polygon: its options are in the panel
   engine: getState("s1")
@@ -709,6 +720,8 @@
     - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 35.424
     - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 35.424
     + label "22.17" driving at [110.879, 17.879, 0]
+  view: mark at [110, 20, 0]
+  view: mark at [122, 20, 0]
 
 === 15. a construction line; Escape ends the chain
   engine: getState("s1")
@@ -763,6 +776,9 @@
     - line #b45309 width 1.5 dashed onTop: 576 numbers, sum 99758.424
     + points #1d4ed8 size 7: 63 numbers, sum 8327.541
     - points #1d4ed8 size 7: 57 numbers, sum 7657.541
+  view: mark at [10, 50, 0]
+  view: mark at [40, 50, 0]
+  view: mark removed
 
 === 16. a point
   engine: getState("s1")
@@ -787,6 +803,7 @@
   scene:
     + points #1d4ed8 size 7: 66 numbers, sum 8537.541
     - points #1d4ed8 size 7: 63 numbers, sum 8327.541
+  view: mark at [100, 55, 0]
 
 === 17. select: a curve under the pointer is highlighted
   engine: getState("s1")
@@ -826,6 +843,7 @@
   scene:
     + line #f97316 width 3 onTop: 6 numbers, sum 160
     - line #0ea5e9 width 3 onTop: 6 numbers, sum 160
+  view: mark at [20, 0, 0]
 
 === 19. a dimension of the selected line
   engine: getState("s1")
@@ -878,6 +896,7 @@
     - line #1d4ed8 width 2 onTop: 804 numbers, sum 62365.83
     + line #f97316 width 3 onTop: 12 numbers, sum 680
     - line #f97316 width 3 onTop: 6 numbers, sum 160
+  view: mark at [40, 15, 0]
 
 === 21. a constraint the sketch already implies is refused or added as the engine says
   engine: getState("s1")
@@ -947,6 +966,8 @@
     - points #1d4ed8 size 7: 63 numbers, sum 9483.93
     + points #f97316 size 10: 6 numbers, sum 825
     + label "10" driving at [105, 37.5, 0]
+  view: mark at [100, 55, 0]
+  view: mark at [110, 20, 0]
 
 === 23. the same dimension again is refused in words
   status: The sketch already has this dimension; change its value in the list of constraints.  [error]
@@ -1102,6 +1123,7 @@
     + points #1d4ed8 size 7: 63 numbers, sum 9488.93
     - points #1d4ed8 size 7: 57 numbers, sum 8488.318
     - points #f97316 size 10: 6 numbers, sum 825
+  view: mark removed
 
 === 32. Escape: then the focus
   engine: getState("s1")
@@ -1288,6 +1310,7 @@
     + points #1d4ed8 size 7: 60 numbers, sum 8772.93
     - points #1d4ed8 size 7: 63 numbers, sum 9707.93
     + points #f97316 size 10: 3 numbers, sum 243
+  view: mark at [103, 70, 0]
 
 === 43. Delete removes the selected point
   engine: getState("s1")
@@ -1366,6 +1389,7 @@
     + line #b45309 width 1.5 dashed onTop: 576 numbers, sum 102062.424
     + line #f97316 width 3 onTop: 6 numbers, sum 520
     - line #b45309 width 1.5 dashed onTop: 582 numbers, sum 102882.424
+  view: mark at [20, 50, 0]
 
 === 45. and deleted by the button, with the points nothing else uses
   engine: getState("s1")
@@ -1422,6 +1446,7 @@
   scene:
     + points #f97316 size 10: 3 numbers, sum 0
     - points #a21caf size 7: 3 numbers, sum 0
+  view: mark at [0, 0, 0]
 
 === 47. Escape drops a shape in progress
   engine: getState("s1")
@@ -1435,6 +1460,8 @@
     -   button title="Click the centre and then a point of the rim.": "Circle"
   status: Click the centre and then a point of the rim.
   view: 4 scene(s) set
+  view: mark at [150, 50, 0]
+  view: mark removed
 
 === 48. Escape: then the tool
   engine: getState("s1")

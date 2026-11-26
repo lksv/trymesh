@@ -192,6 +192,8 @@
   view: fit [-20, -20, -20] .. [20, 20, 20]
   view: lookAt origin [0, 0, 0] normal [0, 0, 1]
   view: fit [-20, -20, -20] .. [20, 20, 20]
+  view: mark at [0, 0, 0]
+  view: mark at [40, 30, 0]
 
 === 2. PETG from the catalog: the label and the density of the data sheet in the document; the line of the body has the material and the mass
   engine: execute({"type":"setBodyMaterial","body":"e1","material":"PETG"}) -> ok
@@ -589,6 +591,7 @@
     - face e1 #3 #f97316 opacity 0.3
     - face e1 #4 #f97316 opacity 0.3
     - face e1 #5 #f97316 opacity 0.3
+  view: mark at [-20, -15, 10]
 
 === 13. the source made auxiliary: the empty choice of the copy follows it
   engine: execute({"type":"setBodyProperties","body":"e1","patch":{"use":"auxiliary"}}) -> ok

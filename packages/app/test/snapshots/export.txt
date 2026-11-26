@@ -150,6 +150,8 @@
   view: fit [-20, -20, -20] .. [20, 20, 20]
   view: lookAt origin [0, 0, 0] normal [0, 0, 1]
   view: fit [-20, -20, -20] .. [20, 20, 20]
+  view: mark at [0, 0, 0]
+  view: mark at [40, 30, 0]
 
 === 2. DXF opened from the menu: its options, the plane armed
   panel:
@@ -187,6 +189,7 @@
   view: 2 scene(s) set
   scene:
     + face e1 #1 #0ea5e9 opacity 0.3
+  view: mark at [10, 15, 10]
 
 === 4. exported a millimetre under the face: the outline of the plate saved under its suggested name, its size in the status line
   engine: export("dxf", {"plane":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}},"offset":-1}, {}) -> ok

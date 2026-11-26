@@ -156,6 +156,12 @@
   view: fit [-20, -20, -20] .. [20, 20, 20]
   view: lookAt origin [0, 0, 0] normal [0, 0, 1]
   view: fit [-20, -20, -20] .. [20, 20, 20]
+  view: mark at [0, 0, 0]
+  view: mark at [40, 30, 0]
+  view: mark at [70, 15, 0]
+  view: mark at [75, 15, 0]
+  view: mark at [12.5, 0, 25]
+  view: mark removed
 
 === 2. the pick armed: the view picks faces and planes
   engine: getState("e1")
@@ -211,6 +217,7 @@
     - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 26.984
     - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 26.984
     - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 26.984
+  view: mark at [20, 10, 12]
 
 === 5. a gap typed: the cylinder stops 2 short of the plane
   engine: preview({"type":"addFeature","feature":{"id":"e2","name":"Extrude 2","suppressed":false,"type":"extrude","extent":{"type":"upTo","start":0,"plane":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}},"gap":2},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c5"]}]},"operation":"new"},"index":2}, "e2") -> ok
@@ -237,6 +244,7 @@
   scene:
     + face e2 #7 #0ea5e9 opacity 0.3
     - face e1 #1 #0ea5e9 opacity 0.3
+  view: mark at [74.515, 17.125, 10]
 
 === 7. the pick disarmed: clicks pick regions again
   engine: preview({"type":"addFeature","feature":{"id":"e2","name":"Extrude 2","suppressed":false,"type":"extrude","extent":{"type":"upTo","start":0,"plane":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}},"gap":2},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c5"]}]},"operation":"new"},"index":2}, "e2") -> ok

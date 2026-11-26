@@ -213,8 +213,16 @@
   view: fit [-20, -20, -20] .. [20, 20, 20]
   view: lookAt origin [0, 0, 0] normal [0, 0, 1]
   view: fit [-20, -20, -20] .. [20, 20, 20]
+  view: mark at [0, 0, 0]
+  view: mark at [40, 30, 0]
+  view: mark at [90, 15, 0]
+  view: mark at [95, 15, 0]
+  view: mark at [20, 15, 0]
+  view: mark removed
   view: lookAt origin [0, 0, 0] normal [0, 0, 1]
   view: fit [0, 0, 0] .. [95, 30, 10]
+  view: mark at [30, 10, 0]
+  view: mark at [60, 25, 0]
 
 === 2. a face selected: what it is and its body
   panel:
@@ -263,6 +271,7 @@
   scene:
     + face e1 #1 #0ea5e9 opacity 0.3
     + face e1 #1 #f97316 opacity 0.5
+  view: mark at [20, 15, 10]
 
 === 3. an edge under the pointer
   view: 1 scene(s) set
@@ -278,6 +287,7 @@
   scene:
     + line #f97316 width 4 onTop: 6 numbers, sum 250
     - face e1 #1 #f97316 opacity 0.5
+  view: mark at [20, 0, 10]
 
 === 5. the body of the selection exported alone, the model exported, the document saved
   engine: exportMesh("stl", ["e1"])
@@ -335,6 +345,7 @@
   scene:
     - line #0ea5e9 width 4 onTop: 6 numbers, sum 250
     - line #f97316 width 4 onTop: 6 numbers, sum 250
+  view: mark removed
 
 === 7. a feature selected on the timeline: its summary, its body, its faces highlighted
   timeline:
@@ -623,6 +634,7 @@
     - line #8b9bb4 width 1: 24 numbers, sum 490.612
     + fill #f97316 opacity 0.25 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 35.044
     - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 35.044
+  view: mark at [-23, 0, 10]
 
 === 13. the sketch moved to the selected plane: the block follows
   engine: execute({"type":"setSketchPlane","sketch":"s2","plane":{"kind":"base","plane":"XZ"}}) -> ok
@@ -1083,6 +1095,7 @@
     - line #f97316 width 2: 24 numbers, sum 167.43
     + fill #8b9bb4 opacity 0.08 at [15, 0, 0] normal [1, 0, 0]: 8 numbers, sum 33.388
     - fill #f97316 opacity 0.3 at [0, -10, 0] normal [0, -1, 0]: 8 numbers, sum 33.388
+  view: mark removed
 
 === 20. the whole model again
   toolbar:
@@ -1160,6 +1173,7 @@
     - line #8b9bb4 width 1: 24 numbers, sum 680.306
     + fill #f97316 opacity 0.25 at [15, 0, 0] normal [1, 0, 0]: 8 numbers, sum 35.044
     - fill #8b9bb4 opacity 0.08 at [15, 0, 0] normal [1, 0, 0]: 8 numbers, sum 35.044
+  view: mark at [15, 8.333, 26.667]
 
 === 24. the plate shown, the plane hidden
   timeline:
@@ -1213,6 +1227,7 @@
 === 27. a parameter without a name is not added
   status: Parameter: fill in both the name and the expression.  [error]
   view: 1 scene(s) set
+  view: mark removed
 
 === 28. an incomplete expression is marked while typing
   panel:
@@ -2201,6 +2216,7 @@
   view: 2 scene(s) set
   scene:
     + face e1 #1 #0ea5e9 opacity 0.3
+  view: mark at [10, 15, 10]
 
 === 51. a click near the rim of the pin gives its edge: both entities given
   panel:
@@ -2225,6 +2241,7 @@
   scene:
     + line #0ea5e9 width 4 onTop: 300 numbers, sum 45701.065
     - face e1 #1 #0ea5e9 opacity 0.3
+  view: mark at [94.515, 17.125, 10]
 
 === 52. asked: the numbers with their units, the face highlighted, the smallest distance drawn
   engine: query("measure", {"from":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}},"to":{"kind":"edge","body":"e2","edge":{"a":{"feature":"e2","role":"endCap"},"b":{"feature":"e2","role":"side","curve":"c5"}}}}, {}) -> ok
@@ -2391,6 +2408,8 @@
     + points #f97316 size 8: 6 numbers, sum 575
     + face e1 #1 #0ea5e9 opacity 0.4
     + label "45 mm" reference at [62.5, 15, 10]
+  view: mark at [10, 15, 10]
+  view: mark at [94.515, 17.125, 10]
 
 === 57. a threshold below zero: marked while typed, sent as typed, refused by the engine at the threshold
   engine: query("interference", {}, {}) -> ok
@@ -2976,6 +2995,7 @@
   view: 3 scene(s) set
   scene:
     + face e1 #1 #0ea5e9 opacity 0.3
+  view: mark at [10, 15, 10]
 
 === 62. asked: the model is cut, the cut of the three bodies filled and outlined, the bodies with their areas
   engine: query("section", {"plane":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}},"offset":-5,"outline":"polylines","maxPoints":1000000}, {}) -> ok
@@ -3003,6 +3023,7 @@
 
 === 63. a click on the filled cut selects nothing: behind it is the inside of the plate
   view: 1 scene(s) set
+  view: mark removed
 
 === 64. a click on a wall below the cut selects as ever
   panel:
@@ -3051,6 +3072,7 @@
   scene:
     + line #0ea5e9 width 4 onTop: 6 numbers, sum 160
     + line #f97316 width 4 onTop: 6 numbers, sum 160
+  view: mark at [20.75, 0, 0]
 
 === 65. the rim of the pin that is cut away is not under the pointer; the one below the cut is
   panel:
@@ -3100,6 +3122,7 @@
     + line #0ea5e9 width 4 onTop: 300 numbers, sum 41718.589
     - line #0ea5e9 width 4 onTop: 6 numbers, sum 160
     - line #f97316 width 4 onTop: 6 numbers, sum 160
+  view: mark removed
 
 === 66. the plane stepped along its normal: asked again with the arguments of the form
   engine: query("section", {"plane":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}},"offset":-4,"outline":"polylines","maxPoints":1000000}, {}) -> ok

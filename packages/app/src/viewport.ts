@@ -76,6 +76,9 @@ export interface View {
   pixelSize(): number;
   lookAt(frame: Frame): void;
   fit(min: Vec3, max: Vec3): void;
+  // The mark of the last click (D74): a small square drawn over everything at a point of the
+  // model, kept across scenes until it is moved or removed (undefined).
+  mark(at: Vec3 | undefined): void;
   // A picture of a model, drawn off the screen at the size given: what the user sees is not
   // touched, and the picture depends on neither the window nor the user's camera (but for
   // `current`).
@@ -86,6 +89,7 @@ export interface View {
 const CORNERS = [[-1, -1], [1, -1], [1, 1], [-1, 1]] as const;
 const DISTANCE = 5000; // the camera stands far away so that no part of the model is behind it
 const BACKGROUND = 0xf2f4f7;
+const MARK = { color: 0xdb2777, edge: 0xffffff, size: 9 } as const; // the mark of the last click: magenta with a white rim
 const BODY_MATERIAL = { roughness: 0.75, metalness: 0.05, flatShading: true, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 } as const;
 // The light of a camera: it hangs on the camera, so the model is lit from where it is seen.
 function lit(camera: THREE.Camera): void {
@@ -119,6 +123,7 @@ export class Viewport implements View {
   private disposable: { dispose(): void }[] = [];
   private pending = false;
   private clip: HalfSpace | undefined;
+  private readonly marked = new THREE.Group(); // the mark of the last click, outside the content of a scene
 
   constructor(private readonly container: HTMLElement) {
     this.renderer.setPixelRatio(window.devicePixelRatio);
@@ -131,7 +136,17 @@ export class Viewport implements View {
     this.camera.position.set(0.55, -0.7, 0.45).normalize().multiplyScalar(DISTANCE);
     this.camera.zoom = 6;
     lit(this.camera);
-    this.scene.add(this.camera, new THREE.AmbientLight(0xffffff, 1.1), this.content);
+    this.scene.add(this.camera, new THREE.AmbientLight(0xffffff, 1.1), this.content, this.marked);
+    // the mark: a white square with a smaller magenta one on it, over everything (no depth test)
+    const markGeometry = new THREE.BufferGeometry();
+    markGeometry.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0], 3));
+    for (const [color, size, order] of [[MARK.edge, MARK.size + 4, 5], [MARK.color, MARK.size, 6]] as const) {
+      const points = new THREE.Points(markGeometry, new THREE.PointsMaterial({ color, size, sizeAttenuation: false, depthTest: false, transparent: true }));
+      points.renderOrder = order;
+      points.frustumCulled = false;
+      this.marked.add(points);
+    }
+    this.marked.visible = false;
 
     // Without a mouse (touchpad): Alt/Option + drag with the left button rotates, with Shift it pans. It
     // must be registered before OrbitControls, so that the assignment of the left button changes before the
@@ -377,6 +392,12 @@ export class Viewport implements View {
     this.controls.target.copy(target);
     this.camera.position.copy(target).addScaledVector(normal, DISTANCE).add(tilt);
     this.controls.update();
+    this.requestRender();
+  }
+
+  mark(at: Vec3 | undefined): void {
+    this.marked.visible = at !== undefined;
+    if (at) this.marked.position.set(...at);
     this.requestRender();
   }
 

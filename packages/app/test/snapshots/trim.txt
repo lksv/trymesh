@@ -171,8 +171,12 @@
   view: fit [-20, -20, -20] .. [20, 20, 20]
   view: lookAt origin [0, 0, 0] normal [0, 0, 1]
   view: fit [-20, -20, -20] .. [20, 20, 20]
+  view: mark at [0, 0, 0]
+  view: mark at [40, 30, 0]
   view: lookAt origin [0, 0, 0] normal [0, 0, 1]
   view: fit [0, 0, 0] .. [40, 30, 0]
+  view: mark at [20, -8, 0]
+  view: mark at [32, -8, 0]
 
 === 2. the tool Trim over the circle below the edge: the piece between the crossings drawn dashed
   engine: getState("s1")
@@ -261,6 +265,7 @@
     - points #16a34a size 12: 3 numbers, sum -20
     + fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 52 numbers, sum 2533.807
     + fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 44 numbers, sum 1911.86
+  view: mark at [20, -19.9, 0]
 
 === 4. over the piece of the edge inside the arc
   engine: diagnoseSketch("s1")
@@ -290,11 +295,13 @@
     - line #64748b width 1.5 dashed onTop: 6 numbers, sum 126.833
     - points #16a34a size 12: 3 numbers, sum 20
     - fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 44 numbers, sum 1911.86
+  view: mark at [20, 0.05, 0]
 
 === 6. a click away from every curve says what the tool wants
   engine: diagnoseSketch("s1")
   status: Click the piece of a curve to remove.  [error]
   view: 1 scene(s) set
+  view: mark at [70, 70, 0]
 
 === 7. the tool Extend near the upper end of a line inside: its extension to the top side drawn dashed
   engine: getState("s1")
@@ -342,6 +349,9 @@
     + points #1d4ed8 size 7: 24 numbers, sum 692.223
     - points #1d4ed8 size 7: 18 numbers, sum 532.223
     + points #16a34a size 12: 3 numbers, sum 48
+  view: mark at [10, 10, 0]
+  view: mark at [10, 20, 0]
+  view: mark removed
 
 === 8. a click extends it: the top side cut there
   engine: diagnoseSketch("s1")
@@ -383,6 +393,7 @@
     - points #16a34a size 12: 3 numbers, sum 48
     + fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 54 numbers, sum 2703.807
     - fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 52 numbers, sum 2533.807
+  view: mark at [10, 19, 0]
 
 === 9. an end two curves share is refused with the reason
   engine: diagnoseSketch("s1")
@@ -390,6 +401,7 @@
   view: 1 scene(s) set
   scene:
     + points #16a34a size 12: 3 numbers, sum 30
+  view: mark at [0.05, 15, 0]
 
 === 10. a line across the outline; the tool Split shows Split crossings in its panel
   engine: getState("s1")
@@ -475,6 +487,9 @@
     - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 19.31
     - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 19.31
     - fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 54 numbers, sum 2703.807
+  view: mark at [35, -10, 0]
+  view: mark at [35, 40, 0]
+  view: mark removed
 
 === 11. every crossing of the outline cut; the extrusion keeps its body in two regions
   engine: getState("s1")
@@ -553,3 +568,4 @@
   view: 1 scene(s) set
   scene:
     + points #16a34a size 12: 3 numbers, sum 50
+  view: mark at [0.05, 25, 0]

@@ -250,6 +250,7 @@
   scene:
     + line #0ea5e9 width 4 onTop: 6 numbers, sum 250
     + line #f97316 width 4 onTop: 6 numbers, sum 250
+  view: mark at [20, 0, 10]
 
 === 4. the top right edge picked too: two edges in the list
   engine: getState("plate")
@@ -268,6 +269,7 @@
     + line #0ea5e9 width 4 onTop: 6 numbers, sum 440
     - line #0ea5e9 width 4 onTop: 6 numbers, sum 250
     + line #f97316 width 4 onTop: 6 numbers, sum 440
+  view: mark at [40, 15, 10]
 
 === 5. the top front edge clicked again: taken out of the list
   engine: getState("plate")
@@ -286,6 +288,7 @@
     + line #0ea5e9 width 4 onTop: 6 numbers, sum 250
     - line #0ea5e9 width 4 onTop: 6 numbers, sum 440
     - line #f97316 width 4 onTop: 6 numbers, sum 250
+  view: mark at [20, 0, 10]
 
 === 6. picked again, the distance 2
   engine: preview({"type":"addFeature","feature":{"id":"chamfer1","name":"Chamfer 1","suppressed":false,"body":"plate","edges":[{"a":{"feature":"plate","role":"endCap"},"b":{"feature":"plate","role":"side","curve":"l1"}},{"a":{"feature":"plate","role":"endCap"},"b":{"feature":"plate","role":"side","curve":"l0"}}],"type":"chamfer","distance":1},"index":2}, "chamfer1") -> ok
@@ -612,6 +615,7 @@
   scene:
     + line #0ea5e9 width 4 onTop: 6 numbers, sum 244
     + line #f97316 width 4 onTop: 6 numbers, sum 244
+  view: mark at [0, 13, 10]
 
 === 13. a radius of 3: OK, the fillet is in the document
   engine: preview({"type":"addFeature","feature":{"id":"fillet1","name":"Fillet 1","suppressed":false,"body":"plate","edges":[{"a":{"feature":"plate","role":"endCap"},"b":{"feature":"plate","role":"side","curve":"l3"}}],"type":"fillet","radius":3},"index":3}, "fillet1") -> ok

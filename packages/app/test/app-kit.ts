@@ -92,6 +92,13 @@ export class StubView implements View {
   fit(min: Vec3, max: Vec3): void {
     this.calls.push(`fit ${numbers(min)} .. ${numbers(max)}`);
   }
+  // The mark of the last click (D74), written down when it changes.
+  marked?: Vec3;
+  mark(at: Vec3 | undefined): void {
+    if (at === this.marked || (at && this.marked && numbers(at) === numbers(this.marked))) return;
+    this.marked = at;
+    this.calls.push(at ? `mark at ${numbers(at)}` : 'mark removed');
+  }
   // A picture is not drawn here: what the view was asked to draw is written down, and the answer
   // is a few bytes ("PNG" in base64) at a quarter of a millimetre per pixel.
   async image(model: PictureModel, camera: PictureCamera, width: number, height: number): Promise<Picture> {

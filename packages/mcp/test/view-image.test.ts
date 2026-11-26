@@ -234,7 +234,7 @@ describe('the operation view_image', () => {
   });
 
   it('the registry has the operation, described for the AI', () => {
-    expect(Object.keys(HOST_OPERATIONS)).toEqual(['view_image']);
+    expect(Object.keys(HOST_OPERATIONS)).toEqual(['view_image', 'get_selection']);
     // the three arguments of a section are the descriptions of the query themselves
     expect(HOST_OPERATIONS.view_image.args.section.fields).toEqual({ plane: SECTION_ARGS.plane, offset: SECTION_ARGS.offset, flip: SECTION_ARGS.flip });
     expect(HOST_OPERATIONS.view_image.args.section.fields.offset).toBe(SECTION_ARGS.offset);

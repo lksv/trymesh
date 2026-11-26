@@ -336,8 +336,13 @@
     - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 24.249
   view: lookAt origin [0, 0, 0] normal [0, 0, 1]
   view: fit [-20, -20, -20] .. [20, 20, 20]
+  view: mark at [0, 0, 0]
+  view: mark at [40, 30, 0]
+  view: mark at [20, 10, 10]
   view: lookAt origin [0, 0, 10] normal [0, 0, 1]
   view: fit [0, 0, 0] .. [40, 30, 10]
+  view: mark at [10, 10, 10]
+  view: mark at [30, 10, 10]
 
 === 3. a point ticked: the engine previews the hole
   engine: preview({"type":"addFeature","feature":{"id":"d1","name":"Hole 1","suppressed":false,"type":"hole","sketch":"s2","points":["p4"],"shape":{"type":"plain","diameter":3},"extent":{"type":"throughAll","side":"backward"},"targets":["e1"]},"index":3}, "d1") -> ok

@@ -26,12 +26,29 @@ export const PALETTE: readonly { color: number; name: string }[] = [
 const SHADE = 0.7; // the cut of a body is its colour this much darker
 const shaded = (color: number): number => (Math.round(((color >> 16) & 255) * SHADE) << 16) | (Math.round(((color >> 8) & 255) * SHADE) << 8) | Math.round((color & 255) * SHADE);
 const hex = (color: number): string => `#${color.toString(16).padStart(6, '0')}`;
-// The name of a colour of the model (D73): the nearest of the palette, black, white and grey.
-const NAMED: readonly { color: number; name: string }[] = [...PALETTE, { color: 0x000000, name: 'black' }, { color: 0xffffff, name: 'white' }, { color: 0x808080, name: 'grey' }];
-const channels = (color: number): number[] => [(color >> 16) & 255, (color >> 8) & 255, color & 255];
+// The name of a colour of the model (D73): by its hue, saturation and lightness, so that colours
+// a reader tells apart get names that differ. The nearest colour of the palette by RGB, as before,
+// named teal (#1abc9c) and slate (#34495e) both "blue". Every colour of the palette gets its own
+// name (a test guards it), so the palette and the colours of the model share one vocabulary:
+// - black, white and grey for colours with next to no hue (saturation under 0.15, or the spread
+//   of the channels under 0.08 of the range);
+// - the hue bands red, orange, yellow, green, teal, blue and purple; brown is orange that is dull
+//   (saturation under 0.45) or dark (lightness under 0.35), and pink red that is light;
+// - "dark " before a hue below lightness 0.3, "light " above 0.75.
+const HUES: readonly [below: number, name: string][] = [[15, 'red'], [45, 'orange'], [70, 'yellow'], [160, 'green'], [190, 'teal'], [255, 'blue'], [330, 'purple'], [360, 'red']];
 export function colorName(color: number): string {
-  const distance = (other: number): number => channels(other).reduce((sum, value, i) => sum + (value - channels(color)[i]) ** 2, 0);
-  return NAMED.reduce((best, entry) => (distance(entry.color) < distance(best.color) ? entry : best)).name;
+  const [r, g, b] = [(color >> 16) & 255, (color >> 8) & 255, color & 255].map((value) => value / 255);
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const spread = max - min;
+  const lightness = (max + min) / 2;
+  const saturation = spread === 0 ? 0 : spread / (1 - Math.abs(2 * lightness - 1));
+  if (saturation < 0.15 || spread < 0.08) return lightness < 0.2 ? 'black' : lightness > 0.9 ? 'white' : 'grey';
+  const hue = (max === r ? ((g - b) / spread + 6) % 6 : max === g ? (b - r) / spread + 2 : (r - g) / spread + 4) * 60;
+  const name = (HUES.find(([below]) => hue < below) ?? HUES[0])[1];
+  if (name === 'orange' && (saturation < 0.45 || lightness < 0.35)) return 'brown';
+  if (name === 'red' && lightness > 0.7) return 'pink';
+  return lightness < 0.3 ? `dark ${name}` : lightness > 0.75 ? `light ${name}` : name;
 }
 
 // What a request draws: the bodies asked for (all without `bodies`) in the order of the state,

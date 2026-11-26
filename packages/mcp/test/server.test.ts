@@ -59,6 +59,11 @@ describe('MCP server', () => {
       expect(tool.description, tool.name).not.toBe('');
       expect(tool.inputSchema.type).toBe('object');
     }
+    // every text the server publishes is English (translated 2026-11-25): no Czech letter in a
+    // description or a schema. A client that cached the list from an older build can still show
+    // a Czech one (the undo tool, seen 2026-11-26), which a restart of the server clears
+    const czech = /[áčďéěíňóřšťúůýž]/iu;
+    for (const tool of tools) expect(JSON.stringify(tool), tool.name).not.toMatch(czech);
     // internal tools cannot be called from outside
     expect(await session.call('_load', { json: '{}' })).toEqual({ error: 'unknown tool "_load"' });
     expect(await session.call('nope')).toEqual({ error: 'unknown tool "nope"' });

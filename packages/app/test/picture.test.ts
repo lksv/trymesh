@@ -4,7 +4,7 @@ import type { EngineState, Frame, MechanismResult, RigidTransform, SectionResult
 import type { ImageRequest, RenderedImage, ViewCapability } from '@trymesh/mcp/view-image';
 import { describe, expect, it } from 'vitest';
 import { COLOR } from '../src/draw';
-import { PALETTE, SAVED, pictureModel, savePicture } from '../src/picture';
+import { PALETTE, SAVED, colorName, pictureModel, savePicture } from '../src/picture';
 
 // A state of `count` bodies named b0, b1, …: each has one edge along X at the height of its
 // number, from y = −1 to y = 1, and one edge that is coplanar and is not drawn. Its box is that
@@ -78,6 +78,26 @@ describe('what a picture draws', () => {
     // the palette over: the twelfth body has the colour of the second
     const many = pictureModel(request({ state: stateOf(12) })).bodies;
     expect([many[1].sharedWith, many[11].sharedWith, many[5].sharedWith]).toEqual([['b11'], ['b1'], undefined]);
+  });
+
+  // The name of a colour by hue, saturation and lightness. Found on the robot arm built over MCP
+  // (2026-11-26): the nearest colour of the palette by RGB named teal #1abc9c, slate #34495e and
+  // #2e86de all "blue", and `sharedWith` said the base, the arm and the forearm looked alike.
+  it('names a colour by its hue, saturation and lightness, and every colour of the palette by its own name', () => {
+    expect(PALETTE.map((entry) => colorName(entry.color))).toEqual(PALETTE.map((entry) => entry.name));
+    const names = (colors: number[]): string[] => colors.map(colorName);
+    // the colours of the arm
+    expect(names([0x34495e, 0x2e86de, 0x1abc9c, 0xe67e22, 0xc0392b, 0x8e44ad, 0xf1c40f, 0x7f8c8d, 0x2c2c2c])).toEqual(['dark blue', 'blue', 'teal', 'orange', 'red', 'purple', 'yellow', 'grey', 'black']);
+    // no hue: black, grey, white, also a dark colour with a little hue
+    expect(names([0x000000, 0x101010, 0x808080, 0xbab0ac, 0xffffff, 0x141018])).toEqual(['black', 'black', 'grey', 'grey', 'white', 'black']);
+    // the pure hues, and where the bands meet
+    expect(names([0xff0000, 0xff8000, 0xffff00, 0x00ff00, 0x00ffff, 0x0000ff, 0xff00ff])).toEqual(['red', 'orange', 'yellow', 'green', 'teal', 'blue', 'purple']);
+    // brown is dull or dark orange, pink is light red; dark and light before the other hues
+    expect(names([0x8b4513, 0x9c755f, 0xd35400, 0xffc0cb, 0x0b3d0b, 0xadd8e6, 0x1a237e])).toEqual(['brown', 'brown', 'orange', 'pink', 'dark green', 'light blue', 'dark blue']);
+    // the legend no longer pairs the slate base with the blue arm and the teal forearm
+    const state = stateOf(3);
+    (state.evaluation as { bodyProperties: object }).bodyProperties = { b0: { name: 'b0', use: 'part', color: '#34495e' }, b1: { name: 'b1', use: 'part', color: '#2e86de' }, b2: { name: 'b2', use: 'part', color: '#1abc9c' } };
+    expect(pictureModel(request({ state, colors: 'model' })).bodies.map((entry) => [entry.colorName, entry.sharedWith])).toEqual([['dark blue', undefined], ['blue', undefined], ['teal', undefined]]);
   });
 
   it('only the bodies asked for, in the order of the state, each with the colour it has among all', () => {

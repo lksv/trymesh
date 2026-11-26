@@ -16,7 +16,7 @@ The functions are split by area (D37, part 5), one file per panel or form, each 
 
 | File | What it lists | Sections |
 |---|---|---|
-| [ui/model.md](ui/model.md) | Opening and saving, undo, the view of the model, the timeline | File and history of edits; The view of the model; Timeline; Implementation status |
+| [ui/model.md](ui/model.md) | Opening and saving, undo, the view of the model (with the selection the AI reads and the mark of the last click, D74), the timeline | File and history of edits; The view of the model; Timeline; Implementation status |
 | [ui/plane.md](ui/plane.md) | A plane of its own | A plane of its own |
 | [ui/sketch.md](ui/sketch.md) | Starting a sketch, drawing (with the fillet and the re-point of D52, trim, extend and split of D65, mirror and pattern entries of D68, projection from another sketch of D69, the spline of D70, *Import an outline…* and the row of an outline with *Replace file…* of D72; of D73 the order of the IDs of the rectangle, its other inputs being for MCP), constraints and dimensions | Sketch: creation; Sketch: drawing; Sketch: constraints and dimensions; Implementation status |
 | [ui/extrude.md](ui/extrude.md) | The form of the extrusion, its start at a plane or a face (D66) | Extrude |

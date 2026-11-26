@@ -66,6 +66,7 @@ Two milestones lead to the joint (D35):
 - An MCP server (`packages/mcp`) through which an AI model reads and changes the document: an overview of the model, a sketch including its diagnosis ("why does the sketch have two degrees of freedom"), bodies with the names of faces and edges, running and previewing commands, undo and redo, files (open, save, export STL).
 - Two modes with the same tools: over a document from a file (the engine runs in the server) and over a document open in the running app (the user sees the changes of the AI at once and can undo them).
 - The tools are generic and their description is generated from the sources of the engine (the types of commands and of the document, the catalog of constraints). A new constraint or command in the engine shows up in the interface without a change to the server.
+- Interactive work (owner, 2026-11-26, D74): the AI reads what the user has selected and clicked in the running app (the selected feature, face, edge, plane and sketch entities, the last click with the point and what it hit, the pointer while it is over the view), so that "extend the selected line" or "make the axis roughly here" can be acted on; the last click is marked in the view.
 
 ### Extensions for the robotic joint (D35)
 

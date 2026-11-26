@@ -1757,7 +1757,8 @@ export interface Issue {
 // - the tool reached material it must not touch: next to a convex edge within the size outside
 //   its faces (a slot narrower than the size, a piece of the body), or next to a concave edge
 //   a hollow just inside them (the foot of a boss that reaches the edge of the plate);
-// - it reaches the axis of a circular edge;
+// - it reaches the axis of a circular edge (a corner rounded into a sphere), or comes within two
+//   lifts of it;
 // - the ends of a straight piece meet within it (a piece shorter than the slant of its ends);
 // - it reaches past the end face in `refs`: deeper than a riser the edge ends at, into the
 //   material beyond it, or (added) standing out over a lower end wall;

@@ -719,14 +719,18 @@ function blend(kind: BlendKind, feature: Id, solid: Solid, given: EdgeName[], si
   if (triangles > MAX_REVOLVE_TRIANGLES) refuse('blendDoesNotFit', edges.map((edge) => edge.name), `the tools would have ${triangles} triangles, more than ${MAX_REVOLVE_TRIANGLES}; raise the chord tolerance of the document or split the feature`);
 
   // The profile of a circular edge, its overshoot shortened towards the axis so that no point of it
-  // comes nearer to the axis than half the nearest point of the blend; a blend that reaches the axis
-  // is refused.
+  // comes nearer to the axis than half the nearest point of the blend. A blend that reaches the axis
+  // is refused, and so is one that comes nearer to it than two lifts: its rings there are smaller
+  // than the band of the kernel, which failed on them (a fillet of 5.99 on a corner of radius 6).
   function towardsAxis(edge: Edge, place: CornerPlace): BlendProfile {
     const profile = edge.profile;
     const rho = (q: Vec2): number => placed(place, q)[0];
     const blendPoints = [...profile.points.slice(0, profile.keys.indexOf('pastB') + 1), ...profile.wedge.slice(1)];
     const nearest = Math.min(...blendPoints.map(rho));
-    if (nearest <= LENGTH_TOLERANCE) refuse('blendDoesNotFit', [edge.name], `the ${kind} reaches the axis of the circular edge`);
+    const clearance = 2 * lift;
+    const radius = `the edge has a radius of ${shown(place.point[0])} mm`;
+    if (nearest <= LENGTH_TOLERANCE) refuse('blendDoesNotFit', [edge.name], `the ${kind} reaches the axis of the circular edge (${radius}): a corner ${kind === 'fillet' ? 'rounded into a sphere' : 'chamfered into a point'} is not supported; use a smaller size, one that keeps the ${kind} at least ${shown(clearance)} mm from the axis`);
+    if (nearest <= clearance) refuse('blendDoesNotFit', [edge.name], `the ${kind} comes within ${shown(nearest)} mm of the axis of the circular edge (${radius}), nearer than the ${shown(clearance)} mm its tool needs at the chord tolerance of the document; use a smaller size`);
     let overshoot = profile.overshoot;
     for (const { at, along: direction } of overshootPoints(kind, size, edge.corner.beta)) {
       const slope = direction[0] * place.alongA[0] + direction[1] * place.acrossTowardsB[0];

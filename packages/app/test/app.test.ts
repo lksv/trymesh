@@ -2220,4 +2220,106 @@ describe('the app, driven as a user drives it', () => {
     expect(h.engine.getState().document.documents).toEqual({});
     await matches(h, 'insert');
   });
+
+  it('the rows of what is under the pointer: a face, an edge, a copy of a pattern, a plane, the line of a body, a curve of a sketch; leaving the view; a scroll only to a hidden row', async () => {
+    const h = await start();
+    h.press('toolbar', 'Sketch');
+    h.press('panel', 'XY');
+    h.press('toolbar', 'Rectangle');
+    h.click(at(0, 0));
+    h.click(at(40, 30));
+    h.press('toolbar', 'Circle');
+    h.click(at(10, 15));
+    h.click(at(13, 15));
+    h.press('toolbar', 'Finish sketch');
+    h.press('toolbar', 'Extrude');
+    h.click(at(30, 10));
+    h.type(h.field(DISTANCE), '10');
+    h.press('panel', 'OK');
+    const [sketch, plate] = h.engine.getState().document.features.map((f) => f.id);
+    const circle = Object.entries((h.engine.getState().document.features[0] as { curves: Record<string, { type: string }> }).curves).find(([, curve]) => curve.type === 'circle')?.[0] as string;
+    outside(h, { type: 'addFeature', feature: { id: 'hole', name: 'Hole', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch, regions: [{ outerLoop: [circle] }] }, extent: { type: 'throughAll', side: 'both' }, operation: 'cut', targets: [plate] } });
+    outside(h, { type: 'addFeature', feature: { id: 'copies', name: 'Copies', suppressed: false, type: 'pattern', source: { type: 'body', body: plate }, transform: { type: 'linear', direction: { kind: 'base', axis: 'Y' }, count: 2, span: { type: 'spacing', spacing: 40 } } } });
+    outside(h, { type: 'addFeature', feature: { id: 'mid', name: 'Mid plane', suppressed: false, type: 'plane', base: { kind: 'base', plane: 'YZ' }, offset: 50 } });
+    h.frames();
+    h.record('a plate with a hole, a copy of it and a plane beside them');
+    // the rows marked now: the names of the rows of the timeline, the text of the other rows
+    const marked = (): string[] => Array.from(h.document.querySelectorAll<HTMLElement>('.hovered')).map((row) => (row.querySelector('.name') ?? row).textContent?.trim() ?? '');
+    const hover = (x: number, y: number, z: number): void => {
+      h.move(at(x, y, z));
+      h.frames();
+    };
+
+    hover(20, 25, 10);
+    h.record('the pointer over the top of the plate: the row of the feature that made it');
+    expect(marked()).toEqual(['Extrude 1']);
+    hover(13, 15, 10);
+    h.record('over the rim of the hole: the rows of the features of both faces of the edge');
+    expect(marked()).toEqual(['Extrude 1', 'Hole']);
+    hover(20, 65, 10);
+    h.record('over the top of the copy: the row of the feature copied and of the pattern');
+    expect(marked()).toEqual(['Extrude 1', 'Copies']);
+    hover(50, 20, 15);
+    h.record('over the plane: its row');
+    expect(marked()).toEqual(['Mid plane']);
+    hover(150, 150, -50);
+    h.record('over nothing: no row is marked');
+    expect(marked()).toEqual([]);
+
+    // many moves before a frame: one frame, which picks nothing of its own
+    h.move(at(20, 25, 10));
+    h.move(at(21, 25, 10));
+    h.move(at(22, 25, 10));
+    expect(h.frames()).toBe(1);
+    expect(marked()).toEqual(['Extrude 1']);
+    h.pointer('pointerleave', at(22, 25, 10));
+    h.frames();
+    h.record('the pointer left the view: no row is marked');
+    expect(marked()).toEqual([]);
+
+    // the feature selected: its body has a line in the panel, marked with its row
+    h.row('Extrude 1').click();
+    hover(20, 25, 10);
+    h.record('the plate selected on the timeline, the pointer over its top: its row and the line of its body');
+    expect(marked()).toEqual(['Extrude 1', expect.stringMatching(/^Extrude 1: .* mm³/)]);
+
+    // a row is scrolled to only when it lies outside the visible part of the timeline, by the smallest move
+    const box = (element: HTMLElement, top: number, bottom: number): void => void Object.assign(element, { getBoundingClientRect: () => ({ top, bottom, left: 0, right: 100, width: 100, height: bottom - top, x: 0, y: top }) });
+    const scrolls: string[] = [];
+    box(h.document.getElementById('timeline') as HTMLElement, 0, 100);
+    for (const [name, top] of [['Extrude 1', 20], ['Copies', 150], ['Mid plane', 40]] as const) {
+      const row = h.row(name);
+      box(row, top, top + 20);
+      Object.assign(row, { scrollIntoView: (options: ScrollIntoViewOptions) => scrolls.push(`${name} ${JSON.stringify(options)}`) });
+    }
+    hover(20, 65, 10);
+    expect(scrolls).toEqual([]); // the copy marks the row of the plate too, which is shown
+    hover(50, 20, 15);
+    hover(150, 150, -50);
+    box(h.row('Extrude 1'), -40, -20); // scrolled away above
+    hover(20, 65, 10);
+    expect(scrolls).toEqual(['Extrude 1 {"block":"nearest"}']);
+    hover(21, 65, 10); // the same rows: no scroll again
+    expect(scrolls).toEqual(['Extrude 1 {"block":"nearest"}']);
+    h.pointer('pointerleave', at(0, 0));
+    h.frames();
+
+    // a sketch: the constraints that name the curve under the pointer
+    h.key('Escape');
+    doubleClick(h, 'Sketch 1');
+    h.frames();
+    h.record('the sketch entered');
+    hover(20, 0, 0);
+    h.record('the pointer over the bottom side of the rectangle: the constraints that name it');
+    const line = (h.app as { sketch?: { hover?: string } }).sketch?.hover as string;
+    expect(line).toBeDefined();
+    const rows = Array.from(h.document.querySelectorAll<HTMLElement>('#panel .constraint.hovered'));
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) expect(row.querySelector('small')?.textContent?.split(/[, ·]+/)).toContain(line);
+    h.pointer('pointerleave', at(0, 0));
+    h.frames();
+    h.record('the pointer left the view: no row is marked');
+    expect(marked()).toEqual([]);
+    await matches(h, 'hover');
+  });
 });

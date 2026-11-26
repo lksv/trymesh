@@ -5,6 +5,7 @@ import { type BodyPropertiesPatch, type BodyUse, DATA_CATALOGS, DENSITY, type Ex
 import { download, fmt, h, markProblem } from '../dom';
 import { expressionProblem, fieldText, parseField, valueText } from '../fields';
 import type { PanelHost } from '../host';
+import { hoverRow } from '../hover';
 
 export const USES: Record<BodyUse, string> = { part: 'Printed part', reference: 'Reference part (not printed)', auxiliary: 'Auxiliary (no mass, not printed)' };
 const USE_MARK: Record<BodyUse, string> = { part: '', reference: ' [reference]', auxiliary: ' [auxiliary]' };
@@ -24,12 +25,13 @@ export function bodyRows(host: PanelHost, ids: Id[]): HTMLElement[] {
       const exportable = own(host.engine.getState().evaluation.bodies, id);
       const material = properties?.material ? `${properties.material}, ` : '';
       const mass = properties?.mass !== undefined ? `${valueText(properties.mass, 'g', 4)}, ` : '';
-      return h(
+      const row = h(
         'p',
         { className: 'hint body' },
         `${host.bodyName(id)}${USE_MARK[properties?.use ?? 'part']}: ${material}${mass}${fmt(volume)} mm³, ${size} mm `,
         h('button', { className: 'link', textContent: 'Export STL', disabled: !exportable, title: 'This body alone, whatever its use, as it is at the end of the timeline', onclick: () => download(`${bodyFileName(id)}.stl`, new Uint8Array(host.engine.exportMesh('stl', [id])), 'model/stl') }),
       );
+      return hoverRow(row, [`body:${id}`]); // marked while the body is under the pointer in the view
     });
 }
 

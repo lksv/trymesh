@@ -33,6 +33,7 @@ import { insideFill, keptSegments } from './draw';
 import { type AnyDraft, type DraftState, updatePreview } from './features/draft';
 import { FEATURE_UI, TOOLBAR, uiOf } from './features/index';
 import { type Note, PICK_REACH, type ViewPick, pickKey } from './host';
+import { type RowKey, hoverRow, markRows, pickRows, sketchRows } from './hover';
 import { exportMenu, takeExportSelection } from './panels/export';
 import { type QueryPanel, answeredAsModelled, dropAnswer, followQueries, openQuery, queryMenu, queryScene, shownAnswer, takeSelection } from './panels/query';
 import { type MechanismPanel, blockedNote, jointPicksFace, takeMechanismSelection } from './panels/mechanism';
@@ -83,6 +84,12 @@ export class App implements SketchHost, SceneHost {
   // the pointer is while it is over the view.
   private click?: SelectionSpot;
   private pointerAt?: { clientX: number; clientY: number };
+  // The rows of the panels marked for what is under the pointer (hover.ts): whether a frame is
+  // asked for to mark them, the keys marked now (none known after a panel was built again, which
+  // drops the marks) and the keys the panels were last scrolled for.
+  private rowsFrame = false;
+  private rowsMarked?: string;
+  private rowsScrolled = '';
 
   // `view`: the view to draw into and to pick in; the real one by default (a test passes its own).
   constructor(readonly engine: Engine, view?: View) {
@@ -98,7 +105,10 @@ export class App implements SketchHost, SceneHost {
     canvas.addEventListener('pointerup', (event) => this.onUp(event));
     // a drag interrupted by the system (pointer lost) is discarded; after a normal release none is running any more
     for (const type of ['pointercancel', 'lostpointercapture']) canvas.addEventListener(type, () => this.cancelDrag() && this.refresh());
-    canvas.addEventListener('pointerleave', () => (this.pointerAt = undefined));
+    canvas.addEventListener('pointerleave', () => {
+      this.pointerAt = undefined;
+      this.markLater();
+    });
     window.addEventListener('keydown', (event) => this.onKey(event));
     this.say('Start with a sketch: the Sketch button and a choice of plane.');
     this.refresh();
@@ -538,12 +548,14 @@ export class App implements SketchHost, SceneHost {
           this.refresh();
         }),
       );
-      rows.push(row);
+      rows.push(hoverRow(row, [`feature:${f.id}`]));
       if (index + 1 === markerIndex && markerIndex < full.document.features.length) rows.push(markerRow());
     });
     if (full.document.features.length === 0) rows.push(h('p', { className: 'hint' }, 'Empty so far. New features will appear here.'));
     else if (this.marker) rows.push(h('button', { className: 'link', textContent: 'Show the whole model', disabled: busy, onclick: () => ((this.marker = null), this.refresh()) }));
     byId('timeline').replaceChildren(...rows);
+    this.rowsMarked = undefined;
+    this.markLater();
   }
 
   edit(id: Id): void {
@@ -560,6 +572,43 @@ export class App implements SketchHost, SceneHost {
     if (m.kind === 'sketch') panel.replaceChildren(...sketchPanel(this, m));
     else if (isDraft(m)) panel.replaceChildren(...m.form.panel(m, this));
     else panel.replaceChildren(...modelPanel(this, this.queries, this.mechanism));
+    this.rowsMarked = undefined;
+    this.markLater();
+  }
+
+  // ---------------------------------------------------------------- rows of what is under the pointer
+
+  // Asks for a frame that marks the rows of the panels that what lies under the pointer belongs
+  // to. A frame is asked for once however many moves come before it, and it picks nothing: it
+  // reads what the move already found (the hover of the model or of a form, the hover or snap of
+  // the sketch).
+  private markLater(): void {
+    if (this.rowsFrame) return;
+    this.rowsFrame = true;
+    window.requestAnimationFrame(() => {
+      this.rowsFrame = false;
+      this.markRows();
+    });
+  }
+
+  private markRows(): void {
+    const keys = new Set(this.hoveredRows());
+    const marked = [...keys].join('\n');
+    if (marked === this.rowsMarked) return;
+    this.rowsMarked = marked;
+    // a panel built again marks the same rows without scrolling to them again
+    markRows([byId('timeline'), byId('panel')], keys, marked !== this.rowsScrolled);
+    this.rowsScrolled = marked;
+  }
+
+  // The keys of the rows of what is under the pointer; none while the pointer is outside the view.
+  private hoveredRows(): RowKey[] {
+    if (!this.pointerAt) return [];
+    const m = this.mode;
+    if (m.kind !== 'sketch') return pickRows(this.hover);
+    const snap = m.cursor?.snap;
+    const entity = m.hover ?? (snap && snap.kind !== 'foreign' ? snap.id : undefined);
+    return [...sketchRows(this.sketchContext()?.feature, entity), ...pickRows(m.hoverEdge)];
   }
 
   // The text of an issue for a human, with the bodies, features and copies it is about named.
@@ -721,6 +770,7 @@ export class App implements SketchHost, SceneHost {
 
   private onMove(event: PointerEvent): void {
     this.pointerAt = { clientX: event.clientX, clientY: event.clientY };
+    this.markLater(); // the rows of what the move finds under the pointer, once per frame
     const m = this.mode;
     if (event.buttons !== 0 && !(m.kind === 'sketch' && m.drag)) return; // rotating and panning the view
     if (m.kind === 'sketch') {

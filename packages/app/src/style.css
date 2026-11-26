@@ -238,9 +238,9 @@ select {
   border-color: var(--accent);
   background: #e6eefc;
 }
-/* a row of what is under the pointer in the view (hover.ts): the look of a row under the mouse,
-   also on a selected or edited row, whose border still says so */
-.row.hovered {
+/* a row of what is under the pointer in the view (hover.ts): the look of a row under the mouse;
+   a selected or edited row keeps its own fill, as it does under the mouse (review) */
+.row.hovered:not(.selected):not(.editing) {
   background: #f1f4f9;
 }
 .row.later {

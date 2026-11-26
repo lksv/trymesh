@@ -30,8 +30,9 @@ const hex = (color: number): string => `#${color.toString(16).padStart(6, '0')}`
 // a reader tells apart get names that differ. The nearest colour of the palette by RGB, as before,
 // named teal (#1abc9c) and slate (#34495e) both "blue". Every colour of the palette gets its own
 // name (a test guards it), so the palette and the colours of the model share one vocabulary:
-// - black, white and grey for colours with next to no hue (saturation under 0.15, or the spread
-//   of the channels under 0.08 of the range);
+// - black, dark grey, grey, light grey and white for colours with next to no hue (saturation
+//   under 0.15, or the spread of the channels under 0.08 of the range), by lightness 0.2, 0.35,
+//   0.75 and 0.9 (review: a dark grey housing and a light grey cover were one "grey");
 // - the hue bands red, orange, yellow, green, teal, blue and purple; brown is orange that is dull
 //   (saturation under 0.45) or dark (lightness under 0.35), and pink red that is light;
 // - "dark " before a hue below lightness 0.3, "light " above 0.75.
@@ -43,7 +44,7 @@ export function colorName(color: number): string {
   const spread = max - min;
   const lightness = (max + min) / 2;
   const saturation = spread === 0 ? 0 : spread / (1 - Math.abs(2 * lightness - 1));
-  if (saturation < 0.15 || spread < 0.08) return lightness < 0.2 ? 'black' : lightness > 0.9 ? 'white' : 'grey';
+  if (saturation < 0.15 || spread < 0.08) return lightness < 0.2 ? 'black' : lightness < 0.35 ? 'dark grey' : lightness > 0.9 ? 'white' : lightness > 0.75 ? 'light grey' : 'grey';
   const hue = (max === r ? ((g - b) / spread + 6) % 6 : max === g ? (b - r) / spread + 2 : (r - g) / spread + 4) * 60;
   const name = (HUES.find(([below]) => hue < below) ?? HUES[0])[1];
   if (name === 'orange' && (saturation < 0.45 || lightness < 0.35)) return 'brown';

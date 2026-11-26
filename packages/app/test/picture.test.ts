@@ -88,10 +88,20 @@ describe('what a picture draws', () => {
     const names = (colors: number[]): string[] => colors.map(colorName);
     // the colours of the arm
     expect(names([0x34495e, 0x2e86de, 0x1abc9c, 0xe67e22, 0xc0392b, 0x8e44ad, 0xf1c40f, 0x7f8c8d, 0x2c2c2c])).toEqual(['dark blue', 'blue', 'teal', 'orange', 'red', 'purple', 'yellow', 'grey', 'black']);
-    // no hue: black, grey, white, also a dark colour with a little hue
-    expect(names([0x000000, 0x101010, 0x808080, 0xbab0ac, 0xffffff, 0x141018])).toEqual(['black', 'black', 'grey', 'grey', 'white', 'black']);
-    // the pure hues, and where the bands meet
+    // no hue: black, greys by lightness, white, also a dark colour with a little hue (review: a dark
+    // grey housing and a light grey cover were both "grey")
+    expect(names([0x000000, 0x101010, 0x333333, 0x808080, 0xbab0ac, 0xe5e4e2, 0xffffff, 0x141018])).toEqual(['black', 'black', 'dark grey', 'grey', 'grey', 'light grey', 'white', 'black']);
+    // the pure hues
     expect(names([0xff0000, 0xff8000, 0xffff00, 0x00ff00, 0x00ffff, 0x0000ff, 0xff00ff])).toEqual(['red', 'orange', 'yellow', 'green', 'teal', 'blue', 'purple']);
+    // where the bands meet: a full colour of lightness 0.5 a degree below and above each edge
+    const hue = (degrees: number): number => {
+      const channel = (n: number): number => {
+        const k = (n + degrees / 30) % 12;
+        return Math.round(255 * (0.5 - 0.5 * Math.max(-1, Math.min(k - 3, 9 - k, 1))));
+      };
+      return (channel(0) << 16) | (channel(8) << 8) | channel(4);
+    };
+    expect([14, 16, 44, 46, 69, 71, 159, 161, 189, 191, 254, 256, 329, 331].map((degrees) => colorName(hue(degrees)))).toEqual(['red', 'orange', 'orange', 'yellow', 'yellow', 'green', 'green', 'teal', 'teal', 'blue', 'blue', 'purple', 'purple', 'red']);
     // brown is dull or dark orange, pink is light red; dark and light before the other hues
     expect(names([0x8b4513, 0x9c755f, 0xd35400, 0xffc0cb, 0x0b3d0b, 0xadd8e6, 0x1a237e])).toEqual(['brown', 'brown', 'orange', 'pink', 'dark green', 'light blue', 'dark blue']);
     // the legend no longer pairs the slate base with the blue arm and the teal forearm

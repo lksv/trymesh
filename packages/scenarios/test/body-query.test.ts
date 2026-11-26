@@ -72,6 +72,41 @@ describe('the query body', () => {
     expect(front).toMatchObject({ kind: 'line', gaps: true, segments: 2, length: expect.closeTo(30, 4) });
   });
 
+  it('a filter by feature and by kind: the faces of a feature and its copies, the edges with such a face, the totals of the whole body', () => {
+    // From the Gridfinity session (2026-11-26): the whole description of the bin was 132,000
+    // characters, too large for an answer, and the edges of one hole had to be dug out of it.
+    const engine = plate();
+    run(engine, {
+      type: 'addFeature',
+      feature: { id: 'row', name: 'row', suppressed: false, type: 'pattern', source: { type: 'features', features: ['PIN'] }, transform: { type: 'linear', direction: { kind: 'base', axis: 'X' }, count: 2, span: { type: 'spacing', spacing: -15 } } },
+    });
+    const whole = describeBody(engine, 'E1');
+    const filter = (args: object): BodyDescription => {
+      const answer = engine.query('body', { body: 'E1', ...args });
+      if (!answer.ok) throw new Error(answer.error.message);
+      return answer.result;
+    };
+    const pin = filter({ feature: 'PIN' });
+    // the side and the top of the pin and of its copy; the edges at their foot and their top
+    expect(pin.faces.map((face) => key(face.name)).sort()).toEqual(
+      [side('PIN', 'k'), cap('PIN'), { ...side('PIN', 'k'), copy: [{ pattern: 'row', index: 1 }] }, { ...cap('PIN'), copy: [{ pattern: 'row', index: 1 }] }].map(key).sort(),
+    );
+    expect(pin.edges).toHaveLength(4);
+    expect(pin.edges.every((edge) => edge.name.a.feature === 'PIN' || edge.name.b.feature === 'PIN')).toBe(true);
+    expect(pin.total).toEqual({ faces: whole.faces.length, edges: whole.edges.length });
+    expect(pin).toMatchObject({ volume: whole.volume, bounds: whole.bounds });
+    // the copies alone, by the pattern
+    expect(filter({ feature: 'row' }).faces.map((face) => face.name.copy)).toEqual([[{ pattern: 'row', index: 1 }], [{ pattern: 'row', index: 1 }]]);
+    // one list alone
+    expect(filter({ only: 'edges' })).toMatchObject({ faces: [], edges: whole.edges, total: pin.total });
+    expect(filter({ feature: 'PIN', only: 'faces' })).toMatchObject({ faces: pin.faces, edges: [] });
+    // no filter: no totals, the description as it was
+    expect(whole.total).toBeUndefined();
+    expect(engine.query('body', { body: 'E1', feature: 'nothing' })).toMatchObject({ ok: false, error: { message: expect.stringMatching(/the feature "nothing" is not in the state asked about/) } });
+    // a feature that made no face of the body: empty lists
+    expect(filter({ feature: 'S2' })).toMatchObject({ faces: [], edges: [] });
+  });
+
   it('answers for the state asked about and keeps the description by the mesh', () => {
     const engine = plate();
     const early = describeBody(engine, 'E1', 'E1');

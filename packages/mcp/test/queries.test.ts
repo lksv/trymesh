@@ -68,7 +68,7 @@ const ARGUMENTS: { [N in QueryName]: { [K in keyof Required<QueryArgs<N>>]: {} e
   sketchSources: { sketch: 'required', from: 'optional', max: 'optional' },
   entryCurves: { sketch: 'required', entry: 'required', kind: 'optional', from: 'optional', max: 'optional' },
   sketchRegions: { sketch: 'required', curve: 'optional', index: 'optional', holes: 'optional', from: 'optional', max: 'optional' },
-  body: { body: 'required' },
+  body: { body: 'required', feature: 'optional', only: 'optional' },
   catalog: { name: 'required', key: 'optional' },
   measure: { from: 'required', to: 'required' },
   section: { plane: 'required', offset: 'optional', flip: 'optional', bodies: 'optional', outline: 'optional', maxPoints: 'optional' },

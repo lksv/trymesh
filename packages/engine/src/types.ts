@@ -2216,6 +2216,7 @@ export interface BodyDescription {
   bounds: { min: Vec3; max: Vec3 };
   faces: BodyFace[];
   edges: BodyEdge[];
+  total?: { faces: number; edges: number }; // with a filter (`feature`, `only`): the counts of the whole body
 }
 export interface BodyFace {
   name: FaceName;

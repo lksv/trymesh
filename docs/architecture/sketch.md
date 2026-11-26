@@ -177,6 +177,8 @@ The diagnosis is computed by a **first-order analysis**, without the solver. Eve
 
 **Values of a fixed point.** `x` and `y` are numeric fields like the value of a driving dimension: they take expressions, `setField` changes one of them, `renameParameter` rewrites them and removing the constraint or its point removes them. `setConstraintValue` is for dimensions only. `addConstraint` may leave a coordinate out (`FixedInput`): the engine fills in the position the document has for the point, which is the last solved one (for a point added earlier in the same batch it is the estimate of its `addPoint`, because the sketch is solved once after the whole batch); `null` is not "left out". Only an own point can be fixed: the origin and projected geometry are refused with that reason, with or without coordinates. A point can be fixed once.
 
+**A dimension in `addConstraint`** may leave out `driving` (`DimensionInput`): it is then a driving dimension, the common case, and a reference dimension says `driving: false`. The stored dimension always has the flag, so a load and the sketch of `addFeature` still ask for it. Added after the Gridfinity session of 2026-11-26, where the AI had every first dimension refused.
+
 Other such cases the analysis does not recognise:
 
 - It does not mark as redundant a constraint that follows from the others only thanks to particular values (a distance of two points equal to their horizontal distance makes the line horizontal). The result here may depend on noise in the solved positions.

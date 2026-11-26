@@ -323,7 +323,7 @@ type Command =
   | { type: 'removeEntity'; sketch: Id; id: Id }                              // a point or a curve
   | { type: 'setConstruction'; sketch: Id; id: Id; construction: boolean }
   | { type: 'setCurvePoint'; sketch: Id; id: Id; point: CurvePointName; to: Id } // D52: another point in one place of a curve
-  | { type: 'addConstraint'; sketch: Id; id: Id; constraint: Input<Constraint> }
+  | { type: 'addConstraint'; sketch: Id; id: Id; constraint: Input<Constraint> | DimensionInput | FixedInput } // a dimension without `driving` is driving
   | { type: 'removeConstraint'; sketch: Id; id: Id }
   | { type: 'setConstraintValue'; sketch: Id; id: Id; value?: number | Expr; driving?: boolean }
   | { type: 'dragPoint'; sketch: Id; point: Id; x: number; y: number }

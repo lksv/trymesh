@@ -81,11 +81,13 @@ const NO_ENVIRONMENT = (): Environment => ({});
 
 // ---------------------------------------------------------------- entities of a sketch
 
-// A fixed point given without a coordinate is fixed where it is: the coordinate is filled in from
-// the position the sketch has stored for the point. That is its last solved position; for a point
-// added earlier in the same batch it is the estimate the batch gave it, since the sketch is solved
-// once after the whole batch.
-function withPosition(sketch: SketchFeature, given: unknown): unknown {
+// The defaults of a constraint in addConstraint. A dimension without `driving` is a driving one
+// (DimensionInput). A fixed point given without a coordinate is fixed where it is: the coordinate
+// is filled in from the position the sketch has stored for the point. That is its last solved
+// position; for a point added earlier in the same batch it is the estimate the batch gave it,
+// since the sketch is solved once after the whole batch.
+function constraintDefaults(sketch: SketchFeature, given: unknown): unknown {
+  if (isObject(given) && given.driving === undefined && typeof given.type === 'string' && has(CONSTRAINTS, given.type) && CONSTRAINTS[given.type as Constraint['type']].dimension) return { ...given, driving: true };
   if (!isObject(given) || given.type !== 'fixed' || typeof given.point !== 'string' || !has(sketch.points, given.point)) return given;
   const at = sketch.points[given.point];
   return { ...given, x: given.x === undefined ? at.x : given.x, y: given.y === undefined ? at.y : given.y };
@@ -753,7 +755,7 @@ export function applyCommand(doc: Document, command: Command): Document {
       return editSketch(doc, cmd.sketch, (s) => {
         const id = unique(doc, cmd.id, 'addConstraint.id');
         const fields = new Fields('add', {}, () => evaluateParameters(doc.parameters));
-        const added = constraint(s, withPosition(s, cmd.constraint), 'addConstraint.constraint', fields, id);
+        const added = constraint(s, constraintDefaults(s, cmd.constraint), 'addConstraint.constraint', fields, id);
         const twin = duplicateOf(s, added);
         if (twin !== undefined) fail(`addConstraint: the same constraint is already in the sketch ("${twin}")`);
         return withConstraints(s, { ...s.constraints, [id]: added }, fields.expressions('addConstraint.constraint') ?? {});

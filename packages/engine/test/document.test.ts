@@ -238,6 +238,12 @@ describe('commands of a sketch', () => {
     invalid(doc, add({ type: 'frobnicate' } as never), /unknown constraint/);
     expect(sketchOf(run(doc, add({ type: 'horizontalDistance', a: 'p2', b: 'p1', value: -40, driving: true }))).constraints.k).toMatchObject({ value: -40 });
     expect(sketchOf(run(doc, add({ type: 'tangent', a: 'c', b: 'l3' }))).constraints.k).toEqual({ type: 'tangent', a: 'c', b: 'l3' });
+    // a dimension without `driving` is a driving one, also with an expression; false stays a reference
+    const loose = (constraint: object): Command => ({ type: 'addConstraint', sketch: 'S1', id: 'k', constraint }) as Command;
+    expect(sketchOf(run(doc, loose({ type: 'verticalDistance', a: 'p1', b: 'p4', value: 30 }))).constraints.k).toEqual({ type: 'verticalDistance', a: 'p1', b: 'p4', value: 30, driving: true });
+    expect(sketchOf(run(doc, loose({ type: 'radius', curve: 'c', value: '2 + 2' }))).expressions).toEqual({ 'constraints/k/value': '2 + 2' });
+    expect(sketchOf(run(doc, loose({ type: 'radius', curve: 'c', value: 4, driving: false }))).constraints.k).toMatchObject({ driving: false });
+    invalid(doc, loose({ type: 'radius', curve: 'c', value: 4, driving: 'yes' }), /driving/);
   });
 
   it('symmetry and the midpoint of a line: operands, forbidden ends and duplicates', () => {

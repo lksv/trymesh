@@ -660,6 +660,10 @@ export type GeometricConstraint =
 // A fixed point in a command may leave its coordinates out: the point is then fixed where it is.
 export type FixedInput = { type: 'fixed'; point: Id; x?: number | Expr; y?: number | Expr };
 
+// A dimension in addConstraint may leave `driving` out: it is then a driving dimension, the usual
+// case. A reference dimension says `driving: false`. A stored dimension always has the flag.
+export type DimensionInput = Input<{ value: number; driving?: boolean } & DimensionShape>;
+
 export type DimensionShape =
   | { type: 'distance'; a: Id; b: Id } // point–point
   | { type: 'distancePointLine'; point: Id; line: Id }
@@ -2026,7 +2030,7 @@ export type Command =
   //   plane on that face; the straight end of a wall is named by the point its chain ends at
   //   (`wallEnd`), so re-pointing a free end renames that face.
   | { type: 'setCurvePoint'; sketch: Id; id: Id; point: CurvePointName; to: Id }
-  | { type: 'addConstraint'; sketch: Id; id: Id; constraint: Input<Constraint> | FixedInput } // `fixed` without x, y takes the position of the point
+  | { type: 'addConstraint'; sketch: Id; id: Id; constraint: Input<Constraint> | DimensionInput | FixedInput } // `fixed` without x, y takes the position of the point; a dimension without `driving` is driving
   | { type: 'removeConstraint'; sketch: Id; id: Id }
   // Without `value` neither the value nor the expression changes; a number removes the expression,
   // a string sets it. Switching to a reference dimension removes the expression; an expression given

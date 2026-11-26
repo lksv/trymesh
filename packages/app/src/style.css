@@ -238,6 +238,11 @@ select {
   border-color: var(--accent);
   background: #e6eefc;
 }
+/* a row of what is under the pointer in the view (hover.ts): the look of a row under the mouse,
+   also on a selected or edited row, whose border still says so */
+.row.hovered {
+  background: #f1f4f9;
+}
 .row.later {
   opacity: 0.45;
 }
@@ -287,6 +292,13 @@ select {
 }
 .constraint:hover {
   background: #eef6fd;
+}
+.constraint.hovered {
+  background: #eef6fd;
+}
+.body.hovered {
+  background: #eef6fd;
+  border-radius: 5px;
 }
 .constraint .name {
   flex: 1;

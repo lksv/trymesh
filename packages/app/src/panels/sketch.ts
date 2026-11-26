@@ -3,6 +3,7 @@
 // active tool (its entry of SKETCH_TOOL_UI), and the row that re-points a point of a curve (D52).
 import { type Command, type Expr, type ExternalRef, type Id, type Input, type SketchDiagnosis, type SketchFeature, type Unit, CONSTRAINTS, CURVE_POINTS, type Constraint, type CurvePointName, atPath, constraintPath, entityIndex, entryInput, isDimension, isOriginAxis, kindOf, nearestCurvePoint, withPath } from '@trymesh/engine';
 import { h, markProblem } from '../dom';
+import { hoverRow } from '../hover';
 import { expressionProblem, fieldText, parseField, valueText } from '../fields';
 import { CURVE_POINT_LABELS, type DimensionVariant, GEOMETRIC_KINDS, dimensionFor, geometricFor, normalizeAngle, repointSelection } from '../sketch-commands';
 import { duplicateTwins, explanationText, freeSummary, markOf } from '../sketch-diagnosis';
@@ -179,6 +180,7 @@ export function sketchPanel(host: SketchHost, m: SketchMode): HTMLElement[] {
         host.renderScene();
       },
     });
+    hoverRow(row, operandsOf(c).map((operand) => `entity:${operand}` as const)); // marked while an operand is under the pointer in the view
     const tag = mark === 'duplicate' ? ' · duplicate' : mark === 'surplus' ? ' · surplus' : '';
     row.append(h('span', { className: 'name' }, `${constraintName(c.type)} `, h('small', {}, `${operandsOf(c).join(', ')}${tag}`)));
     if (isDimension(c)) {
@@ -297,6 +299,7 @@ export function sketchPanel(host: SketchHost, m: SketchMode): HTMLElement[] {
         : null,
       h('button', { className: 'icon', textContent: '✕', title: derived ? 'Remove the mirror or pattern' : 'Remove the projection', onclick: () => host.run({ type: 'removeExternal', sketch: m.id, id }, derived ? 'Mirror or pattern removed.' : 'Projection removed.') }),
     );
+    hoverRow(row, [`entity:${id}`]); // marked while an entity of the entry is under the pointer in the view
     return form && m.entry === id ? [row, entryForm(host, m, feature, id, form)] : [row];
   });
   if (projections.length > 0) out.push(h('h2', {}, `Projections, mirrors and patterns (${projections.length})`), ...projections);

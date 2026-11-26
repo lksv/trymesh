@@ -1,0 +1,601 @@
+
+=== 1. a plate with a hole, a copy of it and a plane beside them
+  engine: execute({"type":"batch","commands":[{"type":"addFeature","feature":{"id":"s1","name":"Sketch 1","suppressed":false,"type":"sketch","plane":{"kind":"base","plane":"XY"},"points":{},"radii":{},"curves":{},"constraints":{},"external":{},"solved":{"inputs":"","external":{}}},"index":0}]}) -> ok
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x5)
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  engine: execute({"type":"batch","commands":[{"type":"addPoint","sketch":"s1","id":"p1","x":40,"y":0},{"type":"addPoint","sketch":"s1","id":"p2","x":40,"y":30},{"type":"addPoint","sketch":"s1","id":"p3","x":0,"y":30},{"type":"addCurve","sketch":"s1","id":"c1","curve":{"type":"line","a":"origin","b":"p1"}},{"type":"addConstraint","sketch":"s1","id":"k1","constraint":{"type":"horizontal","line":"c1"}},{"type":"addCurve","sketch":"s1","id":"c2","curve":{"type":"line","a":"p1","b":"p2"}},{"type":"addConstraint","sketch":"s1","id":"k2","constraint":{"type":"vertical","line":"c2"}},{"type":"addCurve","sketch":"s1","id":"c3","curve":{"type":"line","a":"p2","b":"p3"}},{"type":"addConstraint","sketch":"s1","id":"k3","constraint":{"type":"horizontal","line":"c3"}},{"type":"addCurve","sketch":"s1","id":"c4","curve":{"type":"line","a":"p3","b":"origin"}},{"type":"addConstraint","sketch":"s1","id":"k4","constraint":{"type":"vertical","line":"c4"}}]}) -> ok
+  engine: diagnoseSketch("s1")
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x5)
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  engine: execute({"type":"batch","commands":[{"type":"addPoint","sketch":"s1","id":"p4","x":10,"y":15},{"type":"addCurve","sketch":"s1","id":"c5","curve":{"type":"circle","center":"p4"},"radius":3}]}) -> ok
+  engine: diagnoseSketch("s1")
+  engine: getState("s1")  (x9)
+  engine: preview({"type":"addFeature","feature":{"id":"e1","name":"Extrude 1","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"operation":"new"},"index":1}, "e1") -> ok
+  engine: getState("s1")  (x3)
+  engine: preview({"type":"addFeature","feature":{"id":"e1","name":"Extrude 1","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"operation":"new"},"index":1}, "e1") -> ok
+  engine: getState("s1")  (x4)
+  engine: execute({"type":"addFeature","feature":{"id":"e1","name":"Extrude 1","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"operation":"new"},"index":1}) -> ok
+  engine: execute({"type":"addFeature","feature":{"id":"hole","name":"Hole","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c5"]}]},"extent":{"type":"throughAll","side":"both"},"operation":"cut","targets":["e1"]}}) -> ok
+  engine: execute({"type":"addFeature","feature":{"id":"copies","name":"Copies","suppressed":false,"type":"pattern","source":{"type":"body","body":"e1"},"transform":{"type":"linear","direction":{"kind":"base","axis":"Y"},"count":2,"span":{"type":"spacing","spacing":40}}}}) -> ok
+  engine: execute({"type":"addFeature","feature":{"id":"mid","name":"Mid plane","suppressed":false,"type":"plane","base":{"kind":"base","plane":"YZ"},"offset":50}}) -> ok
+  features: s1, e1, hole, copies, mid
+  feature s1:
+      {"id":"s1","name":"Sketch 1","suppressed":false,"type":"sketch","plane":{"kind":"base","plane":"XY"}}
+      point p1: {"x":40,"y":0}
+      point p2: {"x":40,"y":30}
+      point p3: {"x":0,"y":30}
+      point p4: {"x":10,"y":15}
+      radius c5: 3
+      curve c1: {"type":"line","a":"origin","b":"p1"}
+      curve c2: {"type":"line","a":"p1","b":"p2"}
+      curve c3: {"type":"line","a":"p2","b":"p3"}
+      curve c4: {"type":"line","a":"p3","b":"origin"}
+      curve c5: {"type":"circle","center":"p4"}
+      constraint k1: {"type":"horizontal","line":"c1"}
+      constraint k2: {"type":"vertical","line":"c2"}
+      constraint k3: {"type":"horizontal","line":"c3"}
+      constraint k4: {"type":"vertical","line":"c4"}
+  feature e1:
+      {"id":"e1","name":"Extrude 1","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"extent":{"type":"distance","start":0,"distance":10},"operation":"new"}
+  feature hole:
+      {"id":"hole","name":"Hole","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c5"]}]},"extent":{"type":"throughAll","side":"both"},"operation":"cut","targets":["e1"]}
+  feature copies:
+      {"id":"copies","name":"Copies","suppressed":false,"type":"pattern","source":{"type":"body","body":"e1"},"transform":{"type":"linear","direction":{"kind":"base","axis":"Y"},"count":2,"span":{"type":"spacing","spacing":40}}}
+  feature mid:
+      {"id":"mid","name":"Mid plane","suppressed":false,"type":"plane","base":{"kind":"base","plane":"YZ"},"offset":50}
+  document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":10}
+  toolbar:
+      div.group
+        button title="Empty document": "New"
+        button: "Open"
+        button: "Save"
+        button: "Export STL"
+        input type=file hidden
+      div.group
+        button title="Connect to the MCP server (packages/mcp): the AI then reads and changes the document open in the app": "AI"
+      div.group
+        button title="Ctrl+Z": "↶ Undo"
+        button disabled title="Ctrl+Shift+Z": "↷ Redo"
+      div.group
+        button title="A new sketch on a plane or a planar face": "Sketch"
+        button title="Extrude regions of a sketch": "Extrude"
+        button title="Turn regions of a sketch about an axis in its plane": "Revolve"
+        button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
+        button title="Chamfer edges of a body by a distance": "Chamfer"
+        button title="Round edges of a body by a radius": "Fillet"
+        button title="A plane offset from a plane or a planar face": "Plane"
+        button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
+        button title="Place a stored mesh (a bought part read from an STL file) as a body": "Mesh"
+        button title="Insert another document (a part saved as a document file) as a part of this one": "Insert"
+        button title="Join, subtract or intersect finished bodies; subtract with a clearance": "Combine"
+        button title="Cut a body into two by a plane; both parts get the cut face": "Split"
+      div.group
+        select value="" title="Ask a query about the model"
+          option selected value="": "Queries…"
+          option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+          option value="sketchDiagnosis" title="How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.": "Diagnosis of a sketch"
+          option value="constraintExplanation" title="Whether a constraint of a sketch follows from other constraints, and from which.": "Explanation of a constraint"
+          option value="sketchContacts" title="Where the curves of a sketch that form regions cross, touch, end on each other or overlap apart from common points, which is what makes its profile invalid, and what the sketch tool split would do at each place. Ask it when a sketch reports `valid: false`, before split and trim.": "Contacts of the outline curves of a sketch"
+          option value="sketchSources" title="The sketches before a sketch on the timeline and whether each lies on a parallel plane, and, for one of them, every point and curve a projection may name, placed in the coordinates of the asking sketch. Ask it before addExternal with `type: "sketch"` or the sketch tool projectSketch.": "What a sketch can project from earlier sketches"
+          option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+          option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
+          option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, spheres, tori, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
+          option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
+          option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
+          option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece (all bodies of the state without `bodies`). A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`, and so is a reference part without `bodies` when it states neither a mass nor a density; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
+          option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
+          option value="hardwareHole" title="The shape of a hole for a screw, a nut or a heat-set insert of a size, from the hardware catalogs: put `shape` and `label` of the answer into a feature of the type hole (and for an insert `depth` into its extent). The heads and the nut are the largest sizes the standards allow and nothing is added to them; room for the printer is the allowance, best a parameter. The catalogs are clearanceHoles, socketHeadScrews, countersunkScrews, hexNuts and heatSetInserts; the query `catalog` shows their rows and sources.": "Hole for a piece of hardware"
+          option value="mechanism" title="The links and joints of the model as resolved for the state asked about: where each link stands in the pose, the numbers and the axis of each joint, and what is in error. With `beyond`, what hangs on that joint. Asked with `after: { type: "setPose", … }` it answers for a pose that is not written.": "Mechanism"
+          option value="partsList" title="What to print and what to buy: the bodies of the model as rows of parts, and the hardware of the hole features. A printed part is a body with the use `part`, a bought part one with the use `reference` (body properties); auxiliary bodies are no parts. A body and its copies made by a pattern are one row with a count while they are the same part: a mirror image is another part, and so is a copy with another material, colour, mass or name, and a body that a feature changed after the pattern (so model what every copy should have before the pattern). Hardware is counted from the labels of the hole features: one piece per hole the model has, by where the holes are (a hole through several bodies is one hole, and so are holes that continue one another on one line; a copy of a body at another place has its holes too, also one further along the same line; a hole that missed or was cut away is not counted). So the label of a hole should name the piece that goes into it, with what the catalog does not know ("M3x10 countersunk screw"), and a hole that takes no piece of its own should have none. Every copy counts, also one laid out for printing. The answer is for the model as modelled, whatever the pose.": "Parts list"
+          option value="entryCurves" title="The curves of one entry of `external` of a sketch at their places, a page at a time: of an imported outline (get_sketch lists its first curves only), of a projection, or the copies of a mirror or pattern. A spline comes with its control points (`control`: `<id>/<i>` stands at `control[i]`), which constraints and projections may name, and where it runs.": "The curves of an entry of a sketch"
+          option value="sketchRegions" title="The regions of a sketch with their whole references, as an extrusion or a revolution names them (`{ outerLoop: [...] }`), a page at a time: get_sketch prints a loop of more than twenty curves short, with the `index` to ask here. `curve` keeps the regions a curve bounds (the way from a curve of an imported outline to the region to extrude); `holes` lists the curves of the holes too.": "The regions of a sketch"
+        select value="" title="Export the model in a format of the engine"
+          option selected value="": "Export…"
+          option value="stl" title="Bodies as triangle meshes in binary STL, for a slicer. One file with the chosen bodies, or with `perBody` a folder with a file per body (one printable part per file).": "STL"
+          option value="3mf" title="Bodies as the objects of one 3MF document, for a slicer: each body is an object with its name (the name of the body properties), its ID as the part number and, when the body has a colour, a base material with that colour, named by the material of the body. One file, in millimetres, the bodies where they are modelled. The file is a ZIP, compressed when the engine has a compressor: about a fifth of the size of the STL of the same bodies; otherwise about a quarter larger than the STL.": "3MF"
+          option value="dxf" title="The outline a plane cuts out of bodies as a DXF drawing in millimetres, for laser cutting and drilling templates (the same cut as the query section). A whole circle is a CIRCLE with the centre and radius of its surface; every other loop is one closed POLYLINE with lines and arcs. Outer loops are on the layer OUTER, holes on the layer HOLES. The coordinates are the x and y of the plane, as the query section reports them. One file in the form of DXF release 12.": "DXF (outline)"
+          option value="svg" title="The outline a plane cuts out of bodies as an SVG drawing with one user unit per millimetre (the same cut as the query section). A whole circle is a `circle` with the centre and radius of its surface; every other loop is one closed `path` with lines and arcs; class `outer` or `hole`, a group per body. The y of the plane points up and that of SVG down: a point (u, v) of the plane is written (u, −v). Stroked, not filled. One file.": "SVG (outline)"
+          option value="partsCsv" title="The parts list of the model (the query partsList) as one CSV table for a spreadsheet: a record per kind of printed part, of bought part and of hardware, with its count, material, colour, the mass of one and of all in grams, a note for a row of copies that are not in the row of their source, and the IDs of its bodies or hole features. Comma separated, UTF-8, a decimal point. One file.": "Parts list (CSV)"
+          option value="urdf" title="The mechanism as a URDF robot description for ROS and simulators: a folder with robot.urdf and one binary STL per body in metres in the frame of its link. One tree from one root link; the frame of a link at the axis of its joint with the axes of the model; the mass, centre of mass and inertia of each link from its bodies (query mass); a visual and a collision mesh per body. Every revolute and prismatic joint needs `effort` and `velocity` (setJoint). The root is not fixed: the simulator decides.": "URDF (robot)"
+          option value="mjcf" title="The mechanism as a MuJoCo model: a folder with robot.xml and one binary STL per body in metres in the frame of its link. One tree from one root link, welded to the world; the frame of a link at the axis of its joint with the axes of the model; the mass, centre of mass and inertia of each link from its bodies (query mass); a mesh geom per body, the two links of a joint excluded from contact; a motor per joint with an `effort` (with `gearRatio`), `rotorInertia · gearRatio²` as the armature of the joint, and the pose of the document as the keyframe `pose`.": "MJCF (MuJoCo)"
+        button title="Check which bodies share a volume": "Collisions"
+      div.group
+        button: "Fit all"
+        button title="Save a picture of the model as PNG: the bodies that are shown, from the camera of the view and cut as the view is; without the selection, sketches, planes and dimensions": "Save picture"
+        button.active title="Show or hide the planes XY, XZ, YZ": "Base planes"
+  timeline:
+      h2: "Timeline"
+      div.row.ok
+        span.dot: "●"
+        span.name: "Sketch 1"
+        button.icon title="Hide or show": "👁"
+        button.icon disabled title="Move earlier": "↑"
+        button.icon title="Move later": "↓"
+        button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
+      div.row.ok
+        span.dot: "●"
+        span.name: "Extrude 1"
+        button.icon title="Hide or show": "👁"
+        button.icon title="Move earlier": "↑"
+        button.icon title="Move later": "↓"
+        button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
+      div.row.ok
+        span.dot: "●"
+        span.name: "Hole"
+        button.icon disabled title="A body is hidden at the feature that created it": "👁"
+        button.icon title="Move earlier": "↑"
+        button.icon title="Move later": "↓"
+        button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
+      div.row.ok
+        span.dot: "●"
+        span.name: "Copies"
+        button.icon title="Hide or show": "👁"
+        button.icon title="Move earlier": "↑"
+        button.icon title="Move later": "↓"
+        button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
+      div.row.ok
+        span.dot: "●"
+        span.name: "Mid plane"
+        button.icon title="Hide or show": "👁"
+        button.icon title="Move earlier": "↑"
+        button.icon disabled title="Move later": "↓"
+        button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
+  panel:
+      h2: "Model"
+      p.hint: "The right mouse button orbits, the wheel zooms, the middle button (or Shift + right) pans. On a touchpad: Alt/Option + drag orbits, Alt + Shift + drag pans, two fingers zoom. A feature on the timeline is edited by a double click."
+      h2: "Parameters (0)"
+      div.constraint
+        input.pname value="" placeholder="name"
+        input.expr value="" placeholder="expression, e.g. 2 * a"
+        button: "Add"
+      p.hint: "An expression can be typed into numeric fields and dimensions instead of a number. Angles in an expression are in radians; write degrees as deg(30)."
+      h2: "Checks (0)"
+      div.constraint
+        input.pname value="" placeholder="name"
+        input.expr value="" placeholder="condition, e.g. a < b"
+        button: "Add"
+      h2: "Mechanism"
+      p.hint: "Links are bodies that move as one piece; a joint moves its child link against its parent. The model as modelled is the zero of every joint."
+      div.buttons
+        button title="Bodies that move as one piece": "New link"
+        button disabled title="A joint moves its child link against its parent link": "New joint"
+        button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
+  status: Extrude added.
+  view: 26 scene(s) set
+  scene:
+      bodies: e1, copies/1
+      line #26303c width 1.5: 1080 numbers, sum 73827.557
+      line #8b9bb4 width 1: 24 numbers, sum 597.117
+      line #8b9bb4 width 1: 24 numbers, sum 398.078
+      line #8b9bb4 width 1: 24 numbers, sum 199.039
+      line #8b9bb4 width 1: 24 numbers, sum 1649.039
+      line #5b7aa8 width 1.5: 600 numbers, sum 20596.611
+      fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 28.434
+      fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 28.434
+      fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 28.434
+      fill #8b9bb4 opacity 0.08 at [50, 0, 0] normal [1, 0, 0]: 8 numbers, sum 28.434
+  view: fit [-20, -20, -20] .. [20, 20, 20]
+  view: lookAt origin [0, 0, 0] normal [0, 0, 1]
+  view: fit [-20, -20, -20] .. [20, 20, 20]
+  view: mark at [0, 0, 0]
+  view: mark at [40, 30, 0]
+  view: mark at [10, 15, 0]
+  view: mark at [13, 15, 0]
+  view: mark removed
+
+=== 2. the pointer over the top of the plate: the row of the feature that made it
+  timeline:
+    + div.row.ok.hovered
+    - div.row.ok
+  view: 1 scene(s) set
+  scene:
+    + line #0ea5e9 width 4 onTop: 6 numbers, sum 460
+
+=== 3. over the rim of the hole: the rows of the features of both faces of the edge
+  timeline:
+    + div.row.ok.hovered
+    - div.row.ok
+  view: 1 scene(s) set
+  scene:
+    + line #0ea5e9 width 4 onTop: 234 numbers, sum 10845.045
+    - line #0ea5e9 width 4 onTop: 6 numbers, sum 460
+
+=== 4. over the top of the copy: the row of the feature copied and of the pattern
+  timeline:
+    + div.row.ok
+    - div.row.ok.hovered
+    + div.row.ok.hovered
+    - div.row.ok
+  view: 1 scene(s) set
+  scene:
+    + line #0ea5e9 width 4 onTop: 6 numbers, sum 740
+    - line #0ea5e9 width 4 onTop: 234 numbers, sum 10845.045
+
+=== 5. over the plane: its row
+  timeline:
+    + div.row.ok
+    - div.row.ok.hovered
+    + div.row.ok
+    - div.row.ok.hovered
+    + div.row.ok.hovered
+    - div.row.ok
+  view: 1 scene(s) set
+  scene:
+    + line #0ea5e9 width 1: 24 numbers, sum 1649.039
+    - line #8b9bb4 width 1: 24 numbers, sum 1649.039
+    - line #0ea5e9 width 4 onTop: 6 numbers, sum 740
+    + fill #0ea5e9 opacity 0.25 at [50, 0, 0] normal [1, 0, 0]: 8 numbers, sum 28.434
+    - fill #8b9bb4 opacity 0.08 at [50, 0, 0] normal [1, 0, 0]: 8 numbers, sum 28.434
+
+=== 6. over nothing: no row is marked
+  timeline:
+    + div.row.ok
+    - div.row.ok.hovered
+  view: 1 scene(s) set
+  scene:
+    + line #8b9bb4 width 1: 24 numbers, sum 1649.039
+    - line #0ea5e9 width 1: 24 numbers, sum 1649.039
+    + fill #8b9bb4 opacity 0.08 at [50, 0, 0] normal [1, 0, 0]: 8 numbers, sum 28.434
+    - fill #0ea5e9 opacity 0.25 at [50, 0, 0] normal [1, 0, 0]: 8 numbers, sum 28.434
+
+=== 7. the pointer left the view: no row is marked
+  view: 1 scene(s) set
+  scene:
+    + line #0ea5e9 width 4 onTop: 6 numbers, sum 460
+
+=== 8. the plate selected on the timeline, the pointer over its top: its row and the line of its body
+  timeline:
+    + div.row.ok.selected.hovered
+    - div.row.ok
+  panel:
+    + h2: "Extrude"
+    + label
+    +   "Feature name"
+    +   input value="Extrude 1"
+    + div.buttons
+    +   button.primary: "Edit feature"
+    +   button: "Suppress"
+    +   button: "Delete"
+    + p.hint: "New body, distance 10 mm, regions: 1."
+    + p.hint.body.hovered
+    +   "Extrude 1: 11718.478 mm³, 40 × 30 × 10 mm"
+    +   button.link title="This body alone, whatever its use, as it is at the end of the timeline": "Export STL"
+    + h2: "Properties of Extrude 1"
+    + label
+    +   "Name"
+    +   input value="" placeholder="Extrude 1"
+    + label
+    +   "Use"
+    +   select value=""
+    +     option selected value="": "Default: Printed part"
+    +     option value="part": "Printed part"
+    +     option value="reference": "Reference part (not printed)"
+    +     option value="auxiliary": "Auxiliary (no mass, not printed)"
+    + label
+    +   "Material from the catalog"
+    +   select value=""
+    +     option selected value="": "—"
+    +     option value="PLA" title="Prusament PLA, Technical Data Sheet version 1.1 of 27-07-2022, ISO 1183": "PLA (1.24 g/cm³)"
+    +     option value="PETG" title="Prusament PETG, Technical Data Sheet version 1.1 of 16-02-2022, ISO 1183": "PETG (1.27 g/cm³)"
+    +     option value="ABS" title="Bambu ABS (Prusament makes no ABS), Technical Data Sheet V3.0, ISO 1183": "ABS (1.05 g/cm³)"
+    +     option value="ASA" title="Prusament ASA, Technical Data Sheet version 1.1 of 20-05-2024, ISO 1183": "ASA (1.07 g/cm³)"
+    +     option value="TPU" title="Prusament TPU 95A, Technical Data Sheet version 1.0 of 29-05-2025, ISO 1183; the PrusaSlicer profile says 1.23": "TPU (1.25 g/cm³)"
+    +     option value="PC" title="Prusament PC Blend, Technical Data Sheet version 1.1 of 16-02-2022, method of Prusa Polymers, not ISO 1183": "PC (1.22 g/cm³)"
+    + label
+    +   "Material"
+    +   input value=""
+    + label
+    +   "Density (g/cm3)"
+    +   span.field
+    +     input value=""
+    + label
+    +   "Mass (g)"
+    +   span.field
+    +     input value=""
+    + label
+    +   "Colour"
+    +   span.field
+    +     input type=color value="#aab7c6"
+    - h2: "Model"
+    - p.hint: "The right mouse button orbits, the wheel zooms, the middle button (or Shift + right) pans. On a touchpad: Alt/Option + drag orbits, Alt + Shift + drag pans, two fingers zoom. A feature on the timeline is edited by a double click."
+  view: 2 scene(s) set
+  scene:
+    + face e1 #0 #f97316 opacity 0.3
+    + face e1 #1 #f97316 opacity 0.3
+    + face e1 #2 #f97316 opacity 0.3
+    + face e1 #3 #f97316 opacity 0.3
+    + face e1 #4 #f97316 opacity 0.3
+    + face e1 #5 #f97316 opacity 0.3
+    + face copies/1 #10 #f97316 opacity 0.3
+    + face copies/1 #11 #f97316 opacity 0.3
+    + face copies/1 #12 #f97316 opacity 0.3
+    + face copies/1 #13 #f97316 opacity 0.3
+    + face copies/1 #14 #f97316 opacity 0.3
+    + face copies/1 #15 #f97316 opacity 0.3
+
+=== 9. the sketch entered
+  engine: getState("s1")
+  engine: diagnoseSketch("s1")  (x2)
+  toolbar:
+    +   button.active title="Click a point or a curve (Shift adds). A point can be dragged.": "Select"
+    +   button title="Click the place of the point.": "Point"
+    +   button title="Click the ends of the lines; Esc or joining an existing point ends the chain.": "Line"
+    +   button title="Click two opposite corners.": "Rectangle"
+    +   button title="Click the centre and then a vertex; the number of sides is set in the panel.": "Polygon"
+    +   button title="Click the centre and then a point of the rim.": "Circle"
+    +   button title="Click the centre, the start and the end (counterclockwise).": "Arc"
+    +   button title="Click the control points; Enter ends the spline, a click on the first point closes it, Esc drops it. Start at the end of a line and click on its extension to run on smoothly from it.": "Spline"
+    +   button title="Click the point where two lines meet; the radius is set in the panel.": "Fillet"
+    +   button title="Click the piece of a curve to remove.": "Trim"
+    +   button title="Click a line or an arc near the end to extend.": "Extend"
+    +   button title="Click a curve to cut it where other curves cross it.": "Split"
+    +   button title="Select the curves and points to copy, then click the line to mirror them about.": "Mirror"
+    +   button title="Select the curves and points to copy, then click the line to repeat them along.": "Linear pattern"
+    +   button title="Select the curves and points to copy, then click the point to turn them about.": "Circular pattern"
+    +   button title="Click an edge of a body (a line or a circle).": "Project"
+    +   button title="Click a point or a curve of an earlier sketch (dashed) to project it; the options are in the panel.": "From sketch"
+    + div.group
+    +   button title="The drawing tools create construction (helper) curves": "Construction"
+    -   button title="A new sketch on a plane or a planar face": "Sketch"
+    -   button title="Extrude regions of a sketch": "Extrude"
+    -   button title="Turn regions of a sketch about an axis in its plane": "Revolve"
+    -   button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
+    -   button title="Chamfer edges of a body by a distance": "Chamfer"
+    -   button title="Round edges of a body by a radius": "Fillet"
+    -   button title="A plane offset from a plane or a planar face": "Plane"
+    -   button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
+    -   button title="Place a stored mesh (a bought part read from an STL file) as a body": "Mesh"
+    -   button title="Insert another document (a part saved as a document file) as a part of this one": "Insert"
+    -   button title="Join, subtract or intersect finished bodies; subtract with a clearance": "Combine"
+    -   button title="Cut a body into two by a plane; both parts get the cut face": "Split"
+    +   button.primary: "Finish sketch"
+    -   select value="" title="Ask a query about the model"
+    -     option selected value="": "Queries…"
+    -     option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported.": "Interference"
+    -     option value="sketchDiagnosis" title="How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.": "Diagnosis of a sketch"
+    -     option value="constraintExplanation" title="Whether a constraint of a sketch follows from other constraints, and from which.": "Explanation of a constraint"
+    -     option value="sketchContacts" title="Where the curves of a sketch that form regions cross, touch, end on each other or overlap apart from common points, which is what makes its profile invalid, and what the sketch tool split would do at each place. Ask it when a sketch reports `valid: false`, before split and trim.": "Contacts of the outline curves of a sketch"
+    -     option value="sketchSources" title="The sketches before a sketch on the timeline and whether each lies on a parallel plane, and, for one of them, every point and curve a projection may name, placed in the coordinates of the asking sketch. Ask it before addExternal with `type: "sketch"` or the sketch tool projectSketch.": "What a sketch can project from earlier sketches"
+    -     option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+    -     option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
+    -     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, spheres, tori, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
+    -     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
+    -     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
+    -     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece (all bodies of the state without `bodies`). A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`, and so is a reference part without `bodies` when it states neither a mass nor a density; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
+    -     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
+    -     option value="hardwareHole" title="The shape of a hole for a screw, a nut or a heat-set insert of a size, from the hardware catalogs: put `shape` and `label` of the answer into a feature of the type hole (and for an insert `depth` into its extent). The heads and the nut are the largest sizes the standards allow and nothing is added to them; room for the printer is the allowance, best a parameter. The catalogs are clearanceHoles, socketHeadScrews, countersunkScrews, hexNuts and heatSetInserts; the query `catalog` shows their rows and sources.": "Hole for a piece of hardware"
+    -     option value="mechanism" title="The links and joints of the model as resolved for the state asked about: where each link stands in the pose, the numbers and the axis of each joint, and what is in error. With `beyond`, what hangs on that joint. Asked with `after: { type: "setPose", … }` it answers for a pose that is not written.": "Mechanism"
+    -     option value="partsList" title="What to print and what to buy: the bodies of the model as rows of parts, and the hardware of the hole features. A printed part is a body with the use `part`, a bought part one with the use `reference` (body properties); auxiliary bodies are no parts. A body and its copies made by a pattern are one row with a count while they are the same part: a mirror image is another part, and so is a copy with another material, colour, mass or name, and a body that a feature changed after the pattern (so model what every copy should have before the pattern). Hardware is counted from the labels of the hole features: one piece per hole the model has, by where the holes are (a hole through several bodies is one hole, and so are holes that continue one another on one line; a copy of a body at another place has its holes too, also one further along the same line; a hole that missed or was cut away is not counted). So the label of a hole should name the piece that goes into it, with what the catalog does not know ("M3x10 countersunk screw"), and a hole that takes no piece of its own should have none. Every copy counts, also one laid out for printing. The answer is for the model as modelled, whatever the pose.": "Parts list"
+    -     option value="entryCurves" title="The curves of one entry of `external` of a sketch at their places, a page at a time: of an imported outline (get_sketch lists its first curves only), of a projection, or the copies of a mirror or pattern. A spline comes with its control points (`control`: `<id>/<i>` stands at `control[i]`), which constraints and projections may name, and where it runs.": "The curves of an entry of a sketch"
+    -     option value="sketchRegions" title="The regions of a sketch with their whole references, as an extrusion or a revolution names them (`{ outerLoop: [...] }`), a page at a time: get_sketch prints a loop of more than twenty curves short, with the `index` to ask here. `curve` keeps the regions a curve bounds (the way from a curve of an imported outline to the region to extrude); `holes` lists the curves of the holes too.": "The regions of a sketch"
+    -   select value="" title="Export the model in a format of the engine"
+    -     option selected value="": "Export…"
+    -     option value="stl" title="Bodies as triangle meshes in binary STL, for a slicer. One file with the chosen bodies, or with `perBody` a folder with a file per body (one printable part per file).": "STL"
+    -     option value="3mf" title="Bodies as the objects of one 3MF document, for a slicer: each body is an object with its name (the name of the body properties), its ID as the part number and, when the body has a colour, a base material with that colour, named by the material of the body. One file, in millimetres, the bodies where they are modelled. The file is a ZIP, compressed when the engine has a compressor: about a fifth of the size of the STL of the same bodies; otherwise about a quarter larger than the STL.": "3MF"
+    -     option value="dxf" title="The outline a plane cuts out of bodies as a DXF drawing in millimetres, for laser cutting and drilling templates (the same cut as the query section). A whole circle is a CIRCLE with the centre and radius of its surface; every other loop is one closed POLYLINE with lines and arcs. Outer loops are on the layer OUTER, holes on the layer HOLES. The coordinates are the x and y of the plane, as the query section reports them. One file in the form of DXF release 12.": "DXF (outline)"
+    -     option value="svg" title="The outline a plane cuts out of bodies as an SVG drawing with one user unit per millimetre (the same cut as the query section). A whole circle is a `circle` with the centre and radius of its surface; every other loop is one closed `path` with lines and arcs; class `outer` or `hole`, a group per body. The y of the plane points up and that of SVG down: a point (u, v) of the plane is written (u, −v). Stroked, not filled. One file.": "SVG (outline)"
+    -     option value="partsCsv" title="The parts list of the model (the query partsList) as one CSV table for a spreadsheet: a record per kind of printed part, of bought part and of hardware, with its count, material, colour, the mass of one and of all in grams, a note for a row of copies that are not in the row of their source, and the IDs of its bodies or hole features. Comma separated, UTF-8, a decimal point. One file.": "Parts list (CSV)"
+    -     option value="urdf" title="The mechanism as a URDF robot description for ROS and simulators: a folder with robot.urdf and one binary STL per body in metres in the frame of its link. One tree from one root link; the frame of a link at the axis of its joint with the axes of the model; the mass, centre of mass and inertia of each link from its bodies (query mass); a visual and a collision mesh per body. Every revolute and prismatic joint needs `effort` and `velocity` (setJoint). The root is not fixed: the simulator decides.": "URDF (robot)"
+    -     option value="mjcf" title="The mechanism as a MuJoCo model: a folder with robot.xml and one binary STL per body in metres in the frame of its link. One tree from one root link, welded to the world; the frame of a link at the axis of its joint with the axes of the model; the mass, centre of mass and inertia of each link from its bodies (query mass); a mesh geom per body, the two links of a joint excluded from contact; a motor per joint with an `effort` (with `gearRatio`), `rotorInertia · gearRatio²` as the armature of the joint, and the pose of the document as the keyframe `pose`.": "MJCF (MuJoCo)"
+    -   button title="Check which bodies share a volume": "Collisions"
+    +   button disabled title="Save a picture of the model as PNG: the bodies that are shown, from the camera of the view and cut as the view is; without the selection, sketches, planes and dimensions": "Save picture"
+    -   button title="Save a picture of the model as PNG: the bodies that are shown, from the camera of the view and cut as the view is; without the selection, sketches, planes and dimensions": "Save picture"
+  timeline:
+    + div.row.ok.selected.editing
+    - div.row.ok
+    +   button.icon disabled title="Hide or show": "👁"
+    -   button.icon title="Hide or show": "👁"
+    +   button.icon disabled title="Move later": "↓"
+    +   button.icon disabled title="Roll the model back to here: further features are inserted after this one": "⇤"
+    + div.row.ok
+    -   button.icon title="Move later": "↓"
+    -   button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
+    - div.row.ok.selected.hovered
+    +   button.icon disabled title="Hide or show": "👁"
+    +   button.icon disabled title="Move earlier": "↑"
+    +   button.icon disabled title="Move later": "↓"
+    +   button.icon disabled title="Roll the model back to here: further features are inserted after this one": "⇤"
+    -   button.icon title="Hide or show": "👁"
+    -   button.icon title="Move earlier": "↑"
+    -   button.icon title="Move later": "↓"
+    -   button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
+    +   button.icon disabled title="Move earlier": "↑"
+    +   button.icon disabled title="Move later": "↓"
+    +   button.icon disabled title="Roll the model back to here: further features are inserted after this one": "⇤"
+    -   button.icon title="Move earlier": "↑"
+    -   button.icon title="Move later": "↓"
+    -   button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
+    +   button.icon disabled title="Hide or show": "👁"
+    +   button.icon disabled title="Move earlier": "↑"
+    +   button.icon disabled title="Move later": "↓"
+    +   button.icon disabled title="Roll the model back to here: further features are inserted after this one": "⇤"
+    -   button.icon title="Hide or show": "👁"
+    -   button.icon title="Move earlier": "↑"
+    -   button.icon title="Move later": "↓"
+    -   button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
+    +   button.icon disabled title="Hide or show": "👁"
+    +   button.icon disabled title="Move earlier": "↑"
+    -   button.icon title="Hide or show": "👁"
+    -   button.icon title="Move earlier": "↑"
+    +   button.icon disabled title="Roll the model back to here: further features are inserted after this one": "⇤"
+    -   button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
+  panel:
+    + h2: "Sketch: Sketch 1"
+    + div#sketch-status
+    +   p.badge.open: "Degrees of freedom: 5"
+    +   p.hint: "Closed regions: 2"
+    + p.hint: "Free (blue in the view): points p1, p2, p3, p4; radius c5."
+    + div.buttons
+    +   button title="Selects the free points and the circles with a free radius": "Select free"
+    + div.buttons
+    +   button title="Read a DXF or SVG file into this sketch as an outline of fixed curves": "Import an outline…"
+    +   input#outline-file type=file hidden
+    + h2: "Selection (0)"
+    + div.buttons
+    +   button disabled title="Two points lie at the same place.": "Coincident"
+    +   button disabled title="A point lies on a line (also on its extension), a circle or an arc.": "Point on curve"
+    +   button disabled title="A line is parallel to the X axis of the sketch.": "Horizontal"
+    +   button disabled title="A line is parallel to the Y axis of the sketch.": "Vertical"
+    +   button disabled title="Two lines are parallel.": "Parallel"
+    +   button disabled title="Two lines are perpendicular to each other.": "Perpendicular"
+    +   button disabled title="Two lines have the same length.": "Equal length"
+    +   button disabled title="A line touches a circle or an arc, or two circles or arcs touch.": "Tangent"
+    +   button disabled title="Points a, b are symmetric about the infinite line on which the line `line` lies (the axis of symmetry).": "Symmetric"
+    +   button disabled title="A point lies exactly halfway along a line.": "Midpoint"
+    +   button disabled title="Two circles or arcs have the same radius.": "Equal radius"
+    +   button disabled title="An own point of the sketch lies at the coordinates x, y of the sketch.": "Fixed point"
+    - h2: "Extrude"
+    - label
+    -   "Feature name"
+    -   input value="Extrude 1"
+    +   button disabled title="Two points or a line: distance; a point and a line: distance; two lines: angle; a circle: diameter; an arc: radius": "Dimension"
+    +   button disabled title="Horizontal distance of two points or of the ends of a line": "Dimension ↔"
+    +   button disabled title="Vertical distance of two points or of the ends of a line": "Dimension ↕"
+    -   button.primary: "Edit feature"
+    -   button: "Suppress"
+    -   button: "Delete"
+    - p.hint: "New body, distance 10 mm, regions: 1."
+    - p.hint.body.hovered
+    -   "Extrude 1: 11718.478 mm³, 40 × 30 × 10 mm"
+    -   button.link title="This body alone, whatever its use, as it is at the end of the timeline": "Export STL"
+    - h2: "Properties of Extrude 1"
+    - label
+    -   "Name"
+    -   input value="" placeholder="Extrude 1"
+    - label
+    -   "Use"
+    -   select value=""
+    -     option selected value="": "Default: Printed part"
+    -     option value="part": "Printed part"
+    -     option value="reference": "Reference part (not printed)"
+    -     option value="auxiliary": "Auxiliary (no mass, not printed)"
+    - label
+    -   "Material from the catalog"
+    -   select value=""
+    -     option selected value="": "—"
+    -     option value="PLA" title="Prusament PLA, Technical Data Sheet version 1.1 of 27-07-2022, ISO 1183": "PLA (1.24 g/cm³)"
+    -     option value="PETG" title="Prusament PETG, Technical Data Sheet version 1.1 of 16-02-2022, ISO 1183": "PETG (1.27 g/cm³)"
+    -     option value="ABS" title="Bambu ABS (Prusament makes no ABS), Technical Data Sheet V3.0, ISO 1183": "ABS (1.05 g/cm³)"
+    -     option value="ASA" title="Prusament ASA, Technical Data Sheet version 1.1 of 20-05-2024, ISO 1183": "ASA (1.07 g/cm³)"
+    -     option value="TPU" title="Prusament TPU 95A, Technical Data Sheet version 1.0 of 29-05-2025, ISO 1183; the PrusaSlicer profile says 1.23": "TPU (1.25 g/cm³)"
+    -     option value="PC" title="Prusament PC Blend, Technical Data Sheet version 1.1 of 16-02-2022, method of Prusa Polymers, not ISO 1183": "PC (1.22 g/cm³)"
+    - label
+    -   "Material"
+    -   input value=""
+    - label
+    -   "Density (g/cm3)"
+    -   span.field
+    -     input value=""
+    - label
+    -   "Mass (g)"
+    -   span.field
+    -     input value=""
+    - label
+    -   "Colour"
+    -   span.field
+    -     input type=color value="#aab7c6"
+    - h2: "Parameters (0)"
+    - div.constraint
+    -   input.pname value="" placeholder="name"
+    -   input.expr value="" placeholder="expression, e.g. 2 * a"
+    -   button: "Add"
+    - p.hint: "An expression can be typed into numeric fields and dimensions instead of a number. Angles in an expression are in radians; write degrees as deg(30)."
+    - h2: "Checks (0)"
+    - div.constraint
+    -   input.pname value="" placeholder="name"
+    -   input.expr value="" placeholder="condition, e.g. a < b"
+    -   button: "Add"
+    - h2: "Mechanism"
+    - p.hint: "Links are bodies that move as one piece; a joint moves its child link against its parent. The model as modelled is the zero of every joint."
+    +   button disabled: "Construction"
+    +   button disabled title="Delete": "Delete"
+    + h2: "Constraints and dimensions (4)"
+    + div.constraint.clickable title="A click shows whether the constraint follows from others"
+    +   span.name
+    +     "Horizontal"
+    +     small: "c1"
+    +   button.icon title="Delete the constraint": "✕"
+    + div.constraint.clickable title="A click shows whether the constraint follows from others"
+    +   span.name
+    +     "Vertical"
+    +     small: "c2"
+    +   button.icon title="Delete the constraint": "✕"
+    + div.constraint.clickable title="A click shows whether the constraint follows from others"
+    +   span.name
+    +     "Horizontal"
+    +     small: "c3"
+    +   button.icon title="Delete the constraint": "✕"
+    + div.constraint.clickable title="A click shows whether the constraint follows from others"
+    +   span.name
+    +     "Vertical"
+    +     small: "c4"
+    +   button.icon title="Delete the constraint": "✕"
+    -   button title="Bodies that move as one piece": "New link"
+    -   button disabled title="A joint moves its child link against its parent link": "New joint"
+    -   button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
+  status: Click a point or a curve (Shift adds). A point can be dragged.
+  view: 6 scene(s) set
+  scene:
+    + bodies: (none)
+    + line #8b9bb4 width 1: 24 numbers, sum 367.5
+    + line #8b9bb4 width 1: 24 numbers, sum 245
+    + line #8b9bb4 width 1: 24 numbers, sum 122.5
+    + line #1d4ed8 width 2 onTop: 600 numbers, sum 20596.611
+    + axis #8b9bb4 width 1 through [0, 0, 0] along [1, 0, 0]
+    + axis #8b9bb4 width 1 through [0, 0, 0] along [0, 1, 0]
+    + points #1d4ed8 size 7: 12 numbers, sum 470
+    + points #a21caf size 7: 3 numbers, sum 0
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 17.5
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 17.5
+    + fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 17.5
+    + fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 530 | 78 numbers, sum 3855.588
+    + fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 78 numbers, sum 3854.574
+    - bodies: e1, copies/1
+    - line #26303c width 1.5: 1080 numbers, sum 73827.557
+    - line #8b9bb4 width 1: 24 numbers, sum 597.117
+    - line #8b9bb4 width 1: 24 numbers, sum 398.078
+    - line #8b9bb4 width 1: 24 numbers, sum 199.039
+    - line #8b9bb4 width 1: 24 numbers, sum 1649.039
+    - line #5b7aa8 width 1.5: 600 numbers, sum 20596.611
+    - line #0ea5e9 width 4 onTop: 6 numbers, sum 460
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 28.434
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 28.434
+    - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 28.434
+    - fill #8b9bb4 opacity 0.08 at [50, 0, 0] normal [1, 0, 0]: 8 numbers, sum 28.434
+    - face e1 #0 #f97316 opacity 0.3
+    - face e1 #1 #f97316 opacity 0.3
+    - face e1 #2 #f97316 opacity 0.3
+    - face e1 #3 #f97316 opacity 0.3
+    - face e1 #4 #f97316 opacity 0.3
+    - face e1 #5 #f97316 opacity 0.3
+    - face copies/1 #10 #f97316 opacity 0.3
+    - face copies/1 #11 #f97316 opacity 0.3
+    - face copies/1 #12 #f97316 opacity 0.3
+    - face copies/1 #13 #f97316 opacity 0.3
+    - face copies/1 #14 #f97316 opacity 0.3
+    - face copies/1 #15 #f97316 opacity 0.3
+  view: lookAt origin [0, 0, 0] normal [0, 0, 1]
+  view: fit [0, 0, 0] .. [40, 30, 0]
+
+=== 10. the pointer over the bottom side of the rectangle: the constraints that name it
+  engine: diagnoseSketch("s1")
+  panel:
+    + div.constraint.clickable.hovered title="A click shows whether the constraint follows from others"
+    - div.constraint.clickable title="A click shows whether the constraint follows from others"
+  view: 1 scene(s) set
+  scene:
+    + line #1d4ed8 width 2 onTop: 594 numbers, sum 20178.784
+    + line #0ea5e9 width 3 onTop: 6 numbers, sum 160
+    - line #1d4ed8 width 2 onTop: 600 numbers, sum 20596.611
+
+=== 11. the pointer left the view: no row is marked
+  panel:
+    + div.constraint.clickable title="A click shows whether the constraint follows from others"
+    - div.constraint.clickable.hovered title="A click shows whether the constraint follows from others"
+  view: 0 scene(s) set

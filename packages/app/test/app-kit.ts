@@ -224,6 +224,7 @@ export interface Harness {
   // ----- the clock and the timers of the app
   tick: number; // how long a preview of a draft takes from now on, in ms of the pinned clock
   timers(): number; // runs the timers the app set through `window.setTimeout`; returns how many
+  frames(): number; // runs the frames the app asked for through `window.requestAnimationFrame`; returns how many
   downloads: string[];
   close(): void;
 }
@@ -244,6 +245,14 @@ export async function startApp(): Promise<Harness> {
   Object.assign(window, {
     setTimeout: (run: () => void) => (pending.set(++timerId, run), timerId),
     clearTimeout: (id: number) => void pending.delete(id),
+  });
+  // the frames the app asks for (the rows of what is under the pointer), run by the test; a case
+  // that runs none records nothing of them
+  let frameId = 0;
+  const frames = new Map<number, () => void>();
+  Object.assign(window, {
+    requestAnimationFrame: (run: () => void) => (frames.set(++frameId, run), frameId),
+    cancelAnimationFrame: (id: number) => void frames.delete(id),
   });
   // the clock: every reading is `tick` later than the one before, so a preview takes `tick`
   let clock = 0;
@@ -392,6 +401,12 @@ export async function startApp(): Promise<Harness> {
     timers() {
       const due = [...pending.values()];
       pending.clear();
+      for (const run of due) run();
+      return due.length;
+    },
+    frames() {
+      const due = [...frames.values()];
+      frames.clear();
       for (const run of due) run();
       return due.length;
     },

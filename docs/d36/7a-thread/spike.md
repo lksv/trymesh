@@ -1,6 +1,6 @@
 # 7a Modelled threads: the spike
 
-**State: measured on 2026-11-26, on the branch `d36/7a` from `master` at `4b9f70f`.** No engine code: the builders of the tool live in the spike, [`spikes/thread.spike.ts`](../../../spikes/thread.spike.ts). The question was the paragraph "To verify by a spike" of [backlog.md](../../backlog.md), "Helix and modelled threads", which a pointer to this file replaces: "The triangle count: one thread of ten turns is tens of thousands of triangles. The kernel adapter was slow on a tool with many faces (192 holes in one boolean took 7.6 s), so the time of a boolean with a threaded tool and of a pattern of such tools has to be measured first." In full: is a modelled thread, built as the twisted extrusion of its planar cross-section, feasible on the real kernel adapter in time and in robustness? The owner's decisions of 2026-11-26 it starts from are recorded in the same section of the backlog.
+**State: measured on 2026-11-26, on the branch `d36/7a` from `master` at `4b9f70f`.** No engine code: the builders of the tool live in the spike, [`spikes/thread.spike.ts`](../../../spikes/thread.spike.ts). The question was the paragraph "To verify by a spike" of [backlog.md](../../backlog.md), "Helix and modelled threads", which a pointer to this file replaces: "The triangle count: one thread of ten turns is tens of thousands of triangles. The kernel adapter was slow on a tool with many faces (192 holes in one boolean took 7.6 s), so the time of a boolean with a threaded tool and of a pattern of such tools has to be measured first." In full: is a modelled thread, built as the twisted extrusion of its planar cross-section, feasible on the real kernel adapter in time and in robustness? The owner's decisions of 2026-11-26 it starts from are recorded in the same section of the backlog. Sections J and K were measured the same day for the design ([design.md](design.md)): a shorter run past an open end, and the engine's check of collisions on a screw and a nut.
 
 **The answer: yes, with three changes to the plan.**
 
@@ -190,6 +190,38 @@ Diameters 6 to 48 mm, pitch 6 to 16 % of the diameter, metric or printed (30° o
 | The ends | The caps are a fan from the axis (the cross-section is a star about it); for a groove or a ridge the kernel triangulates the ring between the turned loop and the other wall. The caps themselves are fine; what they meet is C |
 | The triangles | Slivers by construction: 0.63 mm long and 0.03 mm wide for M10 at 0.01 |
 
+### J. A short run past an open end (measured for the design, 2026-11-26)
+
+B, C and H ran a tool 1 mm past an open end. The design of D75 ([design.md](design.md)) runs it past by no more than it keeps from a shoulder, `max(0.05, 2 · tol)`, so that a tool reaches as little as it can beyond the wall. The run of 150 random threads of H again with that distance at both kinds of end (`THREAD_SPIKE_PAST=beside THREAD_SPIKE_COUNT=150`, the swept build, seed 1; the union on a core is not part of the design and is the row of H):
+
+| Operation | Ends of the tool | Booleans | Refused | Mean ms |
+|---|---|---|---|---|
+| Internal, cut | `max(0.05, 2 · tol)` past both faces | 150 | 0 | 42 |
+| External, cut of a rod | as much short of the shoulder and past the free end | 150 | 1 (0.7 %) | 50 |
+| All three operations of H, with 1 mm past | | 450 | 1 (0.2 %) | 46 |
+
+- The one refusal is #104, a metric 20.55 x 1.678, 8.02 mm long, at a tolerance of 0.1, turned and 215 mm from the origin: a folded triangle. At the origin, unturned, it is accepted, as the refusals of H were. With 1 mm past, the refused one was #107 (an internal cut), which this run accepts.
+- Every accepted result has the volume of the exact thread within 11 % of the bound of the chords, as in H.
+- So the short run is as safe as the long one within what a few hundred booleans show: one refusal either way, far from the origin.
+
+### K. The engine's check of collisions on a screw and a nut (measured for the design, 2026-11-26)
+
+`sharedBy` and `verdictOf` of `interference.ts` (D50), the rule of the query `interference`, on the M10x1.5 screw and nut of E at a chord tolerance of 0.05, and on three pairs that overlap by design: a plain rod at the major diameter (a bought screw, or a pin with a cosmetic thread) in a modelled nut and in a plain hole at the minor diameter (a bore with a cosmetic thread), and a modelled screw in such a hole. Test 3b of the spike; the bodies are described to the check from their meshes (a face is planar when its triangles have one normal).
+
+| Pair | Clearance | Volume mm³ | Depth mm | Verdict | ms |
+|---|---|---|---|---|---|
+| Modelled screw in a modelled nut | 0.1 | 0 | 0 | nothing | 41 |
+| | 0.05 | 0 | 0 | nothing | 45 |
+| | 0.02 | 0.482 | 0.027 | fit | 3 491 |
+| | 0 | 5.249 | 0.047 | fit | 10 360 |
+| Plain rod in a modelled nut | 0.1 | 184.8 | 0.750 | collision | 1 050 |
+| Plain rod in a plain hole at the minor diameter | 0 | 465.6 | 0.859 | collision | 7 |
+| Modelled screw in a plain hole at the minor diameter | 0 | 204.4 | 0.859 | collision | 1 439 |
+
+- With a clearance of at least the chord tolerance the check finds nothing, in the time of the intersection. Below it the pair is a fit, as a pin in its hole is (the slivers are no deeper than the tolerance and the flanks are not planar), but the measure of the depth takes 3.5 to 10 s: it grows with the square of the triangles of what the two share, and a thread shares a sliver along every flank.
+- The pairs that overlap by design are collisions to the check of today, 0.75 to 0.86 mm deep. In all three, every vertex of what the two share lies between the wall of the hole and the major cylinder of the thread (grown by the clearance) and between the ends of the thread, within the chord tolerance (the farthest 0.048 mm outside at a tolerance of 0.05). That is the test the design excuses such a pair by.
+- The intersection of the two with a modelled thread takes about a second, most of it the measure of the depth (the intersection alone took 26 to 110 ms in E).
+
 ## Conclusions
 
 1. **Feasible.** A modelled thread on a pin or in a hole is one boolean of 25 to 120 ms with the swept tool, at any of the three tolerances and up to M20 and a 40 mm lid thread, when no end of the tool lies in a face. A pattern of eight is 0.2 s (0.05) to 0.45 s (0.01) in one boolean.
@@ -216,7 +248,8 @@ Diameters 6 to 48 mm, pitch 6 to 16 % of the diameter, metric or printed (30° o
 - How a thread looks in the view at each tolerance, and a real print.
 - The cosmetic variant, the catalog of metric threads, a lead-in or a chamfer at the end, a thread in a hole that is not at the minor diameter, a thread that crosses another feature (a cross hole, a slot).
 - Square threads (flanks with no angle): the builders refuse them.
-- The engine's own check of interference on a screw and a nut; only the two calls of the kernel were made.
+- The engine's own check of interference on a screw and a nut was not measured by the spike; K has it since.
+- A run-out of a thread into a chamfer or a countersink at its open end (the tool passing through a cone), and an end whose rim is partly open and partly at a shoulder.
 
 ## Running it
 
@@ -224,4 +257,4 @@ Diameters 6 to 48 mm, pitch 6 to 16 % of the diameter, metric or printed (30° o
 npx vitest run --config spikes/vitest.config.ts spikes/thread.spike.ts
 ```
 
-The default run takes about 25 s: the tool alone at all three tolerances, everything else at 0.05 with the layered build for M10 only, four random threads. `THREAD_SPIKE_FULL=1` runs the sweeps the tables above come from (about six minutes; 50 random threads). The run of 150 random threads of H is `THREAD_SPIKE_FULL=1 THREAD_SPIKE_COUNT=150` with `-t "^6 "` (about six minutes more), and its three refusals alone `THREAD_SPIKE_ONLY=107,115,145` on top of that. `THREAD_SPIKE_SEED` gives another sequence.
+The default run takes about 45 s: the tool alone at all three tolerances, everything else at 0.05 with the layered build for M10 only, the check of collisions of K (18 s of it), four random threads. `THREAD_SPIKE_FULL=1` runs the sweeps the tables above come from (about six minutes; 50 random threads). The run of 150 random threads of H is `THREAD_SPIKE_FULL=1 THREAD_SPIKE_COUNT=150` with `-t "^6 "` (about six minutes more), and its three refusals alone `THREAD_SPIKE_ONLY=107,115,145` on top of that. `THREAD_SPIKE_SEED` gives another sequence. `THREAD_SPIKE_PAST` sets how far a tool runs past an open end in tests 2 and 6: a number of millimetres (1 when absent), or `beside` for the distance it keeps from a shoulder; the run of J is `THREAD_SPIKE_PAST=beside THREAD_SPIKE_COUNT=150` with `-t "^6 "` (about four minutes).

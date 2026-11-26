@@ -10,16 +10,20 @@
 // - `buildSwept`: the axial profile (four points of a trapezoid) swept along the helix, cut flat at
 //   both ends while it is built. The same solid with far fewer triangles.
 // Run from the repository root: npx vitest run --config spikes/vitest.config.ts spikes/thread.spike.ts
-// The default run is short (about 25 s: a chord tolerance of 0.05, one repeat, four random threads).
+// The default run is short (about 45 s: a chord tolerance of 0.05, one repeat, four random threads;
+// 18 s of it are test 3b, the engine's check of collisions, added for the design of D75).
 // THREAD_SPIKE_FULL=1 runs the sweeps over the chord tolerances 0.01, 0.05 and 0.1, both builds
 // everywhere, a repeat for the warm times and 50 random threads (about six minutes).
 // THREAD_SPIKE_COUNT, THREAD_SPIKE_SEED and THREAD_SPIKE_ONLY (a list of case numbers) steer the
-// random threads of test 6.
+// random threads of test 6. THREAD_SPIKE_PAST sets how far a tool runs past an open end in tests
+// 2 and 6: millimetres (1 when absent), or `beside` for the distance it keeps from a shoulder.
 import { expect, test } from 'vitest';
 import type { Solid } from '../packages/engine/src/index';
 import type { Region } from '../packages/engine/src/sketch';
 import { buildPrism } from '../packages/engine/src/recompute/tool-prism';
+import { sharedBy, verdictOf } from '../packages/engine/src/interference';
 import { type RigidTransform, compose, rotation, shift, transformFrame, transformPoint, volumeOf } from '../packages/engine/src/solid';
+import type { BodyResult } from '../packages/engine/src/types';
 import { createManifoldKernel } from '../packages/kernel-manifold/src/index';
 
 const kernel = await createManifoldKernel();
@@ -466,6 +470,10 @@ const survivors = (result: Solid, tool: Tool): string => {
 const TOLERANCES = FULL ? [0.01, 0.05, 0.1] : [0.05];
 // How far a tool ends beside the wall it cuts: more than the sagitta of the wall's polygon.
 const besideOf = (tol: number) => Math.max(0.05, 2 * tol);
+// How far a tool runs past an open end of the wall: 1 mm in the measurements of spike.md;
+// THREAD_SPIKE_PAST=beside takes the distance a tool keeps from a shoulder instead (the design of
+// D75 runs a tool past an end by no more than that), or a number of millimetres.
+const pastOf = (tol: number): number => (process.env.THREAD_SPIKE_PAST === 'beside' ? besideOf(tol) : Number(process.env.THREAD_SPIKE_PAST ?? 1));
 
 // ---------------------------------------------------------------- 1. the tools alone
 
@@ -544,6 +552,7 @@ function jobs(c: Case, tol: number, clearance = 0, pose?: RigidTransform): Job[]
   const b = c.basic;
   const l = c.length;
   const beside = besideOf(tol);
+  const past = pastOf(tol);
   const side = 2 * b.major + 10;
   const basic = shapeOf(b);
   const out: Job[] = [];
@@ -560,7 +569,7 @@ function jobs(c: Case, tol: number, clearance = 0, pose?: RigidTransform): Job[]
     },
     ends: [
       { name: 'in both faces', flush: true, z0: 0, z1: l, from: 0, to: l },
-      { name: '1 mm past both faces', flush: false, z0: -1, z1: l + 1, from: 0, to: l },
+      { name: `${past} mm past both faces`, flush: false, z0: -past, z1: l + past, from: 0, to: l },
     ],
     tool: (build, first, e) => BUILDERS[build](nut, { kind: 'solid' }, e.z0, e.z1, tol, first, { pose }),
     tight: nut.rMin > hole - beside + 1e-9,
@@ -582,7 +591,7 @@ function jobs(c: Case, tol: number, clearance = 0, pose?: RigidTransform): Job[]
       { name: 'in the shoulder, in the free end', flush: true, z0: 0, z1: l, from: 0, to: l },
       { name: 'in the shoulder, 1 mm past the free end', flush: true, z0: 0, z1: l + 1, from: 0, to: l },
       { name: `${beside} short of the shoulder, in the free end`, flush: true, z0: beside, z1: l, from: beside, to: l },
-      { name: `${beside} short of the shoulder, 1 mm past the free end`, flush: false, z0: beside, z1: l + 1, from: beside, to: l },
+      { name: `${beside} short of the shoulder, ${past} mm past the free end`, flush: false, z0: beside, z1: l + past, from: beside, to: l },
     ],
     tool: (build, first, e) => BUILDERS[build](groove, { kind: 'groove', outer: b.major + 2 * beside }, e.z0, e.z1, tol, first, { pose }),
     tight: groove.rMax < b.major + beside - 1e-9,
@@ -719,6 +728,93 @@ test('3 a modelled screw in a modelled nut: the clearance decides', () => {
     if (clearance < 0) expect(computed, `clearance ${clearance} at ${tol}`).toBeGreaterThan(0.5 * exact);
   }
   table('3. M10x1.5 screw (basic profile) in a nut cut with a clearance: what they share (mm³)', ['chord tol', 'clearance', 'builds screw / nut', 'exact shapes', 'boolean', 'ms', 'as computed', 'ms', 'error'], rows);
+});
+
+// ---------------------------------------------------------------- 3b. the engine's check of collisions
+
+// A body as the check of collisions takes it, made here from the mesh alone: a face is planar
+// when all its triangles have one normal.
+function bodyOf(solid: Solid): BodyResult {
+  const normals = new Map<number, [number, number, number]>();
+  const flat = new Map<number, boolean>();
+  const min: [number, number, number] = [Infinity, Infinity, Infinity];
+  const max: [number, number, number] = [-Infinity, -Infinity, -Infinity];
+  const p = solid.positions;
+  for (let v = 0; v < p.length; v += 3) for (let k = 0; k < 3; k++) [min[k], max[k]] = [Math.min(min[k], p[v + k]), Math.max(max[k], p[v + k])];
+  for (let t = 0; t < solid.triangles.length; t += 3) {
+    const [a, b, c] = [solid.triangles[t] * 3, solid.triangles[t + 1] * 3, solid.triangles[t + 2] * 3];
+    const [u, w] = [[p[b] - p[a], p[b + 1] - p[a + 1], p[b + 2] - p[a + 2]], [p[c] - p[a], p[c + 1] - p[a + 1], p[c + 2] - p[a + 2]]];
+    const n: [number, number, number] = [u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0]];
+    const length = Math.hypot(...n);
+    if (!(length > 0)) continue;
+    const unit: [number, number, number] = [n[0] / length, n[1] / length, n[2] / length];
+    const face = solid.faceIds[t / 3];
+    const first = normals.get(face);
+    if (!first) normals.set(face, unit);
+    flat.set(face, (flat.get(face) ?? true) && (!first || first[0] * unit[0] + first[1] * unit[1] + first[2] * unit[2] > 1 - 1e-6));
+  }
+  return { solid, faces: [...flat].map(([id, planar]) => ({ id, planar })), edges: [], volume: volumeOf(solid), bounds: { min, max } };
+}
+
+// What the spike left open: the engine's own check of collisions (`sharedBy` and `verdictOf` of
+// interference.ts, D50) on a screw and a nut, and on the pairs that overlap by design: a plain rod
+// at the major diameter (a bought screw, or a pin with a cosmetic thread) in a modelled nut and in
+// a plain hole at the minor diameter (a cosmetic thread). For the last two: do all vertices of what
+// the two share lie between the wall of the hole and the major cylinder of the thread, within the
+// chord tolerance? That is the test the design of D75 excuses such a pair by.
+test('3b the check of collisions on a screw in a nut, and on the pairs that overlap by design', () => {
+  const rows: string[][] = [];
+  const c = M10;
+  const b = c.basic;
+  // one tolerance also in the full run: below the tolerance the measure of the depth takes
+  // seconds at 0.05 and grows with the square of the triangles
+  for (const tol of [0.05]) {
+    const beside = besideOf(tol);
+    const groove = shapeOf(b, { crestTo: b.major + beside });
+    const rodOf = () => prism(circle(0, 0, b.major, tol), -2, c.length + 2).solid;
+    const screw = kernel.boolean('difference', rodOf(), buildSwept(groove, { kind: 'groove', outer: b.major + 2 * beside }, -3, c.length + 3, tol, take(FACES.length)).solid);
+    const nutOf = (clearance: number, modelled: boolean): Solid => {
+      const hole = b.minor + clearance;
+      const block = prism(square(10), 0, c.length, [circle(0, 0, hole, tol)]).solid;
+      if (!modelled) return block;
+      return kernel.boolean('difference', block, buildSwept(shapeOf(b, { offset: clearance, rootTo: hole - beside }), { kind: 'solid' }, -beside, c.length + beside, tol, take(FACES.length)).solid);
+    };
+    const pairs: { name: string; a: Solid; b: Solid; clearance: number }[] = [
+      ...[0.1, 0.05, 0.02, 0].map((clearance) => ({ name: 'modelled screw in a modelled nut', a: screw, b: nutOf(clearance, true), clearance })),
+      { name: 'plain rod at the major diameter in a modelled nut', a: rodOf(), b: nutOf(0.1, true), clearance: 0.1 },
+      { name: 'plain rod at the major diameter in a plain hole at the minor diameter', a: rodOf(), b: nutOf(0, false), clearance: 0 },
+      { name: 'modelled screw in a plain hole at the minor diameter', a: screw, b: nutOf(0, false), clearance: 0 },
+    ];
+    for (const pair of pairs) {
+      const [bodyA, bodyB] = [bodyOf(pair.a), bodyOf(pair.b)];
+      const shared = timed(() => sharedBy(kernel, bodyA, bodyB, tol));
+      const measured = shared.value;
+      if (!measured || 'message' in measured) {
+        rows.push([String(tol), pair.name, String(pair.clearance), '-', '-', '-', fmt(shared.ms), measured && 'message' in measured ? measured.message : (shared.error ?? '')]);
+        continue;
+      }
+      // the zone of the thread: between the wall of the hole and the major cylinder grown by the clearance
+      let outside = 0;
+      let worst = 0;
+      if (measured.volume > 0) {
+        const common = kernel.boolean('intersection', pair.a, pair.b);
+        const [low, high] = [b.minor + pair.clearance, b.major + pair.clearance];
+        for (let v = 0; v < common.positions.length; v += 3) {
+          const r = Math.hypot(common.positions[v], common.positions[v + 1]);
+          const off = Math.max(low - r, r - high, -common.positions[v + 2], common.positions[v + 2] - c.length, 0);
+          worst = Math.max(worst, off);
+          if (off > tol + 1e-4) outside++;
+        }
+      }
+      rows.push([String(tol), pair.name, String(pair.clearance), fmt(measured.volume, 3), fmt(measured.depth, 4), verdictOf(measured, 0.001, tol), fmt(shared.ms), `vertices outside the zone by more than the tolerance: ${outside}; the farthest ${fmt(worst, 4)}`]);
+    }
+  }
+  table('3b. The check of collisions (sharedBy, verdictOf) on M10x1.5, 20 mm', ['chord tol', 'pair', 'clearance', 'volume mm³', 'depth mm', 'verdict', 'ms', 'the zone of the thread'], rows);
+  for (const row of rows) {
+    // a clearance above the chord tolerance: nothing; a pair that overlaps by design: a collision whose volume lies in the zone
+    if (row[1].startsWith('modelled screw in a modelled nut') && Number(row[2]) > Number(row[0])) expect(row[5], row.join(' | ')).toBe('nothing');
+    if (row[1].includes('plain')) expect(row[7], row.join(' | ')).toContain('more than the tolerance: 0;');
+  }
 });
 
 // ---------------------------------------------------------------- 4. a pattern of threads

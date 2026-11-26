@@ -41,7 +41,7 @@ import { drawPicture, savePicture, viewCapability } from './picture';
 import { type Pose, holdsPose, placedSegments, poseOf } from './pose';
 import { sketchPanel, updateSketchStatus } from './panels/sketch';
 import { type SceneHost, modelBounds, modelScene, shownCut } from './scene';
-import { entityOf, pickAnswer, spotAt } from './selection';
+import { type Want, entityOf, namesFeature, pickAnswer, spotAt, spotStillThere } from './selection';
 import { type SketchContext, type SketchHost, type SketchMode, type SketchState, deleteSelection, dropPoint, setTool, settleSketch, sketchClick, sketchContextOf, sketchDown, sketchEscape, sketchFinish, sketchMode, sketchMove, sketchScene } from './sketch-mode';
 import { SKETCH_TOOL_UI, type SketchToolName } from './sketch-tools';
 import { type View, Viewport } from './viewport';
@@ -242,6 +242,8 @@ export class App implements SketchHost, SceneHost {
           const said = outlineSaid(outcome.result);
           return said ? this.say(said.text, said.error) : undefined;
         }
+        // the AI emptied the document (D74): the click was on the document that went
+        if (name === 'new_document' && outcome.ok) this.markClick(undefined);
         if (name === '_load') {
           if (!outcome.ok) restore?.();
           restore = undefined;
@@ -753,11 +755,12 @@ export class App implements SketchHost, SceneHost {
       if (drag.moved) return dropPoint(this, m, drag.point, event);
     }
     if (!down || down.button !== 0 || event.button !== 0 || Math.hypot(event.clientX - down.x, event.clientY - down.y) > 4) return;
-    // the click as the AI reads it (D74), taken before the click acts: what it was on, not what it made
-    this.markClick(spotAt(this, this.viewport, event));
-    if (m.kind === 'sketch') return sketchClick(this, m, event);
     // a form gets its clicks from the app: the bare event, or what it asked to be picked
     const wanted = isDraft(m) ? m.form.picks?.(m) : undefined;
+    // the click as the AI reads it (D74), taken before the click acts: what it was on, not what it
+    // made, picked as the click picks (a form that asks for no pick: as the model picks)
+    this.recordClick(event, wanted ? { ...wanted } : this.modelPicks());
+    if (m.kind === 'sketch') return sketchClick(this, m, event);
     if (isDraft(m) && !wanted) return m.form.click?.(m, event, undefined, this);
     const pick = this.pick(event, isDraft(m) ? { ...wanted } : this.modelPicks());
     if (isDraft(m)) return m.form.click?.(m, event, pick, this);
@@ -809,6 +812,15 @@ export class App implements SketchHost, SceneHost {
 
   // ---------------------------------------------------------------- the selection for the AI (D74)
 
+  // The click as it was: in a form whose view shows its preview, a hit on the previewed feature
+  // says so (the document does not have it yet).
+  private recordClick(event: { clientX: number; clientY: number }, want: Want): void {
+    const m = this.mode;
+    const spot = spotAt(this, this.viewport, event, want);
+    const previewed = spot && isDraft(m) && m.preview !== undefined && this.view() === m.preview && namesFeature(spot, m.draft.id);
+    this.markClick(spot && previewed ? { ...spot, preview: true } : spot);
+  }
+
   // The click the AI is given, and its mark in the view; undefined removes both.
   private markClick(spot: SelectionSpot | undefined): void {
     if (!spot && !this.click) return;
@@ -830,6 +842,15 @@ export class App implements SketchHost, SceneHost {
     const view = m.kind === 'sketch' ? this.sketchContext()?.view : undefined;
     const selected = m.kind === 'sketch' && view ? m.selection.flatMap((id) => entityOf(view, id) ?? []) : [];
     const pointer = this.pointerAt && spotAt(this, this.viewport, this.pointerAt);
+    // A click whose body, face, edge, plane or sketch is gone (undo, removal) keeps only its point,
+    // and its mark leaves the view. It is looked up in the state shown (a model rolled back, the
+    // model before a form's feature) and in the whole document; a hit on a preview in the state
+    // shown only.
+    const click = this.click;
+    if (click && !click.stale && !spotStillThere(click, this.view()) && (click.preview || !spotStillThere(click, this.engine.getState()))) {
+      this.click = { point: click.point, stale: true };
+      this.viewport.mark(undefined);
+    }
     return {
       mode,
       ...(feature ? { feature: { id: feature.id, type: feature.type, name: feature.name } } : {}),

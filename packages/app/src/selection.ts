@@ -3,12 +3,12 @@
 // take. The view picks as it does for a click (host.pick, the ray, the hit on a body); what is
 // computed of it here (the point on an edge, the normal of a face, the nearest entity of a sketch)
 // is plain geometry with no dependency on the renderer.
-import { type EngineState, type Id, type MechanismResult, type Solid, type Vec2, type Vec3, poseNote } from '@trymesh/engine';
+import { type EngineState, type Id, type MechanismResult, type RigidTransform, type Solid, type Vec2, type Vec3, bodyOwner, faceKey, poseNote } from '@trymesh/engine';
 import { SPOT_REACH, type SelectedPick, type SelectionSpot, type SketchEntity, type SpotHit } from '@trymesh/mcp/get-selection';
 import { toWorld } from './draw';
 import { PICK_REACH, type ViewPick } from './host';
 import { type Pose, placedSegments } from './pose';
-import type { SketchContext, SketchMode } from './sketch-mode';
+import { type SketchContext, type SketchMode, sketchContextOf } from './sketch-mode';
 import { type SketchView, dist, distanceTo, hitCurve, hitPoint } from './sketch-view';
 import type { View } from './viewport';
 
@@ -89,8 +89,21 @@ export function nearestOnSegments(segments: ArrayLike<number>, project: ReturnTy
   return best;
 }
 
-// What the view picks at a point of the window, with the point of the model it lies at.
-function hitAt(host: SpotHost, view: Pick<View, 'pickBody' | 'projector'>, at: At, want: { edges: true; faces: true; planes?: true }, state: EngineState, pose: Pose): { hit: SpotHit; point: Vec3 } | undefined {
+// A point and a direction of the view taken back to the model as modelled: the inverse of the
+// rigid transform of the pose of a body (its matrix is a rotation, so its inverse is its transpose).
+const modelledPoint = (t: RigidTransform, p: Vec3): Vec3 => {
+  const d = [p[0] - t.translation[0], p[1] - t.translation[1], p[2] - t.translation[2]];
+  return [0, 1, 2].map((k) => t.matrix[0][k] * d[0] + t.matrix[1][k] * d[1] + t.matrix[2][k] * d[2]) as Vec3;
+};
+const modelledDirection = (t: RigidTransform, n: Vec3): Vec3 => [0, 1, 2].map((k) => t.matrix[0][k] * n[0] + t.matrix[1][k] * n[1] + t.matrix[2][k] * n[2]) as Vec3;
+
+export type Want = { edges?: boolean; faces?: boolean; planes?: boolean };
+// What a spot looks for when no click says otherwise: an edge, a face, a plane (outside a sketch).
+export const ALL_PICKS = { edges: true, faces: true, planes: true } as const;
+
+// What the view picks at a point of the window, with the point of the model it lies at, and the
+// transform of the pose of the body hit, when the view draws it moved.
+function hitAt(host: SpotHost, view: Pick<View, 'pickBody' | 'projector'>, at: At, want: Want, state: EngineState, pose: Pose): { hit: SpotHit; point: Vec3; transform?: RigidTransform } | undefined {
   const pick = host.pick(at, want);
   if (!pick) return undefined;
   if (pick.kind === 'plane') {
@@ -99,27 +112,32 @@ function hitAt(host: SpotHost, view: Pick<View, 'pickBody' | 'projector'>, at: A
   }
   const body = state.evaluation.bodies[pick.body];
   const { transform } = pose(pick.body);
+  const moved = transform ? { transform } : {};
   if (pick.kind === 'edge') {
     const point = nearestOnSegments(placedSegments(body.edges[pick.index].segments, transform), view.projector(), at.clientX, at.clientY);
-    return point ? { hit: { body: pick.body, edge: pick.name, kind: pick.edgeKind }, point } : undefined;
+    return point ? { hit: { body: pick.body, edge: pick.name, kind: pick.edgeKind }, point, ...moved } : undefined;
   }
   const hit = view.pickBody(at.clientX, at.clientY);
   if (!hit || hit.body !== pick.body) return undefined;
-  return { hit: { body: pick.body, face: pick.name, planar: pick.planar, normal: triangleNormal(body.solid, hit.triangle, transform) }, point: hit.point };
+  return { hit: { body: pick.body, face: pick.name, planar: pick.planar, normal: triangleNormal(body.solid, hit.triangle, transform) }, point: hit.point, ...moved };
 }
 
-// What lies under a point of the window: in a sketch, the point of its plane with the nearest
-// entity and what the view picks there (edges and faces, each with its own point); in the model
-// or a form, what the view picks (an edge, a face, a plane) and the point on it, or nothing.
-export function spotAt(host: SpotHost, view: Pick<View, 'pickBody' | 'projector'>, at: At): SelectionSpot | undefined {
+// What lies under a point of the window. `want`: what the view picks there, as the click picks
+// (`ALL_PICKS` for the pointer); in a sketch edges and faces.
+// - In a sketch: the point of its plane with the nearest entity, and what the view picks there with
+//   its own point; seen edge-on, where the ray misses the plane, what the view picks alone.
+// - In the model or a form: what the view picks and the point on it, or nothing. A body the pose
+//   moved gives the joints of the pose and the point (and the normal of a face) as modelled.
+export function spotAt(host: SpotHost, view: Pick<View, 'pickBody' | 'projector'>, at: At, want: Want = ALL_PICKS): SelectionSpot | undefined {
   const state = host.view();
   const pose = host.pose();
   const m = host.sketch;
   if (m) {
     const context = host.sketchContext();
-    const p = context && host.planePoint(at, context.frame);
-    if (!context || !p) return undefined;
+    if (!context) return undefined;
+    const p = host.planePoint(at, context.frame);
     const found = hitAt(host, view, at, { edges: true, faces: true }, state, pose);
+    if (!p) return found ? { point: found.point, hit: found.hit } : undefined;
     const nearest = nearestEntity(context.view, p.at, PICK_REACH * host.pixelSize(), SPOT_REACH * host.pixelSize());
     return {
       point: toWorld(context.frame, p.at[0], p.at[1]),
@@ -127,10 +145,47 @@ export function spotAt(host: SpotHost, view: Pick<View, 'pickBody' | 'projector'
       sketch: { sketch: m.id, at: p.at, ...(nearest ? { nearest } : {}) },
     };
   }
-  const found = hitAt(host, view, at, { edges: true, faces: true, planes: true }, state, pose);
+  const found = hitAt(host, view, at, want, state, pose);
   if (!found) return undefined;
-  // the view shows the pose of the mechanism: the point is where the view drew it
+  if (!found.transform) return { point: found.point, hit: found.hit };
+  // the view drew the body moved by the pose of the mechanism: the point is where it was drawn
   const shown = host.shownMechanism();
   const note = shown ? poseNote(shown, state.document.mechanism) : undefined;
-  return { point: found.point, hit: found.hit, ...(note ? { pose: note.pose } : {}) };
+  const t = found.transform;
+  const modelled = { point: modelledPoint(t, found.point), ...('normal' in found.hit ? { normal: modelledDirection(t, found.hit.normal) } : {}) };
+  return { point: found.point, hit: found.hit, ...(note ? { pose: note.pose } : {}), modelled };
+}
+
+// Whether a spot names a thing a form previews (a body, a face or an edge of the feature `id`,
+// which the document does not have yet).
+export function namesFeature(spot: SelectionSpot, id: Id): boolean {
+  const hit = spot.hit;
+  if (!hit || !('body' in hit)) return false;
+  if (bodyOwner(hit.body).feature === id) return true;
+  return 'face' in hit ? hit.face.feature === id : hit.edge.a.feature === id || hit.edge.b.feature === id;
+}
+
+// Whether what a spot names is still in a state: the body with the face or the edge, the plane,
+// the sketch and its nearest entity.
+export function spotStillThere(spot: SelectionSpot, state: EngineState): boolean {
+  const hit = spot.hit;
+  const { bodies, faceNames, features } = state.evaluation;
+  const has = (record: object, key: string): boolean => Object.prototype.hasOwnProperty.call(record, key);
+  if (hit && 'plane' in hit && hit.plane.kind !== 'base') {
+    const ref = hit.plane;
+    if (ref.kind === 'plane' && !features[ref.feature]?.plane) return false;
+    if (ref.kind === 'face' && !(has(bodies, ref.body) && bodies[ref.body].faces.some((f) => faceKey(faceNames[f.id]) === faceKey(ref.face)))) return false;
+  }
+  if (hit && 'body' in hit) {
+    if (!has(bodies, hit.body)) return false;
+    const body = bodies[hit.body];
+    if ('face' in hit && !body.faces.some((f) => faceKey(faceNames[f.id]) === faceKey(hit.face))) return false;
+    if ('edge' in hit && !body.edges.some((e) => faceKey(e.name.a) === faceKey(hit.edge.a) && faceKey(e.name.b) === faceKey(hit.edge.b))) return false;
+  }
+  if (spot.sketch) {
+    const context = sketchContextOf(state, spot.sketch.sketch);
+    if (!context) return false;
+    if (spot.sketch.nearest && !entityOf(context.view, spot.sketch.nearest.id)) return false;
+  }
+  return true;
 }

@@ -2561,7 +2561,7 @@
   view: 1 scene(s) set
   scene:
     + face e2 #8 #0ea5e9 opacity 0.3
-  view: mark at [65.146, 8.651, 0]
+  view: mark at [65.204, 8.605, 4.987]
 
 === 49. the top of the cylinder: a draft of a plane on it
   engine: preview({"type":"addFeature","feature":{"id":"r1","name":"Plane 1","suppressed":false,"type":"plane","base":{"kind":"face","body":"e2","face":{"feature":"e2","role":"endCap"}},"offset":10},"index":6}, "r1") -> ok
@@ -2709,7 +2709,7 @@
   scene:
     + face e2 #8 #0ea5e9 opacity 0.3
     - face e1 #1 #0ea5e9 opacity 0.3
-  view: mark at [65.146, 8.651, 0]
+  view: mark at [65.204, 8.605, 4.987]
 
 === 53. a click on a base plane
   engine: preview({"type":"addFeature","feature":{"id":"r1","name":"Plane 1","suppressed":false,"type":"plane","base":{"kind":"base","plane":"XY"},"offset":5},"index":6}, "r1") -> ok
@@ -6266,7 +6266,7 @@
   view: 1 scene(s) set
   scene:
     + face e2 #8 #0ea5e9 opacity 0.3
-  view: mark at [65.146, 8.651, 0]
+  view: mark at [65.204, 8.605, 4.987]
 
 === 80. the top of the cylinder: the sketch is created with its rim projected
   engine: execute({"type":"batch","commands":[{"type":"addFeature","feature":{"id":"s4","name":"Sketch 4","suppressed":false,"type":"sketch","plane":{"kind":"face","body":"e2","face":{"feature":"e2","role":"endCap"}},"points":{},"radii":{},"curves":{},"constraints":{},"external":{},"solved":{"inputs":"","external":{}}},"index":9},{"type":"addExternal","sketch":"s4","id":"x6","ref":{"type":"edge","body":"e2","edge":{"a":{"feature":"e2","role":"endCap"},"b":{"feature":"e2","role":"side","curve":"c5"}},"kind":"circle"}}]}) -> ok

@@ -42,15 +42,25 @@ export interface SketchEntity {
 // - `point`: in model coordinates (mm). In the model: where the ray of the pointer meets what it
 //   hit: the face, the nearest point of the edge, or the plane. In a sketch: where it meets the
 //   plane of the sketch.
-// - `hit`: what the view picks there, as a click would select it: an edge near the pointer before
-//   the face under it, a face before a plane (planes only outside a sketch). A face has the
+// - `hit`: what the view picks there. For a click what the click selected: in the model what the
+//   model mode picks (an edge near the pointer before the face under it, a face before a plane; no
+//   edges while a new feature waits for its plane, only faces while the form of a joint picks a
+//   face), in a form what the form picks; for the pointer an edge, a face or a plane; in a sketch
+//   an edge or a face (the bodies of the model as modelled). A face has the
 //   normal of the face at that place (out of its body, where the view draws it), a plane its
 //   normal. `point` of a hit only in a sketch, where it differs from the point in the sketch plane.
 // - `sketch`: in a sketch, the coordinates in the sketch (`at`, mm) and its entity nearest to them
 //   with its distance in mm: a point a drawing tool would snap to there, else the nearer of the
 //   nearest point and the nearest curve within `SPOT_REACH` pixels.
-// - `pose`: the view showed the mechanism in a pose (the joints that move it, with their values):
-//   the point is where the view drew it, not where the model is as modelled.
+// - `pose` and `modelled`: the body hit was drawn moved by the pose of the mechanism (the joints
+//   that move the model, with their values): `point` and the normal of the face are where the view
+//   drew them, and `modelled` gives both as modelled, in the coordinates the commands take. Not
+//   for a plane, which a pose does not move.
+// - `preview`: the hit names the feature a form previews (its body, face or edge), which the
+//   document does not have until the form is confirmed.
+// - `stale`: something the click named (its body, face, edge, plane, sketch or the nearest entity)
+//   is no longer in the document (an undo, a removal, another document): only the point is left,
+//   and the mark is removed from the view.
 export type SpotHit =
   | { body: Id; face: FaceName; planar: boolean; normal: Vec3; point?: Vec3 }
   | { body: Id; edge: EdgeName; kind: EdgeKind; point?: Vec3 }
@@ -60,9 +70,12 @@ export interface SelectionSpot {
   hit?: SpotHit;
   sketch?: { sketch: Id; at: Vec2; nearest?: SketchEntity & { distance: number } };
   pose?: Record<Id, number>;
+  modelled?: { point: Vec3; normal?: Vec3 };
+  preview?: true;
+  stale?: true;
 }
 // How near (in pixels of the view) a point or a curve of a sketch has to be to a spot to be named
-// its nearest: three times the reach of a pick, since the AI is told "roughly here".
+// its nearest: about three times the reach of a pick (7 pixels), since the AI is told "roughly here".
 export const SPOT_REACH = 20;
 
 export interface AppSelection {
@@ -111,13 +124,13 @@ function rounded(value: unknown): Json {
 export const getSelection: HostOperation<typeof GET_SELECTION_ARGS> = {
   title: 'Selection',
   summary:
-    'What the user has selected and clicked in the app now, in the shapes commands take, so that "the selected line", "the marked face" or "roughly here" can be acted on. It answers about the app as it is at this moment, so it takes no `at` and no `after`. The last click is marked in the view, so the user sees what this gives; Escape or another document removes it.',
+    'What the user has selected and clicked in the app now, in the shapes commands take, so that "the selected line", "the marked face" or "roughly here" can be acted on. It answers about the app as it is at this moment, so it takes no `at` and no `after`. The last click is marked in the view, so the user sees what this gives; Escape outside a field of the panel, or another document, removes it.',
   returns:
     'JSON; what is not there is left out. `mode`: `{ kind: "model", at?, pending? }` (`at`: the timeline is rolled back to after this feature; `pending`: a new feature of this type waits for a plane), `{ kind: "sketch", sketch, tool }` (the sketch being edited and the tool of its bar) or `{ kind: "form", type, feature, editing }` (the form of a new feature, or of one being edited). ' +
     '`feature`: the feature selected on the timeline, `{ id, type, name }`. `pick`: what is selected in the view of the model: `{ body, face, planar }` (a face by its stable name; with `planar`, `{ kind: "face", body, face }` is a PlaneRef), `{ body, edge, kind }` (an edge as chamfer and fillet name it) or `{ plane }` (a PlaneRef). ' +
     '`sketch`: in a sketch with something selected, `{ sketch, selected }`, each entity `{ id, kind, source, construction? }` (`kind` point, line, circle, arc or spline; `source` own, reference (projected geometry, the origin and its axes) or derived (a copy of a mirror or pattern, which no constraint may name)). ' +
-    '`click`: the last click in the view, as it was then (a click on empty space in the model removes it): `point` [x, y, z] in model coordinates (mm), where the click met what it hit, in a sketch where it met the sketch plane; `hit`, what the view picks there as a click selects (an edge near the pointer before the face under it, a face before a plane): `{ body, face, planar, normal }` (the normal of the face there), `{ body, edge, kind }` or `{ plane, normal }`, in a sketch with its own `point`; `sketch`, in a sketch: `{ sketch, at: [x, y] }` in the coordinates of the sketch and `nearest`, the entity of the sketch nearest to it within about 20 pixels (a point a click would snap to first), with its `distance` in mm; `pose`: the view showed the mechanism in this pose (joint: value), so the point is where the view drew it, not as modelled. ' +
-    '`pointer`: the same for where the pointer is now, only while it is over the view (not while the user types elsewhere). Numbers are rounded to six decimal places.',
+    '`click`: the last click in the view, as it was then (a click on empty space in the model removes it): `point` [x, y, z] in model coordinates (mm), where the click met what it hit, in a sketch where it met the sketch plane; `hit`, what the click selected there (an edge near the pointer before the face under it, a face before a plane, as the mode picks: no edges while a feature waits for its plane, in a form what the form picks): `{ body, face, planar, normal }` (the normal of the face there), `{ body, edge, kind }` or `{ plane, normal }`, in a sketch (edges and faces) with its own `point`; `sketch`, in a sketch: `{ sketch, at: [x, y] }` in the coordinates of the sketch and `nearest`, the entity of the sketch nearest to it within about 20 pixels (a point a click would snap to first), with its `distance` in mm; `pose`: the body hit was drawn moved by this pose of the mechanism (joint: value), so `point` and `normal` are where the view drew them, and `modelled: { point, normal? }` gives them as modelled, which is what a command takes; `preview`: the hit names the feature an open form previews, not in the document yet; `stale`: what the click named is no longer in the document (undo, removal, another document): only `point` is left and the mark is gone from the view. ' +
+    '`pointer`: the same for where the pointer is now, picking an edge, a face or a plane whatever the mode, only while it is over the view (not while the user types elsewhere). Numbers are rounded to six decimal places.',
   args: GET_SELECTION_ARGS,
   presentOnly: true,
   async run(host): Promise<QueryOutcome<{ kind: 'data'; data: Json }>> {

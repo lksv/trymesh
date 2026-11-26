@@ -1965,10 +1965,17 @@ describe('the app, driven as a user drives it', () => {
       h.click(at(-17.5, 45, 8));
       leave();
       h.record('the arm turned by 90° about Z: a click on its top where the view draws it');
-      expect(await ask()).toEqual({ mode: { kind: 'model' }, feature: { id: 's2', type: 'sketch', name: 'Sketch 2' }, pick: { body: 'e3', face: { feature: 'e3', role: 'endCap' }, planar: true }, click: { point: [-17.5, 45, 8], hit: { body: 'e3', face: { feature: 'e3', role: 'endCap' }, planar: true, normal: [0, 0, 1] }, pose: { joint1: 1.570796 } } });
+      expect(await ask()).toEqual({ mode: { kind: 'model' }, feature: { id: 's2', type: 'sketch', name: 'Sketch 2' }, pick: { body: 'e3', face: { feature: 'e3', role: 'endCap' }, planar: true }, click: { point: [-17.5, 45, 8], hit: { body: 'e3', face: { feature: 'e3', role: 'endCap' }, planar: true, normal: [0, 0, 1] }, pose: { joint1: 1.570796 }, modelled: { point: [45, 17.5, 8], normal: [0, 0, 1] } } });
 
+      h.click(at(20, 15, 10));
+      expect((await bridge.call('new_document', { discard: true })).ok).toBe(true);
+      leave();
+      h.record('the AI empties the document (new_document): the mark of the click is removed');
+      expect(await ask()).toEqual({ mode: { kind: 'model' } });
+      h.click({ x: -20, y: 4 });
       h.press('toolbar', 'New');
-      h.record('a new document: the mark of the click is removed');
+      leave();
+      h.record('a click on a base plane, then New: the mark of the click is removed');
       expect(await ask()).toEqual({ mode: { kind: 'model' } });
       await matches(h, 'selection');
     } finally {

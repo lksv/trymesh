@@ -289,7 +289,7 @@
     - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 17.847
     - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 17.847
     + face e1 #1 #0ea5e9 opacity 0.3
-  view: mark at [40, 25, 10]
+  view: mark at [35, 25, 10]
 
 === 6. up to a plane: the start plane goes along
   engine: getState("e1")
@@ -970,7 +970,7 @@
     + line #26303c width 1.5: 408 numbers, sum 30189.874
     - line #26303c width 1.5: 72 numbers, sum 4060
     + face e1 #1 #0ea5e9 opacity 0.3
-  view: mark at [35, 0, 10]
+  view: mark at [35, 5, 10]
 
 === 18. a distance: the start plane goes along
   engine: preview({"type":"addFeature","feature":{"id":"d1","name":"Hole 1","suppressed":false,"type":"hole","sketch":"s1","points":["p5"],"shape":{"type":"plain","diameter":3},"extent":{"type":"distance","start":0,"distance":-10,"from":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}}},"targets":["e1"]},"index":3}, "d1") -> ok

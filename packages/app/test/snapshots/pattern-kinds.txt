@@ -630,7 +630,7 @@
     - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 36.708
     - fill #8b9bb4 opacity 0.08 at [50, 0, 0] normal [1, 0, 0]: 8 numbers, sum 36.708
     - face n1/1 #11 #0ea5e9 opacity 0.3
-  view: mark at [20, 30, 10]
+  view: mark at [20, 25, 10]
 
 === 14. back around an axis: the transform the draft had there, named a pattern again
   engine: preview({"type":"addFeature","feature":{"id":"n1","name":"Pattern 1","suppressed":false,"type":"pattern","source":{"type":"body","body":"e1"},"transform":{"type":"circular","axis":{"kind":"base","axis":"Z"},"count":4,"span":{"type":"full"}}},"index":4}, "n1") -> ok

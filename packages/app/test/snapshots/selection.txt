@@ -957,15 +957,13 @@
     + face e3 #10 #f97316 opacity 0.5 posed with its body
   view: mark at [-17.5, 45, 8]
 
-=== 14. a new document: the mark of the click is removed
-  engine: load("{\"schemaVersion\":10,\"settings\":{\"chordTolerance\":0.01},\"parameters\":[],\"checks\":[],\"features\":[],\"bodyProperties\":{},\"mechanism\":{\"links\":{},\"joints\":{}},\"meshes\":{},\"documents\":{}}") -> ok
+=== 14. the AI empties the document (new_document): the mark of the click is removed
+  engine: execute({"type":"batch","commands":[{"type":"removeJoint","id":"joint1"},{"type":"removeLink","id":"link1"},{"type":"removeLink","id":"link2"},{"type":"removeFeature","id":"e3"},{"type":"removeFeature","id":"s2"},{"type":"removeFeature","id":"e2"},{"type":"removeFeature","id":"e1"},{"type":"removeFeature","id":"s1"}]}) -> ok
   features: (none)
   mechanism: {"links":{},"joints":{}}
   toolbar:
     +   button disabled: "Export STL"
     -   button: "Export STL"
-    +   button disabled title="Ctrl+Z": "↶ Undo"
-    -   button title="Ctrl+Z": "↶ Undo"
     +   button disabled title="Check which bodies share a volume": "Collisions"
     -   button title="Check which bodies share a volume": "Collisions"
     +   button disabled title="Save a picture of the model as PNG: the bodies that are shown, from the camera of the view and cut as the view is; without the selection, sketches, planes and dimensions": "Save picture"
@@ -1092,8 +1090,8 @@
     -   button title="Bodies that move as one piece": "New link"
     -   button title="A joint moves its child link against its parent link": "New joint"
     -   button title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
-  status: New document.
-  view: 1 scene(s) set
+  status: AI: new_document
+  view: 3 scene(s) set
   scene:
     + bodies: (none)
     + line #8b9bb4 width 1: 24 numbers, sum 509.223
@@ -1114,4 +1112,15 @@
     - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 35.044
     - face e3 #10 #0ea5e9 opacity 0.3 posed with its body
     - face e3 #10 #f97316 opacity 0.5 posed with its body
+  view: mark at [20, 15, 10]
+  view: mark removed
+
+=== 15. a click on a base plane, then New: the mark of the click is removed
+  engine: load("{\"schemaVersion\":10,\"settings\":{\"chordTolerance\":0.01},\"parameters\":[],\"checks\":[],\"features\":[],\"bodyProperties\":{},\"mechanism\":{\"links\":{},\"joints\":{}},\"meshes\":{},\"documents\":{}}") -> ok
+  toolbar:
+    +   button disabled title="Ctrl+Z": "↶ Undo"
+    -   button title="Ctrl+Z": "↶ Undo"
+  status: New document.
+  view: 3 scene(s) set
+  view: mark at [-23, 0, 10]
   view: mark removed

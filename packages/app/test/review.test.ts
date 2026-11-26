@@ -569,6 +569,31 @@ describe('the selection for the AI: the review of D74', () => {
     expect(selection(h).click).toEqual({ point: [45, 17, 30], stale: true });
   });
 
+  // second round: a click in the form of a feature being edited was called a preview, and a click
+  // on a preview turned stale after OK
+  it('a click on the preview is an ordinary hit once the form is confirmed, and editing a feature is no preview', async () => {
+    const h = await threeBodies();
+    h.press('toolbar', 'Extrude');
+    h.type(h.field(DISTANCE), '30');
+    h.timers();
+    h.click(at(45, 17, 30));
+    expect(selection(h).click).toMatchObject({ preview: true });
+    h.press('panel', 'OK');
+    const after = selection(h).click;
+    expect(after).toMatchObject({ point: [45, 17, 30], hit: { body: 'e4', face: { feature: 'e4', role: 'endCap' } } });
+    expect(after?.preview).toBeUndefined();
+    expect(after?.stale).toBeUndefined();
+    // the same feature opened again: its body is in the document
+    const name = (h.engine.getState().document.features.find((feature) => feature.id === 'e4') as { name: string }).name;
+    h.row(name).dispatchEvent(new (h.document.defaultView as unknown as { MouseEvent: typeof MouseEvent }).MouseEvent('dblclick'));
+    h.timers();
+    expect(selection(h).mode).toMatchObject({ kind: 'form', editing: true });
+    h.click(at(45, 17, 30));
+    const edited = selection(h).click;
+    expect(edited?.hit).toMatchObject({ body: 'e4' });
+    expect(edited?.preview).toBeUndefined();
+  });
+
   // a sketch seen edge-on dropped the body the click hit
   it('in a sketch whose plane the ray does not meet, the hit stays without the point in the sketch', () => {
     const solid = { positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]), triangles: new Uint32Array([0, 1, 2]), faceIds: new Uint32Array([0]) };

@@ -812,12 +812,12 @@ export class App implements SketchHost, SceneHost {
 
   // ---------------------------------------------------------------- the selection for the AI (D74)
 
-  // The click as it was: in a form whose view shows its preview, a hit on the previewed feature
-  // says so (the document does not have it yet).
+  // The click as it was: in a form of a new feature whose view shows its preview, a hit on the
+  // previewed feature says so (the document does not have it yet; a feature being edited is in it).
   private recordClick(event: { clientX: number; clientY: number }, want: Want): void {
     const m = this.mode;
     const spot = spotAt(this, this.viewport, event, want);
-    const previewed = spot && isDraft(m) && m.preview !== undefined && this.view() === m.preview && namesFeature(spot, m.draft.id);
+    const previewed = spot && isDraft(m) && !m.editing && m.preview !== undefined && this.view() === m.preview && namesFeature(spot, m.draft.id);
     this.markClick(spot && previewed ? { ...spot, preview: true } : spot);
   }
 
@@ -845,11 +845,17 @@ export class App implements SketchHost, SceneHost {
     // A click whose body, face, edge, plane or sketch is gone (undo, removal) keeps only its point,
     // and its mark leaves the view. It is looked up in the state shown (a model rolled back, the
     // model before a form's feature) and in the whole document; a hit on a preview in the state
-    // shown only.
+    // shown only while its form is open; once the form is gone, a preview hit the document now has
+    // is an ordinary hit (second round of the review: after OK with the model rolled back it
+    // turned stale for good).
     const click = this.click;
-    if (click && !click.stale && !spotStillThere(click, this.view()) && (click.preview || !spotStillThere(click, this.engine.getState()))) {
+    const inForm = isDraft(m);
+    if (click && !click.stale && !spotStillThere(click, this.view()) && ((click.preview && inForm) || !spotStillThere(click, this.engine.getState()))) {
       this.click = { point: click.point, stale: true };
       this.viewport.mark(undefined);
+    } else if (click?.preview && !inForm) {
+      const { preview: _, ...kept } = click;
+      this.click = kept;
     }
     return {
       mode,

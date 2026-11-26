@@ -24,18 +24,27 @@ describe('the hardware catalogs', () => {
       M3: { thread: 3, fine: 3.2, medium: 3.4, coarse: 3.6 },
       'M3.5': { thread: 3.5, fine: 3.7, medium: 3.9, coarse: 4.2 },
       M4: { thread: 4, fine: 4.3, medium: 4.5, coarse: 4.8 },
+      M5: { thread: 5, fine: 5.3, medium: 5.5, coarse: 5.8 },
+      M6: { thread: 6, fine: 6.4, medium: 6.6, coarse: 7 },
+      M8: { thread: 8, fine: 8.4, medium: 9, coarse: 10 },
     });
     expect(DATA_CATALOGS.socketHeadScrews.rows).toEqual({
       M2: { thread: 2, headDiameter: 3.98, headHeight: 2 },
       'M2.5': { thread: 2.5, headDiameter: 4.68, headHeight: 2.5 },
       M3: { thread: 3, headDiameter: 5.68, headHeight: 3 },
       M4: { thread: 4, headDiameter: 7.22, headHeight: 4 },
+      M5: { thread: 5, headDiameter: 8.72, headHeight: 5 },
+      M6: { thread: 6, headDiameter: 10.22, headHeight: 6 },
+      M8: { thread: 8, headDiameter: 13.27, headHeight: 8 },
     });
     expect(DATA_CATALOGS.countersunkScrews.rows).toEqual({
       M2: { thread: 2, headDiameter: 4.7, headAngle: Math.PI / 2 },
       'M2.5': { thread: 2.5, headDiameter: 5.88, headAngle: Math.PI / 2 },
       M3: { thread: 3, headDiameter: 6.72, headAngle: Math.PI / 2 },
       M4: { thread: 4, headDiameter: 8.96, headAngle: Math.PI / 2 },
+      M5: { thread: 5, headDiameter: 11.2, headAngle: Math.PI / 2 },
+      M6: { thread: 6, headDiameter: 13.44, headAngle: Math.PI / 2 },
+      M8: { thread: 8, headDiameter: 17.92, headAngle: Math.PI / 2 },
     });
     expect(DATA_CATALOGS.hexNuts.rows).toEqual({
       M2: { thread: 2, acrossFlats: 4, thickness: 1.6 },
@@ -43,6 +52,9 @@ describe('the hardware catalogs', () => {
       M3: { thread: 3, acrossFlats: 5.5, thickness: 2.4 },
       'M3.5': { thread: 3.5, acrossFlats: 6, thickness: 2.8 },
       M4: { thread: 4, acrossFlats: 7, thickness: 3.2 },
+      M5: { thread: 5, acrossFlats: 8, thickness: 4.7 },
+      M6: { thread: 6, acrossFlats: 10, thickness: 5.2 },
+      M8: { thread: 8, acrossFlats: 13, thickness: 6.8 },
     });
     // thread × length × outer diameter, as sold; the hole by the rule of the source
     const inserts = Object.entries(DATA_CATALOGS.heatSetInserts.rows).map(([key, row]) => `${key} ${row.thread} ${row.length} ${row.outerDiameter} ${row.holeDiameter} ${row.holeDepth}`);
@@ -67,6 +79,11 @@ describe('the hardware catalogs', () => {
       'M4x6x6 4 6 6 5.7 7',
       'M4x8x6 4 8 6 5.7 9',
       'M4x10x6 4 10 6 5.7 11',
+      'M5x6x7 5 6 7 6.3 7',
+      'M5x9.5x7 5 9.5 7 6.3 10.5',
+      'M6x8x8 6 8 8 7.3 9',
+      'M6x12x8 6 12 8 7.3 13',
+      'M8x12x10 8 12 10 9.3 13',
     ]);
     for (const catalog of Object.values(DATA_CATALOGS)) expect(catalog.source.length).toBeGreaterThan(40);
   });

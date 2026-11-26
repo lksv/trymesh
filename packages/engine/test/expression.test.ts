@@ -105,6 +105,27 @@ describe('expressions', () => {
     expect(analyzeExpression('a < b && b < c', { kind: 'check' })).toEqual({ ok: true, names: ['a', 'b', 'c'] });
   });
 
+  it('if(condition, a, b): a comparison picks one of two numbers', () => {
+    expect(value('if(gz >= 3, 15.85, 0)', { gz: '6' })).toBe(15.85);
+    expect(value('if(gz >= 3, 15.85, 0)', { gz: '2' })).toBe(0);
+    expect(value('2 * if(a < b && !(a == 0), a, b) + 1', { a: '1', b: '4' })).toBe(3);
+    expect(value('if(n > 0, if(n > 1, 2, 1), 0)', { n: '5' })).toBe(2); // nested
+    // a non-finite value in the branch not taken is not an error; in the branch taken it is
+    expect(value('if(n > 0, L / n, 0)', { n: '0', L: '10' })).toBe(0);
+    expect(value('if(n == 0, L / n, 0)', { n: '0', L: '10' })).toBe('notFinite');
+    // every argument is evaluated: an unknown name or a parameter in error in either branch is an error
+    expect(value('if(1 > 0, 1, nope)')).toBe('unknownName');
+    expect(value('if(1 > 0, 1, broken)', { broken: 'missing' })).toBe('dependsOnError');
+    // the condition is a comparison and the branches numbers, statically
+    expect(analyzeExpression('if(1, 2, 3)')).toMatchObject({ ok: false, error: { code: 'type', position: 3 } });
+    expect(analyzeExpression('if(1 < 2, 2 < 3, 3)')).toMatchObject({ ok: false, error: { code: 'type', position: 10 } });
+    expect(analyzeExpression('if(1 < 2, 2)')).toMatchObject({ ok: false, error: { code: 'syntax' } });
+    expect(analyzeExpression('if(a < 2, b, c)')).toEqual({ ok: true, names: ['a', 'b', 'c'] });
+    // a number, so a check compares it; a parameter may still be called if
+    expect(evaluateCheck('if(t > 1, t, 0) < 5', evaluateParameters([{ name: 't', expr: '3' }])).status).toBe('ok');
+    expect(value('if + 1', { if: '2' })).toBe(3);
+  });
+
   it('parameter table: order does not matter, cycles and dependence on an error', () => {
     const table = evaluateParameters([
       { name: 'Zr', expr: 'Zs + 2 * Zp' },

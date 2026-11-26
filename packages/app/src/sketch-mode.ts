@@ -63,7 +63,7 @@ export interface SketchHost extends PanelHost {
   readonly sketch: SketchMode | undefined; // the open sketch, if one is open
   readonly sketching: SketchState;
   sketchContext(): SketchContext | undefined; // of the open sketch; kept until the shown state changes
-  pick(event: PointerEvent, want: { edges?: boolean; faces?: boolean; planes?: boolean }): ViewPick | undefined; // what is under the pointer in the model
+  pick(event: { clientX: number; clientY: number }, want: { edges?: boolean; faces?: boolean; planes?: boolean }): ViewPick | undefined; // what is under the pointer in the model
 }
 
 // The entry of the active tool when it picks places (every tool but Project).

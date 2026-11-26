@@ -127,6 +127,8 @@
   view: fit [-20, -20, -20] .. [20, 20, 20]
   view: lookAt origin [0, 0, 0] normal [0, 0, 1]
   view: fit [-20, -20, -20] .. [20, 20, 20]
+  view: mark at [0, 0, 0]
+  view: mark at [40, 30, 0]
 
 === 2. the button Mesh without a stored mesh: the form says to import a file, OK is disabled
   engine: getState("s1")

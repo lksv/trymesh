@@ -438,7 +438,8 @@ export function dataCatalogs(): { catalog: string; title: string; summary: strin
 }
 
 // The operations of the app (host.ts), each a tool of its own: arguments and what each returns.
-// After the arguments of an operation `at` and `after`, which the path of every operation takes.
+// After the arguments of an operation `at` and `after`, which the path of every operation takes but
+// one that answers about the app as it is now (`presentOnly`, D74).
 export function hostOperations(operations: HostOperationSet = HOST_OPERATIONS): QueryDescription[] {
   return Object.entries(operations).map(([query, spec]) => ({
     query,
@@ -446,7 +447,7 @@ export function hostOperations(operations: HostOperationSet = HOST_OPERATIONS): 
     summary: spec.summary,
     args: [
       ...Object.entries(spec.args).map(([name, arg]) => ({ name, description: `${argumentText(arg)}${arg.summary ? `. ${arg.summary}` : ''}`, required: !arg.optional })),
-      ...Object.entries(OPERATION_STATE_ARGS).map(([name, description]) => ({ name, description, required: false })),
+      ...(spec.presentOnly ? [] : Object.entries(OPERATION_STATE_ARGS).map(([name, description]) => ({ name, description, required: false }))),
     ],
     returns: spec.returns,
   }));
@@ -629,8 +630,8 @@ export function apiSections(): ApiSection[] {
         'An answer is the result, or an error with a code: invalidArguments (an argument has the wrong shape or range), notAvailable (something named is not in the state asked about), failed (the computation gave up).',
       ...queries.map(queryText),
     ]),
-    section('operations', 'Operations of the app', 'What only the running app can do (a picture of the model), each a tool of its own.', [
-      'What only the running app can do. Each is a tool of its own, named as here, with these arguments; without a connected app it answers notAvailable. Every operation takes `at` and `after` as the tool query does: its other arguments are checked in that state and it works on it, and nothing is written.',
+    section('operations', 'Operations of the app', 'What only the running app can do (a picture of the model, what the user selected), each a tool of its own.', [
+      'What only the running app can do. Each is a tool of its own, named as here, with these arguments; without a connected app it answers notAvailable. An operation that lists `at` and `after` takes them as the tool query does: its other arguments are checked in that state and it works on it, and nothing is written. One that answers about the app as it is now (get_selection) takes neither.',
       ...(operations.length ? operations.map(operationText) : ['(none yet)']),
     ]),
     section('catalogs', 'Catalogs', 'The tables of data of the engine (hardware, materials), read by the query catalog.', [

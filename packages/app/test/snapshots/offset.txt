@@ -146,6 +146,12 @@
   view: fit [-20, -20, -20] .. [20, 20, 20]
   view: lookAt origin [0, 0, 0] normal [0, 0, 1]
   view: fit [-20, -20, -20] .. [20, 20, 20]
+  view: mark at [0, 0, 0]
+  view: mark at [40, 30, 0]
+  view: mark at [10, 10, 0]
+  view: mark at [30, 10, 0]
+  view: mark at [30, 20, 0]
+  view: mark removed
 
 === 2. an offset typed: the profile shrinks in the preview, the draft has the field
   engine: preview({"type":"addFeature","feature":{"id":"e1","name":"Extrude 1","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}],"offset":-2},"operation":"new"},"index":1}, "e1") -> ok
@@ -822,6 +828,7 @@
     + line #26303c width 1.5: 144 numbers, sum 7432
     - bodies: e1
     - line #26303c width 1.5: 72 numbers, sum 4060
+  view: mark at [17, 0, 10]
 
 === 11. a second curve joined to the first: an L
   engine: getState("s1")  (x4)
@@ -840,6 +847,7 @@
     + line #0ea5e9 width 4 onTop: 6 numbers, sum 270
     - line #64748b width 2 onTop: 30 numbers, sum 1800
     - line #0ea5e9 width 4 onTop: 6 numbers, sum 200
+  view: mark at [27, 11, 10]
 
 === 12. a click on a chosen curve drops it
   engine: getState("s1")  (x2)
@@ -861,6 +869,7 @@
     + line #64748b width 2 onTop: 30 numbers, sum 1800
     - line #64748b width 2 onTop: 24 numbers, sum 1400
     - line #0ea5e9 width 4 onTop: 6 numbers, sum 270
+  view: mark at [17, 18, 10]
 
 === 14. the thickness typed: the preview follows
   engine: preview({"type":"addFeature","feature":{"id":"e2","name":"Extrude 2","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":10},"profile":{"type":"wall","sketch":"s1","curves":["c5"],"thickness":3},"operation":"new"},"index":2}, "e2") -> ok
@@ -1118,6 +1127,8 @@
     - bodies: e1
     - line #26303c width 1.5: 72 numbers, sum 4060
     - line #64748b width 2 onTop: 36 numbers, sum 2160
+  view: mark at [17, 0, 10]
+  view: mark at [27, 11.5, 10]
 
 === 19. the wall selected: its summary names the thickness and the curves
   timeline:

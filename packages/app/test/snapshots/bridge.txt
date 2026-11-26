@@ -213,8 +213,16 @@
   view: fit [-20, -20, -20] .. [20, 20, 20]
   view: lookAt origin [0, 0, 0] normal [0, 0, 1]
   view: fit [-20, -20, -20] .. [20, 20, 20]
+  view: mark at [0, 0, 0]
+  view: mark at [40, 30, 0]
+  view: mark at [90, 15, 0]
+  view: mark at [95, 15, 0]
+  view: mark at [20, 15, 0]
+  view: mark removed
   view: lookAt origin [0, 0, 0] normal [0, 0, 1]
   view: fit [0, 0, 0] .. [95, 30, 10]
+  view: mark at [30, 10, 0]
+  view: mark at [60, 25, 0]
 
 === 2. the app is connected to the bridge
   toolbar:
@@ -678,6 +686,8 @@
     - bodies: e1, e2, e3
     - line #26303c width 1.5: 744 numbers, sum 98605.758
     + fill #2563eb opacity 0.45 onTop at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 955
+  view: mark removed
+  view: mark at [60, 25, 0]
 
 === 11. a load: the app starts over with the new document
   engine: load("{\"schemaVersion\":10,\"settings\":{\"chordTolerance\":0.01},\"parameters\":[],\"checks\":[],\"features\":[],\"bodyProperties\":{},\"mechanism\":{\"links\":{},\"joints\":{}},\"meshes\":{},\"documents\":{}}") -> ok
@@ -858,6 +868,7 @@
     - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 35.044
     - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 35.044
     - fill #2563eb opacity 0.45 onTop at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 955
+  view: mark removed
 
 === 12. undo by the AI after a load has nothing to undo, and says so
   status: AI: undo failed: there is nothing to undo  [error]

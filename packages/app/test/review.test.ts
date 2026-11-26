@@ -9,11 +9,15 @@ import { jointPicksFace, takeMechanismSelection, type MechanismPanel } from '../
 import { CONTROLS, type Form } from '../src/queries/controls';
 import { FEATURE_UI } from '../src/features/index';
 import type { DraftMode } from '../src/features/draft';
-import type { Command, PatternFeature, SketchFeature, SketchOutline } from '@trymesh/engine';
+import type { Command, EngineState, PatternFeature, SketchFeature, SketchOutline } from '@trymesh/engine';
+import type { AppSelection } from '@trymesh/mcp/get-selection';
+import { callTool } from '@trymesh/mcp';
+import { type SpotHost, spotAt } from '../src/selection';
+import type { SketchContext } from '../src/sketch-mode';
 import type { PanelHost } from '../src/host';
 import { emptyDocument, emptySketch, entryInput } from '@trymesh/engine';
 import { SKETCH_TOOL_UI, type SketchPlaceTool } from '../src/sketch-tools';
-import { type Harness, client, startApp } from './app-kit';
+import { type Harness, client, outside, startApp } from './app-kit';
 
 let harness: Harness | undefined;
 afterEach(() => {
@@ -450,5 +454,162 @@ describe('the import of an outline in the app: the review of the implementation 
     const points = entryEntities(feature, (kind) => kind === 'point').map((entity) => entity.id);
     expect(points.slice(0, 4)).toEqual(['o/a1/center', 'o/c1/center', 'o/c2/center', 'o/c3/center']);
     expect(points).toHaveLength(100);
+  });
+});
+
+describe('the selection for the AI: the review of D74', () => {
+  const DISTANCE = 'Distance (mm or an expression; negative = against the normal)';
+  const at = (x: number, y: number, z = 0) => client([x, y, z]);
+  // the selection as the operation get_selection gets it from the app, rounded as it rounds
+  const selection = (h: Harness): AppSelection => JSON.parse(JSON.stringify((h.app as { selection(): AppSelection }).selection(), (_, value) => (typeof value === 'number' ? Math.round(value * 1e6) / 1e6 + 0 : value)));
+  // a plate 40 × 30 × 10 (e1), a pin r5 × 10 at (90, 15) (e2), a block 30..60 × 10..25 × 8 (e3)
+  const threeBodies = async (): Promise<Harness> => {
+    const h = (harness = await startApp());
+    h.press('toolbar', 'Sketch');
+    h.press('panel', 'XY');
+    h.press('toolbar', 'Rectangle');
+    h.click(at(0, 0));
+    h.click(at(40, 30));
+    h.press('toolbar', 'Circle');
+    h.click(at(90, 15));
+    h.click(at(95, 15));
+    h.press('toolbar', 'Finish sketch');
+    h.press('toolbar', 'Extrude');
+    h.click(at(20, 15));
+    h.press('panel', 'OK');
+    h.press('toolbar', 'Extrude');
+    h.click(at(90, 15));
+    h.press('panel', 'OK');
+    h.press('toolbar', 'Sketch');
+    h.press('panel', 'XY');
+    h.press('toolbar', 'Rectangle');
+    h.click(at(30, 10));
+    h.click(at(60, 25));
+    h.press('toolbar', 'Finish sketch');
+    h.press('toolbar', 'Extrude');
+    h.type(h.field(DISTANCE), '8');
+    h.press('panel', 'OK');
+    return h;
+  };
+  const TOP = { body: 'e1', face: { feature: 'e1', role: 'endCap' }, planar: true, normal: [0, 0, 1] };
+
+  // the click named the edge the full pick finds, while the click took the face (a plane was awaited)
+  it('the hit of a click is what the click selected: no edge while a feature waits for its plane', async () => {
+    const h = await threeBodies();
+    h.press('toolbar', 'Sketch');
+    h.click(at(20, 1, 10)); // the top of the plate, 1 mm from its front edge
+    const s = selection(h);
+    expect(s.mode).toMatchObject({ kind: 'sketch' });
+    expect(s.click).toEqual({ point: [20, 1, 10], hit: TOP });
+  });
+
+  // the click kept naming a body an undo had taken away, and its mark stayed
+  it('a click on what is gone is stale: only its point, and the mark leaves the view', async () => {
+    const h = await threeBodies();
+    h.click(at(92, 15, 10)); // the rim of the top of the pin
+    expect(selection(h).click?.hit).toMatchObject({ body: 'e2', kind: 'circle' });
+    const point = selection(h).click?.point;
+    for (let i = 0; i < 5; i++) h.key('z', { ctrlKey: true });
+    expect(h.engine.getState().document.features.map((f) => f.id)).toEqual(['s1']);
+    expect(selection(h).click).toEqual({ point, stale: true });
+    expect(h.view.marked).toBeUndefined();
+    // a redo does not bring it back: the click was read as gone
+    h.key('z', { ctrlKey: true, shiftKey: true });
+    expect(selection(h).click).toEqual({ point, stale: true });
+  });
+
+  // the AI's new_document is a command, not a load: the click is stale then (the bridge removes it, app.test.ts)
+  it('a document emptied by a command past the app: the click is stale', async () => {
+    const h = await threeBodies();
+    h.click(at(20, 15, 10));
+    expect(callTool(h.engine, 'new_document', { discard: true }).ok).toBe(true);
+    expect(selection(h).click).toEqual({ point: [20, 15, 10], stale: true });
+    expect(h.view.marked).toBeUndefined();
+  });
+
+  // the point and the normal were only where the view drew them; a pose about X turns the normal
+  it('under a pose the point and the normal of a face and the point of an edge are given as modelled too', async () => {
+    const h = await threeBodies();
+    outside(h, {
+      type: 'batch',
+      commands: [
+        { type: 'setLink', id: 'base', bodies: ['e1'] },
+        { type: 'setLink', id: 'arm', bodies: ['e3'] },
+        { type: 'setJoint', id: 'hinge', joint: { type: 'revolute', parent: 'base', child: 'arm', axis: { kind: 'base', axis: 'X' }, lower: -Math.PI, upper: Math.PI, value: Math.PI / 4 } as never },
+      ],
+    });
+    // an eighth of a turn about X takes (y, z) to (y − z, y + z) / √2: the top of the block (z = 8) faces (0, −1, 1) / √2
+    const turned = (x: number, y: number, z: number) => at(x, (y - z) * Math.SQRT1_2, (y + z) * Math.SQRT1_2);
+    const c = Math.round(Math.SQRT1_2 * 1e6) / 1e6;
+    h.click(turned(45, 17.5, 8));
+    const face = selection(h).click;
+    expect(face).toMatchObject({ hit: { body: 'e3', face: { feature: 'e3', role: 'endCap' }, planar: true, normal: [0, -c, c] }, pose: { hinge: 0.785398 }, modelled: { point: [45, 17.5, 8], normal: [0, 0, 1] } });
+    expect(face?.point).toEqual([45, Math.round(9.5 * Math.SQRT1_2 * 1e6) / 1e6, Math.round(25.5 * Math.SQRT1_2 * 1e6) / 1e6]);
+    // the edge of that face at x = 30
+    h.click(turned(30, 17.5, 8));
+    const edge = selection(h).click;
+    expect(edge?.hit).toMatchObject({ body: 'e3', kind: 'line' });
+    expect(edge?.modelled).toEqual({ point: [30, 17.5, 8] });
+    // a plane is not posed: no note
+    h.click({ x: -20, y: 4 });
+    expect(selection(h).click).toEqual({ point: [-23, 0, 10], hit: { plane: { kind: 'base', plane: 'XZ' }, normal: [0, -1, 0] } });
+  });
+
+  // a click in a form named a body of its preview as if the document had it
+  it('a click on the preview of a form says so, and is stale once the form is cancelled', async () => {
+    const h = await threeBodies();
+    h.press('toolbar', 'Extrude'); // the region of the block's sketch, which the form takes at once
+    h.type(h.field(DISTANCE), '30');
+    h.timers();
+    h.click(at(45, 17, 30)); // the top of the preview
+    const s = selection(h);
+    expect(s.mode).toMatchObject({ kind: 'form', type: 'extrude', editing: false });
+    expect(s.click).toMatchObject({ point: [45, 17, 30], hit: { body: 'e4', face: { feature: 'e4', role: 'endCap' } }, preview: true });
+    h.press('panel', 'Cancel');
+    expect(selection(h).click).toEqual({ point: [45, 17, 30], stale: true });
+  });
+
+  // second round: a click in the form of a feature being edited was called a preview, and a click
+  // on a preview turned stale after OK
+  it('a click on the preview is an ordinary hit once the form is confirmed, and editing a feature is no preview', async () => {
+    const h = await threeBodies();
+    h.press('toolbar', 'Extrude');
+    h.type(h.field(DISTANCE), '30');
+    h.timers();
+    h.click(at(45, 17, 30));
+    expect(selection(h).click).toMatchObject({ preview: true });
+    h.press('panel', 'OK');
+    const after = selection(h).click;
+    expect(after).toMatchObject({ point: [45, 17, 30], hit: { body: 'e4', face: { feature: 'e4', role: 'endCap' } } });
+    expect(after?.preview).toBeUndefined();
+    expect(after?.stale).toBeUndefined();
+    // the same feature opened again: its body is in the document
+    const name = (h.engine.getState().document.features.find((feature) => feature.id === 'e4') as { name: string }).name;
+    h.row(name).dispatchEvent(new (h.document.defaultView as unknown as { MouseEvent: typeof MouseEvent }).MouseEvent('dblclick'));
+    h.timers();
+    expect(selection(h).mode).toMatchObject({ kind: 'form', editing: true });
+    h.click(at(45, 17, 30));
+    const edited = selection(h).click;
+    expect(edited?.hit).toMatchObject({ body: 'e4' });
+    expect(edited?.preview).toBeUndefined();
+  });
+
+  // a sketch seen edge-on dropped the body the click hit
+  it('in a sketch whose plane the ray does not meet, the hit stays without the point in the sketch', () => {
+    const solid = { positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]), triangles: new Uint32Array([0, 1, 2]), faceIds: new Uint32Array([0]) };
+    const name = { feature: 'b', role: 'endCap' } as const;
+    const state = { document: { mechanism: { links: {}, joints: {} } }, evaluation: { bodies: { b: { solid, edges: [], faces: [{ id: 0, planar: true }] } }, faceNames: [name] } } as unknown as EngineState;
+    const host: SpotHost = {
+      view: () => state,
+      pose: () => () => ({}),
+      shownMechanism: () => undefined,
+      sketch: { kind: 'sketch', id: 's', tool: 'select', clicks: [], selection: [] },
+      sketchContext: () => ({ frame: { origin: [0, 0, 0], x: [1, 0, 0], y: [0, 0, 1], normal: [0, -1, 0] } }) as SketchContext,
+      pick: () => ({ kind: 'face', body: 'b', faceId: 0, name, planar: true }),
+      planePoint: () => undefined,
+      pixelSize: () => 1,
+    };
+    const view = { pickBody: () => ({ body: 'b', triangle: 0, point: [0.2, 0.2, 0] as [number, number, number], depth: 1 }), projector: () => () => ({ x: 0, y: 0, depth: 0 }) };
+    expect(spotAt(host, view, { clientX: 0, clientY: 0 })).toEqual({ point: [0.2, 0.2, 0], hit: { body: 'b', face: name, planar: true, normal: [0, 0, 1] } });
   });
 });

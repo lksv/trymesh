@@ -26,6 +26,7 @@ import {
   takenOver,
 } from '@trymesh/engine';
 import { type BridgeConnection, type BridgeStatus, MUTATING, changesDocument, connectBridge, outlineSaid } from '@trymesh/mcp/bridge-client';
+import type { AppMode, AppSelection, SelectionSpot } from '@trymesh/mcp/get-selection';
 import type { ViewCapability } from '@trymesh/mcp/view-image';
 import { byId, download, h } from './dom';
 import { insideFill, keptSegments } from './draw';
@@ -40,6 +41,7 @@ import { drawPicture, savePicture, viewCapability } from './picture';
 import { type Pose, holdsPose, placedSegments, poseOf } from './pose';
 import { sketchPanel, updateSketchStatus } from './panels/sketch';
 import { type SceneHost, modelBounds, modelScene, shownCut } from './scene';
+import { type Want, entityOf, namesFeature, pickAnswer, spotAt, spotStillThere } from './selection';
 import { type SketchContext, type SketchHost, type SketchMode, type SketchState, deleteSelection, dropPoint, setTool, settleSketch, sketchClick, sketchContextOf, sketchDown, sketchEscape, sketchFinish, sketchMode, sketchMove, sketchScene } from './sketch-mode';
 import { SKETCH_TOOL_UI, type SketchToolName } from './sketch-tools';
 import { type View, Viewport } from './viewport';
@@ -77,6 +79,10 @@ export class App implements SketchHost, SceneHost {
   readonly sketching: SketchState = { tools: {} }; // remembered between sketches
   private contextCache?: SketchContext | null;
   private down?: { x: number; y: number; button: number };
+  // For the AI (D74): the last click in the view, as it was then (marked in the view), and where
+  // the pointer is while it is over the view.
+  private click?: SelectionSpot;
+  private pointerAt?: { clientX: number; clientY: number };
 
   // `view`: the view to draw into and to pick in; the real one by default (a test passes its own).
   constructor(readonly engine: Engine, view?: View) {
@@ -92,6 +98,7 @@ export class App implements SketchHost, SceneHost {
     canvas.addEventListener('pointerup', (event) => this.onUp(event));
     // a drag interrupted by the system (pointer lost) is discarded; after a normal release none is running any more
     for (const type of ['pointercancel', 'lostpointercapture']) canvas.addEventListener(type, () => this.cancelDrag() && this.refresh());
+    canvas.addEventListener('pointerleave', () => (this.pointerAt = undefined));
     window.addEventListener('keydown', (event) => this.onKey(event));
     this.say('Start with a sketch: the Sketch button and a choice of plane.');
     this.refresh();
@@ -195,7 +202,7 @@ export class App implements SketchHost, SceneHost {
     let restore: (() => void) | undefined;
     this.bridge = connectBridge(this.engine, {
       // what the operations of the app need of it (AppHost), with its engine
-      host: { engine: this.engine, view: this.pictures },
+      host: { engine: this.engine, view: this.pictures, selection: { selection: () => this.selection() } },
       onStatus: (status) => {
         this.bridgeStatus = status;
         if (status === 'connected') this.say('Connected to the MCP server: the AI sees and changes this document.');
@@ -235,6 +242,8 @@ export class App implements SketchHost, SceneHost {
           const said = outlineSaid(outcome.result);
           return said ? this.say(said.text, said.error) : undefined;
         }
+        // the AI emptied the document (D74): the click was on the document that went
+        if (name === 'new_document' && outcome.ok) this.markClick(undefined);
         if (name === '_load') {
           if (!outcome.ok) restore?.();
           restore = undefined;
@@ -452,11 +461,12 @@ export class App implements SketchHost, SceneHost {
 
   // Returns the UI to its initial state and gives a function that restores the original state.
   private swapUi(): () => void {
-    const saved = { mode: this.mode, marker: this.marker, hidden: [...this.hidden], pending: this.pending, selectedFeature: this.selectedFeature };
+    const saved = { mode: this.mode, marker: this.marker, hidden: [...this.hidden], pending: this.pending, selectedFeature: this.selectedFeature, click: this.click };
     this.resetUi();
     return () => {
       Object.assign(this, { mode: saved.mode, marker: saved.marker, pending: saved.pending, selectedFeature: saved.selectedFeature });
       for (const id of saved.hidden) this.hidden.add(id);
+      this.markClick(saved.click);
     };
   }
 
@@ -467,6 +477,7 @@ export class App implements SketchHost, SceneHost {
     this.selectedFeature = undefined;
     this.selected = undefined;
     this.hidden.clear();
+    this.markClick(undefined); // the click was on the document that goes
   }
 
   // ---------------------------------------------------------------- timeline
@@ -623,7 +634,7 @@ export class App implements SketchHost, SceneHost {
   }
 
   // What is under the cursor: an edge takes precedence over a face, a face over a plane.
-  pick(event: PointerEvent, want: { edges?: boolean; faces?: boolean; planes?: boolean }): Pick | undefined {
+  pick(event: { clientX: number; clientY: number }, want: { edges?: boolean; faces?: boolean; planes?: boolean }): Pick | undefined {
     const state = this.view();
     const pose = this.pose(); // the bodies are picked where the view draws them (D49)
     const hit = this.viewport.pickBody(event.clientX, event.clientY); // the view skips what is cut away
@@ -700,6 +711,7 @@ export class App implements SketchHost, SceneHost {
   // ---------------------------------------------------------------- events of the view
 
   private onDown(event: PointerEvent): void {
+    this.pointerAt = { clientX: event.clientX, clientY: event.clientY };
     // Alt/Option + drag belongs to the view (rotating without a mouse), not to selection or drawing.
     this.down = { x: event.clientX, y: event.clientY, button: event.altKey ? -1 : event.button };
     const m = this.mode;
@@ -708,6 +720,7 @@ export class App implements SketchHost, SceneHost {
   }
 
   private onMove(event: PointerEvent): void {
+    this.pointerAt = { clientX: event.clientX, clientY: event.clientY };
     const m = this.mode;
     if (event.buttons !== 0 && !(m.kind === 'sketch' && m.drag)) return; // rotating and panning the view
     if (m.kind === 'sketch') {
@@ -742,9 +755,12 @@ export class App implements SketchHost, SceneHost {
       if (drag.moved) return dropPoint(this, m, drag.point, event);
     }
     if (!down || down.button !== 0 || event.button !== 0 || Math.hypot(event.clientX - down.x, event.clientY - down.y) > 4) return;
-    if (m.kind === 'sketch') return sketchClick(this, m, event);
     // a form gets its clicks from the app: the bare event, or what it asked to be picked
     const wanted = isDraft(m) ? m.form.picks?.(m) : undefined;
+    // the click as the AI reads it (D74), taken before the click acts: what it was on, not what it
+    // made, picked as the click picks (a form that asks for no pick: as the model picks)
+    this.recordClick(event, wanted ? { ...wanted } : this.modelPicks());
+    if (m.kind === 'sketch') return sketchClick(this, m, event);
     if (isDraft(m) && !wanted) return m.form.click?.(m, event, undefined, this);
     const pick = this.pick(event, isDraft(m) ? { ...wanted } : this.modelPicks());
     if (isDraft(m)) return m.form.click?.(m, event, pick, this);
@@ -778,6 +794,7 @@ export class App implements SketchHost, SceneHost {
       event.preventDefault();
       if (!drafting) this.engine.redo();
     } else if (event.key === 'Escape') {
+      this.markClick(undefined); // every Escape removes the mark of the click (D74), besides its step back
       if (this.cancelDrag()) this.refresh();
       else if (m.kind === 'sketch') {
         sketchEscape(m);
@@ -791,6 +808,63 @@ export class App implements SketchHost, SceneHost {
       event.preventDefault();
       deleteSelection(this, m);
     } else if (event.key === 'Enter' && m.kind === 'sketch' && sketchFinish(this, m)) event.preventDefault(); // not also a click of the button in focus
+  }
+
+  // ---------------------------------------------------------------- the selection for the AI (D74)
+
+  // The click as it was: in a form of a new feature whose view shows its preview, a hit on the
+  // previewed feature says so (the document does not have it yet; a feature being edited is in it).
+  private recordClick(event: { clientX: number; clientY: number }, want: Want): void {
+    const m = this.mode;
+    const spot = spotAt(this, this.viewport, event, want);
+    const previewed = spot && isDraft(m) && !m.editing && m.preview !== undefined && this.view() === m.preview && namesFeature(spot, m.draft.id);
+    this.markClick(spot && previewed ? { ...spot, preview: true } : spot);
+  }
+
+  // The click the AI is given, and its mark in the view; undefined removes both.
+  private markClick(spot: SelectionSpot | undefined): void {
+    if (!spot && !this.click) return;
+    this.click = spot;
+    this.viewport.mark(spot?.point);
+  }
+
+  // What the operation get_selection answers: the mode, the selection on the timeline, in the view
+  // and in the sketch, the last click, and what is under the pointer now.
+  selection(): AppSelection {
+    const m = this.mode;
+    const mode: AppMode =
+      m.kind === 'sketch'
+        ? { kind: 'sketch', sketch: m.id, tool: m.tool }
+        : isDraft(m)
+          ? { kind: 'form', type: (m.draft as Feature).type, feature: m.draft.id, editing: m.editing }
+          : { kind: 'model', ...(this.marker ? { at: this.marker } : {}), ...(this.pending ? { pending: this.pending } : {}) };
+    const feature = this.feature(this.selectedFeature);
+    const view = m.kind === 'sketch' ? this.sketchContext()?.view : undefined;
+    const selected = m.kind === 'sketch' && view ? m.selection.flatMap((id) => entityOf(view, id) ?? []) : [];
+    const pointer = this.pointerAt && spotAt(this, this.viewport, this.pointerAt);
+    // A click whose body, face, edge, plane or sketch is gone (undo, removal) keeps only its point,
+    // and its mark leaves the view. It is looked up in the state shown (a model rolled back, the
+    // model before a form's feature) and in the whole document; a hit on a preview in the state
+    // shown only while its form is open; once the form is gone, a preview hit the document now has
+    // is an ordinary hit (second round of the review: after OK with the model rolled back it
+    // turned stale for good).
+    const click = this.click;
+    const inForm = isDraft(m);
+    if (click && !click.stale && !spotStillThere(click, this.view()) && ((click.preview && inForm) || !spotStillThere(click, this.engine.getState()))) {
+      this.click = { point: click.point, stale: true };
+      this.viewport.mark(undefined);
+    } else if (click?.preview && !inForm) {
+      const { preview: _, ...kept } = click;
+      this.click = kept;
+    }
+    return {
+      mode,
+      ...(feature ? { feature: { id: feature.id, type: feature.type, name: feature.name } } : {}),
+      ...(this.selected ? { pick: pickAnswer(this.selected) } : {}),
+      ...(m.kind === 'sketch' && selected.length > 0 ? { sketch: { sketch: m.id, selected } } : {}),
+      ...(this.click ? { click: this.click } : {}),
+      ...(pointer ? { pointer } : {}),
+    };
   }
 
   // ---------------------------------------------------------------- new sketch and plane

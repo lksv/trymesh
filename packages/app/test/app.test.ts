@@ -8,7 +8,7 @@
 // has to change one has changed behaviour, and says in its message what and why. To write the
 // snapshots again: `npx vitest run packages/app/test/app.test.ts -u`.
 import { writeFileSync } from 'node:fs';
-import { type Command, type PatternFeature, type PlaneFeature, emptyDocument, emptySketch } from '@trymesh/engine';
+import { type Command, type Frame, type PatternFeature, type PlaneFeature, emptyDocument, emptySketch } from '@trymesh/engine';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { startBridge } from '../../mcp/src/bridge';
 import { readZip } from '../../engine/test/zip-reader';
@@ -1872,6 +1872,112 @@ describe('the app, driven as a user drives it', () => {
       await until(() => !bridge.connected(), 'the app to disconnect');
       h.record('the connection is switched off');
       await matches(h, 'bridge');
+    } finally {
+      await bridge.close();
+    }
+  });
+
+  it('the selection for the AI (D74): the mode, the picks, the last click marked in the view, the pointer, a sketch, a pose; at and after refused', async () => {
+    const bridge = await startBridge(0);
+    bridgeUrl.value = `http://127.0.0.1:${bridge.port}`;
+    try {
+      const h = await threeBodies();
+      const status = (): string => h.document.getElementById('status')?.textContent ?? '';
+      // the answer of the operation over the bridge: its data, or the text of a refusal
+      const ask = async (args: Record<string, unknown> = {}): Promise<unknown> => {
+        const outcome = await bridge.call('get_selection', args);
+        return outcome.ok ? (outcome.result as { kind: string; data: unknown }).data : outcome.error;
+      };
+      const leave = (): void => h.pointer('pointerleave', at(0, 0));
+      // the top face of the plate, its edge along the front (y = 0) and along the right (x = 40)
+      const TOP = { body: 'e1', face: { feature: 'e1', role: 'endCap' }, planar: true };
+      const FRONT = { body: 'e1', edge: { a: { feature: 'e1', role: 'endCap' }, b: { feature: 'e1', role: 'side', curve: 'c1' } }, kind: 'line' };
+      const RIGHT = { body: 'e1', edge: { a: { feature: 'e1', role: 'endCap' }, b: { feature: 'e1', role: 'side', curve: 'c2' } }, kind: 'line' };
+      h.press('toolbar', 'AI');
+      await until(() => bridge.connected() && status().startsWith('Connected'), 'the app to connect');
+      leave();
+      h.record('a model of three bodies, the app connected, the pointer outside the view');
+      expect(await ask()).toEqual({ mode: { kind: 'model' }, click: { point: [60, 25, 0], sketch: { sketch: 's2', at: [60, 25] } } });
+
+      h.click(at(20, 15, 10));
+      leave();
+      h.record('a click on the top of the plate: it is selected, and the click is marked in the view');
+      expect(await ask()).toEqual({ mode: { kind: 'model' }, pick: TOP, click: { point: [20, 15, 10], hit: { ...TOP, normal: [0, 0, 1] } } });
+      h.click(at(20, 0, 10));
+      leave();
+      h.record('a click on an edge of the plate');
+      expect(await ask()).toEqual({ mode: { kind: 'model' }, pick: FRONT, click: { point: [20, 0, 10], hit: FRONT } });
+      h.move(at(10, 20, 10));
+      h.record('the pointer over the top of the plate: nothing changes in the app');
+      expect(await ask()).toEqual({ mode: { kind: 'model' }, pick: FRONT, click: { point: [20, 0, 10], hit: FRONT }, pointer: { point: [10, 20, 10], hit: { ...TOP, normal: [0, 0, 1] } } });
+      expect(await ask({ at: 'e1' })).toBe('invalidArguments: get_selection: at: the operation answers about the app as it is now, so it takes no at and no after');
+      expect(await ask({ after: { type: 'setParameter', name: 'a', expr: '1' } })).toBe('invalidArguments: get_selection: after: the operation answers about the app as it is now, so it takes no at and no after');
+      expect(await ask({ at: null, after: null })).toEqual({ mode: { kind: 'model' }, pick: FRONT, click: { point: [20, 0, 10], hit: FRONT }, pointer: { point: [10, 20, 10], hit: { ...TOP, normal: [0, 0, 1] } } });
+      h.click(at(150, 100, 0));
+      leave();
+      h.record('a click on empty space: the selection and the click go, the mark is removed');
+      expect(await ask()).toEqual({ mode: { kind: 'model' } });
+      h.click({ x: -20, y: 4 });
+      leave();
+      h.record('a click on a base plane');
+      expect(await ask()).toEqual({ mode: { kind: 'model' }, pick: { plane: { kind: 'base', plane: 'XZ' } }, click: { point: [-23, 0, 10], hit: { plane: { kind: 'base', plane: 'XZ' }, normal: [0, -1, 0] } } });
+      h.key('Escape');
+      h.record('Escape: the selection and the mark of the click go');
+      expect(await ask()).toEqual({ mode: { kind: 'model' } });
+
+      h.row('Extrude 1').click();
+      h.rowIcon('Extrude 2', '⇤');
+      h.press('toolbar', 'Sketch');
+      h.record('a feature selected on the timeline, the marker after Extrude 2, a sketch waiting for its plane');
+      expect(await ask()).toEqual({ mode: { kind: 'model', at: 'e2', pending: 'sketch' }, feature: { id: 'e1', type: 'extrude', name: 'Extrude 1' } });
+      h.key('Escape');
+
+      doubleClick(h, 'Sketch 2');
+      h.click(point(h, 's2', 'p6'));
+      h.record('in Sketch 2: a click on a corner selects it; the click has the point of the sketch nearest to it');
+      expect(await ask()).toEqual({ mode: { kind: 'sketch', sketch: 's2', tool: 'select' }, feature: { id: 's2', type: 'sketch', name: 'Sketch 2' }, sketch: { sketch: 's2', selected: [{ id: 'p6', kind: 'point', source: 'own' }] }, click: { point: [60, 10, 0], sketch: { sketch: 's2', at: [60, 10], nearest: { id: 'p6', kind: 'point', source: 'own', distance: 0 } } }, pointer: { point: [60, 10, 0], sketch: { sketch: 's2', at: [60, 10], nearest: { id: 'p6', kind: 'point', source: 'own', distance: 0 } } } });
+      const plane = h.engine.getState().evaluation.features.s2.plane as Frame;
+      h.click(onPlane(plane, 45, 25), { shiftKey: true });
+      h.move(onPlane(plane, 45, 40));
+      h.record('a line added to the selection (the click has it as the nearest entity), the pointer above it');
+      expect(await ask()).toEqual({ mode: { kind: 'sketch', sketch: 's2', tool: 'select' }, feature: { id: 's2', type: 'sketch', name: 'Sketch 2' }, sketch: { sketch: 's2', selected: [{ id: 'p6', kind: 'point', source: 'own' }, { id: 'c8', kind: 'line', source: 'own' }] }, click: { point: [45, 25, 0], hit: { ...RIGHT, point: [40, 21, 10] }, sketch: { sketch: 's2', at: [45, 25], nearest: { id: 'c8', kind: 'line', source: 'own', distance: 0 } } }, pointer: { point: [45, 40, 0], hit: { ...RIGHT, point: [40, 30, 10] }, sketch: { sketch: 's2', at: [45, 40], nearest: { id: 'c8', kind: 'line', source: 'own', distance: 15 } } } });
+      // the edge of the plate along the front at its bottom, which the axis X runs along
+      const BOTTOM = { body: 'e1', edge: { a: { feature: 'e1', role: 'side', curve: 'c1' }, b: { feature: 'e1', role: 'startCap' } }, kind: 'line', point: [20, 0, 0] };
+      const AXIS = { point: [20, 0, 0], hit: BOTTOM, sketch: { sketch: 's2', at: [20, 0], nearest: { id: 'origin/x', kind: 'line', source: 'reference', distance: 0 } } };
+      h.click(onPlane(plane, 20, 0));
+      leave();
+      h.record('a click on the axis X of the origin: reference geometry');
+      expect(await ask()).toEqual({ mode: { kind: 'sketch', sketch: 's2', tool: 'select' }, feature: { id: 's2', type: 'sketch', name: 'Sketch 2' }, sketch: { sketch: 's2', selected: [{ id: 'origin/x', kind: 'line', source: 'reference' }] }, click: AXIS });
+      h.press('toolbar', 'Finish sketch');
+      h.record('the sketch finished: the click made in it stays');
+      expect(await ask()).toEqual({ mode: { kind: 'model', at: 'e2' }, feature: { id: 's2', type: 'sketch', name: 'Sketch 2' }, click: AXIS });
+      // ----- a pose: the click is where the view draws the turned arm
+      h.press('timeline', 'Show the whole model');
+      h.press('panel', 'New link');
+      tick(h, 'Extrude 1');
+      h.press('panel', 'OK');
+      h.press('panel', 'New link');
+      tick(h, 'Extrude 3');
+      h.press('panel', 'OK');
+      h.press('panel', 'New joint');
+      h.press('panel', 'OK');
+      outside(h, { type: 'setPose', values: { joint1: Math.PI / 2 } });
+      h.click(at(-17.5, 45, 8));
+      leave();
+      h.record('the arm turned by 90° about Z: a click on its top where the view draws it');
+      expect(await ask()).toEqual({ mode: { kind: 'model' }, feature: { id: 's2', type: 'sketch', name: 'Sketch 2' }, pick: { body: 'e3', face: { feature: 'e3', role: 'endCap' }, planar: true }, click: { point: [-17.5, 45, 8], hit: { body: 'e3', face: { feature: 'e3', role: 'endCap' }, planar: true, normal: [0, 0, 1] }, pose: { joint1: 1.570796 }, modelled: { point: [45, 17.5, 8], normal: [0, 0, 1] } } });
+
+      h.click(at(20, 15, 10));
+      expect((await bridge.call('new_document', { discard: true })).ok).toBe(true);
+      leave();
+      h.record('the AI empties the document (new_document): the mark of the click is removed');
+      expect(await ask()).toEqual({ mode: { kind: 'model' } });
+      h.click({ x: -20, y: 4 });
+      h.press('toolbar', 'New');
+      leave();
+      h.record('a click on a base plane, then New: the mark of the click is removed');
+      expect(await ask()).toEqual({ mode: { kind: 'model' } });
+      await matches(h, 'selection');
     } finally {
       await bridge.close();
     }

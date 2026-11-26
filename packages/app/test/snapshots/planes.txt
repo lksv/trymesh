@@ -151,6 +151,11 @@
   view: fit [-20, -20, -20] .. [20, 20, 20]
   view: lookAt origin [0, 0, 0] normal [0, 0, 1]
   view: fit [-20, -20, -20] .. [20, 20, 20]
+  view: mark at [0, 0, 0]
+  view: mark at [40, 30, 0]
+  view: mark at [10, 15, 0]
+  view: mark at [13, 15, 0]
+  view: mark removed
 
 === 2. a new plane on XY: the buttons of the midplane and of the tilt
   engine: preview({"type":"addFeature","feature":{"id":"r1","name":"Plane 1","suppressed":false,"type":"plane","base":{"kind":"base","plane":"XY"},"offset":10},"index":2}, "r1") -> ok
@@ -281,6 +286,7 @@
     + fill #f97316 opacity 0.3 at [0, 0, 15] normal [0, 0, 1]: 8 numbers, sum 17.847
     + face e1 #1 #0ea5e9 opacity 0.3
     - fill #f97316 opacity 0.3 at [0, 0, 10] normal [0, 0, 1]: 8 numbers, sum 17.847
+  view: mark at [30, 25, 10]
 
 === 5. a tilt about the axis X by 30°: the preview draws the axis through the square
   engine: preview({"type":"addFeature","feature":{"id":"r1","name":"Plane 1","suppressed":false,"type":"plane","base":{"kind":"base","plane":"XY"},"offset":0,"midplaneWith":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}}},"index":2}, "r1") -> ok
@@ -687,6 +693,7 @@
     + fill #f97316 opacity 0.3 at [17.5, 2.01, 0] normal [0.866, 0.5, 0]: 8 numbers, sum 17.847
     + face e1 #6 #0ea5e9 opacity 0.3
     - face e1 #1 #0ea5e9 opacity 0.3
+  view: mark at [11.796, 17.394, 8.014]
 
 === 14. selected: the summary names the face of the axis
   engine: execute({"type":"addFeature","feature":{"id":"r2","name":"Plane 2","suppressed":false,"type":"plane","base":{"kind":"base","plane":"YZ"},"offset":0,"tilt":{"axis":{"kind":"face","body":"e1","face":{"feature":"e1","role":"side","curve":"c5"}},"angle":0.5235987755982988}},"index":3}) -> ok

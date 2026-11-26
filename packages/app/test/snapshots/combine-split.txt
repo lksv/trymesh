@@ -678,6 +678,7 @@
     - bodies: plate, block
     - line #26303c width 1.5: 216 numbers, sum 11261.4
     + face plate #1 #0ea5e9 opacity 0.3
+  view: mark at [35, 25, 10]
 
 === 11. OK: the split is in the document, the part above the plate a body of its own
   engine: preview({"type":"addFeature","feature":{"id":"s1","name":"Split 1","suppressed":false,"type":"split","body":"block","plane":{"kind":"face","body":"plate","face":{"feature":"plate","role":"endCap"}},"side":"forward"},"index":5}, "s1") -> ok

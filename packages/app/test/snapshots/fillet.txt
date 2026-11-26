@@ -158,6 +158,8 @@
   view: fit [-20, -20, -20] .. [20, 20, 20]
   view: lookAt origin [0, 0, 0] normal [0, 0, 1]
   view: fit [-20, -20, -20] .. [20, 20, 20]
+  view: mark at [0, 0, 0]
+  view: mark at [40, 30, 0]
   view: lookAt origin [0, 0, 0] normal [0, 0, 1]
   view: fit [0, 0, 0] .. [40, 30, 0]
 
@@ -198,6 +200,7 @@
     -   input.value value="2" title="mm, or an expression"
   status: Click a point where two lines meet.  [error]
   view: 1 scene(s) set
+  view: mark at [20, 15, 0]
 
 === 6. a click on the corner: the arc, the lines shortened, the extrusion patched; the status says so
   engine: diagnoseSketch("s1")
@@ -265,6 +268,7 @@
     + fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 34 numbers, sum 4021.446
     + label "R5" driving at [38.536, 28.536, 0]
     - fill #2563eb opacity 0.1 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 530
+  view: mark at [40, 30, 0]
 
 === 7. the same corner again is refused with the reason
   engine: diagnoseSketch("s1")
@@ -283,6 +287,7 @@
   scene:
     + points #16a34a size 12: 3 numbers, sum 0
     - points #16a34a size 12: 3 numbers, sum 100
+  view: mark at [0, 0, 0]
 
 === 9. a line and a point selected: the row Re-point offers the start and the end, the nearer chosen
   engine: getState("s1")
@@ -350,6 +355,9 @@
     - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 17.5
     - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 17.5
     - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 17.5
+  view: mark at [30, 45, 0]
+  view: mark at [20, 0, 0]
+  view: mark at [30, 45, 0]
 
 === 10. the start of the line re-pointed: the line keeps its ID, the region it closed is gone
   engine: getState("s1")
@@ -457,6 +465,10 @@
     - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 21.073
     - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 21.073
     - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 21.073
+  view: mark at [70, 10, 0]
+  view: mark at [80, 10, 0]
+  view: mark at [70, 20, 0]
+  view: mark at [30, 45, 0]
 
 === 12. the circle moved onto the point
   engine: getState("s1")
@@ -528,3 +540,8 @@
     - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 29.126
     - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 29.126
     - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 29.126
+  view: mark at [100, 10, 0]
+  view: mark at [110, 10, 0]
+  view: mark at [100, 20, 0]
+  view: mark at [107.071, 17.071, 0]
+  view: mark at [30, 45, 0]

@@ -6,7 +6,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./bridge-client": "./src/bridge-client.ts",
-    "./view-image": "./src/view-image.ts"
+    "./view-image": "./src/view-image.ts",
+    "./get-selection": "./src/get-selection.ts"
   },
   "scripts": {
     "build": "vite build",

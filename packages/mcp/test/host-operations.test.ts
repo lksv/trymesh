@@ -7,6 +7,7 @@ import { apiDescription, apiText, hostOperations } from '../src/api';
 import { type Bridge, startBridge } from '../src/bridge';
 import { type BridgeStatus, connectBridge } from '../src/bridge-client';
 import { type AnyHostOperation, type AppHost, HOST_OPERATIONS, type Host, type HostOperationArgs, type HostOperationName, type HostOperationSet, callHostOperation, hostOperationProblems, isHostOperation } from '../src/host';
+import type { AppSelection } from '../src/get-selection';
 import { type ToolAnswer, tools } from '../src/tools';
 import { connect, newEngine } from './kit';
 
@@ -17,10 +18,12 @@ import { connect, newEngine } from './kit';
 // its package tests it there (`view_image`: view-image.test.ts).
 const FIXTURES: { [N in HostOperationName]: HostOperationArgs<N> } = {
   view_image: { view: 'top', bodies: ['disc'], section: { plane: { kind: 'base', plane: 'XY' }, offset: 5, flip: true }, width: 640, height: 480, colors: 'model' },
+  get_selection: {},
 };
 // Every argument of every operation and whether a caller may leave it out, as the type says.
 const ARGUMENTS: { [N in HostOperationName]: { [K in keyof Required<HostOperationArgs<N>>]: {} extends Pick<HostOperationArgs<N>, K> ? 'optional' : 'required' } } = {
   view_image: { view: 'optional', bodies: 'optional', section: 'optional', width: 'optional', height: 'optional', colors: 'optional' },
+  get_selection: {},
 };
 const ENTRIES = Object.entries(HOST_OPERATIONS as Record<string, AnyHostOperation>);
 
@@ -211,6 +214,43 @@ describe('an operation of the app', () => {
     expect(() => connectBridge(newEngine(), { operations: { execute: entry } })).toThrow('connectBridge: the operation "execute" has the name of a tool');
     // a host of another engine than the one connected is a mistake of the app
     expect(() => connectBridge(newEngine(), { host: { engine: newEngine() }, operations: OPERATIONS })).toThrow('connectBridge: the host has another engine than the one connected');
+  });
+
+  it('get_selection (D74): no app, an app without the capability, the answer of one with it; it takes no at and no after', async () => {
+    const session = await connect({ bridge });
+    const tool = (await session.client.listTools()).tools.find((entry) => entry.name === 'get_selection');
+    // an operation about the app as it is now: neither its schema nor describe_api offers a state path
+    expect(tool?.inputSchema).toEqual({ type: 'object', properties: {}, required: [], additionalProperties: false });
+    expect(hostOperations().find((entry) => entry.query === 'get_selection')?.args).toEqual([]);
+    expect(hostOperations().find((entry) => entry.query === 'view_image')?.args.map((arg) => arg.name).slice(-2)).toEqual(['at', 'after']);
+    expect(await session.call('get_selection')).toEqual({ error: expect.stringMatching(/^notAvailable: get_selection: the operation runs in the app and no app is connected/) });
+
+    const app = model();
+    const older = await appWith(app, { engine: app, picture: async () => '' }, HOST_OPERATIONS);
+    expect(await session.call('get_selection')).toEqual({ error: 'notAvailable: get_selection: the app that is connected does not report its selection (an older app: reload it)' });
+    older.connection.stop();
+    await until(() => !bridge.connected(), 'the app to disconnect');
+
+    const selection: AppSelection = {
+      mode: { kind: 'model' },
+      pick: { body: 'disc', face: { feature: 'disc', role: 'endCap' }, planar: true },
+      click: { point: [1 / 3, 0, 10], hit: { body: 'disc', face: { feature: 'disc', role: 'endCap' }, planar: true, normal: [0, 0, 1] } },
+    };
+    const asked: number[] = [];
+    const host = { engine: app, picture: async () => '', selection: { selection: () => (asked.push(1), selection) } };
+    const { connection } = await appWith(app, host, HOST_OPERATIONS);
+    // the answer as data, its numbers rounded to six decimal places
+    expect(await session.call('get_selection')).toEqual({ ...selection, click: { ...selection.click, point: [0.333333, 0, 10] } });
+    expect(await session.call('get_selection', { at: null, after: null })).toMatchObject({ mode: { kind: 'model' } });
+    // the selection exists only in the app as it is now
+    expect(await session.call('get_selection', { at: 'disc' })).toEqual({ error: 'invalidArguments: get_selection: at: the operation answers about the app as it is now, so it takes no at and no after' });
+    expect(await session.call('get_selection', { after: { type: 'setParameter', name: 'a', expr: '1' } })).toEqual({ error: 'invalidArguments: get_selection: after: the operation answers about the app as it is now, so it takes no at and no after' });
+    expect(await session.call('get_selection', { what: 1 })).toEqual({ error: 'invalidArguments: get_selection: what: there is no argument "what"; there are no arguments' });
+    expect(asked).toHaveLength(2);
+    expect(app.getState().document.parameters).toEqual([]);
+    connection.stop();
+    await until(() => !bridge.connected(), 'the app to disconnect');
+    await session.close();
   });
 
   it('callHostOperation: the entry next to callTool', async () => {

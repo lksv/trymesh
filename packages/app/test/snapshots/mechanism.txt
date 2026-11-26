@@ -213,8 +213,16 @@
   view: fit [-20, -20, -20] .. [20, 20, 20]
   view: lookAt origin [0, 0, 0] normal [0, 0, 1]
   view: fit [-20, -20, -20] .. [20, 20, 20]
+  view: mark at [0, 0, 0]
+  view: mark at [40, 30, 0]
+  view: mark at [90, 15, 0]
+  view: mark at [95, 15, 0]
+  view: mark at [20, 15, 0]
+  view: mark removed
   view: lookAt origin [0, 0, 0] normal [0, 0, 1]
   view: fit [0, 0, 0] .. [95, 30, 10]
+  view: mark at [30, 10, 0]
+  view: mark at [60, 25, 0]
 
 === 2. the form of a new link: a generated ID, a name, the bodies of the model
   panel:
@@ -573,6 +581,7 @@
   scene:
     + face e3 #10 #0ea5e9 opacity 0.3 posed with its body
     + face e3 #10 #f97316 opacity 0.5 posed with its body
+  view: mark at [-17.5, 45, 8]
 
 === 12. a picture of the model: the arm in the pose
   panel:
@@ -622,6 +631,7 @@
   scene:
     - face e3 #10 #0ea5e9 opacity 0.3 posed with its body
     - face e3 #10 #f97316 opacity 0.5 posed with its body
+  view: mark removed
   view: image 1600 × 1200, camera current, 3 bodies #4e79a7 #f28e2b #e15759, 124 segments, posed: #e15759 posed [0, -1, 0] [1, 0, 0] [0, 0, 1] + [0, 0, 0]
   download: model.png
 

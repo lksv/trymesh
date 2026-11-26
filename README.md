@@ -20,7 +20,7 @@ The work followed a fixed procedure for each point of work (see [CLAUDE.md](CLAU
 5. an independent review by an agent that did not write the code, as deep as the risk of the change requires;
 6. fixes, each round in a commit of its own.
 
-The decisions behind the design are recorded in [docs/decisions.md](docs/decisions.md), D1 to D73, with their reasons and the alternatives considered.
+The decisions behind the design are recorded in [docs/decisions.md](docs/decisions.md), D1 to D74, with their reasons and the alternatives considered.
 
 ## What it can do
 

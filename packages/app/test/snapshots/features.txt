@@ -170,6 +170,11 @@
     - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 24.249
   view: lookAt origin [0, 0, 0] normal [0, 0, 1]
   view: fit [-20, -20, -20] .. [20, 20, 20]
+  view: mark at [0, 0, 0]
+  view: mark at [40, 30, 0]
+  view: mark at [70, 15, 0]
+  view: mark at [78, 15, 0]
+  view: mark at [20, 15, 0]
 
 === 3. a new extrusion: two regions, none picked, nothing to compute or confirm
   engine: getState("s1")  (x6)
@@ -341,6 +346,7 @@
     - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 26.655
     - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 26.655
     - fill #0ea5e9 opacity 0.35 onTop at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 530
+  view: mark at [12.5, 0, 25]
 
 === 6. a second click drops it
   engine: getState("s1")  (x6)
@@ -372,6 +378,7 @@
     - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 26.884
     - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 26.884
     - fill #2563eb opacity 0.6 onTop at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 530
+  view: mark at [17, 0, 10]
 
 === 7. a drag of the view is not a click
   engine: getState("s1")  (x2)
@@ -405,6 +412,7 @@
     - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 26.655
     - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 26.655
     - fill #0ea5e9 opacity 0.35 onTop at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 530
+  view: mark at [12.5, 0, 25]
 
 === 8. a distance typed: the preview follows at once, the panel is not rebuilt
   engine: preview({"type":"addFeature","feature":{"id":"e1","name":"Extrude 1","suppressed":false,"type":"extrude","extent":{"type":"distance","start":0,"distance":12},"profile":{"type":"regions","sketch":"s1","regions":[{"outerLoop":["c1","c2","c3","c4"]}]},"operation":"new"},"index":1}, "e1") -> ok
@@ -785,6 +793,7 @@
   scene:
     + fill #64748b opacity 0.15 onTop at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 530
     + fill #0ea5e9 opacity 0.35 onTop at [0, 0, 0] normal [0, 0, 1]: 126 numbers, sum 21420
+  view: mark removed
 
 === 13. a second body: the cylinder
   engine: getState("s1")  (x2)
@@ -1009,6 +1018,7 @@
   view: 1 scene(s) set
   scene:
     + face e1 #1 #f97316 opacity 0.5
+  view: mark at [20, 10, 12]
 
 === 16. a sketch on the selected face: its outline is projected
   engine: execute({"type":"batch","commands":[{"type":"addFeature","feature":{"id":"s2","name":"Sketch 2","suppressed":false,"type":"sketch","plane":{"kind":"face","body":"e1","face":{"feature":"e1","role":"endCap"}},"points":{},"radii":{},"curves":{},"constraints":{},"external":{},"solved":{"inputs":"","external":{}}},"index":3},{"type":"addExternal","sketch":"s2","id":"x1","ref":{"type":"edge","body":"e1","edge":{"a":{"feature":"e1","role":"endCap"},"b":{"feature":"e1","role":"side","curve":"c1"}},"kind":"line"}},{"type":"addExternal","sketch":"s2","id":"x2","ref":{"type":"edge","body":"e1","edge":{"a":{"feature":"e1","role":"endCap"},"b":{"feature":"e1","role":"side","curve":"c2"}},"kind":"line"}},{"type":"addExternal","sketch":"s2","id":"x3","ref":{"type":"edge","body":"e1","edge":{"a":{"feature":"e1","role":"endCap"},"b":{"feature":"e1","role":"side","curve":"c3"}},"kind":"line"}},{"type":"addExternal","sketch":"s2","id":"x4","ref":{"type":"edge","body":"e1","edge":{"a":{"feature":"e1","role":"endCap"},"b":{"feature":"e1","role":"side","curve":"c4"}},"kind":"line"}}]}) -> ok
@@ -1268,6 +1278,8 @@
     + line #1d4ed8 width 2 onTop: 576 numbers, sum 24523.475
     + points #1d4ed8 size 7: 3 numbers, sum 66
     + fill #2563eb opacity 0.1 at [0, 0, 12] normal [0, 0, 1]: 90 numbers, sum 3556.853
+  view: mark at [10, 10, 12]
+  view: mark at [14, 10, 12]
 
 === 18. the rim of the cylinder projected into the sketch
   engine: getState("s2")
@@ -1291,6 +1303,7 @@
     - line #a21caf width 2 onTop: 24 numbers, sum 1772
     + points #a21caf size 7: 30 numbers, sum 2233
     - points #a21caf size 7: 27 numbers, sum 1704
+  view: mark at [61.4, 14.2, 12]
 
 === 19. a projection to repair: the next click on an edge replaces it
   engine: getState("s2")
@@ -1315,12 +1328,14 @@
   view: 2 scene(s) set
   scene:
     + line #0ea5e9 width 4 onTop: 378 numbers, sum 42822.22
+  view: mark at [66.4, 2.2, 12]
 
 === 21. a click that hits no edge projects nothing
   engine: diagnoseSketch("s2")
   view: 1 scene(s) set
   scene:
     - line #0ea5e9 width 4 onTop: 378 numbers, sum 42822.22
+  view: mark at [20, 22, 12]
 
 === 22. the projection removed
   engine: getState("s2")
@@ -2267,6 +2282,7 @@
   view: 2 scene(s) set
   scene:
     + face e2 #7 #0ea5e9 opacity 0.3
+  view: mark at [70, 15, 10]
 
 === 43. and back to the features
   engine: preview({"type":"addFeature","feature":{"id":"n1","name":"Pattern 1","suppressed":false,"type":"pattern","source":{"type":"features","features":["e3"]},"transform":{"type":"circular","axis":{"kind":"sketchPoint","sketch":"s1","point":"p5"},"count":3,"span":{"type":"angle","angle":1.5707963267948966}}},"index":5}, "n1") -> ok
@@ -2545,6 +2561,7 @@
   view: 1 scene(s) set
   scene:
     + face e2 #8 #0ea5e9 opacity 0.3
+  view: mark at [65.204, 8.605, 4.987]
 
 === 49. the top of the cylinder: a draft of a plane on it
   engine: preview({"type":"addFeature","feature":{"id":"r1","name":"Plane 1","suppressed":false,"type":"plane","base":{"kind":"face","body":"e2","face":{"feature":"e2","role":"endCap"}},"offset":10},"index":6}, "r1") -> ok
@@ -2658,6 +2675,7 @@
     + line #f97316 width 2: 24 numbers, sum 1240.542
     + fill #f97316 opacity 0.3 at [0, 0, 20] normal [0, 0, 1]: 8 numbers, sum 29.55
     - face e2 #8 #0ea5e9 opacity 0.3
+  view: mark at [70, 15, 10]
 
 === 50. the offset
   engine: preview({"type":"addFeature","feature":{"id":"r1","name":"Plane 1","suppressed":false,"type":"plane","base":{"kind":"face","body":"e2","face":{"feature":"e2","role":"endCap"}},"offset":5},"index":6}, "r1") -> ok
@@ -2683,6 +2701,7 @@
     + fill #f97316 opacity 0.3 at [0, 0, 17] normal [0, 0, 1]: 8 numbers, sum 29.55
     + face e1 #1 #0ea5e9 opacity 0.3
     - fill #f97316 opacity 0.3 at [0, 0, 15] normal [0, 0, 1]: 8 numbers, sum 29.55
+  view: mark at [20, 22, 12]
 
 === 52. a click on a round face says why it cannot be one
   status: The base of a plane can be a plane or a planar face.  [error]
@@ -2690,6 +2709,7 @@
   scene:
     + face e2 #8 #0ea5e9 opacity 0.3
     - face e1 #1 #0ea5e9 opacity 0.3
+  view: mark at [65.204, 8.605, 4.987]
 
 === 53. a click on a base plane
   engine: preview({"type":"addFeature","feature":{"id":"r1","name":"Plane 1","suppressed":false,"type":"plane","base":{"kind":"base","plane":"XY"},"offset":5},"index":6}, "r1") -> ok
@@ -2707,6 +2727,7 @@
     + fill #f97316 opacity 0.3 at [0, 0, 5] normal [0, 0, 1]: 8 numbers, sum 29.55
     - fill #f97316 opacity 0.3 at [0, 0, 17] normal [0, 0, 1]: 8 numbers, sum 29.55
     - face e2 #8 #0ea5e9 opacity 0.3
+  view: mark at [-15, -15, 0]
 
 === 54. the plane
   engine: preview({"type":"addFeature","feature":{"id":"r1","name":"Plane 1","suppressed":false,"type":"plane","base":{"kind":"base","plane":"XY"},"offset":20},"index":6}, "r1") -> ok
@@ -3204,6 +3225,8 @@
     - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 30.076
     - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 30.076
     - fill #8b9bb4 opacity 0.08 at [0, 0, 20] normal [0, 0, 1]: 8 numbers, sum 30.076
+  view: mark at [60, 60, 20]
+  view: mark at [70, 60, 20]
 
 === 57. a gear from the generator: its fields come from the catalog
   engine: getState("s3")
@@ -5263,6 +5286,7 @@
     - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 29.717
     - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 29.717
     - fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 29.717
+  view: mark removed
 
 === 71. the form of the plane
   engine: preview({"type":"updateFeature","id":"r1","patch":{"base":{"kind":"base","plane":"XY"},"offset":20,"midplaneWith":null,"tilt":null}}, "r1") -> ok
@@ -6242,6 +6266,7 @@
   view: 1 scene(s) set
   scene:
     + face e2 #8 #0ea5e9 opacity 0.3
+  view: mark at [65.204, 8.605, 4.987]
 
 === 80. the top of the cylinder: the sketch is created with its rim projected
   engine: execute({"type":"batch","commands":[{"type":"addFeature","feature":{"id":"s4","name":"Sketch 4","suppressed":false,"type":"sketch","plane":{"kind":"face","body":"e2","face":{"feature":"e2","role":"endCap"}},"points":{},"radii":{},"curves":{},"constraints":{},"external":{},"solved":{"inputs":"","external":{}}},"index":9},{"type":"addExternal","sketch":"s4","id":"x6","ref":{"type":"edge","body":"e2","edge":{"a":{"feature":"e2","role":"endCap"},"b":{"feature":"e2","role":"side","curve":"c5"}},"kind":"circle"}}]}) -> ok
@@ -6435,5 +6460,6 @@
     + axis #8b9bb4 width 1 through [0, 0, 10] along [0, 1, 0]
     + points #a21caf size 7: 6 numbers, sum 445
     - face e2 #8 #0ea5e9 opacity 0.3
+  view: mark at [70, 15, 10]
   view: lookAt origin [0, 0, 10] normal [0, 0, 1]
   view: fit [0, 0, 0] .. [78, 71.661, 31]

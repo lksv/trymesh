@@ -323,7 +323,7 @@ Not a gap, but worth keeping while extending: a broken reference never silently 
 
 ### Helix and modelled threads (discussion of 2026-11-14)
 
-The owner asked for them to be added if they are realistic. They are, and without a sweep along a helix. Nothing was tried in code; the kernel needs a spike before anything is promised.
+The owner asked for them to be added if they are realistic. They are, and without a sweep along a helix. Nothing was tried in code on 2026-11-14; the spike of 2026-11-26 measured it on the real kernel adapter ("Verified by a spike" below).
 
 **Why it is realistic.** A body with a helical shape has the same cross-section at every height, only rotated: at the height `z` it is the section at zero turned by `2π · z / pitch`. A threaded rod, a threaded hole and a spring are therefore an extrusion of one planar profile with a twist. Both halves have a place in the design already: the profile comes from the generator catalog (D35 point 3) and the twist is another build of the tool (the row "Taper and twist on extrusion").
 
@@ -349,7 +349,14 @@ The owner asked for them to be added if they are realistic. They are, and withou
 - No tapered threads. The profile has to fit into one pitch, otherwise neighbouring turns intersect; that is an `invalidProfile`.
 - Printing sets its own limit: a thread finer than what the printer resolves (small metric sizes) is modelled correctly and prints as a rough cylinder. For those the hole feature with an insert or a nut pocket stays the answer; modelled threads are for larger diameters and for custom ones (lids, fittings).
 
-**To verify by a spike.** The triangle count: one thread of ten turns is tens of thousands of triangles. The kernel adapter was slow on a tool with many faces (192 holes in one boolean took 7.6 s, table "Comparison with other designs"), so the time of a boolean with a threaded tool and of a pattern of such tools has to be measured first.
+**Owner's decisions 2026-11-26.**
+
+- Threads are a feature `thread` placed on a cylindrical face of a body, a bore or a pin. The axis and the radius come from the exact surface of the face (`Surface` of the kind `cylinder`, D60), not from a circle of a sketch as the generator above has it.
+- One feature with a flag `modelled`. Cosmetic: data only, the geometry does not change and a hole stays at its tap-drill diameter. Modelled: a real helix. The cosmetic variant may ship first; printed larger threads (M10 and up, lids, fittings) have to be supported by the modelled one.
+- A catalog of ISO metric threads fills the parameters.
+- The planned build of the modelled variant is the twisted extrusion of the planar cross-section: a polar profile r(θ) derived from the axial profile (flank angle, flats at the crest and at the root, clearance, starts, hand), extruded in layers along the axis with each layer turned, flat ends exactly at the ends of the face, one boolean. The same build is to serve a twist on the extrude feature and helical gears later.
+
+**Verified by a spike (2026-11-26, package 7a of D36).** The results are in [d36/7a-thread/spike.md](d36/7a-thread/spike.md), the code in `spikes/thread.spike.ts`. In short: a modelled thread is feasible on the real adapter, and three things of the plan above have to change for it. The layered build is right but costs about ten times the triangles of a sweep of the axial profile along the helix, which makes the same solid, and its booleans take that much longer; the spike recommends the sweep for threads and the layers for the twist of an extrusion. An end of the tool that lies in a face of the body is what the adapter refuses (about a quarter of random cases) and what takes most of the time; a tool that runs past an open end, and stops short of a shoulder, was refused once in 450. And a modelled screw and a modelled nut are free of each other only with a clearance of at least the chord tolerance.
 
 ### To verify first
 

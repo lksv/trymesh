@@ -50,7 +50,7 @@ describe('the catalog of sketch tools', () => {
     expect(SKETCH_TOOLS.split.inputs).toEqual({ curve: { kind: 'curve', optional: true }, with: { kind: 'curve', reference: true, optional: true }, at: { kind: 'place', optional: true } });
     expect(SKETCH_TOOLS.fillet.inputs).toMatchObject({ corner: { kind: 'point', optional: true }, corners: { kind: 'points', optional: true }, radius: { kind: 'number', spec: { unit: 'mm', min: { value: 0, open: true } }, expression: true } });
     expect(SKETCH_TOOLS.fillet.oneOf).toEqual([['corner', 'corners']]);
-    expect(Object.keys(SKETCH_TOOLS.fillet.ids)).toEqual(['corners', 'arc', 'center', 'lines', 'ends', 'constraints', 'radius', 'patched', 'moved', 'shortened', 'entries']);
+    expect(Object.keys(SKETCH_TOOLS.fillet.ids)).toEqual(['corners', 'arc', 'center', 'lines', 'ends', 'constraints', 'radius', 'equal', 'patched', 'moved', 'shortened', 'entries']);
     expect(Object.keys(SKETCH_TOOLS.rectangle.inputs)).toEqual(['first', 'center', 'opposite', 'width', 'height']);
     expect(SKETCH_TOOLS.rectangle.oneOf).toEqual([['first', 'center']]);
     expect(Object.keys(SKETCH_TOOLS.rectangle.ids)).toEqual(['points', 'lines', 'constraints', 'center', 'diagonal', 'width', 'height']);

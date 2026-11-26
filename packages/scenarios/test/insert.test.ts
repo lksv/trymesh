@@ -159,6 +159,17 @@ describe('what an inserted body inherits, and features on it', () => {
     exec(engine, { type: 'addDocument', id: 'ring', document: ringPart() });
   });
 
+  it('the query body filtered by the insert: every face of the inserted document, whose names start with the insert (review of the filter)', () => {
+    exec(engine, insertion('q', 'ring'));
+    const whole = engine.query('body', { body: 'q/ring' });
+    const filtered = engine.query('body', { body: 'q/ring', feature: 'q' });
+    if (!whole.ok || !filtered.ok) throw new Error('the query failed');
+    expect(filtered.result.faces.length).toBe(whole.result.faces.length);
+    expect(filtered.result.faces.every((face) => face.name.feature.startsWith('q/'))).toBe(true);
+    expect(filtered.result.edges.length).toBe(whole.result.edges.length);
+    engine.undo();
+  });
+
   it('a stated pair of an auxiliary body passes on: made a reference part here it weighs what its document says', () => {
     const auxiliary = ringPart([{ type: 'setBodyProperties', body: 'ring', patch: { use: 'auxiliary' } }]);
     const state = preview(engine, { type: 'addDocument', id: 'keepOut', document: auxiliary }, insertion('k', 'keepOut'), { type: 'setBodyProperties', body: 'k/ring', patch: { use: 'reference' } });

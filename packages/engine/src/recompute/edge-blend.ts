@@ -729,7 +729,7 @@ function blend(kind: BlendKind, feature: Id, solid: Solid, given: EdgeName[], si
     const nearest = Math.min(...blendPoints.map(rho));
     const clearance = 2 * lift;
     const radius = `the edge has a radius of ${shown(place.point[0])} mm`;
-    if (nearest <= LENGTH_TOLERANCE) refuse('blendDoesNotFit', [edge.name], `the ${kind} reaches the axis of the circular edge (${radius}): a corner ${kind === 'fillet' ? 'rounded into a sphere' : 'chamfered into a point'} is not supported; use a smaller size, one that keeps the ${kind} at least ${shown(clearance)} mm from the axis`);
+    if (nearest <= LENGTH_TOLERANCE) refuse('blendDoesNotFit', [edge.name], `the ${kind} reaches the axis of the circular edge (${radius}): a corner ${kind === 'fillet' ? 'rounded into a sphere' : 'chamfered into a point'} is not supported; use a smaller size, one that keeps the ${kind} more than ${shown(clearance)} mm from the axis`);
     if (nearest <= clearance) refuse('blendDoesNotFit', [edge.name], `the ${kind} comes within ${shown(nearest)} mm of the axis of the circular edge (${radius}), nearer than the ${shown(clearance)} mm its tool needs at the chord tolerance of the document; use a smaller size`);
     let overshoot = profile.overshoot;
     for (const { at, along: direction } of overshootPoints(kind, size, edge.corner.beta)) {

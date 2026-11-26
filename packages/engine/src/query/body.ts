@@ -11,7 +11,7 @@ export const BODY_ARGS = {
   feature: {
     kind: 'feature',
     title: 'Only of the feature',
-    summary: 'only the faces this feature made, or a pattern of that ID copied (a face with a copy tag of it), and the edges with such a face on one side; for finding the edges of one hole or one pocket in a large body',
+    summary: 'only the faces this feature made, or a pattern of that ID copied (a face with a copy tag of it), and the edges with such a face on one side; for an inserted document the insert, all of its faces; for finding the edges of one hole or one pocket in a large body. A sketch or a plane makes no face, so the lists stay empty',
     optional: true,
   },
   only: { kind: 'choice', options: ['faces', 'edges'], title: 'Only', summary: 'the faces or the edges alone, the other list left out', optional: true },
@@ -109,8 +109,10 @@ function centreOf(surface: Surface): ((point: Vec3) => Vec3) | undefined {
   }
 }
 
-// A face the feature made, or a pattern with that ID copied.
-const ofFeature = (name: FaceName, feature: Id): boolean => name.feature === feature || (name.copy ?? []).some((tag) => tag.pattern === feature);
+// A face the feature made, or a pattern with that ID copied. A face of an inserted document is
+// named by `<insert>/<its feature>` (and so are its copy tags), so the insert matches all of it.
+const fromFeature = (id: Id, feature: Id): boolean => id === feature || id.startsWith(`${feature}/`);
+const ofFeature = (name: FaceName, feature: Id): boolean => fromFeature(name.feature, feature) || (name.copy ?? []).some((tag) => fromFeature(tag.pattern, feature));
 
 export const body: QuerySpec<typeof BODY_ARGS, BodyDescription> = {
   title: 'Description of a body',

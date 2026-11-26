@@ -113,6 +113,10 @@ describe('expressions', () => {
     // a non-finite value in the branch not taken is not an error; in the branch taken it is
     expect(value('if(n > 0, L / n, 0)', { n: '0', L: '10' })).toBe(0);
     expect(value('if(n == 0, L / n, 0)', { n: '0', L: '10' })).toBe('notFinite');
+    // also where the branch not taken compares it (review)
+    expect(value('if(n > 0, if(L / n > 5, 1, 2), 0)', { n: '0', L: '10' })).toBe(0);
+    expect(value('if(n > 0, 0, if(L / n > 5, 1, 2))', { n: '0', L: '10' })).toBe('notFinite');
+    expect(analyzeExpression('if(flag, 1, 2)')).toMatchObject({ ok: false, error: { message: expect.stringMatching(/write n != 0\): a comparison is expected/) } });
     // every argument is evaluated: an unknown name or a parameter in error in either branch is an error
     expect(value('if(1 > 0, 1, nope)')).toBe('unknownName');
     expect(value('if(1 > 0, 1, broken)', { broken: 'missing' })).toBe('dependsOnError');

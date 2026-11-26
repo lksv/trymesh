@@ -328,7 +328,7 @@ describe('the ends of an edge', () => {
     const loop = topLoop(r);
     const sphere = apply(r, fillet('c', 'E', loop, 6));
     expect(sphere.code).toBe('blendDoesNotFit');
-    expect(sphere.message).toMatch(/reaches the axis of the circular edge \(the edge has a radius of 6 mm\): a corner rounded into a sphere is not supported; use a smaller size, one that keeps the fillet at least 0\.03 mm from the axis/);
+    expect(sphere.message).toMatch(/reaches the axis of the circular edge \(the edge has a radius of 6 mm\): a corner rounded into a sphere is not supported; use a smaller size, one that keeps the fillet more than 0\.03 mm from the axis/);
     expect(apply(r, chamfer('c', 'E', loop, 6)).message).toMatch(/a corner chamfered into a point is not supported/);
     for (const size of [5.999, 5.99, 5.975]) {
       const near = apply(r, fillet('c', 'E', loop, size));

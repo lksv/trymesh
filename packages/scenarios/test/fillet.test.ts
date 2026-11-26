@@ -47,7 +47,7 @@ describe('the fillet tool: the batch', () => {
     const engine = plate();
     const before = engine.getState();
     const made = fillet(engine, 's', 'o3', 6);
-    expect(made.ids).toEqual({ arc: ['f_c1'], center: ['f_p3'], lines: ['ob', 'oc'], ends: ['f_p1', 'f_p2'], constraints: ['f_k1', 'f_k2', 'f_k3', 'f_k4'], radius: ['f_k5'], patched: ['E'], moved: [], shortened: [], entries: [] });
+    expect(made.ids).toEqual({ arc: ['f_c1'], center: ['f_p3'], lines: ['ob', 'oc'], ends: ['f_p1', 'f_p2'], constraints: ['f_k1', 'f_k2', 'f_k3', 'f_k4'], radius: ['f_k5'], equal: [], patched: ['E'], moved: [], shortened: [], entries: [] });
     expect(made.commands.map((command) => command.type)).toEqual(['addPoint', 'addPoint', 'addPoint', 'setCurvePoint', 'setCurvePoint', 'addCurve', 'addConstraint', 'addConstraint', 'addConstraint', 'addConstraint', 'addConstraint', 'updateFeature']);
     expect(made.commands.slice(3)).toEqual([
       { type: 'setCurvePoint', sketch: 's', id: 'ob', point: 'b', to: 'f_p1' },
@@ -410,7 +410,9 @@ describe('the fillet tool: several corners in one call (D73)', () => {
     expect(made.ids.corners).toEqual(['o1', 'o2', 'o3', 'o4']);
     expect(made.ids.arc).toHaveLength(4);
     expect(made.ids.center).toHaveLength(4);
-    expect(made.ids.radius).toHaveLength(4);
+    // one radius dimension, on the first arc; the other three arcs held equal to it (Gridfinity, 2026-11-26)
+    expect(made.ids.radius).toHaveLength(1);
+    expect(made.ids.equal).toHaveLength(3);
     expect(made.ids.lines).toEqual(['oa', 'od', 'oa', 'ob', 'ob', 'oc', 'oc', 'od']);
     expect(made.ids.ends).toHaveLength(8);
     expect(made.ids.constraints).toHaveLength(16);
@@ -425,6 +427,9 @@ describe('the fillet tool: several corners in one call (D73)', () => {
     expect(volume(state.evaluation.bodies.E.solid)).toBeCloseTo(volume(one.getState().evaluation.bodies.E.solid), 6);
     expect(state.evaluation.features.s.sketch!.degreesOfFreedom).toBe(0);
     expect(engine.diagnoseSketch('s').redundant).toEqual([]);
+    const sketch = sketchOf(state, 's');
+    expect(sketch.constraints[made.ids.radius[0]]).toEqual({ type: 'radius', curve: made.ids.arc[0], value: 6, driving: true });
+    expect(made.ids.equal.map((id) => sketch.constraints[id])).toEqual(made.ids.arc.slice(1).map((arc) => ({ type: 'equalRadius', a: made.ids.arc[0], b: arc })));
     // each arc stands where its corner is rounded
     for (const [i, corner] of made.ids.corners.entries()) {
       const [cx, cy] = at(state, 's', made.ids.center[i]);
@@ -433,6 +438,23 @@ describe('the fillet tool: several corners in one call (D73)', () => {
     }
     engine.undo();
     expect(engine.getState().document).toBe(before.document);
+  });
+
+  it('the one radius of several corners: a change of it, or of its expression, rounds every corner', () => {
+    const engine = plate();
+    run(engine, { type: 'setParameter', name: 'r', expr: '6' });
+    const made = corners(engine.getState(), 's', ['o1', 'o2', 'o3', 'o4'], 'r') as Made;
+    expect(made.ok).toBe(true);
+    run(engine, batch(...made.commands));
+    expect(sketchOf(engine.getState(), 's').expressions).toMatchObject({ [`constraints/${made.ids.radius[0]}/value`]: 'r' });
+    run(engine, { type: 'setParameter', name: 'r', expr: '4' });
+    const state = engine.getState();
+    expectAllOk(state);
+    for (const [i, corner] of made.ids.corners.entries()) {
+      const [cx, cy] = at(state, 's', made.ids.center[i]);
+      const [px, py] = at(state, 's', corner);
+      expect(Math.abs(Math.abs(cx - px) - 4) + Math.abs(Math.abs(cy - py) - 4), corner).toBeLessThan(1e-6);
+    }
   });
 
   it('corners that patch, move and shorten different features: each feature once, in the order of the timeline', () => {

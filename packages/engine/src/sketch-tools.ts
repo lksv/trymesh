@@ -151,18 +151,19 @@ export const SKETCH_TOOLS: Record<SketchToolName, SketchToolSpec> = {
   fillet: {
     title: 'Fillet',
     summary:
-      'A fillet of the corner where two lines meet: an arc of the given radius, tangent to both lines. The lines are shortened to the ends of the arc and keep their IDs, so the faces made from them keep their names. The corner point stays as the virtual corner, held on both lines: dimensions and constraints on it mean what they did, and a size of the outline is still measured between its sharp corners. `radius` becomes a radius dimension (`ids.radius`), a number or an expression; change it there. The arc is added to every region and wall of the document that passes the corner (`ids.patched`), in the same batch, so the features built on the sketch keep their profiles and get the round face named by the arc: `side` of an extrusion (a cylinder, or a cone when the extrusion is tapered) or of a revolve (a torus, or a sphere when the arc is centred on its axis), `wallSide` left and right of a wall. A region that has the corner only on the rim of a hole (a plate around a pocket) needs no patch, since a region is named by its outer loop: a feature that reads the corner through holes alone gets the round corner too and is in no list. Two lists name what reads the corner directly and is not patched; check them. `ids.moved`: sketches and plane features on a side face that starts at the corner (a side face starts where its line starts, at `a`); their plane has moved along the line, with everything dimensioned from its origin. `ids.shortened`: extrusions and revolves whose wall runs along one of the two lines only (the wall ends at the arc now), and sketches that project an edge of a side face of either line (the end of the projection at the corner has moved). Only features that read the corner directly are listed, by the names in the document: what is built on them follows them, and a listed feature may also be among the problems of the result. Refused: a point that is not the common end of exactly two lines (ends joined by a coincident constraint are two points: re-point one line onto the other point first, setCurvePoint), parallel lines, a radius the lines are too short for or one too small to draw, a line with an equalLength or midpoint constraint (it would measure the shortened line). A profile offset or a wall has to leave the arc a radius: an inward offset as large as the fillet is an error of that feature. Nothing keeps the arc a fillet afterwards: a later change that leaves it no room (a radius too large, a side too short) is often a conflict of the sketch or an invalid profile, but it can also be solved into an arc that runs past the end of a line, with no message and a body made from it, so look at the sketch after such a change. Of the curves that end at the corner the ones that are not construction curves are filleted; if there are none, the construction ones. A mirror or pattern of the sketch whose listed curves the arc stands between gets the arc as a source (`ids.entries`), so its copies are filleted too. A corner of copies is not filleted: fillet the corner of their source.',
+      'A fillet of the corner where two lines meet: an arc of the given radius, tangent to both lines. The lines are shortened to the ends of the arc and keep their IDs, so the faces made from them keep their names. The corner point stays as the virtual corner, held on both lines: dimensions and constraints on it mean what they did, and a size of the outline is still measured between its sharp corners. `radius` becomes a radius dimension (`ids.radius`), a number or an expression; change it there. With `corners` there is one dimension, on the first arc, and the other arcs are held equal to it (`ids.equal`), so one change rounds every corner. The arc is added to every region and wall of the document that passes the corner (`ids.patched`), in the same batch, so the features built on the sketch keep their profiles and get the round face named by the arc: `side` of an extrusion (a cylinder, or a cone when the extrusion is tapered) or of a revolve (a torus, or a sphere when the arc is centred on its axis), `wallSide` left and right of a wall. A region that has the corner only on the rim of a hole (a plate around a pocket) needs no patch, since a region is named by its outer loop: a feature that reads the corner through holes alone gets the round corner too and is in no list. Two lists name what reads the corner directly and is not patched; check them. `ids.moved`: sketches and plane features on a side face that starts at the corner (a side face starts where its line starts, at `a`); their plane has moved along the line, with everything dimensioned from its origin. `ids.shortened`: extrusions and revolves whose wall runs along one of the two lines only (the wall ends at the arc now), and sketches that project an edge of a side face of either line (the end of the projection at the corner has moved). Only features that read the corner directly are listed, by the names in the document: what is built on them follows them, and a listed feature may also be among the problems of the result. Refused: a point that is not the common end of exactly two lines (ends joined by a coincident constraint are two points: re-point one line onto the other point first, setCurvePoint), parallel lines, a radius the lines are too short for or one too small to draw, a line with an equalLength or midpoint constraint (it would measure the shortened line). A profile offset or a wall has to leave the arc a radius: an inward offset as large as the fillet is an error of that feature. Nothing keeps the arc a fillet afterwards: a later change that leaves it no room (a radius too large, a side too short) is often a conflict of the sketch or an invalid profile, but it can also be solved into an arc that runs past the end of a line, with no message and a body made from it, so look at the sketch after such a change. Of the curves that end at the corner the ones that are not construction curves are filleted; if there are none, the construction ones. A mirror or pattern of the sketch whose listed curves the arc stands between gets the arc as a source (`ids.entries`), so its copies are filleted too. A corner of copies is not filleted: fillet the corner of their source.',
     inputs: { corner: { kind: 'point', optional: true }, corners: { kind: 'points', optional: true }, radius: { kind: 'number', spec: { title: 'Radius', unit: 'mm', min: { value: 0, open: true } }, expression: true } },
     oneOf: [['corner', 'corners']],
     ids: {
       corners:
-        'with `corners` (several corners in one batch and one undo step, D73): the corners in the order given. Each corner is filleted in the state the corners before it left, so two corners of one line share it; every list below then holds the lists of the corners one after another: `arc[i]`, `center[i]` and `radius[i]` belong to `corners[i]`, `lines` and `ends` have two entries per corner, `constraints` those of each corner in turn, and `patched`, `moved`, `shortened` and `entries` each feature or entry once, in the order of the timeline or of the entries. A corner that is refused refuses the whole call, with the corner named',
+        'with `corners` (several corners in one batch and one undo step, D73): the corners in the order given. Each corner is filleted in the state the corners before it left, so two corners of one line share it; every list below then holds the lists of the corners one after another: `arc[i]` and `center[i]` belong to `corners[i]`, `radius` has the one dimension, on the arc of the first corner, and `equal` the equalRadius of each further arc with that one (`equal[i - 1]` for `corners[i]`), so the radius is changed in one place; fillet the corners by separate calls for radii of their own; `lines` and `ends` have two entries per corner, `constraints` those of each corner in turn, and `patched`, `moved`, `shortened` and `entries` each feature or entry once, in the order of the timeline or of the entries. A corner that is refused refuses the whole call, with the corner named',
       arc: 'the arc',
       center: 'the centre point of the arc',
       lines: 'the two lines that were shortened, in the order of their IDs',
       ends: 'the ends of the arc: `ends[i]` is the new end of `lines[i]`',
       constraints: 'the constraints the tool added, without the radius dimension: the tangency of `lines[0]`, of `lines[1]`, the corner on `lines[0]`, on `lines[1]` (a corner already held on a line keeps that constraint, and it is the one named)',
-      radius: 'the radius dimension',
+      radius: 'the radius dimension (with `corners`: one, on the arc of the first corner)',
+      equal: 'with `corners`: the equalRadius of the arc of each further corner with the arc of the first one (empty for one corner)',
       patched: 'the features whose region or wall named both lines and was given the arc, in the order of the timeline (empty when there are none; a feature that reads the corner only through the hole of a region needs no patch and is not here)',
       moved: 'sketches and plane features on a side face that starts at the corner: their plane moved with the start of its line (empty when there are none)',
       shortened: 'features that read a line of the two by itself: extrusions and revolves whose wall runs along one of them, sketches that project an edge of a side face of either or either line itself (empty when there are none)',
@@ -650,7 +651,9 @@ function cornerLines(context: SketchToolContext, corner: Id): [Id, Id] | string 
 }
 
 // One corner (D52).
-function filletCorner(context: SketchToolCall, corner: Id, input: { radius: number | Expr }, newId: NewId): SketchToolResult {
+// `equalTo`: the arc of the first corner of a call with `corners`; this arc is then held at its
+// radius by equalRadius instead of a radius dimension of its own.
+function filletCorner(context: SketchToolCall, corner: Id, input: { radius: number | Expr }, newId: NewId, equalTo?: Id): SketchToolResult {
   const { sketch, document } = context;
   const found = cornerLines(context, corner);
   if (typeof found === 'string') return failed(found);
@@ -711,7 +714,7 @@ function filletCorner(context: SketchToolCall, corner: Id, input: { radius: numb
     }),
   ];
   const radiusId = newId('k');
-  commands.push({ type: 'addConstraint', sketch: id, id: radiusId, constraint: { type: 'radius', curve: arc, value: input.radius, driving: true } });
+  commands.push({ type: 'addConstraint', sketch: id, id: radiusId, constraint: equalTo === undefined ? { type: 'radius', curve: arc, value: input.radius, driving: true } : { type: 'equalRadius', a: equalTo, b: arc } });
 
   // the plan of the fillet as data, as the cuts of D65 give it
   const starting = lines.filter((_, i) => curves[i].a === corner);
@@ -764,7 +767,7 @@ function filletCorner(context: SketchToolCall, corner: Id, input: { radius: numb
   // of the fillet as data
   const readers = readersOf(document, id, changes, sketch);
   const shortened = document.features.map((f) => f.id).filter((feature) => walls.includes(feature) || readers.shortened.includes(feature));
-  return { ok: true, commands, ids: { arc: [arc], center: [centre], lines: [...lines], ends: endIds, constraints, radius: [radiusId], patched, moved: readers.moved, shortened, entries } };
+  return { ok: true, commands, ids: { arc: [arc], center: [centre], lines: [...lines], ends: endIds, constraints, radius: equalTo === undefined ? [radiusId] : [], equal: equalTo === undefined ? [] : [radiusId], patched, moved: readers.moved, shortened, entries } };
 }
 
 // The fillet of one corner, or of several in one batch (D73). Each corner is filleted in the state
@@ -777,9 +780,11 @@ function fillet(context: SketchToolCall, input: SketchToolInputs['fillet'], newI
   let call = context;
   const commands: Command[] = [];
   const lists: Record<string, Id[]> = { corners: [...input.corners] };
+  let first: Id | undefined; // the arc of the first corner, which holds the radius dimension
   for (const corner of input.corners) {
-    const made = filletCorner(call, corner, input, newId);
+    const made = filletCorner(call, corner, input, newId, first);
     if (!made.ok) return failed(`corner "${corner}": ${made.message}`);
+    first ??= made.ids.arc[0];
     commands.push(...made.commands);
     for (const [name, ids] of Object.entries(made.ids)) lists[name] = [...(lists[name] ?? []), ...ids];
     let document: Document;

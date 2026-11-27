@@ -123,7 +123,7 @@ const NUMBERS = 7; // per piece: the five sides of the profile and the two ends
 const sideNumber = (piece: Piece, side: BlendSide): number => piece.numbers + BLEND_SIDES.indexOf(side);
 const endNumber = (piece: Piece, end: 0 | 1): number => piece.numbers + 5 + end;
 
-const describeSurface = (info: FaceInfo): string => (info.planar ? 'a plane' : info.surface === 'mesh' ? 'an imported surface' : info.surface === 'swept' ? 'a swept surface' : `a ${info.surface}`);
+const describeSurface = (info: FaceInfo): string => (info.planar ? 'a plane' : info.surface === 'mesh' ? 'an imported surface' : info.surface === 'swept' ? 'a swept surface' : info.surface === 'general' ? 'the flank of a modelled thread' : `a ${info.surface}`);
 const parallel = (a: Vec3, b: Vec3, angle: number): boolean => len3(cross3(unit3(a), unit3(b))) <= Math.sin(angle);
 const clampedAngle = (cosine: number): number => Math.acos(Math.max(-1, Math.min(1, cosine)));
 const shown = (value: number): string => String(Number(value.toPrecision(3)));

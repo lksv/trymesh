@@ -30,7 +30,12 @@ export type FaceInfo =
   | { planar: false; surface: 'swept'; axis: Vec3 }
   // The surface of an imported mesh (D55): nothing is known of it, flat regions included. Published
   // as a general surface; the same after any transform.
-  | { planar: false; surface: 'mesh' };
+  | { planar: false; surface: 'mesh' }
+  // An exact surface the engine does not describe further: the flank of a modelled thread (D76),
+  // a helicoid. Published as a general surface, as an imported mesh is, but it is not one: a body
+  // with such a face can be changed by later features (`isImported` asks for `mesh`). Its edges
+  // are helices: not projected, chamfered or filleted.
+  | { planar: false; surface: 'general' };
 // The surface of a face as the evaluation publishes it. `FaceInfo` stays internal and keeps what only
 // the engine needs: the `y` direction of a planar face, from which the frame of a sketch on the
 // face is built.
@@ -48,6 +53,7 @@ export function surfaceOf(info: FaceInfo): Surface {
     case 'swept':
       return { kind: 'swept', axis: info.axis };
     case 'mesh':
+    case 'general':
       return { kind: 'general' };
   }
 }
@@ -172,6 +178,7 @@ export function transformFace(t: RigidTransform, info: FaceInfo): FaceInfo {
     case 'swept':
       return { ...info, axis: transformVector(t, info.axis) };
     case 'mesh':
+    case 'general':
       return info;
   }
 }
@@ -612,6 +619,7 @@ export function normalAt(info: FaceInfo, point: Vec3): Vec3 | undefined {
     }
     case 'swept':
     case 'mesh':
+    case 'general':
       return undefined;
   }
 }

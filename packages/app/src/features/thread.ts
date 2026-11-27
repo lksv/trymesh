@@ -1,7 +1,7 @@
-// The thread in the app (D76, stage 1: cosmetic threads): the form (the faces picked in the view,
-// a size from the catalog metricThreads, the fields of the profile and of the place, the hand, the
-// direction, the copies, the label, the toggle Modelled shown off and disabled), its summary and
-// the walls it highlights. The view draws the helix of every cosmetic thread (scene.ts).
+// The thread in the app (D76): the form (the faces picked in the view, a size from the catalog
+// metricThreads, the fields of the profile and of the place, the hand, the direction, the copies,
+// the label, the toggle Modelled), its summary and the walls it highlights. The view draws the
+// helix of every cosmetic thread (scene.ts); a modelled one is in the mesh.
 import { type Command, DATA_CATALOGS, type Expr, FEATURE_TYPE_INFO, type FaceName, type Id, type Input, type ThreadFeature, type Unit, faceKey } from '@trymesh/engine';
 import { fmt, h, markProblem } from '../dom';
 import { expressionProblem, fieldText, parseField } from '../fields';
@@ -170,8 +170,8 @@ function threadPanel(m: ThreadMode, host: PanelHost): HTMLElement[] {
         },
       }),
     ),
-    h('label', {}, h('input', { type: 'checkbox', checked: false, disabled: true }), ' Modelled'),
-    h('p', { className: 'hint' }, 'This build makes cosmetic threads: the mesh stays, the thread is recorded and drawn as its helix, and a screw in such a bore is not a collision. A modelled thread comes later.'),
+    h('label', {}, h('input', { type: 'checkbox', checked: m.draft.modelled, onchange: (event: Event) => set({ modelled: (event.target as HTMLInputElement).checked }) }), ' Modelled'),
+    h('p', { className: 'hint' }, m.draft.modelled ? 'Modelled: the grooves are cut into the mesh, for printing. The tool has thousands of triangles and every later feature on the body pays for them: put a modelled thread late in the timeline.' : 'Cosmetic: the mesh stays, the thread is recorded and drawn as its helix, and a screw in such a bore is not a collision. Modelled cuts the grooves, for printing.'),
     h('p', { id: 'draft-facts', className: 'hint' }, factsText(facts)),
     ...draftButtons(host, m),
   ].filter((element): element is HTMLElement => element !== null);
@@ -253,7 +253,7 @@ export const thread: FeatureUi<ThreadFeature, Extra> = {
   summary(host, f, result) {
     const size = f.label ?? `${shownValue(f, 'diameter', f.diameter)} x ${shownValue(f, 'pitch', f.pitch)}`;
     const count = typeof result?.facts?.threads === 'number' ? result.facts.threads : f.faces.length;
-    return [h('p', { className: 'hint' }, `${size}, ${f.hand === 'left' ? 'left-hand, ' : ''}cosmetic, on ${count} face${count === 1 ? '' : 's'} of ${host.bodyName(f.body)}${f.copies ? ' and the copies of a pattern' : ''}.`)];
+    return [h('p', { className: 'hint' }, `${size}, ${f.hand === 'left' ? 'left-hand, ' : ''}${f.modelled ? 'modelled' : 'cosmetic'}, on ${count} face${count === 1 ? '' : 's'} of ${host.bodyName(f.body)}${f.copies ? ' and the copies of a pattern' : ''}.`)];
   },
   ownsFace: threadsFace,
   hideable: () => false,

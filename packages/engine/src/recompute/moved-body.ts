@@ -187,6 +187,9 @@ function move(solid: Solid, infos: readonly FaceInfo[], names: readonly FaceName
   const faces = [...new Set(solid.faceIds)].sort((a, b) => a - b);
   const missing = faces.filter((face) => infos[face] === undefined);
   if (missing.length) return problem('noSurface', missing, 'a face has no exact surface to move along');
+  // the flank of a modelled thread (D76): a helicoid the engine does not describe, nothing to move it along
+  const general = faces.filter((face) => !infos[face].planar && (infos[face] as { surface: string }).surface === 'general');
+  if (general.length) return problem('noSurface', general, 'a face is the flank of a modelled thread (a surface of the kind general), which has nothing to move it along; make the thread cosmetic for the combine, or make it after the combine');
   const swept = (face: number): boolean => {
     const info = infos[face];
     return !info.planar && info.surface === 'swept';

@@ -37,6 +37,9 @@ export const FACE_ROLES: { [R in FaceName['role']]: FaceRoleSpec<R> } = {
   splitFace: { title: 'cut face of a split', parts: {} },
   chamfer: { title: 'chamfer of an edge', parts: { edge: { title: 'the place of the edge in the list of the feature, from 0', kind: 'integer' } } },
   fillet: { title: 'fillet of an edge', parts: { edge: { title: 'the place of the edge in the list of the feature, from 0', kind: 'integer' } } },
+  threadFlank: { title: 'flank of a thread', parts: { face: { title: 'the place of the face in the list of the feature, from 0', kind: 'integer' }, side: { title: 'the end of the thread the flank faces (start or end)', kind: 'text' } } },
+  threadRoot: { title: 'root of a thread', parts: { face: { title: 'the place of the face in the list of the feature, from 0', kind: 'integer' } } },
+  threadEnd: { title: 'flat end of a thread', parts: { face: { title: 'the place of the face in the list of the feature, from 0', kind: 'integer' }, end: { title: 'the end of the thread (start or end)', kind: 'text' } } },
 };
 
 // A catalog of roles as code that handles any role reads it. The functions below take one so that

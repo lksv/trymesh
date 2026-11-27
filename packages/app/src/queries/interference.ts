@@ -5,7 +5,7 @@
 // failures. The pairs the kernel refused and its intersection as computed cleared (D50) are rows
 // of their own after the fits, and the note counts them. The pairs a thread accounts for (D76) are
 // a third group after those, and a collision of two threads that do not agree says what differs.
-import type { Cleared, Interference, Threaded } from '@trymesh/engine';
+import type { Cleared, Interference, Seat, Threaded } from '@trymesh/engine';
 import { fmt, h } from '../dom';
 import { COLOR } from '../draw';
 import type { QueryView } from './index';
@@ -14,12 +14,19 @@ export const interferenceView: QueryView<'interference'> = {
   immediate: true,
   answer(result, _args, panel) {
     // collisions first, then the fits, then the cleared pairs; `picked` counts through the three lists
-    const row = (pair: Interference & { mismatch?: string }, index: number, fit: boolean): HTMLElement =>
+    // two modelled threads turned against each other: what to add to the phase of either (D76)
+    const seatText = (pair: Interference & { seat?: Seat[] }): string => {
+      const turn = pair.seat?.find((entry) => entry.addToPhase !== 0);
+      if (!pair.seat) return '';
+      if (!turn) return '; the threads are seated, the collision has another cause';
+      return `; the threads are turned against each other: add ${fmt((turn.addToPhase * 180) / Math.PI)}° to the phase of ${turn.feature}${pair.seat.length > 1 ? ' (or turn the other)' : ''}`;
+    };
+    const row = (pair: Interference & { mismatch?: string; seat?: Seat[] }, index: number, fit: boolean): HTMLElement =>
       h(
         'div',
         { className: `row ${panel.picked === index ? 'selected' : ''}`, title: `Highlight the two bodies. One reaches ${fmt(pair.depth)} mm into the other`, onclick: () => panel.pick(panel.picked === index ? undefined : index) },
         h('span', { className: 'name', textContent: `${panel.bodyName(pair.a)} × ${panel.bodyName(pair.b)}` }),
-        h('small', {}, `${fit ? 'fit, ' : ''}${fmt(pair.volume)} mm³${pair.mismatch ? `; the threads do not agree: ${pair.mismatch}` : ''}`),
+        h('small', {}, `${fit ? 'fit, ' : ''}${fmt(pair.volume)} mm³${pair.mismatch ? `; the threads do not agree: ${pair.mismatch}` : ''}${seatText(pair)}`),
       );
     const threaded = result.threaded ?? [];
     const threadedRow = (pair: Threaded, index: number): HTMLElement =>

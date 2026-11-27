@@ -2,8 +2,8 @@
 // b, a plate of tapped holes with a bolt in it, a flange with a circle and a mirror of tapped
 // holes, a printed tapped hole; e, the refusals. Built from the calls of
 // docs/d36/7a-thread/calls.ts against the real adapters, and the point between the stages (the
-// notes of an export, the print check and the parts list, `betweenTheStages`). Stage 2 (c, a stud
-// in a collar; d, a jar and its lid) is not part of this build.
+// notes of an export, the print check and the parts list, `betweenTheStages`), and stage 2: c, a
+// stud in a collar, d, a jar and its lid, both modelled.
 import type { Command, EngineState, FaceName, HardwareHole, Id, InterferenceReport, ThreadResult } from '@trymesh/engine';
 import { DATA_CATALOGS } from '@trymesh/engine';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -263,3 +263,174 @@ describe('scenario 18, e: refusals', () => {
   });
 });
 
+
+// ---------------------------------------------------------------- stage 2: modelled threads
+// A circle with its own centre point fixed at (x, y) and a radius that is an expression.
+const circleAt = (sketch: Id, id: Id, x: number, y: number, radius: string): Command[] => [
+  ...point(sketch, `${id}c`, x, y),
+  { type: 'addCurve', sketch, id, curve: { type: 'circle', center: `${id}c` }, radius: 1 },
+  { type: 'addConstraint', sketch, id: `${id}r`, constraint: { type: 'radius', curve: id, value: radius as never, driving: true } },
+];
+const regionsOf = (...curves: Id[][]) => curves.map((loop) => ({ outerLoop: [...loop].sort() }));
+const extrudeExpr = (id: Id, sketch: Id, regions: Id[][], start: string | number, distance: number, operation: 'new' | 'add' | 'cut' = 'new', targets?: Id[]): Command =>
+  ({ type: 'addFeature', feature: { id, name: id, suppressed: false, type: 'extrude', profile: { type: 'regions', sketch, regions: regionsOf(...regions) }, extent: { type: 'distance', start, distance }, operation, ...(targets ? { targets } : {}) } }) as Command;
+
+describe('scenario 18, c: a stud in a collar (stage 2)', () => {
+  const M10 = DATA_CATALOGS.metricThreads.rows.M10;
+  const STUD = side('stud', 'rod');
+  const COLLAR = side('collar', 'hole');
+  let plain: EngineState;
+  let state: EngineState;
+  const names = (s: EngineState, body: Id): FaceName[] => s.evaluation.bodies[body].faces.map((face) => s.evaluation.faceNames[face.id]);
+  const has = (s: EngineState, body: Id, name: FaceName): boolean => names(s, body).some((other) => JSON.stringify(other) === JSON.stringify(name));
+  const surface = (s: EngineState, body: Id, name: FaceName) => s.evaluation.faceSurfaces[s.evaluation.bodies[body].faces.find((face) => JSON.stringify(s.evaluation.faceNames[face.id]) === JSON.stringify(name))?.id ?? -1];
+  const report = (s?: EngineState) => unwrap(engine.query('interference', { bodies: ['stud', 'collar'] }, s ? { state: s } : {}));
+
+  it('an M10 stud threaded 14 down from its top and a collar with the clearance 0.2, both modelled', () => {
+    run(
+      engine,
+      { type: 'setParameter', name: 'clr', expr: '0.2' },
+      { type: 'setParameter', name: 'studD', expr: String(M10.diameter) },
+      { type: 'setParameter', name: 'studP', expr: String(M10.pitch) },
+      { type: 'setParameter', name: 'collarTop', expr: '16' },
+      { type: 'setParameter', name: 'studPhase', expr: 'deg(40)' },
+      addSketch('studS', XY),
+      ...circleAt('studS', 'rod', 100, 15, 'studD / 2'),
+      extrudeExpr('stud', 'studS', [['rod']], 0, 20),
+      addSketch('collarS', XY),
+      ...circleAt('collarS', 'outer', 100, 15, '12'),
+      ...circleAt('collarS', 'hole', 100, 15, `(${M10.tapDrill} + 2 * clr) / 2`),
+      extrudeExpr('collar', 'collarS', [['outer']], 'collarTop - 8', 8),
+    );
+    plain = engine.getState();
+    state = run(
+      engine,
+      thread('studThread', { body: 'stud', faces: [STUD], modelled: true, diameter: 'studD', pitch: 'studP', hand: 'right', direction: 'backward', length: 14, phase: 'studPhase', label: 'M10' }),
+      thread('collarThread', { body: 'collar', faces: [COLLAR], modelled: true, diameter: 'studD', pitch: 'studP', clearance: 'clr', hand: 'right', direction: 'backward', phase: 'studPhase + 2 * pi * (20 - collarTop) / studP', label: 'M10' }),
+    );
+    allOk(state);
+  });
+
+  it('the faces, the ends, the records, the volumes; the two free of each other', () => {
+    const root = surface(state, 'stud', { feature: 'studThread', role: 'threadRoot', face: 0 });
+    expect(has(state, 'stud', { feature: 'studThread', role: 'threadFlank', face: 0, side: 'start' })).toBe(true);
+    expect(has(state, 'stud', { feature: 'studThread', role: 'threadFlank', face: 0, side: 'end' })).toBe(true);
+    expect(root?.kind === 'cylinder' && 2 * root.radius).toBeCloseTo(M10.minorDiameter, 3);
+    expect(surface(state, 'stud', { feature: 'studThread', role: 'threadFlank', face: 0, side: 'start' })?.kind).toBe('general');
+    expect(has(state, 'stud', { feature: 'studThread', role: 'threadEnd', face: 0, end: 'end' })).toBe(true);
+    expect(has(state, 'stud', { feature: 'studThread', role: 'threadEnd', face: 0, end: 'start' })).toBe(false);
+    expect(surface(state, 'stud', STUD)?.kind).toBe('cylinder');
+    const collarRoot = surface(state, 'collar', { feature: 'collarThread', role: 'threadRoot', face: 0 });
+    expect(collarRoot?.kind === 'cylinder' && 2 * collarRoot.radius).toBeCloseTo(M10.diameter + 0.4, 9);
+    expect(names(state, 'collar').some((name) => name.role === 'threadEnd')).toBe(false);
+    expect(has(state, 'collar', COLLAR)).toBe(true);
+    expect(state.evaluation.bodies.stud.edges.filter((edge) => edge.name.a.role === 'threadFlank' || edge.name.b.role === 'threadFlank').every((edge) => edge.kind === 'other')).toBe(true);
+    const [stud] = threadsOf(state, 'studThread');
+    const [collar] = threadsOf(state, 'collarThread');
+    expect([stud.ends, collar.ends, collar.runOut.start, stud.internal, collar.internal, stud.modelled, collar.modelled]).toEqual([{ start: 'open', end: 'inside' }, { start: 'open', end: 'open' }, 0, false, true, true, true]);
+    expect([stud.origin[2], collar.origin[2], stud.axis[2], stud.to]).toEqual([expect.closeTo(20, 5), expect.closeTo(16, 5), expect.closeTo(-1, 9), expect.closeTo(14, 9)]);
+    const cut = (body: Id): number => plain.evaluation.bodies[body].volume - state.evaluation.bodies[body].volume;
+    expect(cut('stud')).toBeGreaterThan(0);
+    expect(cut('stud')).toBeLessThan(Math.PI * 14 * ((M10.diameter / 2) ** 2 - (M10.minorDiameter / 2) ** 2));
+    expect(cut('collar')).toBeGreaterThan(0);
+    expect(report()).toMatchObject({ pairs: [], fits: [], failed: [] });
+    expect(report().threaded).toBeUndefined();
+  });
+
+  it('the clearance of the pin: refused on the nominal diameter in both modes, taken on a pin made for it', () => {
+    const onNominal = (modelled: boolean) => done(engine.preview({ type: 'updateFeature', id: 'studThread', patch: { clearance: 'clr', modelled } } as never)).evaluation.features.studThread.error?.code;
+    expect([onNominal(true), onNominal(false)]).toEqual(['invalidThread', 'invalidThread']);
+    const made = done(engine.preview({ type: 'batch', commands: [{ type: 'setConstraintValue', sketch: 'studS', id: 'rodr', value: '(studD - 2 * clr) / 2' }, { type: 'updateFeature', id: 'studThread', patch: { clearance: 'clr' } }] } as never));
+    expect(made.evaluation.features.studThread.status).toBe('ok');
+    const root = surface(made, 'stud', { feature: 'studThread', role: 'threadRoot', face: 0 });
+    expect(root?.kind === 'cylinder' && 2 * root.radius).toBeCloseTo(M10.minorDiameter - 0.4, 3);
+  });
+
+  it('the collar threaded from below with the phase of the other row: still free', () => {
+    const below = done(engine.preview({ type: 'updateFeature', id: 'collarThread', patch: { direction: 'forward', phase: '-studPhase - 2 * pi * (20 - (collarTop - 8)) / studP' } } as never));
+    const [collar] = threadsOf(below, 'collarThread');
+    expect([collar.axis[2], collar.origin[2]]).toEqual([expect.closeTo(1, 9), expect.closeTo(8, 5)]);
+    expect(report(below)).toMatchObject({ pairs: [], fits: [], failed: [] });
+  });
+
+  it('wrongPhase: the collar turned by half a pitch collides, the entry says what to add to either phase, and that frees it', () => {
+    const turned = done(engine.preview({ type: 'updateFeature', id: 'collarThread', patch: { phase: 'studPhase + 2 * pi * (20 - collarTop) / studP + pi' } } as never));
+    const wrong = report(turned);
+    expect(wrong.pairs).toHaveLength(1);
+    expect(wrong.threaded).toBeUndefined();
+    const seat = wrong.pairs[0].seat ?? [];
+    expect(seat).toHaveLength(2);
+    const forCollar = seat.find((entry) => entry.feature === 'collarThread');
+    expect(Math.abs(forCollar?.addToPhase ?? 0)).toBeCloseTo(Math.PI, 6);
+    const seated = done(engine.preview({ type: 'updateFeature', id: 'collarThread', patch: { phase: `studPhase + 2 * pi * (20 - collarTop) / studP + pi + ${forCollar?.addToPhase}` } } as never));
+    expect(report(seated).pairs).toEqual([]);
+  });
+
+  it('cosmetic again: the meshes are the plain ones, the threads are recorded, the pair is excused', () => {
+    const again = done(engine.preview({ type: 'batch', commands: [{ type: 'updateFeature', id: 'studThread', patch: { modelled: false } }, { type: 'updateFeature', id: 'collarThread', patch: { modelled: false } }] } as never));
+    expect(again.evaluation.bodies.stud.volume).toBe(plain.evaluation.bodies.stud.volume);
+    expect(again.evaluation.bodies.collar.volume).toBe(plain.evaluation.bodies.collar.volume);
+    expect(threadsOf(again, 'studThread')).toHaveLength(1);
+    expect(threadsOf(again, 'collarThread')[0].modelled).toBe(false);
+    expect(report(again)).toMatchObject({ pairs: [], threaded: [{ a: 'collar', b: 'stud' }] });
+  });
+});
+
+describe('scenario 18, d: a jar and its lid (stage 2)', () => {
+  const NECK = side('neckUp', 'neck');
+  const SOCKET = side('socketCut', 'socket');
+  const common = { diameter: 'neck', pitch: 'lidP', flankAngle: 'deg(90)', starts: 2, hand: 'right', modelled: true, label: 'lid 40 x 4' } as const;
+  let state: EngineState;
+
+  it('a neck 40 x 4 with two starts at 90° on a jar, its lid with the clearance 0.3', () => {
+    state = run(
+      engine,
+      { type: 'setParameter', name: 'neck', expr: '40' },
+      { type: 'setParameter', name: 'lidP', expr: '4' },
+      { type: 'setParameter', name: 'lidClr', expr: '0.3' },
+      addSketch('jarS', XY),
+      ...circleAt('jarS', 'foot', 200, 30, '25'),
+      ...circleAt('jarS', 'neck', 200, 30, 'neck / 2'),
+      extrudeExpr('jar', 'jarS', [['foot'], ['neck']], 0, 5),
+      extrudeExpr('neckUp', 'jarS', [['neck']], 5, 15, 'add', ['jar']),
+      addSketch('lidS', XY),
+      ...circleAt('lidS', 'rim', 200, 30, '24'),
+      ...circleAt('lidS', 'socket', 200, 30, '(neck - 2 * 5 * lidP / 16) / 2 + lidClr'),
+      extrudeExpr('lid', 'lidS', [['rim'], ['socket']], 12, 10),
+      extrudeExpr('socketCut', 'lidS', [['socket']], 12, 8.5, 'cut', ['lid']),
+      thread('jarThread', { body: 'jar', faces: [NECK], ...common, direction: 'backward', length: 10 }),
+      thread('lidThread', { body: 'lid', faces: [SOCKET], ...common, clearance: 'lidClr', direction: 'backward', phase: '-2 * pi * 0.5 / (lidP * 2)' }),
+    );
+    allOk(state);
+  });
+
+  it('the profile, the ends, the flat end of the socket; the lid screwed on is free of the jar', () => {
+    const [jar] = threadsOf(state, 'jarThread');
+    const [lid] = threadsOf(state, 'lidThread');
+    const facts = state.evaluation.features.jarThread.facts ?? {};
+    expect([facts.depth, facts.lead, jar.depth, jar.starts, jar.flankAngle]).toEqual([expect.closeTo(1.25, 9), expect.closeTo(8, 9), expect.closeTo(1.25, 9), 2, expect.closeTo(Math.PI / 2, 12)]);
+    expect([jar.ends, lid.ends, lid.internal, jar.internal]).toEqual([{ start: 'open', end: 'inside' }, { start: 'shoulder', end: 'open' }, true, false]);
+    expect(state.evaluation.bodies.lid.faces.some((face) => JSON.stringify(state.evaluation.faceNames[face.id]) === JSON.stringify({ feature: 'lidThread', role: 'threadEnd', face: 0, end: 'start' }))).toBe(true);
+    const report = unwrap(engine.query('interference', { bodies: ['jar', 'lid'] }));
+    expect(report).toMatchObject({ pairs: [], failed: [] });
+    expect(report.threaded).toBeUndefined();
+  });
+
+  it('a mirrored copy of the lid is left-handed and says so, in both modes, with the same datum', () => {
+    const twin: Command = { type: 'addFeature', feature: { id: 'twin', name: 'twin', suppressed: false, type: 'pattern', source: { type: 'body', body: 'lid' }, transform: { type: 'mirror', plane: { kind: 'base', plane: 'YZ' } } } } as Command;
+    const pair = (s: EngineState) => ({ copy: s.evaluation.threads.find((t) => t.feature === 'lidThread' && t.bodies.includes('twin/1')), original: s.evaluation.threads.find((t) => t.feature === 'lidThread' && t.bodies.includes('lid')) });
+    const modelledState = done(engine.preview(twin));
+    const cosmeticState = done(engine.preview({ type: 'batch', commands: [{ type: 'updateFeature', id: 'lidThread', patch: { modelled: false } }, twin] } as Command));
+    for (const s of [modelledState, cosmeticState]) expect(s.evaluation.features.twin.warnings.map((w) => w.code)).toContain('mirroredThread');
+    const [modelled, cosmetic] = [pair(modelledState), pair(cosmeticState)];
+    for (const { copy, original } of [modelled, cosmetic]) {
+      expect([copy?.hand, original?.hand]).toEqual(['left', 'right']);
+      expect(copy!.origin[0]).toBeCloseTo(-original!.origin[0], 5);
+      expect(dot(copy!.zero, [-original!.zero[0], original!.zero[1], original!.zero[2]])).toBeCloseTo(1, 9);
+      expect(dot(copy!.axis, original!.axis)).toBeCloseTo(1, 9);
+      expect(copy!.face.copy?.[0].pattern).toBe('twin');
+    }
+    expect([modelled.copy?.modelled, cosmetic.copy?.modelled]).toEqual([true, false]);
+    expect(dot(modelled.copy!.zero, cosmetic.copy!.zero)).toBeCloseTo(1, 9);
+  });
+});

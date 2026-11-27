@@ -308,9 +308,9 @@
     +   "Label (for people; empty = none)"
     +   input value="M6"
     + label
-    +   input type=checkbox unchecked disabled
+    +   input type=checkbox unchecked
     +   "Modelled"
-    + p.hint: "This build makes cosmetic threads: the mesh stays, the thread is recorded and drawn as its helix, and a screw in such a bore is not a collision. A modelled thread comes later."
+    + p.hint: "Cosmetic: the mesh stays, the thread is recorded and drawn as its helix, and a screw in such a bore is not a collision. Modelled cuts the grooves, for printing."
     + p#draft-facts.hint
     + p#draft-problem.issue.error
     - h2: "Model"
@@ -618,9 +618,9 @@
     -   "Label (for people; empty = none)"
     -   input value="M10"
     - label
-    -   input type=checkbox unchecked disabled
+    -   input type=checkbox unchecked
     -   "Modelled"
-    - p.hint: "This build makes cosmetic threads: the mesh stays, the thread is recorded and drawn as its helix, and a screw in such a bore is not a collision. A modelled thread comes later."
+    - p.hint: "Cosmetic: the mesh stays, the thread is recorded and drawn as its helix, and a screw in such a bore is not a collision. Modelled cuts the grooves, for printing."
     - p#draft-facts.hint: "1 thread; depth 0.812, minor diameter 8.376, lead 1.5 mm."
     - p#draft-problem.issue.warning
     - div.buttons
@@ -849,9 +849,9 @@
     +   "Label (for people; empty = none)"
     +   input value="M10"
     - h2: "Thread"
-    +   input type=checkbox unchecked disabled
+    +   input type=checkbox unchecked
     +   "Modelled"
-    + p.hint: "This build makes cosmetic threads: the mesh stays, the thread is recorded and drawn as its helix, and a screw in such a bore is not a collision. A modelled thread comes later."
+    + p.hint: "Cosmetic: the mesh stays, the thread is recorded and drawn as its helix, and a screw in such a bore is not a collision. Modelled cuts the grooves, for printing."
     + p#draft-facts.hint: "1 thread; depth 0.812, minor diameter 8.376, lead 1.5 mm."
     + p#draft-problem.issue.warning
     -   "Feature name"

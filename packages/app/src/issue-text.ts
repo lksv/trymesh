@@ -22,6 +22,9 @@ export const ROLES: Record<FaceName['role'], string> = {
   splitFace: 'cut face of a split',
   chamfer: 'chamfer',
   fillet: 'fillet',
+  threadFlank: 'thread flank',
+  threadRoot: 'thread root',
+  threadEnd: 'thread end',
 };
 // What tells apart the faces of a wall and of a hole: the side of its curve, the point of its end
 // or of the hole, the number of a flat.
@@ -34,7 +37,13 @@ const wallPart = (name: FaceName): string =>
         ? ` (${name.flat} at ${name.point})`
         : name.role === 'chamfer' || name.role === 'fillet'
           ? ` of edge ${name.edge + 1}`
-          : '';
+          : name.role === 'threadFlank'
+            ? ` (${name.side}, face ${name.face + 1})`
+            : name.role === 'threadEnd'
+              ? ` (${name.end}, face ${name.face + 1})`
+              : name.role === 'threadRoot'
+                ? ` (face ${name.face + 1})`
+                : '';
 
 // A feature by its name; one the document does not have by its ID in parentheses.
 export const featureName = (id: Id, nameOf: NameOf): string => nameOf(id) ?? `(${id})`;

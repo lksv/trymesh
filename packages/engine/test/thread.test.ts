@@ -171,9 +171,10 @@ describe('the validator', () => {
     expect(featureInput(t)).toMatchObject({ flankAngle: 'deg(90)' });
   });
 
-  it('the refusals: modelled true, the faces, the fields out of range, a word misspelt', () => {
-    expect(refused({ modelled: true })).toMatch(/this build makes cosmetic threads only/);
+  it('the refusals: the faces, the fields out of range, a word misspelt; modelled true is taken (stage 2)', () => {
+    expect(refused({ modelled: true })).toBe('accepted');
     expect(refused({ modelled: undefined })).toMatch(/modelled/);
+    expect(refused({ modelled: 'yes' })).toMatch(/modelled/);
     expect(refused({ faces: [] })).toMatch(/faces/);
     expect(refused({ faces: [{ feature: 'b', role: 'side', curve: 'c' }, { feature: 'b', role: 'side', curve: 'c' }] })).toMatch(/twice/);
     expect(refused({ diameter: 0 })).toMatch(/diameter/);
@@ -192,14 +193,14 @@ describe('the validator', () => {
     expect(refused({ body: undefined })).toMatch(/body/);
   });
 
-  it('a document with modelled: true is invalid; updateFeature removes the optional fields with null', () => {
+  it('a document with modelled: true is valid (stage 2); updateFeature switches the mode and removes the optional fields with null', () => {
     const doc = applyCommand(base(), add({ copies: true, clearance: 0.1, label: 'M6' }));
-    expect(() => validateDocument(JSON.parse(JSON.stringify({ ...doc, features: doc.features.map((f) => (f.id === 't' ? { ...f, modelled: true } : f)) })))).toThrow(/cosmetic threads only/);
+    expect(() => validateDocument(JSON.parse(JSON.stringify({ ...doc, features: doc.features.map((f) => (f.id === 't' ? { ...f, modelled: true } : f)) })))).not.toThrow();
     const patched = applyCommand(doc, { type: 'updateFeature', id: 't', patch: { copies: null, clearance: null, label: null, pitch: '2 * 0.75' } } as never);
     const t = patched.features.find((f) => f.id === 't') as ThreadFeature;
     expect(['copies', 'clearance', 'label'].filter((k) => k in t)).toEqual([]);
     expect([t.pitch, t.expressions]).toEqual([1.5, { pitch: '2 * 0.75' }]);
-    expect(() => applyCommand(doc, { type: 'updateFeature', id: 't', patch: { modelled: true } } as never)).toThrow(/cosmetic threads only/);
+    expect((applyCommand(doc, { type: 'updateFeature', id: 't', patch: { modelled: true } } as never).features.find((f) => f.id === 't') as ThreadFeature).modelled).toBe(true);
     expect(() => applyCommand(doc, { type: 'updateFeature', id: 't', patch: { diameter: null } } as never)).toThrow();
   });
 });

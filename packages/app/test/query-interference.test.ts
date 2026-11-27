@@ -90,4 +90,13 @@ describe('the views of the collisions and of the gap with threads (D76)', () => 
     expect(interferenceView.note?.(result, panelOf())).toMatchObject({ text: expect.stringMatching(/^Collisions: 1 pair\(s\) of bodies share a volume\. 1 pair\(s\) threaded\./), error: true });
     expect(interferenceView.scene?.(result, {} as never, panelOf(1))).toMatchObject({ bodies: [{ body: 'bolt' }, { body: 'plate' }] });
   });
+
+  it('a collision of two modelled threads that agree says how to seat them, or that they are seated', async () => {
+    harness = await startApp();
+    const face = { feature: 'stud', role: 'side', curve: 'c' } as const;
+    const turned: InterferenceReport = { pairs: [{ a: 'nut', b: 'stud', volume: 17.8, depth: 0.11, seat: [{ feature: 'nt', face, addToPhase: -Math.PI / 2 }, { feature: 'st', face, addToPhase: Math.PI / 2 }] }], fits: [], failed: [], checked: 1 };
+    expect(texts(interferenceView.answer?.(turned, {} as never, panelOf()) ?? [])).toEqual(['body nut × body stud17.8 mm³; the threads are turned against each other: add -90° to the phase of nt (or turn the other)']);
+    const seated: InterferenceReport = { ...turned, pairs: [{ ...turned.pairs[0], seat: [{ feature: 'nt', face, addToPhase: 0 }, { feature: 'st', face, addToPhase: 0 }] }] };
+    expect(texts(interferenceView.answer?.(seated, {} as never, panelOf()) ?? [])).toEqual(['body nut × body stud17.8 mm³; the threads are seated, the collision has another cause']);
+  });
 });

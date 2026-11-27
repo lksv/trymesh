@@ -7,6 +7,7 @@ import type { CopyTag, FaceName, Facts, Id, Solid, ThreadEnd, ThreadFeature, Thr
 import { ANGLE_TOLERANCE, LENGTH_TOLERANCE, add3, cross3, dot3, faceKey, len3, mul3, sub3, unit3 } from '../util';
 import { bandOf } from './body-boolean';
 import type { State } from './state';
+import { MAX_THREAD_TRIANGLES, MIN_THREAD_DEPTH_TOLERANCES, THREAD_TOOL_FACES, buildThreadTool, threadToolFaces, threadTriangles, toolShape } from './tool-thread';
 
 const TAU = 2 * Math.PI;
 
@@ -403,7 +404,15 @@ export function movedThread(record: ThreadRecord, transform: RigidTransform, fac
 
 // ---------------------------------------------------------------- the step
 
-export type ThreadStepResult = { records: ThreadRecord[]; facts: Facts; copies: number } | { code: 'brokenReference' | 'invalidThread'; refs: unknown[]; detail?: string };
+// `walls`: for every record its wall, the name of its face, the place of its listed face in `faces`
+// and the further copy tags of a copy (what the tool of a modelled thread is named by).
+export interface ThreadPlaced {
+  name: FaceName;
+  wall: ThreadWall;
+  listed: number;
+  tags: CopyTag[];
+}
+export type ThreadStepResult = { records: ThreadRecord[]; walls: ThreadPlaced[]; profile: ThreadProfile; facts: Facts; copies: number } | { code: 'brokenReference' | 'invalidThread'; refs: unknown[]; detail?: string };
 
 // The walls, the profile, the checks, the spans, the datums and the ends: the records of a thread
 // feature in a state, or why there are none (design.md, "Recompute", steps 2 to 5).
@@ -446,13 +455,14 @@ export function threadRecords(feature: ThreadFeature, state: State, solid: Solid
   }
 
   // every wall, checked against the thread
-  const walls: { name: FaceName; wall: ThreadWall }[] = [];
-  for (const entry of [...listed, ...copies]) {
+  const walls: ThreadPlaced[] = [];
+  for (const [i, entry] of [...listed, ...copies].entries()) {
     const wall = threadWall(solid, entry.face, state.faceInfos[entry.face]);
     if ('detail' in wall) return { code: 'invalidThread', refs: [entry.name], detail: wall.detail };
     const problem = fitProblem(profile, wall, clearance);
     if (problem) return { code: 'invalidThread', refs: [entry.name], detail: problem };
-    walls.push({ name: entry.name, wall });
+    const copy = i < listed.length ? undefined : copies[i - listed.length];
+    walls.push({ name: entry.name, wall, listed: copy ? copy.of : i, tags: copy ? copy.tags : [] });
   }
 
   // the span, the datum and the ends of every wall
@@ -499,7 +509,7 @@ export function threadRecords(feature: ThreadFeature, state: State, solid: Solid
       feature: feature.id,
       face: wall.face,
       internal: wall.internal,
-      modelled: false,
+      modelled: feature.modelled,
       diameter: feature.diameter,
       pitch: feature.pitch,
       depth: profile.depth,
@@ -543,7 +553,108 @@ export function threadRecords(feature: ThreadFeature, state: State, solid: Solid
     threads: records.length,
     ...(feature.copies ? { copies: copies.length } : {}),
   };
-  return { records, facts, copies: copies.length };
+  return { records, walls, profile, facts, copies: copies.length };
+}
+
+// ---------------------------------------------------------------- the tool of a modelled thread
+
+// The tool of a modelled thread (stage 2): one tool per wall, all in one solid, cut from the body by
+// one boolean. `build(first)` makes the solid and the faces, the faces of the wall at the place `i`
+// numbered from `first + 5 · i` and its hidden faces `first + 5 · walls + i` (no face of the
+// model); `guards` is that count of numbers. Refused before the build by the checks that exist
+// because of the mesh (design.md, "The tool and the boolean").
+export interface ThreadToolPlan {
+  build(first: number): { solid: Solid; faces: { name: FaceName; info: FaceInfo }[] };
+  walls: number;
+  triangles: number;
+}
+export function threadToolPlan(feature: ThreadFeature, made: Extract<ThreadStepResult, { records: unknown }>, state: Pick<State, 'chordTolerance'>, solid: Solid): ThreadToolPlan | { refs: unknown[]; detail: string } {
+  const tol = state.chordTolerance;
+  const lift = threadLift(tol, bandOf(solid));
+  const { profile } = made;
+  const clearance = feature.clearance ?? 0;
+  const tan = Math.tan(profile.halfAngle);
+  const placed = made.records.map((record, i) => {
+    const { wall, name, listed, tags } = made.walls[i];
+    const length = wall.high - wall.low;
+    const [atStart, atEnd] = [record.from < lift, record.to > length - lift];
+    const z0 = record.ends.start === 'open' ? -record.runOut.start - lift : record.ends.start === 'shoulder' ? lift : atStart ? 0 : record.from;
+    const z1 = record.ends.end === 'open' ? length + record.runOut.end + lift : record.ends.end === 'shoulder' ? length - lift : atEnd ? length : record.to;
+    return { record, wall, name, listed, tags, z0, z1, shape: toolShape(profile, wall, clearance, lift) };
+  });
+  // the checks of one wall
+  let triangles = 0;
+  for (const { wall, name, z0, z1, shape } of placed) {
+    const depth = wall.internal ? shape.rMax - wall.radius : wall.radius - shape.rMin;
+    if (depth < MIN_THREAD_DEPTH_TOLERANCES * tol) return { refs: [name], detail: `the thread is ${digits(depth)} deep on this face, less than ${MIN_THREAD_DEPTH_TOLERANCES} chord tolerances of the document (${digits(tol)}): it cannot be modelled at that tolerance; make it cosmetic` };
+    if (wall.internal && wall.radius <= 2 * lift) return { refs: [name], detail: `a bore of ${digits(2 * wall.radius)} is no wider than four lifts (${digits(4 * lift)}): the tool of its thread would have no hole; make it cosmetic` };
+    if (wallFlat(profile, wall, clearance) < 2 * tol * tan) return { refs: [name], detail: `the flat the grooves leave on the wall (${digits(Math.max(0, wallFlat(profile, wall, clearance)))}) is too narrow for the chord tolerance ${digits(tol)}: the flanks of the tool would meet within one chord tolerance of the wall; take a smaller clearance or make the wall for it` };
+    if (z1 - z0 <= tol) return { refs: [name, 'length'], detail: `nothing is left of the thread once it stops ${digits(lift)} short of the shoulder: make it longer` };
+    triangles += threadTriangles(shape, z0, z1, tol);
+  }
+  if (triangles > MAX_THREAD_TRIANGLES) return { refs: [placed[0].name], detail: `the tools of the thread would have about ${triangles} triangles, more than ${MAX_THREAD_TRIANGLES}: make it shorter, put the faces into several features, or make it cosmetic` };
+  // two tools that would cross: the cylinders that hold them meet
+  const holder = (p: (typeof placed)[number]) => ({ low: p.wall.internal ? p.wall.radius - 2 * lift : p.shape.rMin, high: p.wall.internal ? p.shape.rMax : p.wall.radius + 2 * lift, a: add3(p.record.origin, mul3(p.record.axis, p.z0)), b: add3(p.record.origin, mul3(p.record.axis, p.z1)), axis: p.record.axis });
+  for (let i = 0; i < placed.length; i++) {
+    for (let j = i + 1; j < placed.length; j++) {
+      const [h, k] = [holder(placed[i]), holder(placed[j])];
+      const parallel = len3(cross3(h.axis, k.axis)) <= ANGLE_TOLERANCE;
+      const off = len3(sub3(sub3(k.a, h.a), mul3(h.axis, dot3(sub3(k.a, h.a), h.axis))));
+      let meet: boolean;
+      if (parallel && off <= tol) {
+        const [ka, kb] = [dot3(sub3(k.a, h.a), h.axis), dot3(sub3(k.b, h.a), h.axis)];
+        const [hb] = [dot3(sub3(h.b, h.a), h.axis)];
+        meet = Math.min(hb, Math.max(ka, kb)) > Math.max(0, Math.min(ka, kb)) && Math.min(h.high, k.high) > Math.max(h.low, k.low);
+      } else meet = segmentDistance(h.a, h.b, k.a, k.b) < h.high + k.high;
+      if (meet) return { refs: [placed[i].name, placed[j].name], detail: 'the tools of these two threads would cross: put them into two features' };
+    }
+  }
+  return {
+    walls: placed.length,
+    triangles,
+    build: (first) => {
+      const solids: Solid[] = [];
+      const faces: { name: FaceName; info: FaceInfo }[] = [];
+      for (const [i, p] of placed.entries()) {
+        const datum = { origin: p.record.origin, axis: p.record.axis, zero: p.record.zero };
+        solids.push(buildThreadTool(p.shape, p.wall.internal, datum, p.z0, p.z1, tol, lift, first + THREAD_TOOL_FACES.length * i, first + THREAD_TOOL_FACES.length * placed.length + i));
+        faces.push(...threadToolFaces(feature.id, p.listed, p.tags, p.shape, p.wall.internal, datum, p.z0, p.z1, p.wall.axis));
+      }
+      return { solid: joinedSolids(solids), faces };
+    },
+  };
+}
+
+// The solids one after another in one mesh.
+function joinedSolids(solids: Solid[]): Solid {
+  const vertices = solids.reduce((sum, x) => sum + x.positions.length, 0);
+  const count = solids.reduce((sum, x) => sum + x.triangles.length, 0);
+  const positions = new Float32Array(vertices);
+  const triangles = new Uint32Array(count);
+  const faceIds = new Uint32Array(count / 3);
+  let [v, t] = [0, 0];
+  for (const x of solids) {
+    positions.set(x.positions, v);
+    for (let k = 0; k < x.triangles.length; k++) triangles[t + k] = x.triangles[k] + v / 3;
+    faceIds.set(x.faceIds, t / 3);
+    v += x.positions.length;
+    t += x.triangles.length;
+  }
+  return { positions, triangles, faceIds };
+}
+
+// The smallest distance of two segments.
+function segmentDistance(p1: Vec3, q1: Vec3, p2: Vec3, q2: Vec3): number {
+  const [d1, d2, r] = [sub3(q1, p1), sub3(q2, p2), sub3(p1, p2)];
+  const [a, e, f] = [dot3(d1, d1), dot3(d2, d2), dot3(d2, r)];
+  const c = dot3(d1, r);
+  const b = dot3(d1, d2);
+  const denom = a * e - b * b;
+  let sParam = denom > 1e-12 ? Math.min(1, Math.max(0, (b * f - c * e) / denom)) : 0;
+  let tParam = (b * sParam + f) / e;
+  if (tParam < 0) [tParam, sParam] = [0, Math.min(1, Math.max(0, -c / a))];
+  else if (tParam > 1) [tParam, sParam] = [1, Math.min(1, Math.max(0, (b - c) / a))];
+  return len3(sub3(add3(p1, mul3(d1, sParam)), add3(p2, mul3(d2, tParam))));
 }
 
 // The key of a copy tag in `State.copyTransforms`: as in the key of a face name.

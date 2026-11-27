@@ -1420,7 +1420,25 @@ export type FaceName = (
   | { feature: Id; role: 'splitFace' } // the face a split cuts, on both bodies (D56)
   | { feature: Id; role: 'chamfer'; edge: number } // the face of a chamfer of the edge at that place of `edges`, from 0 (D63)
   | { feature: Id; role: 'fillet'; edge: number } // the face of a fillet of the edge at that place of `edges`, from 0 (D63)
+  | { feature: Id; role: 'threadFlank'; face: number; side: 'start' | 'end' } // a flank of a modelled thread (D76), below
+  | { feature: Id; role: 'threadRoot'; face: number } // the root of a modelled thread (D76), below
+  | { feature: Id; role: 'threadEnd'; face: number; end: 'start' | 'end' } // a flat end of a modelled thread (D76), below
 ) & { copy?: CopyTag[] };
+// The faces a modelled thread adds (a feature of the type `thread`, D76). `face` is the place of
+// its face in `faces` of the feature, from 0; the thread on a copy of that face (`copies`) carries
+// the further copy tags of the copy. One face per role whatever the number of starts.
+// - `threadFlank`: a flank, a helical surface (`Surface` of the kind `general`). `side` is `start`
+//   for the flank whose normal out of the body points towards the start of the thread and `end`
+//   for the other. With the axis upright and the thread starting at the top, the flanks `end` face
+//   down, on a pin and in a bore alike: they are the ones a printer has to bridge.
+// - `threadRoot`: the bottom of the groove, a cylinder about the axis of the wall: the minor
+//   cylinder of an external thread, the major cylinder of an internal one, each shifted by the
+//   clearance. A profile with no flat at its root has none.
+// - `threadEnd`: a flat end of the groove, a plane across the axis; `end` is `start` or `end` of the
+//   thread. Where the thread ends inside the wall or just short of a shoulder, and where an end that
+//   was read as open met material after all. An end that runs out into the air has none.
+// The crest is the face the thread was placed on, under its own name. The edges of a flank are of
+// the kind `other` (helices): they are not projected, chamfered or filleted.
 
 // `pattern` names the feature that made the copy: a pattern, or a combine with a clearance, whose
 // tag numbers the tool whose moved face it is (D56); the field keeps its name.
@@ -1852,13 +1870,26 @@ export interface Interference {
 // - An entry of `pairs` between two bodies with threads that meet and do not agree carries
 //   `mismatch`, in words ("pitch 1.5 against 1.25", "a left-hand thread in a right-hand one",
 //   "the axes are 0.3 apart"): the pair was judged whole.
+// - An entry of `pairs` between two modelled threads that agree and collide all the same (one is
+//   turned against the other) carries `seat`: for each of the two threads (`feature`, `face`) what
+//   to add to the `phase` of its feature, radians, so that the two are one helix; either one seats
+//   the pair. Exact from the two published datums whatever the clearances. It does not say that the
+//   pair is free afterwards (a clearance below the chord tolerance, a shank or an end may still
+//   meet), it holds for the pose asked about, and both are 0 when the helices are one curve
+//   already and the collision has another cause. A `phase` belongs to a feature: on a thread with
+//   several faces or copies it turns them all.
 export interface InterferenceReport {
-  pairs: (Interference & { mismatch?: string })[];
+  pairs: (Interference & { mismatch?: string; seat?: Seat[] })[];
   fits: Interference[];
   failed: { a: Id; b: Id; message: string }[];
   cleared?: Cleared[];
   threaded?: Threaded[];
   checked: number; // number of pairs examined
+}
+export interface Seat {
+  feature: Id;
+  face: FaceName;
+  addToPhase: number; // radians
 }
 // A pair of bodies of which a part of what they share is what a thread accounts for (D76): a screw
 // in a bore with a cosmetic thread, a plain rod of the nominal diameter in it. What is left of the

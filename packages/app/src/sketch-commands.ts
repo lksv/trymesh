@@ -1,6 +1,7 @@
 // Commands sent by the drawing tools and the constraint buttons. Pure functions: from a click and a selection
 // they build the engine's commands; the IDs of new entities come from the caller (see docs/ui.md, point 9).
 import {
+  ANGLE_TOLERANCE,
   type AxisRef,
   CONSTRAINTS,
   type Command,
@@ -335,6 +336,15 @@ function roundDimension(kind: EntityKind | undefined): 'diameter' | 'radius' {
   }
 }
 
+// Two lines within the angle tolerance of the engine of each other: their dimension is the distance, not the angle (D75).
+function parallelLines(view: SketchView, a: Id, b: Id): boolean {
+  const [u, v] = [view.curves.get(a)?.shape, view.curves.get(b)?.shape];
+  if (u?.type !== 'line' || v?.type !== 'line') return false;
+  const [du, dv]: Vec2[] = [[u.b[0] - u.a[0], u.b[1] - u.a[1]], [v.b[0] - v.a[0], v.b[1] - v.a[1]]];
+  const lengths = Math.hypot(...du) * Math.hypot(...dv);
+  return lengths > 0 && Math.abs(du[0] * dv[1] - du[1] * dv[0]) <= Math.sin(ANGLE_TOLERANCE) * lengths;
+}
+
 // A dimension from the selection (the table in docs/ui.md); the value is the current measure rounded to hundredths.
 export function dimensionFor(variant: DimensionVariant, view: SketchView, selection: Id[]): Dimension | undefined {
   if (holdsUnconstrainable(view, selection)) return undefined;
@@ -346,11 +356,13 @@ export function dimensionFor(variant: DimensionVariant, view: SketchView, select
   if (pair) shape = { type: variant === 'auto' ? 'distance' : variant === 'horizontal' ? 'horizontalDistance' : 'verticalDistance', a: pair[0], b: pair[1] };
   else if (variant !== 'auto') return undefined;
   else if (count === 2 && points.length === 1 && lines.length === 1) shape = { type: 'distancePointLine', point: points[0], line: lines[0] };
-  else if (count === 2 && lines.length === 2) shape = { type: 'angle', a: lines[0], b: lines[1] };
+  else if (count === 2 && lines.length === 2) shape = { type: parallelLines(view, lines[0], lines[1]) ? 'distanceLineLine' : 'angle', a: lines[0], b: lines[1] };
+  else if (count === 2 && lines.length === 1 && round.length === 1) shape = { type: 'distanceLineCircle', line: lines[0], curve: round[0] };
   else if (count === 1 && round.length === 1) shape = { type: roundDimension(kindOf(view, round[0])), curve: round[0] };
   if (!shape) return undefined;
   const value = measure(shape, view);
-  if (value === undefined) return undefined;
+  if (value === undefined || (shape.type === 'distanceLineCircle' && value < 0)) return undefined; // a circle across the line has no gap
+
   // an angle to whole degrees, lengths to hundredths; zero for a distance, radius and angle the engine does
   // not want or makes no sense
   const rounded = shape.type === 'angle' ? normalizeAngle((Math.round((value * 180) / Math.PI) * Math.PI) / 180) : Math.round(value * 100) / 100;

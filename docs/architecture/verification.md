@@ -410,7 +410,7 @@ Script: `planegcs-spike.mjs`. 36 of 37 checks passed; the one that failed is the
 | Fixed points | Holds (`fixed: true`); they do not move by a single bit. |
 | Fixed radius of a projected circle | Holds through the constraint `circle_radius`; a concentric hole and a tangent to a fixed circle both work. |
 | Conditions of an arc | Hold through `arc_rules`. The adapter has to compute the radius and the angles from the points; planegcs wants them in the input. |
-| Mapping of the constraint variants | Every variant has a counterpart (24 combinations of a constraint and a kind of curve in the adapter's tests). `horizontalDistance` and `verticalDistance` are mapped to the constraint `difference` over the coordinates of points. |
+| Mapping of the constraint variants | Every variant has a counterpart (24 combinations of a constraint and a kind of curve in the adapter's tests). `horizontalDistance` and `verticalDistance` are mapped to the constraint `difference` over the coordinates of points. The kinds of D75 have a block of their own: the sides of the two distances, a value of 0, a `parallel` beside `distanceLineLine` (redundant once, kept through a drag), a pair of `midpointPoints` at one place, an arc in `distanceLineCircle`, and a contradiction that the library names only from a solved state. |
 | Signs | Verified by the adapter's tests: `difference` gives b − a including negative values, `l2l_angle_ll` measures from the first line to the second counter-clockwise. |
 | A satisfied input is returned unchanged | Holds bit for bit, for a fully constrained and for an underconstrained sketch. |
 | Determinism | Holds bit for bit. |

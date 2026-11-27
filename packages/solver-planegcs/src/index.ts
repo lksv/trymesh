@@ -162,14 +162,14 @@ const clonePoints = (points: Record<Id, Point2>): Record<Id, Point2> =>
 // The primitives are ordered by ID so that the same input always gives the same output
 // regardless of the order of the keys in the objects.
 // The pair of points from which the library computes the symmetry: the symmetric points, for the
-// midpoint of a line its ends.
+// midpoint of a line its ends, for the midpoint of two points those two.
 function pairOf(c: Constraint, curves: Record<Id, Curve>): [Id, Id] | undefined {
-  if (c.type === 'symmetric') return [c.a, c.b];
+  if (c.type === 'symmetric' || c.type === 'midpointPoints') return [c.a, c.b];
   const line = c.type === 'midpoint' ? curves[c.line] : undefined;
   return line?.type === 'line' ? [line.a, line.b] : undefined;
 }
 
-// Constraints of symmetry and of the midpoint of a line whose pair of points merges in the input.
+// Constraints of symmetry and of a midpoint whose pair of points merges in the input.
 function mergedPairs(input: SolveInput): Id[] {
   return Object.keys(input.constraints).filter((id) => {
     const pair = pairOf(input.constraints[id], input.curves);
@@ -286,13 +286,27 @@ function buildPrimitives(input: SolveInput, drag?: SolveInput['drag'], without?:
       if (!without?.has(`${SECOND}${id}`)) out.push({ id: `${SECOND}${id}`, type: 'coordinate_y', p_id: constraint.point, y: constraint.y });
       continue;
     }
+    if (constraint.type === 'distanceLineLine') {
+      // two primitives, each left out on its own (D75): the lines parallel, and the point `a` of the
+      // line a at the distance from the line b (on it at 0: the unsigned distance has a kink there).
+      // A `parallel` of the same lines beside it leaves only the first one redundant.
+      const [a, b] = [lineOf(id, constraint.a, input.curves), lineOf(id, constraint.b, input.curves)];
+      if (!without?.has(id)) out.push({ id, type: 'parallel', l1_id: constraint.a, l2_id: constraint.b });
+      if (!without?.has(`${SECOND}${id}`)) {
+        const at = a.a;
+        point(at);
+        point(b.a);
+        out.push(constraint.value === 0 ? { id: `${SECOND}${id}`, type: 'point_on_line_pl', p_id: at, l_id: constraint.b } : { id: `${SECOND}${id}`, type: 'p2l_distance', p_id: at, l_id: constraint.b, distance: constraint.value });
+      }
+      continue;
+    }
     if (without?.has(id)) continue;
     if (collapsed?.has(id)) {
-      // the merged form: both points of the pair at one place, which lies on the axis (at the midpoint of the line)
+      // the merged form: both points of the pair at one place, which lies on the axis (at the midpoint of the line, or is the midpoint)
       const [a, b] = pairOf(constraint, input.curves) as [Id, Id];
       out.push({ id, type: 'p2p_coincident', p1_id: a, p2_id: b });
       if (constraint.type === 'symmetric') out.push({ id: `${SYNTHETIC}onAxis/${id}`, type: 'point_on_line_pl', p_id: a, l_id: constraint.line });
-      else if (constraint.type === 'midpoint') out.push({ id: `${SYNTHETIC}middle/${id}`, type: 'p2p_coincident', p1_id: constraint.point, p2_id: a });
+      else if (constraint.type === 'midpoint' || constraint.type === 'midpointPoints') out.push({ id: `${SYNTHETIC}middle/${id}`, type: 'p2p_coincident', p1_id: constraint.point, p2_id: a });
       continue;
     }
     out.push({ id, ...translate(id, constraint, input.curves, input.constraints, { points: input.points, fixed }) });
@@ -318,7 +332,14 @@ const neverASpline = (id: Id): never => {
   throw new Error(`solver: constraint ${id}: a spline is never an operand of a constraint`);
 };
 
-function translate(id: Id, c: Exclude<Constraint, { type: 'fixed' }>, curves: Record<Id, Curve>, constraints: Record<Id, Constraint>, ends: Ends): Record<string, unknown> & { type: string } {
+// The line a constraint names, or an error of the adapter.
+function lineOf(id: Id, curveId: Id, curves: Record<Id, Curve>): Extract<Curve, { type: 'line' }> {
+  const curve = curves[curveId];
+  if (curve?.type !== 'line') throw new Error(`solver: the constraint ${id} expects a line, ${curveId} is ${curve?.type ?? 'unknown'}`);
+  return curve;
+}
+
+function translate(id: Id, c: Exclude<Constraint, { type: 'fixed' | 'distanceLineLine' }>, curves: Record<Id, Curve>, constraints: Record<Id, Constraint>, ends: Ends): Record<string, unknown> & { type: string } {
   const kind = (curveId: Id): Curve['type'] => {
     const curve = curves[curveId];
     if (!curve) throw new Error(`solver: the constraint ${id} refers to an unknown curve ${curveId}`);
@@ -352,6 +373,10 @@ function translate(id: Id, c: Exclude<Constraint, { type: 'fixed' }>, curves: Re
       return { type: 'horizontal_l', l_id: line(c.line) };
     case 'vertical':
       return { type: 'vertical_l', l_id: line(c.line) };
+    case 'horizontalPoints':
+      return { type: 'horizontal_pp', p1_id: c.a, p2_id: c.b };
+    case 'verticalPoints':
+      return { type: 'vertical_pp', p1_id: c.a, p2_id: c.b };
     case 'parallel':
       return { type: 'parallel', l1_id: line(c.a), l2_id: line(c.b) };
     case 'perpendicular':
@@ -428,10 +453,19 @@ function translate(id: Id, c: Exclude<Constraint, { type: 'fixed' }>, curves: Re
       const ends = curves[line(c.line)] as Extract<Curve, { type: 'line' }>;
       return { type: 'p2p_symmetric_ppp', p1_id: ends.a, p2_id: ends.b, p_id: c.point };
     }
+    case 'midpointPoints': // a and b symmetric about the point
+      return { type: 'p2p_symmetric_ppp', p1_id: c.a, p2_id: c.b, p_id: c.point };
     case 'distance':
       return { type: 'p2p_distance', p1_id: c.a, p2_id: c.b, distance: c.value };
     case 'distancePointLine':
       return { type: 'p2l_distance', p_id: c.point, l_id: line(c.line), distance: c.value };
+    case 'distanceLineCircle': {
+      // the library's form: |the distance of the centre from the line| = the radius + the gap; it
+      // takes an arc as its circle
+      const [l, k] = [line(c.line), kind(c.curve)];
+      if (k !== 'circle' && k !== 'arc') throw new Error(`solver: constraint ${id}: a distance from a line needs a circle or an arc, ${c.curve} is ${k}`);
+      return { type: 'c2ldistance', c_id: c.curve, l_id: l, dist: c.value };
+    }
     case 'horizontalDistance': // signed: b.x − a.x = value
       return { type: 'difference', param1: { o_id: c.a, prop: 'x' }, param2: { o_id: c.b, prop: 'x' }, difference: c.value };
     case 'verticalDistance': // signed: b.y − a.y = value

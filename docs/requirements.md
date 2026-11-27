@@ -39,8 +39,8 @@ Two milestones lead to the joint (D35):
 
 - Entities: point, line, circle, arc.
 - A fixed origin of the sketch, to which geometry can be constrained and dimensioned.
-- Geometric constraints: coincidence, horizontal, vertical, parallel, perpendicular, tangent, equal length, point on curve, symmetry of two points about a line (axis) and a point at the midpoint of a line.
-- Dimensions: point–point distance, point–line distance, horizontal and vertical distance, angle, radius/diameter.
+- Geometric constraints: coincidence, horizontal, vertical, parallel, perpendicular, tangent, equal length, point on curve, symmetry of two points about a line (axis), a point at the midpoint of a line, two points level or plumb and a point halfway between two points (D75).
+- Dimensions: point–point distance, point–line distance, the distance of two parallel lines and the gap of a line and a circle (D75), horizontal and vertical distance, angle, radius/diameter.
 - State of the sketch: fully determined, underconstrained, overconstrained (including marking the conflicting constraints).
 - Diagnosis of the sketch on request: which constraints are redundant (duplicates as well as those that follow from the others) and which constraints they follow from, which set can be removed, and which points and radii can still move. The same driving constraint cannot be added twice.
 - Dragging underconstrained geometry, during which the solver keeps the constraints.

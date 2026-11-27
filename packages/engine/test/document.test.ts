@@ -270,6 +270,57 @@ describe('commands of a sketch', () => {
     expect(Object.keys(sketchOf(run(twice, { type: 'removeEntity', sketch: 'S1', id: 'p4' })).constraints)).toEqual(['m']);
   });
 
+  it('two points level or plumb, the midpoint of two points, the distance of two lines and of a line and a circle (D75): operands, values and duplicates', () => {
+    const doc = run(base(), { type: 'addPoint', sketch: 'S1', id: 'q', x: 20, y: 15 }, { type: 'addPoint', sketch: 'S1', id: 'r', x: 5, y: 15 }, { type: 'addCurve', sketch: 'S1', id: 'c', curve: { type: 'circle', center: 'q' }, radius: 4 });
+    const add = (constraint: Constraint, id = 'k'): Command => ({ type: 'addConstraint', sketch: 'S1', id, constraint });
+    const stored = (constraint: Constraint) => sketchOf(run(doc, add(constraint))).constraints.k;
+    // two points, also with the origin; never a curve, never one point twice
+    expect(stored({ type: 'horizontalPoints', a: 'q', b: 'r' })).toEqual({ type: 'horizontalPoints', a: 'q', b: 'r' });
+    expect(stored({ type: 'verticalPoints', a: 'origin', b: 'r' })).toEqual({ type: 'verticalPoints', a: 'origin', b: 'r' });
+    invalid(doc, add({ type: 'horizontalPoints', a: 'q', b: 'l1' }), /expected point/);
+    invalid(doc, add({ type: 'verticalPoints', a: 'q', b: 'q' }), /two different entities/);
+    // the middle and the two points it lies between: three different points
+    expect(stored({ type: 'midpointPoints', point: 'q', a: 'p1', b: 'p3' })).toEqual({ type: 'midpointPoints', point: 'q', a: 'p1', b: 'p3' });
+    expect(stored({ type: 'midpointPoints', point: 'q', a: 'origin', b: 'r' })).toMatchObject({ a: 'origin' });
+    invalid(doc, add({ type: 'midpointPoints', point: 'q', a: 'p1', b: 'p1' }), /needs 3 different entities/);
+    invalid(doc, add({ type: 'midpointPoints', point: 'p1', a: 'p1', b: 'p3' }), /needs 3 different entities/);
+    invalid(doc, add({ type: 'midpointPoints', point: 'q', a: 'l1', b: 'p3' }), /expected point/);
+    invalid(doc, add({ type: 'midpointPoints', point: 'q', a: 'p1' } as never), /a string is expected/);
+    // the distance of two lines: non-negative, 0 allowed, an axis of the origin as one of them
+    expect(stored({ type: 'distanceLineLine', a: 'l1', b: 'l3', value: 30, driving: true })).toEqual({ type: 'distanceLineLine', a: 'l1', b: 'l3', value: 30, driving: true });
+    expect(stored({ type: 'distanceLineLine', a: 'l1', b: 'l3', value: 0, driving: true })).toMatchObject({ value: 0 });
+    expect(stored({ type: 'distanceLineLine', a: 'origin/x', b: 'l3', value: 30, driving: true })).toMatchObject({ a: 'origin/x', b: 'l3' });
+    invalid(doc, add({ type: 'distanceLineLine', a: 'l1', b: 'l3', value: -1, driving: true }), /must not be negative/);
+    invalid(doc, add({ type: 'distanceLineLine', a: 'l1', b: 'c', value: 5, driving: true }), /expected line/);
+    invalid(doc, add({ type: 'distanceLineLine', a: 'l1', b: 'l1', value: 5, driving: true }), /two different entities/);
+    invalid(doc, add({ type: 'distanceLineLine', a: 'origin/x', b: 'origin/y', value: 5, driving: true }), /only between fixed entities/);
+    // the gap of a line and a circle: the line first, a circle or an arc second; a default of driving and an expression as for any dimension
+    expect(stored({ type: 'distanceLineCircle', line: 'l1', curve: 'c', value: 11, driving: true })).toEqual({ type: 'distanceLineCircle', line: 'l1', curve: 'c', value: 11, driving: true });
+    expect(stored({ type: 'distanceLineCircle', line: 'origin/y', curve: 'c', value: 0, driving: false })).toMatchObject({ line: 'origin/y', value: 0, driving: false });
+    const loose = run(doc, { type: 'addConstraint', sketch: 'S1', id: 'k', constraint: { type: 'distanceLineCircle', line: 'l1', curve: 'c', value: '2 + 9' } } as Command);
+    expect(sketchOf(loose).constraints.k).toMatchObject({ value: 11, driving: true });
+    expect(sketchOf(loose).expressions).toEqual({ 'constraints/k/value': '2 + 9' });
+    invalid(doc, add({ type: 'distanceLineCircle', line: 'l1', curve: 'l2', value: 5, driving: true }), /expected circle or arc/);
+    invalid(doc, add({ type: 'distanceLineCircle', line: 'c', curve: 'c', value: 5, driving: true }), /expected line/);
+    invalid(doc, add({ type: 'distanceLineCircle', line: 'l1', curve: 'c', value: -2, driving: true }), /must not be negative/);
+    // duplicates: the order of the two points and of the two lines does not matter, the middle does; a parallel of the same lines is another constraint
+    const twice = run(
+      doc,
+      add({ type: 'horizontalPoints', a: 'q', b: 'r' }, 'level'),
+      add({ type: 'midpointPoints', point: 'q', a: 'p1', b: 'p3' }, 'mid'),
+      add({ type: 'distanceLineLine', a: 'l1', b: 'l3', value: 30, driving: true }, 'apart'),
+      add({ type: 'distanceLineCircle', line: 'l1', curve: 'c', value: 11, driving: true }, 'gap'),
+    );
+    invalid(twice, add({ type: 'horizontalPoints', a: 'r', b: 'q' }), /the same constraint is already in the sketch \("level"\)/);
+    invalid(twice, add({ type: 'midpointPoints', point: 'q', a: 'p3', b: 'p1' }), /"mid"/);
+    invalid(twice, add({ type: 'distanceLineLine', a: 'l3', b: 'l1', value: 12, driving: true }), /"apart"/);
+    invalid(twice, add({ type: 'distanceLineCircle', line: 'l1', curve: 'c', value: 3, driving: true }), /"gap"/);
+    run(twice, add({ type: 'verticalPoints', a: 'q', b: 'r' }, 'k1'), add({ type: 'midpointPoints', point: 'p1', a: 'q', b: 'p3' }, 'k2'), add({ type: 'parallel', a: 'l1', b: 'l3' }, 'k3'), add({ type: 'distanceLineLine', a: 'l1', b: 'l3', value: 30, driving: false }, 'k4'));
+    // removing an operand takes the constraint with it
+    expect(Object.keys(sketchOf(run(twice, { type: 'removeEntity', sketch: 'S1', id: 'c' })).constraints)).toEqual(['level', 'mid', 'apart']);
+    expect(Object.keys(sketchOf(run(twice, { type: 'removeEntity', sketch: 'S1', id: 'r' })).constraints)).toEqual(['mid', 'apart', 'gap']);
+  });
+
   it('the same driving constraint cannot be added twice; a reference dimension may sit beside a driving one', () => {
     const add = (id: string, constraint: Constraint): Command => ({ type: 'addConstraint', sketch: 'S1', id, constraint });
     const doc = run(base(), add('h', { type: 'horizontal', line: 'l1' }), add('par', { type: 'parallel', a: 'l1', b: 'l3' }), add('w', { type: 'horizontalDistance', a: 'p1', b: 'p2', value: 40, driving: true }));

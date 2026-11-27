@@ -1032,3 +1032,221 @@ describe('a tangency of a line and an arc at a common end (D52)', () => {
     expect(result.points.t2!.y).toBeGreaterThan(30);
   });
 });
+
+describe('two points level or plumb, the midpoint of two points, the distance of two lines and of a line and a circle (D75)', () => {
+  const dim = (shape: object): Constraint => ({ ...shape, driving: true }) as Constraint;
+  // the signed distance of a point from the line through two points (positive to the left of a → b)
+  const off = (p: Point2, a: Point2, b: Point2): number => ((b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x)) / Math.hypot(b.x - a.x, b.y - a.y);
+  const cross = (r: { points: Record<Id, Point2> }, [a, b, c, e]: Id[]): number => {
+    const [A, B, C, E] = [r.points[a], r.points[b], r.points[c], r.points[e]];
+    return ((B.x - A.x) * (E.y - C.y) - (B.y - A.y) * (E.x - C.x)) / (Math.hypot(B.x - A.x, B.y - A.y) * Math.hypot(E.x - C.x, E.y - C.y));
+  };
+  // two freehand lines 30° apart, the first one held by the fixed origin
+  const lines = (constraints: Record<Id, Constraint>, points: Record<Id, Point2> = {}): SolveInput =>
+    input({
+      points: { origin: { x: 0, y: 0 }, a: { x: 0, y: 0 }, b: { x: 40, y: 1 }, c: { x: 3, y: 12 }, e: { x: 38, y: 33 }, ...points },
+      curves: { ab: { type: 'line', a: 'a', b: 'b' }, ce: { type: 'line', a: 'c', b: 'e' } },
+      constraints: { anchor: { type: 'coincident', a: 'a', b: 'origin' }, h: { type: 'horizontal', line: 'ab' }, ...constraints },
+      fixed: ['origin'],
+    });
+
+  it('two points level have one y and two points plumb one x; each takes one degree of freedom', () => {
+    const free = input({ points: { origin: { x: 0, y: 0 }, p: { x: 7, y: 3 }, q: { x: 21, y: -6 } }, fixed: ['origin'] });
+    expect(solver.solve(free).degreesOfFreedom).toBe(4);
+    const level = solver.solve({ ...free, constraints: { k: { type: 'horizontalPoints', a: 'p', b: 'q' } } });
+    expect(level).toMatchObject({ status: 'solved', degreesOfFreedom: 3, redundant: [] });
+    expect(level.points.p.y).toBeCloseTo(level.points.q.y, 9);
+    expect(level.points.p.x).not.toBeCloseTo(level.points.q.x, 3);
+    const plumb = solver.solve({ ...free, constraints: { k: { type: 'verticalPoints', a: 'q', b: 'origin' } } });
+    expect(plumb).toMatchObject({ status: 'solved', degreesOfFreedom: 3 });
+    expect(plumb.points.q).toEqual({ x: expect.closeTo(0, 9), y: expect.closeTo(-6, 6) });
+    // against a vertical distance that is not 0 a conflict by the IDs; with one of 0 redundant
+    const clash = solver.solve({ ...free, constraints: { k: { type: 'horizontalPoints', a: 'p', b: 'q' }, v: dim({ type: 'verticalDistance', a: 'p', b: 'q', value: 5 }) } });
+    expect(clash).toMatchObject({ status: 'conflict', conflicting: ['k', 'v'] });
+    const twice = solver.solve({ ...free, constraints: { k: { type: 'horizontalPoints', a: 'p', b: 'q' }, v: dim({ type: 'verticalDistance', a: 'p', b: 'q', value: 0 }) } });
+    expect(twice.status).toBe('solved');
+    expect(twice.redundant).toHaveLength(1);
+    expect(twice.degreesOfFreedom).toBe(3);
+  });
+
+  it('the midpoint of two points follows them, in either order, and takes two degrees of freedom', () => {
+    for (const [a, b] of [['p', 'q'], ['q', 'p']]) {
+      const source = input({
+        points: { origin: { x: 0, y: 0 }, p: { x: 0, y: 0 }, q: { x: 30, y: 8 }, m: { x: 9, y: 20 } },
+        constraints: { anchor: { type: 'coincident', a: 'p', b: 'origin' }, mid: { type: 'midpointPoints', point: 'm', a, b }, far: dim({ type: 'distance', a: 'p', b: 'q', value: 50 }) },
+        fixed: ['origin'],
+      });
+      const r = solver.solve(source);
+      expect(r).toMatchObject({ status: 'solved', degreesOfFreedom: 1, redundant: [] });
+      expect(Math.hypot(r.points.q.x, r.points.q.y)).toBeCloseTo(50, 6);
+      expect([r.points.m.x, r.points.m.y]).toEqual([expect.closeTo(r.points.q.x / 2, 7), expect.closeTo(r.points.q.y / 2, 7)]);
+      // dragged, the middle pulls the far point twice as far
+      const dragged = solver.solve({ ...source, points: r.points, drag: { point: 'm', target: { x: 0, y: 25 } } });
+      expect(dragged.status).toBe('solved');
+      expect([dragged.points.q.x, dragged.points.q.y]).toEqual([expect.closeTo(0, 5), expect.closeTo(50, 5)]);
+    }
+  });
+
+  it('the midpoint of two points that lie at one place in the input, and of two points held together', () => {
+    // the library takes the middle from the line joining the two: merged, it calls the met constraint a conflict
+    const merged = solver.solve(input({ points: { p: { x: 5, y: 5 }, q: { x: 5, y: 5 }, m: { x: 8, y: 9 } }, constraints: { mid: { type: 'midpointPoints', point: 'm', a: 'p', b: 'q' } } }));
+    expect(merged.status).toBe('solved');
+    expect(merged.points.m.x).toBeCloseTo((merged.points.p.x + merged.points.q.x) / 2, 7);
+    expect(merged.points.m.y).toBeCloseTo((merged.points.p.y + merged.points.q.y) / 2, 7);
+    // held together by a coincident constraint the three are one point
+    const held = solver.solve(
+      input({
+        points: { origin: { x: 0, y: 0 }, p: { x: 5, y: 5 }, q: { x: 5, y: 5 }, m: { x: 8, y: 9 } },
+        constraints: { join: { type: 'coincident', a: 'p', b: 'q' }, mid: { type: 'midpointPoints', point: 'm', a: 'p', b: 'q' }, at: { type: 'fixed', point: 'p', x: 5, y: 5 } },
+        fixed: ['origin'],
+      }),
+    );
+    expect(held.status).toBe('solved');
+    for (const id of ['p', 'q', 'm']) expect(held.points[id]).toEqual({ x: expect.closeTo(5, 7), y: expect.closeTo(5, 7) });
+  });
+
+  it('the distance of two lines turns them parallel at the distance, on the side the second was drawn on', () => {
+    for (const [a, b] of [['ab', 'ce'], ['ce', 'ab']]) {
+      for (const side of [1, -1]) {
+        const source = lines({ k: dim({ type: 'distanceLineLine', a, b, value: 15 }) }, { c: { x: 3, y: 12 * side }, e: { x: 38, y: 33 * side } });
+        const r = solver.solve(source);
+        expect(r, `${a} ${side}`).toMatchObject({ status: 'solved', redundant: [] });
+        expect(r.degreesOfFreedom).toBe(solver.solve(lines({}, source.points)).degreesOfFreedom - 2); // two equations
+        expect(cross(r, ['a', 'b', 'c', 'e'])).toBeCloseTo(0, 8);
+        expect(r.points.c.y).toBeCloseTo(15 * side, 6);
+        expect(r.points.e.y).toBeCloseTo(15 * side, 6);
+        // another value from the solved state
+        const wider = solver.solve({ ...source, points: r.points, constraints: { ...source.constraints, k: dim({ type: 'distanceLineLine', a, b, value: 22.5 }) } });
+        expect(wider.status).toBe('solved');
+        expect([wider.points.c.y, wider.points.e.y]).toEqual([expect.closeTo(22.5 * side, 6), expect.closeTo(22.5 * side, 6)]);
+      }
+    }
+  });
+
+  it('a distance of two lines of 0 puts them on one line, and back apart again', () => {
+    const source = lines({ k: dim({ type: 'distanceLineLine', a: 'ce', b: 'ab', value: 0 }) });
+    const r = solver.solve(source);
+    expect(r.status).toBe('solved');
+    expect([r.points.c.y, r.points.e.y]).toEqual([expect.closeTo(0, 7), expect.closeTo(0, 7)]);
+    expect(r.degreesOfFreedom).toBe(solver.solve(lines({})).degreesOfFreedom - 2);
+    const apart = solver.solve({ ...source, points: r.points, constraints: { ...source.constraints, k: dim({ type: 'distanceLineLine', a: 'ce', b: 'ab', value: 4 }) } });
+    expect(apart.status).toBe('solved');
+    expect(Math.abs(apart.points.c.y)).toBeCloseTo(4, 6);
+    expect(apart.points.e.y).toBeCloseTo(apart.points.c.y, 6);
+  });
+
+  it('a parallel beside the distance of two lines is redundant and only once; a drag keeps both', () => {
+    const source = lines({ k: dim({ type: 'distanceLineLine', a: 'ab', b: 'ce', value: 15 }), par: { type: 'parallel', a: 'ce', b: 'ab' } });
+    const r = solver.solve(source);
+    expect(r.status).toBe('solved');
+    expect(r.redundant).toHaveLength(1);
+    expect(['k', 'par']).toContain(r.redundant[0]);
+    expect(r.degreesOfFreedom).toBe(solver.solve(lines({})).degreesOfFreedom - 2);
+    // the distance holds while an end of the second line is dragged along it
+    for (let i = 1; i <= 10; i++) {
+      const dragged = solver.solve({ ...source, points: r.points, drag: { point: 'e', target: { x: 38 + 3 * i, y: 15 + 2 * i } } });
+      expect(dragged.status, String(i)).toBe('solved');
+      expect([dragged.points.c.y, dragged.points.e.y]).toEqual([expect.closeTo(15, 6), expect.closeTo(15, 6)]);
+      expect(dragged.points.e.x).toBeCloseTo(38 + 3 * i, 5);
+    }
+  });
+
+  it('the distance of two lines against another distance of them is a conflict by its ID; to a fixed line it moves only the free one', () => {
+    // added to the solved sketch, as a user adds it: the library finds the dependent rows there
+    const k = dim({ type: 'distanceLineLine', a: 'ab', b: 'ce', value: 15 });
+    const other = dim({ type: 'distancePointLine', point: 'e', line: 'ab', value: 20 });
+    const solved = solver.solve(lines({ k }));
+    const clash = solver.solve(lines({ k, other }, solved.points));
+    expect(clash.status).toBe('conflict');
+    expect(clash.conflicting).toEqual(['k', 'other']);
+    // From a freehand estimate the library does not see the dependence and only fails, and so it
+    // does with the same written by a parallel and a distance of a point; against a perpendicular
+    // there is no solution at all, as for a `parallel`.
+    const spelled: Record<Id, Constraint> = { par: { type: 'parallel', a: 'ab', b: 'ce' }, d: dim({ type: 'distancePointLine', point: 'a', line: 'ce', value: 15 }) };
+    const perpendicular: Constraint = { type: 'perpendicular', a: 'ab', b: 'ce' };
+    for (const against of [other, perpendicular]) {
+      const [one, two] = [solver.solve(lines({ k, against })), solver.solve(lines({ ...spelled, against }))];
+      expect(one.status).not.toBe('solved');
+      expect([one.status, one.conflicting.length > 0]).toEqual([two.status, two.conflicting.length > 0]);
+    }
+    const fixedLine = input({
+      points: { 'x/a': { x: 10, y: 0 }, 'x/b': { x: 10, y: 20 }, p: { x: 14, y: 3 }, q: { x: 19, y: 31 } },
+      curves: { x: { type: 'line', a: 'x/a', b: 'x/b' }, pq: { type: 'line', a: 'p', b: 'q' } },
+      constraints: { k: dim({ type: 'distanceLineLine', a: 'x', b: 'pq', value: 6 }) },
+      fixed: ['x/a', 'x/b'],
+    });
+    const r = solver.solve(fixedLine);
+    expect(r.status).toBe('solved');
+    expect(r.points['x/a']).toEqual({ x: 10, y: 0 });
+    expect(r.points['x/b']).toEqual({ x: 10, y: 20 });
+    expect([r.points.p.x, r.points.q.x]).toEqual([expect.closeTo(16, 6), expect.closeTo(16, 6)]);
+  });
+
+  it('the distance of a line and a circle is the gap to its rim, kept when the radius changes, on the side of the centre', () => {
+    for (const side of [1, -1]) {
+      const source = input({
+        points: { origin: { x: 0, y: 0 }, a: { x: 0, y: 0 }, b: { x: 40, y: 1 }, m: { x: 18, y: 9 * side } },
+        radii: { k: 6 },
+        curves: { ab: { type: 'line', a: 'a', b: 'b' }, k: { type: 'circle', center: 'm' } },
+        constraints: { anchor: { type: 'coincident', a: 'a', b: 'origin' }, h: { type: 'horizontal', line: 'ab' }, gap: dim({ type: 'distanceLineCircle', line: 'ab', curve: 'k', value: 4 }), size: dim({ type: 'radius', curve: 'k', value: 6 }) },
+        fixed: ['origin'],
+      });
+      const free = solver.solve({ ...source, constraints: { anchor: source.constraints.anchor, h: source.constraints.h, size: source.constraints.size } });
+      const r = solver.solve(source);
+      expect(r, String(side)).toMatchObject({ status: 'solved', redundant: [], degreesOfFreedom: free.degreesOfFreedom - 1 });
+      expect(off(r.points.m, r.points.a, r.points.b)).toBeCloseTo(10 * side, 6);
+      const larger = solver.solve({ ...source, points: r.points, radii: r.radii, constraints: { ...source.constraints, size: dim({ type: 'radius', curve: 'k', value: 11 }) } });
+      expect(larger.status).toBe('solved');
+      expect(larger.radii.k).toBeCloseTo(11, 7);
+      expect(off(larger.points.m, larger.points.a, larger.points.b)).toBeCloseTo(15 * side, 6);
+    }
+  });
+
+  it('a circle drawn across the line is moved off it to the side of its centre; a gap of 0 touches', () => {
+    const source = (value: number): SolveInput =>
+      input({
+        points: { origin: { x: 0, y: 0 }, far: { x: 40, y: 0 }, m: { x: 18, y: -2 } },
+        radii: { k: 6 },
+        curves: { ab: { type: 'line', a: 'origin', b: 'far' }, k: { type: 'circle', center: 'm' } },
+        constraints: { gap: dim({ type: 'distanceLineCircle', line: 'ab', curve: 'k', value }), size: dim({ type: 'radius', curve: 'k', value: 6 }) },
+        fixed: ['origin', 'far'],
+      });
+    const across = solver.solve(source(3));
+    expect(across.status).toBe('solved');
+    expect(across.points.m.y).toBeCloseTo(-9, 6);
+    const touching = solver.solve(source(0));
+    expect(touching.status).toBe('solved');
+    expect(touching.points.m.y).toBeCloseTo(-6, 6);
+    // and from touching to a gap again
+    const again = solver.solve({ ...source(2.5), points: touching.points, radii: touching.radii });
+    expect(again.status).toBe('solved');
+    expect(again.points.m.y).toBeCloseTo(-8.5, 6);
+  });
+
+  it('the distance of a line and an arc measures the whole circle of the arc', () => {
+    const source = input({
+      points: { origin: { x: 0, y: 0 }, far: { x: 40, y: 0 }, z: { x: 20, y: 30 }, s: { x: 30, y: 30 }, e: { x: 20, y: 41 } },
+      curves: { ab: { type: 'line', a: 'origin', b: 'far' }, r: { type: 'arc', center: 'z', start: 's', end: 'e' } },
+      constraints: { gap: dim({ type: 'distanceLineCircle', line: 'ab', curve: 'r', value: 7 }), size: dim({ type: 'radius', curve: 'r', value: 10 }) },
+      fixed: ['origin', 'far'],
+    });
+    const r = solver.solve(source);
+    expect(r).toMatchObject({ status: 'solved', redundant: [] });
+    const { z, s, e } = r.points;
+    expect(z.y).toBeCloseTo(17, 6); // the arc is the upper right quarter, yet its lowest point of the circle is 7 above the line
+    expect(Math.hypot(s.x - z.x, s.y - z.y)).toBeCloseTo(10, 6);
+    expect(Math.hypot(e.x - z.x, e.y - z.y)).toBeCloseTo(10, 6);
+    expect(r.degreesOfFreedom).toBe(solver.solve({ ...source, constraints: { size: source.constraints.size } }).degreesOfFreedom - 1);
+  });
+
+  it('a reference dimension of the new kinds is not sent to the solver; a wrong kind of curve is an error of the input', () => {
+    const source = lines({ k: { type: 'distanceLineLine', a: 'ab', b: 'ce', value: 15, driving: false } });
+    const r = solver.solve(source);
+    expect(r.status).toBe('solved');
+    expect(Math.abs(cross(r, ['a', 'b', 'c', 'e']))).toBeGreaterThan(0.1);
+    const round = { radii: { k: 3 }, points: { o: { x: 0, y: 0 }, p: { x: 9, y: 1 }, q: { x: 9, y: 8 } } };
+    expect(() => solver.solve(input({ ...round, curves: { k: { type: 'circle', center: 'o' }, pq: { type: 'line', a: 'p', b: 'q' } }, constraints: { d: dim({ type: 'distanceLineLine', a: 'pq', b: 'k', value: 2 }) } }))).toThrow(/expects a line/);
+    expect(() => solver.solve(input({ ...round, curves: { k: { type: 'circle', center: 'o' }, pq: { type: 'line', a: 'p', b: 'q' } }, constraints: { d: dim({ type: 'distanceLineCircle', line: 'k', curve: 'pq', value: 2 }) } }))).toThrow(/expects a line/);
+    expect(() => solver.solve(input({ ...round, curves: { k: { type: 'circle', center: 'o' }, pq: { type: 'line', a: 'p', b: 'q' } }, constraints: { d: dim({ type: 'distanceLineCircle', line: 'pq', curve: 'pq', value: 2 }) } }))).toThrow(/needs a circle or an arc/);
+  });
+});

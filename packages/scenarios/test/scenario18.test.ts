@@ -8,7 +8,7 @@ import type { Command, EngineState, FaceName, HardwareHole, Id, InterferenceRepo
 import { DATA_CATALOGS } from '@trymesh/engine';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { XY, addSketch, circle, newEngine, onFace, rectangle, run } from './kit';
-import { dot, point, thread, threadsOf } from './thread-kit';
+import { aTurn, dot, point, thread, threadsOf } from './thread-kit';
 
 type Engine = ReturnType<typeof newEngine>;
 let engine: Engine;
@@ -353,7 +353,8 @@ describe('scenario 18, c: a stud in a collar (stage 2)', () => {
     expect(report(below)).toMatchObject({ pairs: [], fits: [], failed: [] });
   });
 
-  it('wrongPhase: the collar turned by half a pitch collides, the entry says what to add to either phase, and that frees it', () => {
+  it('wrongPhase: the collar turned by half a pitch collides, the entry says what to add to either phase, and that frees it', async () => {
+    await aTurn(); // about 8 s alone: a turn of the event loop first (thread-kit)
     const turned = done(engine.preview({ type: 'updateFeature', id: 'collarThread', patch: { phase: 'studPhase + 2 * pi * (20 - collarTop) / studP + pi' } } as never));
     const wrong = report(turned);
     expect(wrong.pairs).toHaveLength(1);

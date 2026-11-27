@@ -1,12 +1,14 @@
 // Helpers for the tests of threads (D76) against the real adapters: a thread as a command, a point
 // fixed in a sketch, boxes, rods, plain holes, prisms over a polygon, the threads of a feature.
-import type { AxisRef, Command, EdgeName, EngineState, Expr, FaceName, Id, Input, PlaneRef, ThreadFeature, ThreadResult } from '@trymesh/engine';
+import type { AxisRef, Command, EdgeName, Engine, EngineState, Expr, FaceName, Id, Input, PlaneRef, ThreadFeature, ThreadResult } from '@trymesh/engine';
 import { XY, addSketch, batch, circle, constrain, rectLoop, rectangle } from './kit';
 
 type ThreadFields = Omit<Input<ThreadFeature>, 'id' | 'name' | 'suppressed' | 'type'>;
 // A thread as a command, in the input form.
 export const thread = (id: Id, rest: ThreadFields, index?: number): Command => ({ type: 'addFeature', feature: { id, name: id, suppressed: false, type: 'thread', ...rest } as Input<ThreadFeature>, ...(index === undefined ? {} : { index }) });
 // An M6 thread with the defaults on the faces given, cosmetic, right-hand, from the end the axis points to.
+// M10x1.5, right-hand, from the end the axis points to (the fields of a thread less body and faces)
+export const M10 = { diameter: 10, pitch: 1.5, hand: 'right', direction: 'backward' } as const;
 export const m6 = (body: Id, faces: FaceName[], more: Partial<ThreadFields> = {}): ThreadFields => ({ body, faces, modelled: false, diameter: 6, pitch: 1, hand: 'right', direction: 'backward', ...more });
 
 // A point of a sketch fixed at (x, y).
@@ -68,6 +70,15 @@ export const mirrorIn = (plane: 'XY' | 'XZ' | 'YZ') => ({ type: 'mirror', plane:
 export const turnAbout = (axis: AxisRef, count: number) => ({ type: 'circular', axis, count, span: { type: 'full' } });
 export const along = (axis: 'X' | 'Y' | 'Z', count: number, spacing: number) => ({ type: 'linear', direction: { kind: 'base', axis }, count, span: { type: 'spacing', spacing } });
 
+export const preview = (engine: Engine, command: Command): EngineState => {
+  const outcome = engine.preview(command);
+  if (!outcome.ok) throw new Error(outcome.error.message);
+  return outcome.state;
+};
+// A turn of the event loop, at the start of a slow test (the review of stage 2): vitest gives none
+// between synchronous tests, and a worker that keeps it longer than a minute under the load of the
+// full suite loses its messages to the main process ("Timeout calling onTaskUpdate").
+export const aTurn = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
 export const threadsOf = (state: EngineState, feature: Id): ThreadResult[] => state.evaluation.threads.filter((t) => t.feature === feature);
 export const dot = (a: readonly number[], b: readonly number[]): number => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 export const statusOf = (state: EngineState, feature: Id): string => {

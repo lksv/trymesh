@@ -118,24 +118,40 @@ export function checkThread(seed: number, refused: { count: number; cases: strin
   return problems.length ? [`${problems.join('; ')}\n   ${describeCase(c)}`] : [];
 }
 
+// A turn of the event loop between cases: vitest gives none within a synchronous test, and a worker
+// that keeps it for a minute under the load of the full suite loses its messages to the main
+// process ("Timeout calling onTaskUpdate"; the review of stage 2). A long run of the fuzz takes minutes.
+const aTurn = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
+
 // The seeds the adapter refused with the first build in the runs of the seeds 1 to 600
 // (2026-11-27), with the build of THREAD_TOOL_ATTEMPTS that the adapter takes now (0: none, the
-// feature is kernelFailure). What is accepted has to be right.
+// feature is kernelFailure). What is accepted has to be right. This map is a sensor of the adapter:
+// after a change of the adapter (or of the meshes of the tool) another build may clear a seed, or
+// none, and that is a measurement to record here and in the design (the known limit of the
+// refusals), not a defect; the bound of the random run below stays as it is.
 const REFUSED_SEEDS: Record<number, number> = { 4: 3, 71: 0, 216: 2, 221: 4, 429: 2, 437: 2, 442: 3, 463: 2, 497: 2 };
-it('the seeds refused with the first build: the build that clears each, and right', { timeout: 120_000 }, () => {
+it('the seeds refused with the first build: the build that clears each, and right', { timeout: 120_000 }, async () => {
   const refused = { count: 0, cases: [] as string[], attempts: new Map<number, number>() };
   const seeds = Object.keys(REFUSED_SEEDS).map(Number);
-  expect(seeds.flatMap((seed) => checkThread(seed, refused))).toEqual([]);
+  const failures: string[] = [];
+  for (const seed of seeds) {
+    await aTurn();
+    failures.push(...checkThread(seed, refused));
+  }
+  expect(failures).toEqual([]);
   if (!process.env.THREAD_FUZZ_VARIANTS && !PAST) expect(Object.fromEntries(refused.attempts)).toEqual(REFUSED_SEEDS);
   console.log(`the pinned seeds: ${refused.count} of ${seeds.length} refused${PAST ? ` with the tool ${PAST} further past the open end` : ''}`);
 });
 
-it(`random modelled threads on the adapter: ${COUNT} cases from the seed ${FIRST}`, { timeout: 60_000 + COUNT * 3000 }, () => {
+it(`random modelled threads on the adapter: ${COUNT} cases from the seed ${FIRST}`, { timeout: 60_000 + COUNT * 3000 }, async () => {
   const failures: string[] = [];
   const refused = { count: 0, cases: [] as string[] };
   // THREAD_FUZZ_SEEDS=4,71: only these seeds
   const seeds = process.env.THREAD_FUZZ_SEEDS ? process.env.THREAD_FUZZ_SEEDS.split(',').map(Number) : Array.from({ length: COUNT }, (_, i) => FIRST + i);
-  for (const seed of seeds) failures.push(...checkThread(seed, refused).map((text) => `seed ${seed}: ${text}`));
+  for (const [i, seed] of seeds.entries()) {
+    if (i % 5 === 0) await aTurn();
+    failures.push(...checkThread(seed, refused).map((text) => `seed ${seed}: ${text}`));
+  }
   console.log(`modelled threads: ${COUNT} cases, ${failures.length} failed, the adapter refused ${refused.count}${refused.cases.length ? `\n${refused.cases.join('\n')}` : ''}`);
   expect(failures.slice(0, 10)).toEqual([]);
   // a refusal is an error of the feature (kernelFailure), safe but rare: 1 of 600 after the builds of

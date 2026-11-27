@@ -767,9 +767,21 @@ export function threadsOn(state: Pick<State, 'threads' | 'faceInfos' | 'chordTol
 // face name, its bodies and their stretches are the same.
 const PUBLISHED = new WeakMap<ThreadRecord, { key: string; result: ThreadResult }>();
 // `sense` of the record of a published thread (not published itself: the check of collisions reads
-// it for `seat`); 1 for an object this module did not publish.
+// it for `seat`). Kept for the objects `threadResults` publishes and the copies `withPhaseSense`
+// makes of them (a thread moved into a pose); for any other object `phaseSense` throws rather than
+// guess +1, which would seat a thread through a mirror the wrong way (the second review of stage 2).
 const SENSES = new WeakMap<ThreadResult, 1 | -1>();
-export const phaseSense = (thread: ThreadResult): 1 | -1 => SENSES.get(thread) ?? 1;
+export function phaseSense(thread: ThreadResult): 1 | -1 {
+  const sense = SENSES.get(thread);
+  if (sense === undefined) throw new Error(`phaseSense: the thread of ${thread.feature} is not an object the evaluation published (copy one with withPhaseSense)`);
+  return sense;
+}
+// `copy`, a copy of the published thread `of` by a rigid move (no reflection), with its sense.
+export function withPhaseSense(copy: ThreadResult, of: ThreadResult): ThreadResult {
+  const sense = SENSES.get(of);
+  if (sense !== undefined) SENSES.set(copy, sense);
+  return copy;
+}
 export function threadResults(state: Pick<State, 'threads' | 'bodies' | 'faceNames' | 'faceInfos' | 'chordTolerance'>): ThreadResult[] {
   if (state.threads.length === 0) return [];
   const results: ThreadResult[] = [];

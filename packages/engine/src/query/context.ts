@@ -1,6 +1,7 @@
 // The context a query runs in: one state of the model, read through the internal state of the
 // recompute it came from.
 import { axis as axisOf, frame as frameOf, lookup } from '../recompute/services';
+import { withPhaseSense } from '../recompute/thread';
 import type { State } from '../recompute/state';
 import { transformFrame, transformPoint, transformSurface, transformVector } from '../solid';
 import type { Deflater, Document, Evaluation, SolidKernel, ThreadResult } from '../types';
@@ -120,7 +121,8 @@ export function queryContext(name: string, evaluation: Evaluation, internals: In
     threads(body) {
       const own = threadsOn(body);
       const moved = own.length ? pose?.transformOf(body) : undefined;
-      return moved ? own.map((thread) => ({ ...thread, origin: transformPoint(moved, thread.origin), axis: transformVector(moved, thread.axis), zero: transformVector(moved, thread.zero) })) : [...own];
+      // a pose is a rigid move: the copy keeps the sense of the phase of its record
+      return moved ? own.map((thread) => withPhaseSense({ ...thread, origin: transformPoint(moved, thread.origin), axis: transformVector(moved, thread.axis), zero: transformVector(moved, thread.zero) }, thread)) : [...own];
     },
     sketch: (id) => lookup(state.sketches, id),
     kernel: guarded(deps.kernel),

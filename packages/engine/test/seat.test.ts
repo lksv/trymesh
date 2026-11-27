@@ -2,7 +2,7 @@
 // in both hands, with one to three starts, running the same way and opposite ways, with a record
 // that went through a mirror (its phase turns it the other way, the review of stage 2): applying
 // either entry, as the phase of its feature turns its `zero`, makes the two one helix. The pairs
-// on real meshes are in packages/scenarios/test/thread-modelled.test.ts.
+// on real meshes are in packages/scenarios/test/thread-mate.test.ts.
 import { describe, expect, it } from 'vitest';
 import { seatOf } from '../src/query/interference';
 import { turned } from '../src/recompute/thread';

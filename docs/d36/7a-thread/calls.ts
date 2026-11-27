@@ -2,8 +2,8 @@
 // written as calls against the contract. Only type-checked (`npx tsc -p docs/d36/tsconfig.json`).
 // A step that cannot be written here is a hole in the contract.
 //
-// Stage 1 (cosmetic threads) is sections a and b and the refusals of e; stage 2 (modelled threads)
-// is c and d. No dimension of a thread is written here: every one comes from the catalog, and the
+// Stage 1 (cosmetic threads) is sections a and b and the refusals of e; the point between the
+// stages is `betweenTheStages`; stage 2 (modelled threads) is c and d. No dimension of a thread is written here: every one comes from the catalog, and the
 // printed thread of the jar from parameters of the document.
 //
 // Second version, after the first round of reviews: the flange (a circle and a mirror of tapped
@@ -18,7 +18,7 @@ import type { ArgsOf, CommandAfter, FaceNameAfter, StateAfter } from '../00-prep
 import { DATA_CATALOGS } from '../00-prep/contract';
 import { XY, done, engine, onFace, pointAt, rectangle, run, sameName, sketchOn, unwrap } from '../2a-offset/calls';
 import type { PartsList } from '../3e-parts-list/contract';
-import type { GapD75, HardwareHoleArgsD75, HardwareHoleD75, PairD75, ThreadFeature, ThreadResult } from './contract';
+import type { ExportedD76, GapD76, HardwareHoleArgsD76, HardwareHoleD76, PairD76, PartRowD76, PrintReportD76, ThreadFeature, ThreadResult } from './contract';
 import { METRIC_THREAD_ROWS, THREAD_FACTS, THREAD_ROLES } from './contract';
 
 const near = (value: number | undefined, expected: number, tolerance = 1e-6): boolean => value !== undefined && Math.abs(value - expected) <= tolerance;
@@ -75,7 +75,7 @@ export function catalogChecks(): boolean {
 
 // `hardwareHole` with the use `tapped`, as it answers after this package (the contract says why
 // the registered description is not restated).
-declare function tappedHole(args: ArgsOf<HardwareHoleArgsD75>): HardwareHoleD75;
+declare function tappedHole(args: ArgsOf<HardwareHoleArgsD76>): HardwareHoleD76;
 // The query `partsList` of D57 (its draft keeps it in a map of its own, `QueriesAfter3e`).
 declare function partsList(): PartsList;
 
@@ -126,9 +126,10 @@ export function tappedPlateChecks(before: StateAfter, state: StateAfter): boolea
   const described = unwrap(engine.query('body', { body: 'plate' })).threads?.length === 6;
   const facts = state.evaluation.features['m6'].facts ?? {};
   const factsOk = facts.threads === 6 && near(facts.lead as number, row.pitch) && near(facts.crestFlat as number, row.pitch / 8, 1e-9) && near(facts.rootFlat as number, row.pitch / 4, 1e-9) && Object.keys(THREAD_FACTS).includes('minorDiameter');
-  // the parts list counts no piece for a tapped hole: it is among the holes without a label
+  // the parts list counts no piece for a tapped hole, and does not list it among the holes whose
+  // label was forgotten: its bores carry a thread
   const parts = partsList();
-  const uncounted = parts.hardware.every((row) => !row.label.startsWith('M6')) && parts.unlabelled?.some((hole) => hole.feature === 'taps') === true;
+  const uncounted = parts.hardware.every((row) => !row.label.startsWith('M6')) && parts.unlabelled?.some((hole) => hole.feature === 'taps') !== true;
   return six && each && placed && ends && whole && carried && unchanged && described && factsOk && uncounted && allOk(state);
 }
 // The count of the pattern changes and the thread feature is not touched: eight threads.
@@ -151,7 +152,7 @@ export function boltChecks(): boolean {
   const by = entry?.threads[0];
   const excused = report.pairs.length === 0 && report.fits.length === 0 && report.threaded?.length === 1 && entry?.a === 'bolt' && entry.b === 'plate' && entry.threads.length === 1 && by?.feature === 'm6' && by.body === 'plate' && sameName(by.face, bore('h1')) && entry.volume > 0;
   // the smallest gap says the same of the pair: not touching, and no distance to the wall
-  const gap = unwrap(engine.query('gap', { bodies: ['bolt', 'plate'] })).pairs[0] as GapD75;
+  const gap = unwrap(engine.query('gap', { bodies: ['bolt', 'plate'] })).pairs[0] as GapD76;
   const gapOk = gap.distance === 0 && gap.contact === 'threaded';
   // a rod too thick for the thread reaches beyond its major diameter: a collision as before
   const tooThick = unwrap(engine.query('interference', { bodies: ['bolt', 'plate'] }, { state: done(engine.preview({ type: 'setParameter', name: 'boltD', expr: '8' })) }));
@@ -165,7 +166,7 @@ export function boltChecks(): boolean {
   const otherPitch = unwrap(engine.query('interference', { bodies: ['bolt', 'plate'] }, { state: done(engine.preview(boltThread(DATA_CATALOGS.metricThreads.rows['M5'].pitch))) }));
   const otherHand = unwrap(engine.query('interference', { bodies: ['bolt', 'plate'] }, { state: done(engine.preview(boltThread(m6, 'left'))) }));
   const otherProfile = unwrap(engine.query('interference', { bodies: ['bolt', 'plate'] }, { state: done(engine.preview(boltThread(m6, 'right', 'deg(90)'))) }));
-  const disagree = [otherPitch, otherHand, otherProfile].every((r) => r.threaded === undefined && r.pairs.length === 1 && typeof (r.pairs[0] as PairD75).mismatch === 'string');
+  const disagree = [otherPitch, otherHand, otherProfile].every((r) => r.threaded === undefined && r.pairs.length === 1 && typeof (r.pairs[0] as PairD76).mismatch === 'string');
   // a block with no hole pushed over the bolt (20 x 20, the bolt stands at its middle): what it
   // shares with the zone of the bolt's thread goes around, and the core of the bolt is left: a
   // collision. A block that clips the bolt at a corner (8 x 8) reaches into the zone from one side:
@@ -194,6 +195,15 @@ export function boltChecks(): boolean {
     return report.pairs.length === 0 && report.fits.length === 0 && report.threaded?.length === 1;
   };
   return excused && gapOk && tooThick.pairs.length === 1 && tooThick.threaded === undefined && same.threaded?.[0].threads.length === 2 && disagree && blocked && seated('aScrew') && seated('zScrew');
+}
+
+// The point between the stages: an export and the print check say which bodies have threads the
+// mesh does not carry, and the parts list has the threads of a row.
+export function betweenTheStages(): boolean {
+  const exported: ExportedD76 = unwrap(engine.export('stl', { bodies: ['plate'] }));
+  const print = unwrap(engine.query('print', { bodies: ['plate'], orientations: [{ by: { up: [0, 0, 1] } }] })) as PrintReportD76;
+  const row = partsList().printed.find((part) => part.bodies.includes('plate')) as PartRowD76 | undefined;
+  return exported.notes?.length === 1 && exported.notes[0].includes('plate') && print.cosmeticThreads?.[0].body === 'plate' && print.cosmeticThreads[0].threads === 6 && row?.threads?.[0].label === 'M6' && row.threads[0].count === 6 && row.threads[0].internal && !row.threads[0].modelled;
 }
 
 // A flange: one tapped M6 hole at (20, 0) of a disc about the origin, three of it in a circle and
@@ -370,7 +380,13 @@ export function fromBelow(): boolean {
 export function wrongPhase(): boolean {
   const turned = done(engine.preview({ type: 'updateFeature', id: 'collarThread', patch: { phase: 'studPhase + 2 * pi * (20 - collarTop) / studP + pi' } }));
   const report = unwrap(engine.query('interference', { bodies: ['stud', 'collar'] }, { state: turned }));
-  return report.pairs.length === 1 && report.threaded === undefined;
+  // the two agree and are turned against each other: the entry says what to add to the phase of
+  // either thread (half a turn here), and doing so frees the pair
+  const seat = (report.pairs[0] as PairD76 | undefined)?.seat;
+  const forCollar = seat?.find((entry) => entry.feature === 'collarThread');
+  const seated = forCollar === undefined ? undefined : done(engine.preview({ type: 'updateFeature', id: 'collarThread', patch: { phase: `studPhase + 2 * pi * (20 - collarTop) / studP + pi + ${forCollar.addToPhase}` } }));
+  const free = seated !== undefined && unwrap(engine.query('interference', { bodies: ['stud', 'collar'] }, { state: seated })).pairs.length === 0;
+  return report.pairs.length === 1 && report.threaded === undefined && seat?.length === 2 && near(Math.abs(forCollar?.addToPhase ?? 0), Math.PI, 1e-6) && free;
 }
 // The flag changes the mesh and nothing else: cosmetic again, both bodies are the plain ones, the
 // threads are still recorded, and the pair is excused by the thread.
@@ -440,9 +456,11 @@ export function mirroredLid(): boolean {
   });
   const modelled = pair(done(engine.preview(twin)));
   const cosmetic = pair(done(engine.preview({ type: 'batch', commands: [{ type: 'updateFeature', id: 'lidThread', patch: { modelled: false } }, twin] })));
+  // the pattern that mirrored the body says that it turned the hand of a thread, in both modes
+  const warned = [done(engine.preview(twin)), done(engine.preview({ type: 'batch', commands: [{ type: 'updateFeature', id: 'lidThread', patch: { modelled: false } }, twin] }))].every((state) => warningsOf(state, 'twin').includes('mirroredThread'));
   const image = ({ copy, original }: ReturnType<typeof pair>): boolean =>
     copy !== undefined && original !== undefined && copy.hand === 'left' && original.hand === 'right' && near(copy.origin[0], -original.origin[0], 1e-5) && near(dot(copy.zero, [-original.zero[0], original.zero[1], original.zero[2]]), 1) && near(dot(copy.axis, original.axis), 1) && copy.face.copy?.[0].pattern === 'twin';
-  return image(modelled) && image(cosmetic) && modelled.copy?.modelled === true && cosmetic.copy?.modelled === false && near(dot(modelled.copy.zero, cosmetic.copy?.zero ?? [0, 0, 0]), 1);
+  return warned && image(modelled) && image(cosmetic) && modelled.copy?.modelled === true && cosmetic.copy?.modelled === false && near(dot(modelled.copy.zero, cosmetic.copy?.zero ?? [0, 0, 0]), 1);
 }
 
 // ================================================================ e. refusals
@@ -495,7 +513,7 @@ export function scenario18(): boolean {
   // stage 1
   // (`getState(at)`: the model as it is after that feature, here before the thread)
   const plate = tappedPlate();
-  const stage1 = tappedPlateChecks(engine.getState('row'), plate) && fourInARow() === 8 && printedTap() && (boltInPlate(), boltChecks()) && flangeChecks(flange()) && leftOnTheMirror() && beforeItsPattern();
+  const stage1 = tappedPlateChecks(engine.getState('row'), plate) && betweenTheStages() && fourInARow() === 8 && printedTap() && (boltInPlate(), boltChecks()) && flangeChecks(flange()) && leftOnTheMirror() && beforeItsPattern();
   const refused = refusals();
   const refusedOk = refused[0] === 'invalidThread' && refused[1] === 'brokenReference' && refused.slice(2, 7).every((code) => code === 'invalidThread') && refused[7] === true;
   // stage 2

@@ -1,7 +1,7 @@
-// Contract of package 7a (D75): threads. A draft for review, only type-checked
+// Contract of package 7a (D76): threads. A draft for review, only type-checked
 // (`npx tsc -p docs/d36/tsconfig.json`). It imports the real types of the engine and the shared
 // types of the preparatory step and states what the package adds: a feature type with its patch
-// and fields, three face roles, two issue codes, a data catalog with its rows, what the evaluation,
+// and fields, three face roles, three issue codes, a data catalog with its rows, what the evaluation,
 // the description of a body, the context of a query, the report of collisions, the smallest gap and
 // the query `hardwareHole` gain, and the parts of the recompute the step is made of. No command, no
 // section of the document, no member of the kernel port, no new query, no schema step.
@@ -16,21 +16,27 @@
 //
 // Two stages (design.md, "Stages"): stage 1 ships everything here that a cosmetic thread needs and
 // refuses `modelled: true` in the validator; stage 2 ships the tool, the faces and the checks of
-// a modelled thread. What belongs to stage 2 alone is marked.
+// a modelled thread. What belongs to stage 2 alone is marked. Between them a small point: the
+// notes of an export and of the print check, and the threads in the parts list.
+//
+// The owner answered the questions of the design on 2026-11-27 (design.md, "Open"); what the
+// answers changed is marked with that date.
 
 import type { FeatureBase, Id, Input, InterferenceReport, Patch, Solid, Vec3 } from '../../../packages/engine/src/index';
 import type { NumberSpec } from '../../../packages/engine/src/catalog';
 import type { FeatureTypeInfo } from '../../../packages/engine/src/features/module';
 import type { State } from '../../../packages/engine/src/recompute/state';
 import type { FaceInfo, RigidTransform } from '../../../packages/engine/src/solid';
-import type { DataCatalog, FaceNameAfter } from '../00-prep/contract';
+import type { DataCatalog, Exported, FaceNameAfter } from '../00-prep/contract';
+import type { PrintReport } from '../1e-print/contract';
+import type { PartRow } from '../3e-parts-list/contract';
 import type { Gap } from '../1c-gap/contract';
 import { FACE_ROLES } from '../00-prep/contract';
 import type { HARDWARE_HOLE_ARGS, HardwareHole } from '../2c-hole/contract';
 
 // ================================================================ the feature
 
-// A thread on cylindrical faces of one body (D75): on a bore an internal thread, on a pin an
+// A thread on cylindrical faces of one body (D76): on a bore an internal thread, on a pin an
 // external one. The face gives the axis, the two ends and the radius of the wall, which is the
 // crest of the thread as made (the minor diameter of an internal thread, the major diameter of an
 // external one); the feature states the profile. Whether a face is a bore or a pin is read from
@@ -42,7 +48,7 @@ import type { HARDWARE_HOLE_ARGS, HardwareHole } from '../2c-hole/contract';
 //   and a pin (one cylinder used both ways by a combine) is refused.
 // - `copies`: when true, the thread is also made on every face of the body whose name is a listed
 //   name with further copy tags of patterns of this document (the bores a pattern of a hole made).
-//   A tag is followed when the state has the transform of that copy (`StateD75.copyTransforms`),
+//   A tag is followed when the state has the transform of that copy (`StateD76.copyTransforms`),
 //   so not the tag of a pattern inside an inserted document and not the tag a combine with
 //   a clearance gives the faces of its pocket: list such a face. A listed
 //   face is never taken as a copy, and a copy of two listed names belongs to the one with the most
@@ -84,8 +90,9 @@ import type { HARDWARE_HOLE_ARGS, HardwareHole } from '../2c-hole/contract';
 // - `starts`: the number of ridges, a whole number from 1 to 16; absent: 1.
 // - `hand`: `right` or `left`. The copy of a face a mirror made (`copies`) gets this hand as well;
 //   a mirrored copy of the body is the mirror image and has the other one (`ThreadResult.hand`
-//   says what came out). For the other hand on a mirrored copy of a face, list that copy in
-//   a second thread feature.
+//   says what came out, and the pattern that mirrored the body has the warning `mirroredThread`;
+//   a thread feature placed after the mirror keeps the stated hand). For the other hand on
+//   a mirrored copy of a face, list that copy in a second thread feature.
 // - `direction`, `offset`, `length`: where along the face the thread is. `forward` starts at the
 //   end of the face its axis points away from and runs along the axis of the face (the sense of
 //   `AxisRef` of the kind `face`: for an extrusion and a hole the normal of the sketch); `backward`
@@ -223,9 +230,17 @@ declare module '../00-prep/contract' {
   // - the tool would have more than `MAX_THREAD_TRIANGLES` triangles.
   // `noCopies`, a warning: `copies` is true and the body has no copy of a listed face (the thread
   // stands before its pattern, or the pattern is gone). `refs`: `copies`.
+  // `mirroredThread`, a warning of a pattern feature that mirrors a body (stage 1; owner,
+  // 2026-11-27): a thread on one of its copies has the hand opposite to the one its thread feature
+  // states (the copy is the mirror image). The detail says how many threads became left-hand (or
+  // right-hand), and that a thread feature placed after the mirror, on the faces of the copy,
+  // keeps the stated hand. `refs`: the copies. A mirror of a mirror gives the stated hand back
+  // and has no warning for those threads; a mirror of features has none (`copies` keeps the
+  // stated hand).
   interface IssueCodes {
     invalidThread: true;
     noCopies: true;
+    mirroredThread: true;
   }
   interface Catalogs {
     metricThreads: MetricThreadRow;
@@ -375,7 +390,7 @@ export interface ThreadRecord extends Omit<ThreadResult, 'bodies' | 'face' | 'wa
 //   it; the thread step reads it for the datum of a copy, and follows with `copies` only a tag
 //   that is in it (a pattern inside an inserted document and a combine with a clearance write
 //   none).
-export interface StateD75 extends State {
+export interface StateD76 extends State {
   threads: readonly ThreadRecord[];
   copyTransforms: ReadonlyMap<string, RigidTransform>;
 }
@@ -390,7 +405,7 @@ export declare function movedThread(record: ThreadRecord, transform: RigidTransf
 // pass of `threadWall` over the triangles of the face in that body, kept by the mesh); a record
 // with no such body is left out. The object published for a record is the same from one
 // evaluation to the next for as long as its face, its bodies and their stretches are the same.
-export declare function threadResults(state: StateD75): ThreadResult[];
+export declare function threadResults(state: StateD76): ThreadResult[];
 
 // ================================================================ the check of collisions
 
@@ -428,7 +443,7 @@ export declare function threadResults(state: StateD75): ThreadResult[];
 //   bodies have agreeing threads there, both, and both zones are cut).
 // - In a pose the cut is made in the frame the body of the thread was modelled in. The two
 //   meshes of an intersection meet as the two bodies of a pair do: the first as modelled, the
-//   second moved by the transform between them (`FramedD75.relative`). Step 2 is made with the
+//   second moved by the transform between them (`FramedD76.relative`). Step 2 is made with the
 //   body of the thread first: for a zone of the second body the first body is moved by the
 //   inverse of that transform. When both bodies have a taken zone, the rest of the second is
 //   moved by the transform.
@@ -452,12 +467,23 @@ declare module '../../../packages/engine/src/types' {
 // in words ("pitch 1.5 against 1.25", "a left-hand thread in a right-hand one", "flanks at 90°
 // against 60°", "two internal threads"). `cleared` gains no kind: a pair whose rest the kernel
 // refuses is failed or cleared as every refused pair is, and keeps its entry in `threaded`.
-export type PairD75 = InterferenceReport['pairs'][number] & { mismatch?: string };
+// - an entry between two modelled threads that agree and collide all the same (one is turned
+//   against the other) carries `seat` (stage 2; owner, 2026-11-27): for each of the two threads
+//   what to add to the `phase` of its feature, radians, so that the two are one helix; either one
+//   seats the pair. Computed from the two published datums: the helix of the first, followed
+//   along the line to the origin of the second, crosses there at an angle from the `zero` of the
+//   second, taken to the nearest of the `starts` positions; the second gets that angle, the
+//   first its opposite when the two run the same way and the same angle when they run opposite
+//   ways. Exact whatever the clearances. It does not say that the pair is free afterwards
+//   (a clearance below the chord tolerance, a shank or an end may still meet), it holds for the
+//   pose asked about, and both are zero when the helices are one curve and the collision has
+//   another cause.
+export type PairD76 = InterferenceReport['pairs'][number] & { mismatch?: string; seat?: { feature: Id; face: FaceNameAfter; addToPhase: number }[] };
 // The smallest gap (D40) asks `interference` what a pair at a distance of zero shares, and reads
 // `pairs`, `fits`, `failed` and `cleared`. A pair with an entry in `threaded` and none in `pairs`,
 // `fits` or `failed`, and not cleared as a fit, has the contact `threaded` (not `touching`, and
 // no distance between a set screw and the wall of its bore).
-export type GapD75 = Gap | { a: Id; b: Id; distance: 0; contact: 'threaded' };
+export type GapD76 = Gap | { a: Id; b: Id; distance: 0; contact: 'threaded' };
 
 // The zone of a published thread on one of its bodies, in the frame of the thread given (as
 // modelled for the cut, as posed for `threadsAgree`).
@@ -498,7 +524,7 @@ export const THREAD_PIECE_VOLUME = 0.001;
 // widen their result): also `relative`, the transform that puts the second body into the frame
 // of the first (absent when neither was moved), for the meshes that stand in for a body of
 // a posed pair: the part in a zone and the rest.
-export interface FramedD75 {
+export interface FramedD76 {
   relative?: RigidTransform;
 }
 // A piece goes around an axis when its centre of volume is nearer to the axis than this part of
@@ -640,8 +666,8 @@ export const METRIC_THREADS: DataCatalog<MetricThreadRow> = {
 // - `shape`: `{ type: 'plain', diameter }`, the tap drill, with the allowance added as for every
 //   use.
 // - `label`: absent. The parts list counts a piece of hardware per labelled hole, and a tapped
-//   hole takes the screw that is counted at the clearance hole it comes through; the hole is
-//   listed among the `unlabelled` holes of the parts list.
+//   hole takes the screw that is counted at the clearance hole it comes through. The parts list
+//   leaves a hole whose bore carries a thread out of its `unlabelled` holes (owner, 2026-11-27).
 // - `thread`: `diameter`, `pitch` and `label` ("M6") for a feature of the type thread whose
 //   `faces` are the bores of the hole, `{ feature: <hole>, role: 'holeBore', point }`; with an
 //   allowance also `clearance`, half of the allowance (as an expression when the allowance is
@@ -650,12 +676,35 @@ export const METRIC_THREADS: DataCatalog<MetricThreadRow> = {
 // - `fit` is not read. `from`: `['metricThreads']`.
 // A draft cannot change the description of a registered query, so the two types below stand for
 // the description and the answer after this package.
-export type HardwareHoleArgsD75 = Omit<typeof HARDWARE_HOLE_ARGS, 'use'> & {
+export type HardwareHoleArgsD76 = Omit<typeof HARDWARE_HOLE_ARGS, 'use'> & {
   use: { kind: 'choice'; options: readonly ['clearance', 'socketHead', 'countersunk', 'nutPocket', 'heatSetInsert', 'tapped']; title: string };
 };
-export interface HardwareHoleD75 extends Omit<HardwareHole, 'label'> {
+export interface HardwareHoleD76 extends Omit<HardwareHole, 'label'> {
   label?: string; // absent for the use `tapped`
   thread?: Input<Pick<ThreadFeature, 'diameter' | 'pitch' | 'clearance'>> & { label: string };
+}
+
+// ================================================================ the point between the stages
+
+// A small point of its own right after stage 1 and before stage 2 (owner, 2026-11-27): until
+// stage 2 every thread is cosmetic, and an export leaves them out without a word. A draft cannot
+// widen the types of other packages, so the three below stand for what they gain.
+// - `Exported.notes`: lines for people, printed by the server with the files it wrote. Every
+//   format that writes the mesh of a body adds a line per body with cosmetic threads: the body,
+//   how many, and that the mesh does not carry them.
+// - `PrintReport.cosmeticThreads`: the same bodies in the answer of the print check; only when
+//   there are some.
+// - `PartRow.threads`: the threads of each body of the row (the label, or `diameter x pitch`;
+//   `count` per body). The threads of a body are part of what makes two bodies one row, so
+//   a body with a cosmetic thread and its copy without one are two rows.
+export interface ExportedD76 extends Exported {
+  notes?: string[];
+}
+export interface PrintReportD76 extends PrintReport {
+  cosmeticThreads?: { body: Id; threads: number }[];
+}
+export interface PartRowD76 extends PartRow {
+  threads?: { label: string; internal: boolean; modelled: boolean; count: number }[];
 }
 
 // ================================================================ the recompute
@@ -780,7 +829,7 @@ export declare function buildThreadTool(profile: ThreadProfile, wall: ThreadWall
 // The description of a flank: an exact surface the engine does not describe further. Published as
 // `Surface` of the kind `general`, as the surface of an imported mesh is, but it is not one: the
 // body can be changed by later features (`isImported` asks for `mesh`).
-export type FaceInfoD75 = FaceInfo | { planar: false; surface: 'general' };
+export type FaceInfoD76 = FaceInfo | { planar: false; surface: 'general' };
 
 // ================================================================ what the package does not add
 

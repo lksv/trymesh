@@ -11,7 +11,7 @@
 //   both ends while it is built. The same solid with far fewer triangles.
 // Run from the repository root: npx vitest run --config spikes/vitest.config.ts spikes/thread.spike.ts
 // The default run is short (about 45 s: a chord tolerance of 0.05, one repeat, four random threads;
-// 18 s of it are test 3b, the engine's check of collisions, added for the design of D75).
+// 18 s of it are test 3b, the engine's check of collisions, added for the design of D76).
 // THREAD_SPIKE_FULL=1 runs the sweeps over the chord tolerances 0.01, 0.05 and 0.1, both builds
 // everywhere, a repeat for the warm times and 50 random threads (about six minutes).
 // THREAD_SPIKE_COUNT, THREAD_SPIKE_SEED and THREAD_SPIKE_ONLY (a list of case numbers) steer the
@@ -475,7 +475,7 @@ const TOLERANCES = FULL ? [0.01, 0.05, 0.1] : [0.05];
 const besideOf = (tol: number) => Math.max(0.05, 2 * tol);
 // How far a tool runs past an open end of the wall: 1 mm in the measurements of spike.md;
 // THREAD_SPIKE_PAST=beside takes the distance a tool keeps from a shoulder instead (the design of
-// D75 runs a tool past an end by no more than that), or a number of millimetres.
+// D76 runs a tool past an end by no more than that), or a number of millimetres.
 const pastOf = (tol: number): number => (process.env.THREAD_SPIKE_PAST === 'beside' ? besideOf(tol) : Number(process.env.THREAD_SPIKE_PAST ?? 1));
 
 // ---------------------------------------------------------------- 1. the tools alone
@@ -563,7 +563,7 @@ function jobs(c: Case, tol: number, clearance = 0, pose?: RigidTransform): Job[]
   // root lies inside the hole.
   const hole = b.minor + clearance;
   const nut = shapeOf(b, { offset: clearance, rootTo: hole - beside });
-  // The tool of a bore is a ring since the review of D75 (spike.md, N); THREAD_SPIKE_BORE=solid
+  // The tool of a bore is a ring since the review of D76 (spike.md, N); THREAD_SPIKE_BORE=solid
   // builds the solid screw shape the tables of B, C, H and J were measured with.
   const bore: Kind = process.env.THREAD_SPIKE_BORE === 'solid' ? { kind: 'solid' } : { kind: 'ridge', inner: hole - 2 * beside };
   out.push({
@@ -582,7 +582,7 @@ function jobs(c: Case, tol: number, clearance = 0, pose?: RigidTransform): Job[]
     change: -Math.PI * meanOver(b.pitch, (a) => Math.max(radiusAt(nut, a), hole) ** 2 - hole ** 2),
     radius: b.minor,
   });
-  // Internal and blind (added for the review of D75): the hole stands on a bottom 3 mm thick; the
+  // Internal and blind (added for the review of D76): the hole stands on a bottom 3 mm thick; the
   // tool stops `beside` short of the bottom and runs past the open face.
   out.push({
     name: 'internal blind, cut',
@@ -785,7 +785,7 @@ function bodyOf(solid: Solid): BodyResult {
 // at the major diameter (a bought screw, or a pin with a cosmetic thread) in a modelled nut and in
 // a plain hole at the minor diameter (a cosmetic thread). For the last two: do all vertices of what
 // the two share lie between the wall of the hole and the major cylinder of the thread, within the
-// chord tolerance? That is the test the design of D75 excuses such a pair by.
+// chord tolerance? That is the test the design of D76 excuses such a pair by.
 test('3b the check of collisions on a screw in a nut, and on the pairs that overlap by design', () => {
   const rows: string[][] = [];
   const c = M10;
@@ -960,7 +960,7 @@ test('5 two starts, left-handed, a blind end: closed, the volume, the faces', ()
 
 // ---------------------------------------------------------------- 6. random threads in random poses
 
-// ---------------------------------------------------------------- 7. measured for the review of D75
+// ---------------------------------------------------------------- 7. measured for the review of D76
 
 // A frustum about Z between two radii (a countersink, as a tool): a closed mesh with one face number.
 function frustum(r0: number, z0: number, r1: number, z1: number, tol: number): Solid {
@@ -1025,7 +1025,7 @@ const NOISE = 0.001; // mm³
 // its radius: where the centre of a third of a ring lies (sin 60° / (π / 3)). Half a ring has 0.637,
 // a whole one 0; a straight wall pushed into an M8 thread from one side cannot go below 0.94.
 const AROUND = Math.sin(Math.PI / 3) / (Math.PI / 3);
-// What the design of D75 judges of a pair in which one body has a thread, since its second review.
+// What the design of D76 judges of a pair in which one body has a thread, since its second review.
 // The body with the thread is cut by the ring of the zone into the part in its zone and the rest.
 // - What the other body shares with the part in the zone: every connected piece of it has to go
 //   around the axis (`AROUND`); then the zone is taken and that volume is excused. Read from sums
@@ -1051,12 +1051,12 @@ function zoneCut(threaded: Solid, other: Solid, zone: Zone, tol: number, otherFi
   return { pieces, taken, excused: taken ? pieces.reduce((sum, piece) => sum + piece.volume, 0) : 0, rest: taken ? kernel.boolean('difference', threaded, ring) : threaded };
 }
 
-// The profile of a thread moved radially by a clearance (the model the review of D75 led to): the
+// The profile of a thread moved radially by a clearance (the model the review of D76 led to): the
 // basic profile of a diameter smaller (external, `shift` below zero) or larger (internal) by twice
 // the clearance. The flanks move along their normal by clearance · sin(half-angle).
 const shifted = (b: Basic, shift: number): Basic => ({ ...b, major: b.major + shift, minor: b.minor + shift });
 
-test('7 for the review of D75: the hands, a radial clearance, a ring tool for a bore, what stands in the way', () => {
+test('7 for the review of D76: the hands, a radial clearance, a ring tool for a bore, what stands in the way', () => {
   const tol = 0.05;
   const beside = besideOf(tol);
   const b = M10.basic;
@@ -1215,9 +1215,9 @@ test('7 for the review of D75: the hands, a radial clearance, a ring tool for a 
 
 });
 
-// ---------------------------------------------------------------- 8. measured for the second review of D75
+// ---------------------------------------------------------------- 8. measured for the second review of D76
 
-test('8a for the second review of D75: the zone of a thread as a cut of its body, in both orders of the pair', () => {
+test('8a for the second review of D76: the zone of a thread as a cut of its body, in both orders of the pair', () => {
   const rows: string[][] = [];
   const b = M10.basic;
   const l = 20;
@@ -1299,7 +1299,7 @@ test('8a for the second review of D75: the zone of a thread as a cut of its body
   table('8a. A pair with a thread: what the other body shares with the zone of the thread, and with the rest of the threaded body; a piece goes around when its centre is nearer to the axis than 0.827 of its radius', ['pair', 'the thread is on', 'order', 'chord tol', 'in the zone: mm³ (centre / radius)', 'excused mm³', 'the rest shares mm³', 'depth', 'which is', 'the pair is', 'ms'], rows);
 });
 
-test('8d for the second opinion on the third review of D75: two threads whose axes are not one line', () => {
+test('8d for the second opinion on the third review of D76: two threads whose axes are not one line', () => {
   // A cosmetic M10 stud in a plate with a cosmetic M10 thread (a bore of 8.5), the stud `e` off the
   // axis of the bore, at the default tolerance. Each zone alone still holds a piece that goes
   // around, so with both zones cut and only the two rests judged, the pair came out `threaded`.
@@ -1368,7 +1368,7 @@ interface EndRead {
   kind: 'open' | 'shoulder' | 'inside';
   runOut: number;
 }
-// A prototype of `threadWall` and `threadEndAt` of the contract of D75: the side of the material at
+// A prototype of `threadWall` and `threadEndAt` of the contract of D76: the side of the material at
 // a cylindrical face, and how the face ends at both ends of its axis.
 // - The rim of an end: the loop of the edges the face shares with other faces that goes around
 //   the axis and holds the extreme point of that end.
@@ -1503,7 +1503,7 @@ function endsOf(solid: Solid, surfaces: readonly Surface[], wall: number, band: 
   return { internal, low: read(-1), high: read(1) };
 }
 
-test('8b for the second review of D75: the ends of a wall read from the bodies of the engine', () => {
+test('8b for the second review of D76: the ends of a wall read from the bodies of the engine', () => {
   const ext = (id: string, sketch: string, loops: string[][], start: number, distance: number, operation: 'new' | 'add' | 'cut', target?: string): Command => ({
     type: 'addFeature',
     feature: { id, name: id, suppressed: false, type: 'extrude', profile: { type: 'regions', sketch, regions: loops.map((outerLoop) => ({ outerLoop })) }, extent: { type: 'distance', start, distance }, operation, ...(target ? { targets: [target] } : {}) },
@@ -1590,7 +1590,7 @@ test('8b for the second review of D75: the ends of a wall read from the bodies o
   table('8b. The ends of a wall, read from the mesh of bodies of the engine (chord tolerance 0.01)', ['wall', 'triangles of the body', 'side', 'low end', 'high end', 'expected', 'ms'], rows);
 });
 
-test('8c for the second review of D75: the phase of a mate, by the formula of the datum', () => {
+test('8c for the second review of D76: the phase of a mate, by the formula of the datum', () => {
   // The crest of a thread: origin + s · axis + R · (zero turned by θ about axis), s = turn · lead · θ / 2π + k · pitch,
   // zero the model's X axis turned by the phase about the axis.
   type Thread = { origin: V3; axis: V3; phase: number; turn: 1 | -1; lead: number; pitch: number };

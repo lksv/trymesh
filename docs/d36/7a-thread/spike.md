@@ -192,7 +192,7 @@ Diameters 6 to 48 mm, pitch 6 to 16 % of the diameter, metric or printed (30° o
 
 ### J. A short run past an open end (measured for the design, 2026-11-26)
 
-B, C and H ran a tool 1 mm past an open end. The design of D75 ([design.md](design.md)) runs it past by no more than it keeps from a shoulder, `max(0.05, 2 · tol)`, so that a tool reaches as little as it can beyond the wall. The run of 150 random threads of H again with that distance at both kinds of end (`THREAD_SPIKE_PAST=beside THREAD_SPIKE_COUNT=150`, the swept build, seed 1; the union on a core is not part of the design and is the row of H):
+B, C and H ran a tool 1 mm past an open end. The design of D76 ([design.md](design.md)) runs it past by no more than it keeps from a shoulder, `max(0.05, 2 · tol)`, so that a tool reaches as little as it can beyond the wall. The run of 150 random threads of H again with that distance at both kinds of end (`THREAD_SPIKE_PAST=beside THREAD_SPIKE_COUNT=150`, the swept build, seed 1; the union on a core is not part of the design and is the row of H):
 
 | Operation | Ends of the tool | Booleans | Refused | Mean ms |
 |---|---|---|---|---|

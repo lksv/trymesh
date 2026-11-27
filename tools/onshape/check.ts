@@ -42,7 +42,7 @@ export function previewJudge(engine: Engine, sketch: Id, commands: Command[], ex
 }
 
 // A command of a unit as the converter makes it: the command, and what a dimension measures.
-export const strip = ({ measured, record, dupOf, conflictsWith, zero, pair, ...c }: any): Command => c;
+export const strip = ({ measured, record, dupOf, conflictsWith, pair, ...c }: any): Command => c;
 
 // The ladder: all units with their expressions; else one by one in Onshape's order, a unit with its
 // expressions, else with its dimensions as their measured numbers, else refused. A unit is kept or

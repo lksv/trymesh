@@ -169,15 +169,18 @@ export function mapConstraints(ctx: MapContext, list: any[]): { records: Constra
       return;
     }
     // the operands, local first, then the external ones resolved against them
-    const slot = (name: string): Operand | undefined | { lost: Cause; detail: string } => {
+    // `beside`: the operands an external one is fitted against, in the order the fit of `use`
+    // reads them (the constraint's type unless given): local ones by the names of their
+    // parameters, or operands resolved already
+    const slot = (name: string, beside: (string | Operand | undefined)[] = ['First', 'Second'], use: string = t): Operand | undefined | { lost: Cause; detail: string } => {
       const q = p[`local${name}`];
       if (typeof q?.value === 'string') return local(q.value);
       const x = p[`external${name}`];
       const id = x?.queries?.flatMap((y: any) => y.deterministicIds ?? [])[0];
       if (id === undefined) return undefined;
       const op = rec.operands.find((o) => o.external && o.id === id && o.param === `external${name}`)!;
-      const locals = [p.localFirst, p.localSecond].map((y) => (typeof y?.value === 'string' ? local(y.value) : undefined)).filter(Boolean) as Operand[];
-      const r = ctx.resolve(id, op, locals, t);
+      const locals = beside.map((other) => (typeof other !== 'string' ? other : typeof p[`local${other}`]?.value === 'string' ? local(p[`local${other}`].value) : undefined)).filter(Boolean) as Operand[];
+      const r = ctx.resolve(id, op, locals, use);
       if ('lost' in r) { op.note = r.detail; return r; }
       op.resolved = r.id;
       return r;
@@ -211,7 +214,8 @@ export function mapConstraints(ctx: MapContext, list: any[]): { records: Constra
       const sameY = (t === 'HORIZONTAL') === (horizontal === 'x'); // the same base Y
       const origin = A.id === 'origin' ? B : B.id === 'origin' ? A : undefined;
       if (origin) add({ type: 'pointOnCurve', point: origin.id, curve: sameY ? 'origin/x' : 'origin/y' });
-      else if (A.id !== B.id) add({ type: sameY ? 'verticalDistance' : 'horizontalDistance', a: A.id, b: B.id, value: 0, driving: true }, 0, { zero: true });
+      // two points level or plumb (D75); until then a vertical or horizontal distance of 0, which the probes had to leave alone
+      else if (A.id !== B.id) add({ type: sameY ? 'horizontalPoints' : 'verticalPoints', a: A.id, b: B.id });
       else return void Object.assign(rec, { fate: 'shared', detail: 'by a point' });
     } else if ((t === 'PARALLEL' || t === 'PERPENDICULAR') && A?.k === 'line' && B?.k === 'line') add({ type: t.toLowerCase(), a: A.id, b: B.id });
     else if (t === 'EQUAL' && A?.k === 'line' && B?.k === 'line') {
@@ -220,10 +224,28 @@ export function mapConstraints(ctx: MapContext, list: any[]): { records: Constra
     } else if (t === 'EQUAL' && isRound(A) && isRound(B)) add({ type: 'equalRadius', a: A!.id, b: B!.id });
     else if (t === 'TANGENT' && isCurve(A) && isCurve(B) && !(A!.k === 'line' && B!.k === 'line')) add({ type: 'tangent', a: A!.id, b: B!.id });
     else if ((t === 'DIAMETER' || t === 'RADIUS') && isRound(A) && !A!.ext) add({ type: t.toLowerCase(), curve: A!.id, value: value(p.length), driving: true }, t === 'DIAMETER' ? 2 * A!.radius! : A!.radius!);
-    else if (t === 'MIDPOINT' && !p.localMidpoint) {
+    else if (t === 'MIDPOINT' && !p.localMidpoint && !p.externalMidpoint) {
       const [e1, e2] = [p.localEntity1?.value, p.localEntity2?.value].map((v) => (typeof v === 'string' ? local(v) : undefined));
       const [pt, ln] = e1?.k === 'point' && e2?.k === 'line' ? [e1, e2] : e2?.k === 'point' && e1?.k === 'line' ? [e2, e1] : [undefined, undefined];
       if (pt && ln) add({ type: 'midpoint', point: pt.id, line: ln.id });
+    } else if (t === 'MIDPOINT') {
+      // The midpoint of two points (D75): the middle (`Midpoint`) and the two points (`Entity1`,
+      // `Entity2`), each local or external. An external one is fitted against the others
+      // (`fitting`): the middle at the mean of two local ends; an end at the image of the other
+      // end about the middle, and with both ends external the first one as the end of the one
+      // pair of candidates about the middle, the second one then as its image.
+      const mid = slot('Midpoint', ['Entity1', 'Entity2'], 'MIDPOINT');
+      if (mid && 'lost' in mid) return lose(mid.detail, mid.lost);
+      const e1 = slot('Entity1', [mid, 'Entity2'], 'MIDPOINT_END');
+      if (e1 && 'lost' in e1) return lose(e1.detail, e1.lost);
+      const e2 = slot('Entity2', [mid, e1], 'MIDPOINT_END');
+      if (e2 && 'lost' in e2) return lose(e2.detail, e2.lost);
+      if (mid?.k === 'point' && e1?.k === 'point' && e2?.k === 'point') {
+        // all three fixed is nothing the solver could hold; two of them one point is no midpoint of two
+        if ([mid, e1, e2].every((o) => o.ext)) return lose('the three points are all outside the sketch', 'kind');
+        if (new Set([mid.id, e1.id, e2.id]).size < 3) return lose('two of the three points are one point', 'kind');
+        add({ type: 'midpointPoints', point: mid.id, a: e1.id, b: e2.id });
+      }
     } else if (t === 'MIRROR' && A?.k === 'point' && B?.k === 'point' && M?.k === 'line') {
       // a mirror of two points: symmetric about the line; a pair that is one point is on the line;
       // the image of a point of the line (an end of it, the origin on an axis) is that point

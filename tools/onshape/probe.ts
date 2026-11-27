@@ -22,7 +22,7 @@ export interface StudioPromises {
   removed: { sketch: Id; id: Id; constraint: Constraint }[]; // constraints removed as implied
   derived: Record<Id, string>; // a derived copy -> its source (`<studio>/<feature>`), the same in every studio
   helpers: Id[]; // helper copies
-  notChanged: string[]; // `<sketch> <constraint>`: dimensions that are no literal of the design (angles of spokes, zeros for "horizontal")
+  notChanged: string[]; // `<sketch> <constraint>`: dimensions that are no literal of the design (angles of spokes)
 }
 export const emptyPromises = (): StudioPromises => ({ patterns: [], pairs: [], removed: [], derived: {}, helpers: [], notChanged: [] });
 
@@ -89,7 +89,7 @@ export function parameterChanges(doc: any, only?: Set<string>): Change[] {
 }
 
 // The literal driving dimensions of a sketch: a number, or an expression without a parameter; not
-// the angles of spokes, not the zeros that stand for "horizontal". +3 % and back, −3 % and back; a
+// the angles of spokes. +3 % and back, −3 % and back; a
 // zero takes an absolute step (0.1 mm, 1°); a direction the range does not allow is not available.
 export function dimensionChanges(sketch: any, notChanged: Set<string>, group: Change['group'] = 'dimensions'): Change[] {
   const out: Change[] = [];

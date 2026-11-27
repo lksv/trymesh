@@ -1,6 +1,6 @@
 # 7a Modelled threads: the spike
 
-**State: measured on 2026-11-26, on the branch `d36/7a` from `master` at `4b9f70f`; J and K added for the design on the same day, L to P for its revision after the first reviews on 2026-11-27.** No engine code: the builders of the tool live in the spike, [`spikes/thread.spike.ts`](../../../spikes/thread.spike.ts). The question was the paragraph "To verify by a spike" of [backlog.md](../../backlog.md), "Helix and modelled threads", which a pointer to this file replaces: "The triangle count: one thread of ten turns is tens of thousands of triangles. The kernel adapter was slow on a tool with many faces (192 holes in one boolean took 7.6 s), so the time of a boolean with a threaded tool and of a pattern of such tools has to be measured first." In full: is a modelled thread, built as the twisted extrusion of its planar cross-section, feasible on the real kernel adapter in time and in robustness? The owner's decisions of 2026-11-26 it starts from are recorded in the same section of the backlog. Sections J and K were measured the same day for the design ([design.md](design.md)): a shorter run past an open end, and the engine's check of collisions on a screw and a nut.
+**State: measured on 2026-11-26, on the branch `d36/7a` from `master` at `4b9f70f`; J and K added for the design on the same day, L to P for its revision after the first reviews on 2026-11-27, Q to S for the revision after the second ones on the same day (P measured again with the ring).** No engine code: the builders of the tool live in the spike, [`spikes/thread.spike.ts`](../../../spikes/thread.spike.ts). The question was the paragraph "To verify by a spike" of [backlog.md](../../backlog.md), "Helix and modelled threads", which a pointer to this file replaces: "The triangle count: one thread of ten turns is tens of thousands of triangles. The kernel adapter was slow on a tool with many faces (192 holes in one boolean took 7.6 s), so the time of a boolean with a threaded tool and of a pattern of such tools has to be measured first." In full: is a modelled thread, built as the twisted extrusion of its planar cross-section, feasible on the real kernel adapter in time and in robustness? The owner's decisions of 2026-11-26 it starts from are recorded in the same section of the backlog. Sections J and K were measured the same day for the design ([design.md](design.md)): a shorter run past an open end, and the engine's check of collisions on a screw and a nut.
 
 **The answer: yes, with three changes to the plan.**
 
@@ -264,16 +264,20 @@ The first version of the design moved the flanks along their normal and held the
 - A pin made at `D − 2c` keeps the full flat at 0.2 and at 0.4, at both tolerances.
 - No cut was refused, and none left a hidden face of the tool.
 
-A screw without a clearance in a nut whose thread is shifted outwards by the clearance (the ring tool of N, the bore at the minor radius plus the clearance), through the engine's check of collisions at 0.05:
+A screw in a nut, each thread the basic one shifted by its clearance and cut into a wall of the radius given (the ring tool of N for the nut), through the engine's check of collisions at 0.05. The last two rows were added for the second review:
 
-| Radial clearance | Between the flanks (`c · sin α`) | Shared mm³ | Verdict | ms |
-|---|---|---|---|---|
-| 0.2 | 0.100 | 0 | nothing | 59 |
-| 0.1 | 0.050 | 0 | nothing | 52 |
-| 0.06 | 0.030 | 0 | nothing | 53 |
-| 0.02 | 0.010 | 1.070 | fit | 7 406 |
+| Clearance of the screw | Radius of the pin | Clearance of the nut | Radius of the bore | Between the flanks, across them | Crest of the screw to the root of the nut | Crest of the nut to the root of the screw | Shared mm³ | Depth | Verdict |
+|---|---|---|---|---|---|---|---|---|---|
+| 0 | 5 | 0.2 | 4.388 | 0.100 | 0.2 | 0.2 | 0 | 0 | nothing |
+| 0 | 5 | 0.1 | 4.288 | 0.050 | 0.1 | 0.1 | 0 | 0 | nothing |
+| 0 | 5 | 0.06 | 4.248 | 0.030 | 0.06 | 0.06 | 0 | 0 | nothing |
+| 0 | 5 | 0.02 | 4.208 | 0.010 | 0.02 | 0.02 | 1.070 | 0.027 | fit (7.4 s) |
+| 0.1 | 4.9 | 0 | 4.188 | 0.050 | 0.1 | 0.1 | 0 | 0 | nothing |
+| 0.1 | 5 (the nominal one) | 0 | 4.188 | 0.050 | 0 | 0.1 | 0.214 | 0.043 | fit (seconds) |
 
-- The pair is free when the radial clearance is at least the chord tolerance, as with the clearance of E and K, although the flanks are then only half as far apart across: the chords of a mesh deviate along the radius, and so does the shift.
+- The pair is free when the radial gaps, at the flanks and between every crest and the root it faces, are at least the chord tolerance, as with the clearance of E and K, although the flanks are then only half as far apart across: the chords of a mesh deviate along the radius, and so does the shift.
+- **The wall has to be made for the clearance.** A pin left at the nominal radius with a clearance of 0.1 is accepted by the feature (a flat of 0.072 is left), but its crest is the wall, and that lies in the root of a nut without a clearance: a fit, measured for seconds. The clearance of a thread frees its flanks and its root; the crest is freed by the size of the wall, or by the clearance of the mate.
+- These rows are one size at one tolerance (0.05); the default tolerance of a document, 0.01, was not run here (the fit rows take seconds to a minute).
 
 ### N. The tool of a bore as a ring, and what stands in the way (measured for the review of the design, 2026-11-27)
 
@@ -294,6 +298,8 @@ The first version cut a bore with the solid screw shape. A review pointed out th
 - **What crosses the hidden faces of a tool leaves them in the body**: a key that stands into the bore from its wall leaves the strip of the tool between the grooves (`root`) and, of a ring, its inner cylinder (`wall`); a rib on a pin leaves the strip (`crest` of the groove tool) and the outer cylinder. So a number of their own for those faces, and a look for it after the boolean, tells the feature that something stood in the way.
 
 ### O. The zone of a thread on what two bodies share (measured for the review of the design, 2026-11-27)
+
+**Superseded by Q.** The three rules below read the vertices and the triangles of the mesh two bodies share. The second review showed that such a mesh can hold a sheet without thickness where faces of the two lie flush (a head seated on a face), which takes vertices out of the zone and to the axis, differently for the two orders of the bodies. The pairs of the table are measured again in Q by the rule the design has now; the helper of the second rule (`originToTriangle`, which a review found wrong for a triangle seen edge-on) is gone from the spike with it.
 
 The first version excused a pair when every vertex of what the two bodies share lay in the zone of a thread (between the wall and the root, between the ends). A review showed pairs that pass and are no mates. Test 7 intersects the pairs through the adapter and judges every connected piece (`pieceSolids`) by three rules: the vertices in the zone; no triangle nearer to the axis than the lower radius of the zone; the angles of the vertices about the axis with no gap of half a turn. At 0.05, the slack the tolerance and 10⁻⁴:
 
@@ -316,26 +322,99 @@ The first version excused a pair when every vertex of what the two bodies share 
 - **A screw too long** fails both the ends and the inner radius, and in the design only its part beyond the thread is judged: the test here has one piece, so the pair is a collision as a whole.
 - The three rules cost one pass over the triangles of what the two share.
 
-### P. Random threads at the default chord tolerance, with a blind hole (measured for the review of the design, 2026-11-27)
+### P. Random threads at the default chord tolerance, with a blind hole (2026-11-27; measured again with the ring after the second review)
 
-H and J drew their chord tolerances from 0.02, 0.05 and 0.1 and had no blind hole. A document has 0.01 unless its file says otherwise. The run of 100 random threads at 0.01 with the short run of J (`THREAD_SPIKE_PAST=beside THREAD_SPIKE_TOLS=0.01 THREAD_SPIKE_COUNT=100`, the swept build, seed 1; 12 minutes), with a fourth body, a hole on a bottom 3 mm thick, whose tool stops the lift short of the bottom and runs the lift past the open face:
+H and J drew their chord tolerances from 0.02, 0.05 and 0.1 and had no blind hole. A document has 0.01 unless its file says otherwise. The run of 100 random threads at 0.01 with the short run of J (`THREAD_SPIKE_PAST=beside THREAD_SPIKE_TOLS=0.01 THREAD_SPIKE_COUNT=100`, the swept build, seed 1; 11 minutes), with a fourth body, a hole on a bottom 3 mm thick, whose tool stops the lift short of the bottom and runs the lift past the open face. The tool of the two bores is the ring of N (the first run of this section, like B, C, H and J, cut bores with the solid screw shape; `THREAD_SPIKE_BORE=solid` builds it):
 
 | Operation | Ends of the tool | Booleans | Refused | Mean ms |
 |---|---|---|---|---|
-| External, cut of a rod | an end in a face | 300 | 150 (50 %) | 970 |
-| | no end in a face | 100 | 1 | 150 |
-| Internal, cut | an end in a face | 100 | 14 (14 %) | 734 |
-| | no end in a face | 100 | 1 | 124 |
-| Internal blind, cut | an end in a face | 100 | 26 (26 %) | 768 |
-| | no end in a face | 100 | 0 | 131 |
-| External, union on a core (not part of the design) | an end in a face | 200 | 53 (27 %) | 1 066 |
-| | no end in a face | 100 | 1 | 139 |
+| External, cut of a rod | an end in a face | 300 | 150 (50 %) | 766 |
+| | no end in a face | 100 | 1 | 125 |
+| Internal, cut with a ring | an end in a face | 100 | 14 (14 %) | 916 |
+| | no end in a face | 100 | 1 | 102 |
+| Internal blind, cut with a ring | an end in a face | 100 | 27 (27 %) | 959 |
+| | no end in a face | 100 | 0 | 108 |
+| External, union on a core (not part of the design) | an end in a face | 200 | 53 (27 %) | 819 |
+| | no end in a face | 100 | 1 | 109 |
 
 - **With no end in a face: 2 of the 300 cuts the design makes** (0.7 %), against 1 of 300 at the coarser tolerances (J). Both are turned and far from the origin and are accepted at the origin, unturned: #77, an external metric 36.05 x 3.554, 10.7 mm long, 237 mm from the origin (the result is not a closed surface), and #91, an internal printed thread 30.71 x 3.999 (45°) with two starts, 38.3 mm long, 171 mm from the origin (a folded triangle).
-- **None of the 100 cuts into a blind hole** was refused.
-- **With an end in a face** the rate is that of C and H or above it (14 to 50 %), and the cuts take five to seven times as long.
-- **Another run past the ends changes the two refusals.** The two cases alone (`THREAD_SPIKE_ONLY=77,91`) with 1 mm past the open ends: both cuts accepted. With 0.1 and with 0.02: #91 accepted, #77 refused. (The union of #77, which is not part of the design, is refused at every one.) So a refusal depends on a dimension of the tool that the thread does not depend on, and a second build with another one is a candidate for the implementation; a longer run is harmless only where nothing of the body lies beyond the end.
+- **The ring and the solid tool are refused in the same cases**: the first run, with the solid screw shape in the bores, refused the same two cuts (and 26 of the blind ones with an end in a face, where the ring has 27). A reviewer's run of the ring gave the same.
+- **None of the 100 cuts into a blind hole** with no end in a face was refused.
+- **With an end in a face** the rate is that of C and H or above it (14 to 50 %), and the cuts take six to nine times as long.
+- **Another run past the ends changes the two refusals** (measured with the solid tool). The two cases alone (`THREAD_SPIKE_ONLY=77,91`) with 1 mm past the open ends: both cuts accepted. With 0.1 and with 0.02: #91 accepted, #77 refused. (The union of #77, which is not part of the design, is refused at every one.) So a refusal depends on a dimension of the tool that the thread does not depend on, and a second build with another one is a candidate for the implementation; a longer run is harmless only where nothing of the body lies beyond the end.
 - The lift at these distances is ten bands of the kernel adapter and more (`bandOf` is 10⁻⁵ of twice the distance from the origin: 0.005 at 237 mm), so the two refusals are not a lift below the band.
+
+### Q. The zone of a thread as a cut of its body (measured for the second review of the design, 2026-11-27)
+
+The second review found that the rules of O fail where a face of the screw lies flush on a face of the tapped body: the mesh the two share then holds a sheet without thickness (the underside of a head on the top face), with vertices far outside the zone or across the axis, in one order of the two bodies and not in the other. Two ways of making the rule deaf to sheets were tried on the pairs below (test 8a):
+
+- **Cutting the mesh the two share by a ring of the zone** does not hold: with a sheet in that mesh, its intersection with the ring came out with 69.29 mm³ where the two share 68.93 (three pairs with a seated face, in the order that leaves the sheet), and its difference with the ring was refused by the adapter (a folded triangle).
+- **Cutting the body with the thread** holds, and is what the design has now. The ring of the zone (grown by the chord tolerance where it borders the material of that body, at the root and at an end that is not open; by the lift where it borders its air) cuts the body into the part in its zone and the rest. What the other body shares with the part in the zone is read by sums over its triangles (its volume, its centre of volume, its mean squared radius), to which a sheet adds nothing; every connected piece of it has to go around the axis, its centre nearer to the axis than 0.827 of its radius, where the centre of a third of a ring lies. Then the zone is taken, and the rest of the body is judged against the other body as every pair is (`sharedBy`, `verdictOf`). A zone that is not taken changes nothing.
+
+Every pair in both orders (the body with the thread first, and second), with the same outcome and the same numbers in both; the chord tolerance is 0.05 for the pairs of O and 0.01 for the pairs with flush faces:
+
+| Pair | In the zone: mm³ (centre / radius) | Excused mm³ | The rest shares mm³ | Depth | Which is | The pair is |
+|---|---|---|---|---|---|---|
+| M8 pin (cosmetic) in a plain hole at its minor diameter | 153.72 (0.000) | 153.72 | 0 | 0 | nothing | threaded |
+| M8 pin pushed through a solid block (no hole) | 164.61 (0.000) | 164.61 | 329.82 | 5.000 | collision | a collision |
+| A plate 1 mm thick through the M8 pin | 16.46 (0.000) | 16.46 | 32.98 | 3.224 | collision | a collision |
+| A bar 2 x 2 through the axis of the M8 pin | 2.94 (0.985), 2.94 (0.985) | 0 | 31.37 | 3.951 | collision | judged whole: a collision |
+| A wall pushed 0.5 mm into the M8 pin from one side | 11.76 (0.975) | 0 | 11.76 | 0.500 | collision | judged whole: a collision |
+| A jaw around 100° of the M8 pin, 0.4 mm into it | 26.15 (0.879) | 0 | 26.15 | 0.449 | collision | judged whole: a collision |
+| A clamp around 180° of the M8 pin (one half of a split nut) | 47.26 (0.637) | 47.26 | 0 | 0 | nothing | threaded |
+| A clamp around 200° of the M8 pin, 0.4 mm into it | 52.65 (0.563) | 52.65 | 0 | 0 | nothing | threaded |
+| A rod 8 in an M8 bore with a countersink, the zone of the wall alone | 124.39 (0.000) | 124.39 | 3.82 | 0.601 | collision | a collision |
+| The same, the zone run out through the countersink | 128.21 (0.000) | 128.21 | 0 | 0 | nothing | threaded |
+| A rod 8 too long for a blind M8 bore: 2 mm into its bottom | 154.60 (0.000) | 154.60 | 98.01 | 2.000 | collision | a collision |
+| A plain rod 10 in a modelled M10 nut (clearance 0.1) | 216.48 (0.010) | 216.48 | 0 | 0 | nothing | threaded |
+| A plain rod 6 through a plate tapped M6 (no flush face) | 68.93 (0.000) | 68.93 | 0 | 0 | nothing | threaded |
+| A screw with its head (10 across) seated on the top face | 68.93 (0.000) | 68.93 | 0 | 0 | nothing | threaded |
+| A screw with its head in a counterbore of the same diameter | 77.55 (0.000) | 77.55 | 0 | 0 | nothing | threaded |
+| A standoff with a cosmetic M6 pin, its shoulder seated on the plate | 68.93 (0.000) | 68.93 | 0 | 0 | nothing | threaded |
+| A rod 6 standing on the flat bottom of a blind bore tapped M6 | 51.70 (0.000) | 51.70 | 0 | 0 | nothing | threaded |
+| A countersunk screw 8 in an M8 bore with a countersink, the two cones divided differently | 115.68 (0.000) | 115.68 | 0.129 | 0.0068 | fit | threaded and a fit |
+
+- **The four pairs with a flush face** (a seated head, a head in a counterbore, a seated shoulder, a rod on a blind bottom) are excused in both orders, with the volume of the plain rod (68.93) to the hundredth.
+- **What is no mate is still a collision**: the pin through a block and the plate through a pin by what the rest of the pin shares with them (its core), the bar, the wall and the jaw because their pieces in the zone do not go around.
+- **A fit joined to the thread is a fit**: the cones of a countersunk head and of its countersink, divided differently, share slivers that are one piece with the thread overlap in the mesh the two share (a reviewer measured that piece 0.82 mm deep, a collision by the rules of O). Cut off with the rest of the body they are 0.0068 mm deep, a fit.
+- **Going around.** The ratio of the centre to the radius is `sin(φ/2) / (φ/2)` for a piece that covers the angle φ evenly: 0 for a whole ring, 0.563 at 200°, 0.637 at half a ring, 0.827 at a third, 0.879 at 100°, 0.975 for the wall pushed in. A straight wall cannot cover more than `2 · acos(low / high)` of a zone (68° of M8: 0.94). The threshold of a third lets one half of a split nut pass and refuses a jaw of 100°; where it belongs is a question for the owner (design.md, question 57). A threshold at a half would lie on the value of the most common case and fall either way with the noise of the mesh.
+- **The cost**: three booleans beside the one of every pair (the body with the ring, twice, and the part in the zone with the other body): 5 to 55 ms a pair here, 170 ms with a modelled nut or with the fit.
+
+### R. The ends of a wall, read from the bodies of the engine (measured for the second review of the design, 2026-11-27)
+
+All three reviewers of the second round found the reading of an end of the first revision wrong for the most common ends: the engine triangulates a flat cap from the vertices of its boundary alone (`buildPrism`), so the bottom of a blind hole and the free end of a pin have every vertex on the circle of the wall. "The vertex across the rim lies on the cylinder: the wall goes on" then reads both as an end inside the wall. Test 8b is a prototype of the corrected reading on bodies the engine built (the kit of the scenarios; chord tolerance 0.01), among them the jar and the lid of scenario 18:
+
+- the rim of an end is the loop of the edges the wall shares with other faces that goes around the axis and holds the extreme point of that end;
+- the triangle of another face across an edge of the rim decides: when its face is a cylinder about the same axis with the same radius, the wall goes on; else by its third vertex, which lies outside the cylinder beyond the radius and inside it otherwise, also when it lies on it (a triangle with three vertices on a cylinder is a chord of it). Inside the cylinder is the air of a bore and the material of a pin;
+- the run-out of an open end is how far beyond the end the faces across the rim lie within the band of the thread, walked from the rim across their edges (read here on samples of the triangles).
+
+| Wall | Triangles of the body | Side | Low end | High end |
+|---|---|---|---|---|
+| The neck of the jar: on its foot, a flat free end | 1 044 | a pin | shoulder | open, run-out 0 |
+| The socket of the lid: a mouth in a plane, a flat blind bottom | 1 014 | a bore | open, run-out 0 | shoulder |
+| A plain hole through a plate (the hole feature) | 868 | a bore | open, run-out 0 | open, run-out 0 |
+| A countersunk hole (90°), the cone below | 868 | a bore | open, run-out 0.500 | open, run-out 0 |
+| A counterbored hole, the seat below | 868 | a bore | open, run-out 0 | open, run-out 0 |
+| A rod 8 with a chamfer of 1 at its top | 462 | a pin | open, run-out 0 | open, run-out 0.667 (exact: 0.677) |
+| The lower half of a pin made by two extrusions of one circle | 266 | a pin | open, run-out 0 | inside |
+| Its upper half | 266 | a pin | inside | open, run-out 0 |
+| A blind hole with a flat bottom, cut from the top | 176 | a bore | shoulder | open, run-out 0 |
+
+- Every end is read as scenario 18 expects it (`jarChecks`: the neck `open` at its free end, the socket `shoulder` at its bottom) and as a tap or a die would meet it.
+- The run-out through the countersink is the 0.5 of an M6 thread in a bore of 5; that through the chamfer of the rod is the depth of an M8 thread within the sampling of the prototype.
+- The reading took 4 to 27 ms a wall (one pass over the triangles of the body and the samples of the run-out).
+- Not measured: a rim that is not a circle (a hole in a round or a leaning face), a rim partly at a shoulder, a fillet at the foot of a pin, bodies in a pose.
+
+### S. The phase of a mate (measured for the second review of the design, 2026-11-27)
+
+Three reviewers found the formula for two threads that run in opposite directions right only when the first has no phase. Test 8c puts a point of the first helix against the second by the formula of the datum (the crest at `origin + s · axis + R · (zero turned by θ)`, `s = turn · lead · θ / 2π + k · pitch`, `zero` the model's X axis turned by the phase about the axis of the thread): M10, the second origin 4.3 along the first axis, both hands, one and two starts.
+
+| Phase of the first | The same way, `φ₁ + turn · 2π · g / lead` | The other way, as the first revision had it: `φ₁ − turn · 2π · L / lead` | The other way, `−φ₁ − turn · 2π · L / lead` |
+|---|---|---|---|
+| 0 | on it (0.0003) | on it | on it |
+| 0.7 rad | on it | 0.334 off (one start), 0.665 off (two starts) | on it |
+
+- The two threads share the model's X axis as the base of `zero`, and each turns it by its phase about its own direction: seen from one side the two phases turn opposite ways. So the second phase takes the first with the other sign.
 
 ## Conclusions
 
@@ -365,7 +444,7 @@ H and J drew their chord tolerances from 0.02, 0.05 and 0.1 and had no blind hol
 - Square threads (flanks with no angle): the builders refuse them.
 - The engine's own check of interference on a screw and a nut was not measured by the spike; K has it since.
 - A clearance on an external thread, the ring as the tool of a bore, a blind hole and the default tolerance among the random threads were not measured by the spike; M, N and P have them since.
-- The reading of the ends from the mesh of a body, and the walk of a run-out: no measurement, they are the design's and are owed by the implementation (design.md, "To verify before the implementation").
+- The reading of the ends from the mesh of a body was not measured by the spike; R has a prototype of it on nine walls since. A rim that is not a circle and bodies in a pose are still owed (design.md, "To verify before the implementation").
 - A run-out of a thread into a chamfer or a countersink at its open end (the tool passing through a cone), and an end whose rim is partly open and partly at a shoulder.
 
 ## Running it
@@ -374,4 +453,4 @@ H and J drew their chord tolerances from 0.02, 0.05 and 0.1 and had no blind hol
 npx vitest run --config spikes/vitest.config.ts spikes/thread.spike.ts
 ```
 
-The default run takes about a minute: the tool alone at all three tolerances, everything else at 0.05 with the layered build for M10 only, the check of collisions of K (18 s of it), four random threads. `THREAD_SPIKE_FULL=1` runs the sweeps the tables above come from (about six minutes; 50 random threads). The run of 150 random threads of H is `THREAD_SPIKE_FULL=1 THREAD_SPIKE_COUNT=150` with `-t "^6 "` (about six minutes more), and its three refusals alone `THREAD_SPIKE_ONLY=107,115,145` on top of that. `THREAD_SPIKE_SEED` gives another sequence. `THREAD_SPIKE_PAST` sets how far a tool runs past an open end in tests 2 and 6: a number of millimetres (1 when absent), or `beside` for the distance it keeps from a shoulder; the run of J is `THREAD_SPIKE_PAST=beside THREAD_SPIKE_COUNT=150` with `-t "^6 "` (about four minutes). `THREAD_SPIKE_TOLS` is the list of chord tolerances test 6 picks from (0.02, 0.05 and 0.1 when absent); the run of P is `THREAD_SPIKE_PAST=beside THREAD_SPIKE_TOLS=0.01 THREAD_SPIKE_COUNT=100` with `-t "^6 "` (12 minutes). Since P, tests 2 and 6 have a fourth body, the blind hole, which the tables of C, H and J do not have. Test 7 holds L, M, N and O and takes about 10 s of the default run (7 s of it the fit of M).
+The default run takes about 40 s: the tool alone at all three tolerances, everything else at 0.05 with the layered build for M10 only, the check of collisions of K without its two fits, the tests for the reviews (7, and 8a to 8c: 4 s), four random threads. `THREAD_SPIKE_FULL=1` runs the sweeps the tables above come from (about six minutes; 50 random threads) and the rows that take seconds each: the two fits of K (clearances 0.02 and 0) and the two of M. The run of 150 random threads of H is `THREAD_SPIKE_FULL=1 THREAD_SPIKE_COUNT=150` with `-t "^6 "` (about six minutes more), and its three refusals alone `THREAD_SPIKE_ONLY=107,115,145` on top of that. `THREAD_SPIKE_SEED` gives another sequence. `THREAD_SPIKE_PAST` sets how far a tool runs past an open end in tests 2 and 6: a number of millimetres (1 when absent), or `beside` for the distance it keeps from a shoulder; the run of J is `THREAD_SPIKE_PAST=beside THREAD_SPIKE_COUNT=150` with `-t "^6 "` (about four minutes). `THREAD_SPIKE_TOLS` is the list of chord tolerances test 6 picks from (0.02, 0.05 and 0.1 when absent); the run of P is `THREAD_SPIKE_PAST=beside THREAD_SPIKE_TOLS=0.01 THREAD_SPIKE_COUNT=100` with `-t "^6 "` (11 minutes). Since P, tests 2 and 6 have a fourth body, the blind hole, and since the second review they cut the two bores with the ring of N; `THREAD_SPIKE_BORE=solid` cuts them with the solid screw shape, which the tables of B, C, H and J were measured with. Test 7 holds L, M and N; tests 8a, 8b and 8c hold Q, R and S.

@@ -9,7 +9,9 @@
 // Second version, after the first round of reviews: the flange (a circle and a mirror of tapped
 // holes: where the helix of a copy lies, and its hand), a printed tapped hole, the clearance of
 // a pin, two threads that disagree as a collision, the smallest gap, a cosmetic thread on
-// a mirrored body.
+// a mirrored body. Third, after the second round: a block that holds the axis of the bolt and one
+// that clips its corner, a profile that disagrees, a seated head, the stretch a body still has of
+// a wall, a first phase that is not zero with a mate that runs each way.
 
 import type { Expr, Id, Input } from '../../../packages/engine/src/index';
 import type { ArgsOf, CommandAfter, FaceNameAfter, StateAfter } from '../00-prep/contract';
@@ -114,6 +116,8 @@ export function tappedPlateChecks(before: StateAfter, state: StateAfter): boolea
   const placed = threads.every((t) => near(t.axis[2], -1) && near(t.origin[2], 8, 1e-5) && t.from === 0 && near(t.to, 8, 1e-5) && near(Math.hypot(...t.zero), 1) && near(t.zero[2], 0));
   // both ends are mouths in a plane: open, with nothing to run out through
   const ends = threads.every((t) => t.ends.start === 'open' && t.ends.end === 'open' && t.runOut.start === 0 && t.runOut.end === 0);
+  // the plate still has the whole of every wall
+  const whole = threads.every((t) => t.walls.length === 1 && near(t.walls[0].from, 0, 1e-5) && near(t.walls[0].to, 8, 1e-5));
   // a copy by a shift has the helix of its listed face: the same `zero` (the model's X axis here)
   const carried = threads.every((t) => near(dot(t.zero, threads[0].zero), 1) && near(t.zero[0], 1));
   // the geometry is what it was: the same mesh, the same faces
@@ -125,7 +129,7 @@ export function tappedPlateChecks(before: StateAfter, state: StateAfter): boolea
   // the parts list counts no piece for a tapped hole: it is among the holes without a label
   const parts = partsList();
   const uncounted = parts.hardware.every((row) => !row.label.startsWith('M6')) && parts.unlabelled?.some((hole) => hole.feature === 'taps') === true;
-  return six && each && placed && ends && carried && unchanged && described && factsOk && uncounted && allOk(state);
+  return six && each && placed && ends && whole && carried && unchanged && described && factsOk && uncounted && allOk(state);
 }
 // The count of the pattern changes and the thread feature is not touched: eight threads.
 export const fourInARow = (): number => threadsOf(done(engine.preview({ type: 'updateFeature', id: 'row', patch: { transform: { count: 4 } } })), 'm6').length;
@@ -153,22 +157,41 @@ export function boltChecks(): boolean {
   const tooThick = unwrap(engine.query('interference', { bodies: ['bolt', 'plate'] }, { state: done(engine.preview({ type: 'setParameter', name: 'boltD', expr: '8' })) }));
   // the bolt gets its own cosmetic thread: still excused, and both threads are named; with another
   // pitch (that of M5) or the other hand the pair is a collision that says what differs
-  const boltThread = (pitch: number, hand: 'right' | 'left' = 'right'): CommandAfter => thread('boltThread', { body: 'bolt', faces: [side('bolt', 'shank')], modelled: false, diameter: 'boltD', pitch, hand, direction: 'forward' });
+  const boltThread = (pitch: number, hand: 'right' | 'left' = 'right', flankAngle?: Expr): CommandAfter => thread('boltThread', { body: 'bolt', faces: [side('bolt', 'shank')], modelled: false, diameter: 'boltD', pitch, hand, direction: 'forward', ...(flankAngle ? { flankAngle } : {}) });
   const m6 = DATA_CATALOGS.metricThreads.rows['M6'].pitch;
   const same = unwrap(engine.query('interference', { bodies: ['bolt', 'plate'] }, { state: done(engine.preview(boltThread(m6))) }));
   const otherPitch = unwrap(engine.query('interference', { bodies: ['bolt', 'plate'] }, { state: done(engine.preview(boltThread(DATA_CATALOGS.metricThreads.rows['M5'].pitch))) }));
   const otherHand = unwrap(engine.query('interference', { bodies: ['bolt', 'plate'] }, { state: done(engine.preview(boltThread(m6, 'left'))) }));
-  const disagree = [otherPitch, otherHand].every((r) => r.threaded === undefined && r.pairs.length === 1 && typeof (r.pairs[0] as PairD75).mismatch === 'string');
-  // a block with no hole pushed over the bolt: every vertex of what they share lies at the radius
-  // of the bolt, inside the zone of its thread, and a triangle of it lies across the axis
-  const solid = done(
-    engine.preview({
-      type: 'batch',
-      commands: [boltThread(m6), ...sketchOn('blockS', XY), ...rectangle('blockS', 'k', '8', '8'), { type: 'addFeature', feature: { id: 'block', type: 'extrude', profile: { type: 'regions', sketch: 'blockS', regions: [region('ka', 'kb', 'kc', 'kd')] }, extent: { type: 'distance', start: 9, distance: 2 }, operation: 'new' } }],
-    }),
-  );
-  const through = unwrap(engine.query('interference', { bodies: ['bolt', 'block'] }, { state: solid }));
-  return excused && gapOk && tooThick.pairs.length === 1 && tooThick.threaded === undefined && same.threaded?.[0].threads.length === 2 && disagree && through.pairs.length === 1 && through.threaded === undefined;
+  const otherProfile = unwrap(engine.query('interference', { bodies: ['bolt', 'plate'] }, { state: done(engine.preview(boltThread(m6, 'right', 'deg(90)'))) }));
+  const disagree = [otherPitch, otherHand, otherProfile].every((r) => r.threaded === undefined && r.pairs.length === 1 && typeof (r.pairs[0] as PairD75).mismatch === 'string');
+  // a block with no hole pushed over the bolt (20 x 20, the bolt stands at its middle): what it
+  // shares with the zone of the bolt's thread goes around, and the core of the bolt is left: a
+  // collision. A block that clips the bolt at a corner (8 x 8) reaches into the zone from one side:
+  // nothing is excused.
+  const blockOf = (size: Expr): StateAfter =>
+    done(
+      engine.preview({
+        type: 'batch',
+        commands: [boltThread(m6), ...sketchOn('blockS', XY), ...rectangle('blockS', 'k', size, size), { type: 'addFeature', feature: { id: 'block', type: 'extrude', profile: { type: 'regions', sketch: 'blockS', regions: [region('ka', 'kb', 'kc', 'kd')] }, extent: { type: 'distance', start: 9, distance: 2 }, operation: 'new' } }],
+      }),
+    );
+  const blocked = ['20', '8'].every((size) => {
+    const report = unwrap(engine.query('interference', { bodies: ['bolt', 'block'] }, { state: blockOf(size) }));
+    return report.pairs.length === 1 && report.threaded === undefined;
+  });
+  // a head on the bolt, seated on the top of the plate: its underside lies flush on the face, and
+  // the pair is excused all the same, whichever of the two IDs comes first
+  const seated = (id: Id): boolean => {
+    const state = done(
+      engine.preview({
+        type: 'batch',
+        commands: [...sketchOn('headS', XY), ...circleAt('headS', 'head', '10', '10', '5'), { type: 'addFeature', feature: { id, type: 'extrude', profile: { type: 'regions', sketch: 'headS', regions: [region('head')] }, extent: { type: 'distance', start: 8, distance: 3 }, operation: 'new' } }, { type: 'addFeature', feature: { id: `${id}Joined`, name: `${id}Joined`, suppressed: false, type: 'combine', operation: 'union', target: id, tools: ['bolt'], keepTools: true } }],
+      }),
+    );
+    const report = unwrap(engine.query('interference', { bodies: [id, 'plate'] }, { state }));
+    return report.pairs.length === 0 && report.fits.length === 0 && report.threaded?.length === 1;
+  };
+  return excused && gapOk && tooThick.pairs.length === 1 && tooThick.threaded === undefined && same.threaded?.[0].threads.length === 2 && disagree && blocked && seated('aScrew') && seated('zScrew');
 }
 
 // A flange: one tapped M6 hole at (20, 0) of a disc about the origin, three of it in a circle and
@@ -261,6 +284,7 @@ export function studAndCollar(): StateAfter {
     { type: 'setParameter', name: 'studD', expr: String(row.diameter) },
     { type: 'setParameter', name: 'studP', expr: String(row.pitch) },
     { type: 'setParameter', name: 'collarTop', expr: '16' },
+    { type: 'setParameter', name: 'studPhase', expr: 'deg(40)' },
     ...sketchOn('studS', XY),
     ...circleAt('studS', 'rod', '100', '15', 'studD / 2'),
     { type: 'addFeature', feature: { id: 'stud', type: 'extrude', profile: { type: 'regions', sketch: 'studS', regions: [region('rod')] }, extent: { type: 'distance', start: 0, distance: 20 }, operation: 'new' } },
@@ -269,11 +293,11 @@ export function studAndCollar(): StateAfter {
     ...circleAt('collarS', 'hole', '100', '15', `(${row.tapDrill} + 2 * clr) / 2`),
     { type: 'addFeature', feature: { id: 'collar', type: 'extrude', profile: { type: 'regions', sketch: 'collarS', regions: [region('outer')] }, extent: { type: 'distance', start: 'collarTop - 8', distance: 8 }, operation: 'new' } },
     // The stud: from its top (the high end of its face: `backward`) 14 down, no clearance.
-    thread('studThread', { body: 'stud', faces: [STUD], modelled: true, diameter: 'studD', pitch: 'studP', hand: 'right', direction: 'backward', length: 14, label: 'M10' }),
+    thread('studThread', { body: 'stud', faces: [STUD], modelled: true, diameter: 'studD', pitch: 'studP', hand: 'right', direction: 'backward', length: 14, phase: 'studPhase', label: 'M10' }),
     // The collar: from its top down through it, with the clearance. Its helix starts 4 below that
-    // of the stud (20 against 16) along the same direction, so it is turned by the angle the
-    // thread travels 4 in: `ThreadResult` gives the formula.
-    thread('collarThread', { body: 'collar', faces: [COLLAR], modelled: true, diameter: 'studD', pitch: 'studP', clearance: 'clr', hand: 'right', direction: 'backward', phase: '2 * pi * (20 - collarTop) / studP', label: 'M10' }),
+    // of the stud (20 against 16) along the same direction, so it has the phase of the stud and
+    // the angle the thread travels 4 in: `ThreadResult` gives the formula.
+    thread('collarThread', { body: 'collar', faces: [COLLAR], modelled: true, diameter: 'studD', pitch: 'studP', clearance: 'clr', hand: 'right', direction: 'backward', phase: 'studPhase + 2 * pi * (20 - collarTop) / studP', label: 'M10' }),
   );
 }
 export function studChecks(plain: StateAfter, state: StateAfter): boolean {
@@ -331,9 +355,18 @@ export function clearanceOfThePin(): boolean {
   // the root of the shifted thread: the minor diameter less twice the clearance
   return onNominal(true) === 'invalidThread' && onNominal(false) === 'invalidThread' && made.evaluation.features['studThread'].status === 'ok' && root?.kind === 'cylinder' && near(2 * root.radius, row.minorDiameter - 2 * 0.2, 1e-3);
 }
+// The collar threaded the other way, from its bottom (z = 8) up: its origin lies 12 from that of
+// the stud along the direction of the stud's thread, and its phase takes the phase of the stud
+// with the other sign. The same helix: the two are free of each other as before.
+export function fromBelow(): boolean {
+  const state = done(engine.preview({ type: 'updateFeature', id: 'collarThread', patch: { direction: 'forward', phase: '-studPhase - 2 * pi * (20 - (collarTop - 8)) / studP' } }));
+  const report = unwrap(engine.query('interference', { bodies: ['stud', 'collar'] }, { state }));
+  const [collar] = threadsOf(state, 'collarThread');
+  return near(collar.axis[2], 1) && near(collar.origin[2], 8, 1e-5) && report.pairs.length === 0 && report.fits.length === 0 && report.failed.length === 0;
+}
 // Two modelled threads are judged as the meshes are: the collar turned by half a pitch collides.
 export function wrongPhase(): boolean {
-  const turned = done(engine.preview({ type: 'updateFeature', id: 'collarThread', patch: { phase: '2 * pi * (20 - collarTop) / studP + pi' } }));
+  const turned = done(engine.preview({ type: 'updateFeature', id: 'collarThread', patch: { phase: 'studPhase + 2 * pi * (20 - collarTop) / studP + pi' } }));
   const report = unwrap(engine.query('interference', { bodies: ['stud', 'collar'] }, { state: turned }));
   return report.pairs.length === 1 && report.threaded === undefined;
 }
@@ -465,7 +498,7 @@ export function scenario18(): boolean {
   const refusedOk = refused[0] === 'invalidThread' && refused[1] === 'brokenReference' && refused.slice(2, 7).every((code) => code === 'invalidThread') && refused[7] === true;
   // stage 2
   const built = studAndCollar();
-  const stage2a = studChecks(engine.getState('collar'), built) && clearanceOfThePin() && wrongPhase() && cosmeticAgain(engine.getState('collar'));
+  const stage2a = studChecks(engine.getState('collar'), built) && fromBelow() && clearanceOfThePin() && wrongPhase() && cosmeticAgain(engine.getState('collar'));
   const stage2b = jarChecks(jarAndLid()) && mirroredLid();
   return catalog && stage1 && refusedOk && stage2a && stage2b;
 }

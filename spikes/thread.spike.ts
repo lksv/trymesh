@@ -25,7 +25,8 @@ import type { Region } from '../packages/engine/src/sketch';
 import { buildPrism } from '../packages/engine/src/recompute/tool-prism';
 import { sharedBy, verdictOf } from '../packages/engine/src/interference';
 import { type RigidTransform, compose, pieceSolids, rotation, shift, transformFrame, transformPoint, volumeOf } from '../packages/engine/src/solid';
-import type { BodyResult } from '../packages/engine/src/types';
+import type { BodyResult, Command, FaceName, HoleShape, Surface } from '../packages/engine/src/types';
+import { XY, addSketch, cap, circle as sketchCircle, newEngine, rectLoop, rectangle as sketchRectangle, run, side } from '../packages/scenarios/test/kit';
 import { createManifoldKernel } from '../packages/kernel-manifold/src/index';
 
 const kernel = await createManifoldKernel();
@@ -558,10 +559,13 @@ function jobs(c: Case, tol: number, clearance = 0, pose?: RigidTransform): Job[]
   const side = 2 * b.major + 10;
   const basic = shapeOf(b);
   const out: Job[] = [];
-  // Internal: a block with a hole at the minor diameter, cut by the screw shape whose root lies
-  // inside the hole.
+  // Internal: a block with a hole at the minor diameter, cut by a ring of the screw shape whose
+  // root lies inside the hole.
   const hole = b.minor + clearance;
   const nut = shapeOf(b, { offset: clearance, rootTo: hole - beside });
+  // The tool of a bore is a ring since the review of D75 (spike.md, N); THREAD_SPIKE_BORE=solid
+  // builds the solid screw shape the tables of B, C, H and J were measured with.
+  const bore: Kind = process.env.THREAD_SPIKE_BORE === 'solid' ? { kind: 'solid' } : { kind: 'ridge', inner: hole - 2 * beside };
   out.push({
     name: 'internal, cut',
     op: 'difference',
@@ -573,7 +577,7 @@ function jobs(c: Case, tol: number, clearance = 0, pose?: RigidTransform): Job[]
       { name: 'in both faces', flush: true, z0: 0, z1: l, from: 0, to: l },
       { name: `${past} mm past both faces`, flush: false, z0: -past, z1: l + past, from: 0, to: l },
     ],
-    tool: (build, first, e) => BUILDERS[build](nut, { kind: 'solid' }, e.z0, e.z1, tol, first, { pose }),
+    tool: (build, first, e) => BUILDERS[build](nut, bore, e.z0, e.z1, tol, first, { pose }),
     tight: nut.rMin > hole - beside + 1e-9,
     change: -Math.PI * meanOver(b.pitch, (a) => Math.max(radiusAt(nut, a), hole) ** 2 - hole ** 2),
     radius: b.minor,
@@ -591,7 +595,7 @@ function jobs(c: Case, tol: number, clearance = 0, pose?: RigidTransform): Job[]
       { name: 'in the bottom, in the open face', flush: true, z0: 0, z1: l, from: 0, to: l },
       { name: `${beside} short of the bottom, ${past} mm past the open face`, flush: false, z0: beside, z1: l + past, from: beside, to: l },
     ],
-    tool: (build, first, e) => BUILDERS[build](nut, { kind: 'solid' }, e.z0, e.z1, tol, first, { pose }),
+    tool: (build, first, e) => BUILDERS[build](nut, bore, e.z0, e.z1, tol, first, { pose }),
     tight: nut.rMin > hole - beside + 1e-9,
     change: -Math.PI * meanOver(b.pitch, (a) => Math.max(radiusAt(nut, a), hole) ** 2 - hole ** 2),
     radius: b.minor,
@@ -800,7 +804,8 @@ test('3b the check of collisions on a screw in a nut, and on the pairs that over
       return kernel.boolean('difference', block, buildSwept(shapeOf(b, { offset: clearance, rootTo: hole - beside }), { kind: 'solid' }, -beside, c.length + beside, tol, take(FACES.length)).solid);
     };
     const pairs: { name: string; a: Solid; b: Solid; clearance: number }[] = [
-      ...[0.1, 0.05, 0.02, 0].map((clearance) => ({ name: 'modelled screw in a modelled nut', a: screw, b: nutOf(clearance, true), clearance })),
+      // below the tolerance the pair is a fit whose measure takes 3.5 and 10 s: in the full run only
+      ...(FULL ? [0.1, 0.05, 0.02, 0] : [0.1, 0.05]).map((clearance) => ({ name: 'modelled screw in a modelled nut', a: screw, b: nutOf(clearance, true), clearance })),
       { name: 'plain rod at the major diameter in a modelled nut', a: rodOf(), b: nutOf(0.1, true), clearance: 0.1 },
       { name: 'plain rod at the major diameter in a plain hole at the minor diameter', a: rodOf(), b: nutOf(0, false), clearance: 0 },
       { name: 'modelled screw in a plain hole at the minor diameter', a: screw, b: nutOf(0, false), clearance: 0 },
@@ -974,59 +979,72 @@ function frustum(r0: number, z0: number, r1: number, z1: number, tol: number): S
   return { positions: Float32Array.from(positions), triangles: Uint32Array.from(triangles), faceIds: new Uint32Array(triangles.length / 3).fill(face) };
 }
 
-// The zone of a thread about Z: between two radii and two heights.
+// The zone of a thread about Z: between the wall and the root of the thread (two radii; in a bore
+// the wall is the lower one) and two heights. An end is open when the wall ends in the air there.
 interface Zone {
   low: number;
   high: number;
   from: number;
   to: number;
+  internal: boolean;
+  openFrom: boolean;
+  openTo: boolean;
 }
-// The distance of the origin from a triangle in the plane: 0 inside it.
-function originToTriangle(a: P, b: P, c: P): number {
-  const cross = (p: P, q: P) => p[0] * q[1] - p[1] * q[0];
-  const signs = [cross(a, b), cross(b, c), cross(c, a)];
-  if (signs.every((x) => x >= 0) || signs.every((x) => x <= 0)) return 0;
-  const toSegment = (p: P, q: P): number => {
-    const d: P = [q[0] - p[0], q[1] - p[1]];
-    const t = Math.max(0, Math.min(1, -(p[0] * d[0] + p[1] * d[1]) / (d[0] * d[0] + d[1] * d[1] || 1)));
-    return Math.hypot(p[0] + t * d[0], p[1] + t * d[1]);
-  };
-  return Math.min(toSegment(a, b), toSegment(b, c), toSegment(c, a));
+// A ring about Z that holds the zone of a thread: grown by `slack` where it borders the material
+// of the body with the thread (at the root, and at an end that is not open) and by `lift` where it
+// borders its air (beside the wall, past an open end), so that no face of it lies in a face of that
+// body. Its outer polygon is circumscribed (no chord of it dips into the zone).
+function ringOf(zone: Zone, slack: number, lift: number, tol: number): Solid {
+  const [inner, outer] = zone.internal ? [zone.low - lift, zone.high + slack] : [zone.low - slack, zone.high + lift];
+  const polygon = circle(0, 0, outer, tol);
+  const k = 1 / Math.cos(Math.PI / polygon.length);
+  return prism(polygon.map(([x, y]): P => [x * k, y * k]), zone.from - (zone.openFrom ? lift : slack), zone.to + (zone.openTo ? lift : slack), [circle(0, 0, inner, tol)]).solid;
 }
-// What the design of D75 judges of what two bodies share, piece by connected piece:
-// - `byVertices`: every vertex within the radii and the heights (the rule of the first version);
-// - `inner`: no triangle comes nearer to the axis than the lower radius (a vertex cannot tell: a
-//   shared volume has vertices only on its rim);
-// - `around`: the vertices leave no gap of half a turn or more about the axis (a body pushed into
-//   the thread from one side is no mate).
-function zoneOf(common: Solid, zone: Zone, slack: number): { pieces: number; byVertices: boolean; inner: boolean; around: boolean; nearest: number; widestGap: number } {
-  const p = common.positions;
-  const out = { pieces: 0, byVertices: true, inner: true, around: true, nearest: Infinity, widestGap: 0 };
-  for (const piece of pieceSolids(common)) {
-    out.pieces++;
-    const angles: number[] = [];
-    const seen = new Set<number>();
-    for (let t = 0; t < piece.triangles.length; t += 3) {
-      const corners = [piece.triangles[t], piece.triangles[t + 1], piece.triangles[t + 2]];
-      for (const v of corners) {
-        if (seen.has(v)) continue;
-        seen.add(v);
-        const r = Math.hypot(p[3 * v], p[3 * v + 1]);
-        if (r < zone.low - slack || r > zone.high + slack || p[3 * v + 2] < zone.from - slack || p[3 * v + 2] > zone.to + slack) out.byVertices = false;
-        angles.push(Math.atan2(p[3 * v + 1], p[3 * v]));
-      }
-      const [a, b, c] = corners.map((v): P => [p[3 * v], p[3 * v + 1]]);
-      const near = originToTriangle(a, b, c);
-      out.nearest = Math.min(out.nearest, near);
-      if (near < zone.low - slack) out.inner = false;
-    }
-    angles.sort((x, y) => x - y);
-    let gap = angles.length ? angles[0] + TAU - angles[angles.length - 1] : TAU;
-    for (let i = 1; i < angles.length; i++) gap = Math.max(gap, angles[i] - angles[i - 1]);
-    out.widestGap = Math.max(out.widestGap, gap);
-    if (gap >= Math.PI) out.around = false;
+// The volume of a closed mesh, how far its centre of volume lies from the Z axis, and the root of
+// its mean squared distance from that axis: sums over its triangles (the tetrahedra they make with
+// the origin), to which a sheet without thickness adds nothing.
+function centreOf(s: Solid): { volume: number; off: number; radius: number } {
+  const p = s.positions;
+  let [v, cx, cy, rr] = [0, 0, 0, 0];
+  for (let t = 0; t < s.triangles.length; t += 3) {
+    const [a, b, c] = [3 * s.triangles[t], 3 * s.triangles[t + 1], 3 * s.triangles[t + 2]];
+    const d = (p[a] * (p[b + 1] * p[c + 2] - p[b + 2] * p[c + 1]) - p[a + 1] * (p[b] * p[c + 2] - p[b + 2] * p[c]) + p[a + 2] * (p[b] * p[c + 1] - p[b + 1] * p[c])) / 6;
+    v += d;
+    cx += (d * (p[a] + p[b] + p[c])) / 4;
+    cy += (d * (p[a + 1] + p[b + 1] + p[c + 1])) / 4;
+    for (const k of [0, 1]) rr += (d / 10) * (p[a + k] ** 2 + p[b + k] ** 2 + p[c + k] ** 2 + p[a + k] * p[b + k] + p[a + k] * p[c + k] + p[b + k] * p[c + k]);
   }
-  return out;
+  return { volume: Math.abs(v), off: v !== 0 ? Math.hypot(cx / v, cy / v) : Infinity, radius: v !== 0 ? Math.sqrt(Math.max(0, rr / v)) : 0 };
+}
+const NOISE = 0.001; // mm³, the threshold of the check of collisions
+// A piece goes around the axis when its centre of volume is nearer to the axis than this part of
+// its radius: where the centre of a third of a ring lies (sin 60° / (π / 3)). Half a ring has 0.637,
+// a whole one 0; a straight wall pushed into an M8 thread from one side cannot go below 0.94.
+const AROUND = Math.sin(Math.PI / 3) / (Math.PI / 3);
+// What the design of D75 judges of a pair in which one body has a thread, since its second review.
+// The body with the thread is cut by the ring of the zone into the part in its zone and the rest.
+// - What the other body shares with the part in the zone: every connected piece of it has to go
+//   around the axis (`AROUND`); then the zone is taken and that volume is excused. Read from sums
+//   over the triangles, so a sheet without thickness counts for nothing.
+// - The rest of the body against the other body is judged as every pair is (`sharedBy`).
+// - A zone that is not taken changes nothing: the pair is judged whole.
+// No boolean is made of a mesh two bodies share: such a mesh can hold a sheet (a head seated on
+// a face), and its cut came out refused or half a per cent wrong (spike.md, Q).
+interface ZoneCut {
+  pieces: { volume: number; off: number; radius: number; around: boolean }[]; // of what the other body shares with the part in the zone
+  taken: boolean;
+  excused: number;
+  rest: Solid; // the body with the thread, without its zone when the zone is taken
+}
+function zoneCut(threaded: Solid, other: Solid, zone: Zone, tol: number, otherFirst: boolean): ZoneCut {
+  const ring = ringOf(zone, tol + 1e-4, besideOf(tol), tol);
+  const part = kernel.boolean('intersection', threaded, ring);
+  const pieces = pieceSolids(otherFirst ? kernel.boolean('intersection', other, part) : kernel.boolean('intersection', part, other))
+    .map(centreOf)
+    .filter((piece) => piece.volume > NOISE)
+    .map((piece) => ({ ...piece, around: piece.off < AROUND * piece.radius }));
+  const taken = pieces.length > 0 && pieces.every((piece) => piece.around);
+  return { pieces, taken, excused: taken ? pieces.reduce((sum, piece) => sum + piece.volume, 0) : 0, rest: taken ? kernel.boolean('difference', threaded, ring) : threaded };
 }
 
 // The profile of a thread moved radially by a clearance (the model the review of D75 led to): the
@@ -1034,7 +1052,7 @@ function zoneOf(common: Solid, zone: Zone, slack: number): { pieces: number; byV
 // the clearance. The flanks move along their normal by clearance · sin(half-angle).
 const shifted = (b: Basic, shift: number): Basic => ({ ...b, major: b.major + shift, minor: b.minor + shift });
 
-test('7 for the review of D75: the hands, a radial clearance, a ring tool for a bore, what stands in the way, the zone', () => {
+test('7 for the review of D75: the hands, a radial clearance, a ring tool for a bore, what stands in the way', () => {
   const tol = 0.05;
   const beside = besideOf(tol);
   const b = M10.basic;
@@ -1111,21 +1129,33 @@ test('7 for the review of D75: the hands, a radial clearance, a ring tool for a 
   table('7b. An external thread with a radial clearance: the groove tool on a pin', ['thread', 'chord tol', 'radius of the pin', 'clearance', 'flat left on the wall', 'ms', 'volume against exact', 'faces of the tool left', 'area of the wall left above z = 1, mm²', 'by the flat', 'error'], pins);
 
   // ---- b2. a screw in a nut with radial clearances: when the check finds nothing
+  // Each thread is the basic one shifted by its clearance, cut into a wall of the radius given. The
+  // rows whose measure of the depth takes seconds (a fit) are in the full run only.
   const mates: string[][] = [];
-  for (const clearance of [0.2, 0.1, 0.06, 0.02]) {
-    const rod = prism(circle(0, 0, b.major, tol), -2, l + 2).solid;
-    const screw = kernel.boolean('difference', rod, buildSwept(shapeOf(b, { crestTo: b.major + beside }), { kind: 'groove', outer: b.major + 2 * beside }, -3, l + 3, tol, take(FACES.length)).solid);
-    const hole = b.minor + clearance;
-    const nutBasic = shifted(b, clearance);
-    const block = prism(square(10), 0, l, [circle(0, 0, hole, tol)]).solid;
-    const nut = kernel.boolean('difference', block, buildSwept(shapeOf(nutBasic, { rootTo: hole - beside }), { kind: 'ridge', inner: hole - 2 * beside }, -beside, l + beside, tol, take(FACES.length)).solid);
+  const mateCases: { screw: number; pin: number; nut: number; bore: number; slow?: boolean }[] = [
+    // the clearance on the nut, its bore made for it
+    ...[0.2, 0.1, 0.06].map((c) => ({ screw: 0, pin: b.major, nut: c, bore: b.minor + c })),
+    { screw: 0, pin: b.major, nut: 0.02, bore: b.minor + 0.02, slow: true },
+    // the clearance on the screw: the pin made for it, and the pin left at the nominal diameter,
+    // whose crest then lies in the root of the nut (the second review)
+    { screw: 0.1, pin: b.major - 0.1, nut: 0, bore: b.minor },
+    { screw: 0.1, pin: b.major, nut: 0, bore: b.minor, slow: true },
+  ];
+  for (const c of mateCases) {
+    if (c.slow && !FULL) continue;
+    const rod = prism(circle(0, 0, c.pin, tol), -2, l + 2).solid;
+    const screw = kernel.boolean('difference', rod, buildSwept(shapeOf(shifted(b, -c.screw), { crestTo: c.pin + beside }), { kind: 'groove', outer: c.pin + 2 * beside }, -3, l + 3, tol, take(FACES.length)).solid);
+    const block = prism(square(10), 0, l, [circle(0, 0, c.bore, tol)]).solid;
+    const nut = kernel.boolean('difference', block, buildSwept(shapeOf(shifted(b, c.nut), { rootTo: c.bore - beside }), { kind: 'ridge', inner: c.bore - 2 * beside }, -beside, l + beside, tol, take(FACES.length)).solid);
     const shared = timed(() => sharedBy(kernel, bodyOf(screw), bodyOf(nut), tol));
     const m = shared.value;
     const verdict = m && !('message' in m) ? verdictOf(m, 0.001, tol) : 'refused';
-    mates.push([String(clearance), fmt(clearance * Math.sin(b.alpha), 3), m && !('message' in m) ? fmt(m.volume, 4) : '-', verdict, fmt(shared.ms)]);
-    if (clearance * Math.sin(b.alpha) >= tol) expect(verdict, `radial clearance ${clearance}`).toBe('nothing');
+    // the gaps: between the flanks, and between each crest and the root it faces
+    const [flanks, pinCrest, boreCrest] = [(c.screw + c.nut) * Math.sin(b.alpha), b.major + c.nut - c.pin, c.bore - (b.minor - c.screw)];
+    mates.push([String(c.screw), fmt(c.pin, 3), String(c.nut), fmt(c.bore, 3), fmt(flanks, 3), fmt(pinCrest, 3), fmt(boreCrest, 3), m && !('message' in m) ? fmt(m.volume, 4) : '-', m && !('message' in m) ? fmt(m.depth, 4) : '-', verdict, fmt(shared.ms)]);
+    if (Math.min(c.screw + c.nut, pinCrest, boreCrest) >= tol) expect(verdict, mates[mates.length - 1].join(' | ')).toBe('nothing');
   }
-  table('7b2. M10x1.5 screw (no clearance) in a nut with a radial clearance, at 0.05', ['radial clearance', 'between the flanks', 'shared mm³', 'verdict', 'ms'], mates);
+  table('7b2. An M10x1.5 screw in a nut, each with a radial clearance, at 0.05', ['clearance of the screw', 'radius of the pin', 'clearance of the nut', 'radius of the bore', 'between the flanks, across them', 'crest of the screw to the root of the nut', 'crest of the nut to the root of the screw', 'shared mm³', 'depth', 'verdict', 'ms'], mates);
 
   // ---- c. the tool of a bore as a ring, and what stands in the way of a tool
   const rings: string[][] = [];
@@ -1179,38 +1209,355 @@ test('7 for the review of D75: the hands, a radial clearance, a ring tool for a 
   }
   table('7c. The tool of a bore, solid or a ring, and what stands in the way (M10x1.5, 20 mm, at 0.05)', ['body', 'tool', 'tool tris', 'ms', 'volume taken', 'the grooves alone', 'faces of the tool left', 'hidden faces left', 'error'], rings);
 
-  // ---- d. the zone of a thread, judged on what two bodies share
-  const zones: string[][] = [];
+});
+
+// ---------------------------------------------------------------- 8. measured for the second review of D75
+
+test('8a for the second review of D75: the zone of a thread as a cut of its body, in both orders of the pair', () => {
+  const rows: string[][] = [];
+  const b = M10.basic;
+  const l = 20;
   const m8 = iso(8, 1.25);
-  const pinZone: Zone = { low: m8.minor, high: m8.major, from: 0, to: 20 };
-  const pin = () => prism(circle(0, 0, m8.major, tol), 0, 20).solid;
+  const m6 = iso(6, 1);
   const box = (x0: number, x1: number, y: number, z0: number, z1: number): Solid => prism(rect(x1 - x0, 2 * y), z0, z1, [], shift([1, 0, 0], (x0 + x1) / 2)).solid;
-  const holed = (radius: number, z0: number, z1: number): Solid => prism(square(10), z0, z1, [circle(0, 0, radius, tol)]).solid;
-  // a bore 10 deep with a countersink of 45° from z = 8 up: the cone reaches the major radius at z = 8 + (major − minor)
-  const sunk = (): Solid => kernel.boolean('difference', holed(m8.minor, 0, 10), frustum(m8.minor - 0.5, 7.5, m8.minor + 2.0001, 10.0001, tol));
+  const holed = (radius: number, z0: number, z1: number, tol: number, half = 10): Solid => prism(square(half), z0, z1, [circle(0, 0, radius, tol)]).solid;
+  const rod = (radius: number, z0: number, z1: number, tol: number): Solid => prism(circle(0, 0, radius, tol), z0, z1).solid;
+  const join = (...solids: Solid[]): Solid => solids.reduce((sum, solid) => kernel.boolean('union', sum, solid));
   // a wedge of 160° about the +X axis, to open a clamp
   const wedge = (): Solid => prism([[0, 0], [12 * Math.cos(-1.396), 12 * Math.sin(-1.396)], [12, -12], [12, 12], [12 * Math.cos(1.396), 12 * Math.sin(1.396)]] as P[], 4, 16).solid;
-  const modelledNut = (): Solid => kernel.boolean('difference', prism(square(10), 0, l, [circle(0, 0, b.minor + 0.1, tol)]).solid, buildSwept(shapeOf(shifted(b, 0.1), { rootTo: b.minor + 0.1 - beside }), { kind: 'ridge', inner: b.minor + 0.1 - 2 * beside }, -beside, l + beside, tol, take(FACES.length)).solid);
-  const zoneCases: { name: string; a: Solid; b: Solid; zone: Zone; mate: boolean }[] = [
-    { name: 'M8 pin (cosmetic) in a plain hole at its minor diameter', a: pin(), b: holed(m8.minor, 5, 15), zone: pinZone, mate: true },
-    { name: 'M8 pin pushed through a solid block (no hole)', a: pin(), b: box(-10, 10, 10, 5, 15), zone: pinZone, mate: false },
-    { name: 'a plate 1 mm thick through the M8 pin', a: pin(), b: box(-10, 10, 10, 9.5, 10.5), zone: pinZone, mate: false },
-    { name: 'a bar 2 x 2 through the axis of the M8 pin', a: pin(), b: box(-10, 10, 1, 9, 11), zone: pinZone, mate: false },
-    { name: 'a wall pushed 0.5 mm into the M8 pin from one side', a: pin(), b: box(3.5, 10, 10, 5, 15), zone: pinZone, mate: false },
-    { name: 'a clamp around 200° of the M8 pin, 0.4 mm into it', a: pin(), b: kernel.boolean('difference', holed(m8.major - 0.4, 5, 15), wedge()), zone: pinZone, mate: true },
-    { name: 'a rod 8 in an M8 bore (cosmetic, at the minor diameter) with a countersink: the zone of the wall alone', a: prism(circle(0, 0, m8.major, tol), -2, 12).solid, b: sunk(), zone: { low: m8.minor, high: m8.major, from: 0, to: 8 }, mate: false },
-    { name: 'the same, the zone run out through the countersink', a: prism(circle(0, 0, m8.major, tol), -2, 12).solid, b: sunk(), zone: { low: m8.minor, high: m8.major, from: 0, to: 8 + (m8.major - m8.minor) }, mate: true },
-    { name: 'a rod 8 too long for a blind M8 bore: 2 mm into its bottom', a: prism(circle(0, 0, m8.major, tol), -2, 12).solid, b: kernel.boolean('union', prism(square(10), -5, 0).solid, holed(m8.minor, 0, 10)), zone: { low: m8.minor, high: m8.major, from: 0, to: 10 }, mate: false },
-    { name: 'a plain rod 10 in a modelled M10 nut (clearance 0.1)', a: prism(circle(0, 0, b.major, tol), -2, l + 2).solid, b: modelledNut(), zone: { low: b.minor + 0.1, high: b.major + 0.1, from: 0, to: l }, mate: true },
+  // a wedge of `degrees` about the −X axis, to leave a jaw of a clamp
+  const jaw = (degrees: number): Solid => prism([[0, 0], ...Array.from({ length: 9 }, (_, i): P => [-14 * Math.cos(((degrees / 2) * (i - 4) * Math.PI) / 720), -14 * Math.sin(((degrees / 2) * (i - 4) * Math.PI) / 720)])] as P[], 4, 16).solid;
+  const C = 0.05; // the chord tolerance of the pairs of the first review
+  const F = 0.01; // that of the pairs with flush faces (the default of a document)
+  const beside = besideOf(C);
+  // an M8 pin 20 long with a cosmetic thread: free at both ends
+  const pinZone: Zone = { low: m8.minor, high: m8.major, from: 0, to: 20, internal: false, openFrom: true, openTo: true };
+  const pin = () => rod(m8.major, 0, 20, C);
+  // a bore 10 deep with a countersink of 45° from z = 8 up: the cone reaches the major radius at z = 8 + (major − minor)
+  const sunk = (radius: number, tol: number): Solid => kernel.boolean('difference', holed(radius, 0, 10, tol), frustum(radius - 0.5, 7.5, radius + 2.0001, 10.0001, tol));
+  const modelledNut = (): Solid => kernel.boolean('difference', holed(b.minor + 0.1, 0, l, C), buildSwept(shapeOf(shifted(b, 0.1), { rootTo: b.minor + 0.1 - beside }), { kind: 'ridge', inner: b.minor + 0.1 - 2 * beside }, -beside, l + beside, C, take(FACES.length)).solid);
+  const bore = (low: number, high: number, from: number, to: number, openFrom = true): Zone => ({ low, high, from, to, internal: true, openFrom, openTo: true });
+  type Outcome = 'threaded' | 'threaded and a fit' | 'a collision' | 'as every pair: collision';
+  // `thread`: which of the two bodies has the thread whose zone is given
+  const cases: { name: string; tol: number; a: () => Solid; b: () => Solid; thread: 'a' | 'b'; zone: Zone; expected: Outcome }[] = [
+    // the pairs of the first review (O of spike.md)
+    { name: 'M8 pin (cosmetic) in a plain hole at its minor diameter', tol: C, a: pin, b: () => holed(m8.minor, 5, 15, C), thread: 'a', zone: pinZone, expected: 'threaded' },
+    { name: 'M8 pin pushed through a solid block (no hole)', tol: C, a: pin, b: () => box(-10, 10, 10, 5, 15), thread: 'a', zone: pinZone, expected: 'a collision' },
+    { name: 'a plate 1 mm thick through the M8 pin', tol: C, a: pin, b: () => box(-10, 10, 10, 9.5, 10.5), thread: 'a', zone: pinZone, expected: 'a collision' },
+    { name: 'a bar 2 x 2 through the axis of the M8 pin', tol: C, a: pin, b: () => box(-10, 10, 1, 9, 11), thread: 'a', zone: pinZone, expected: 'as every pair: collision' },
+    { name: 'a wall pushed 0.5 mm into the M8 pin from one side', tol: C, a: pin, b: () => box(3.5, 10, 10, 5, 15), thread: 'a', zone: pinZone, expected: 'as every pair: collision' },
+    { name: 'a jaw around 100° of the M8 pin, 0.4 mm into it', tol: C, a: pin, b: () => kernel.boolean('intersection', holed(m8.major - 0.4, 5, 15, C), jaw(100)), thread: 'a', zone: pinZone, expected: 'as every pair: collision' },
+    { name: 'a clamp around 180° of the M8 pin (one half of a split nut)', tol: C, a: pin, b: () => kernel.boolean('difference', holed(m8.major - 0.4, 5, 15, C), box(0, 12, 12, 4, 16)), thread: 'a', zone: pinZone, expected: 'threaded' },
+    { name: 'a clamp around 200° of the M8 pin, 0.4 mm into it', tol: C, a: pin, b: () => kernel.boolean('difference', holed(m8.major - 0.4, 5, 15, C), wedge()), thread: 'a', zone: pinZone, expected: 'threaded' },
+    { name: 'a rod 8 in an M8 bore with a countersink: the zone of the wall alone', tol: C, a: () => rod(m8.major, -2, 12, C), b: () => sunk(m8.minor, C), thread: 'b', zone: bore(m8.minor, m8.major, 0, 8), expected: 'a collision' },
+    { name: 'the same, the zone run out through the countersink', tol: C, a: () => rod(m8.major, -2, 12, C), b: () => sunk(m8.minor, C), thread: 'b', zone: bore(m8.minor, m8.major, 0, 8 + (m8.major - m8.minor)), expected: 'threaded' },
+    { name: 'a rod 8 too long for a blind M8 bore: 2 mm into its bottom', tol: C, a: () => rod(m8.major, -2, 12, C), b: () => join(prism(square(10), -5, 0).solid, holed(m8.minor, 0, 10, C)), thread: 'b', zone: bore(m8.minor, m8.major, 0, 10, false), expected: 'a collision' },
+    { name: 'a plain rod 10 in a modelled M10 nut (clearance 0.1)', tol: C, a: () => rod(b.major, -2, l + 2, C), b: modelledNut, thread: 'b', zone: bore(b.minor + 0.1, b.major + 0.1, 0, l), expected: 'threaded' },
+    // flush faces beside the thread (the second review): a sheet without thickness in what the two share
+    { name: 'a plain rod 6 through a plate tapped M6 (no flush face)', tol: F, a: () => rod(3, -2, 10, F), b: () => holed(2.5, 0, 8, F, 20), thread: 'b', zone: bore(2.5, m6.major, 0, 8), expected: 'threaded' },
+    { name: 'a screw with its head (10 across) seated on the top face', tol: F, a: () => join(rod(3, -2, 8, F), rod(5, 8, 11, F)), b: () => holed(2.5, 0, 8, F, 20), thread: 'b', zone: bore(2.5, m6.major, 0, 8), expected: 'threaded' },
+    { name: 'a screw with its head in a counterbore of the same diameter', tol: F, a: () => join(rod(3, -2, 9, F), rod(5, 9, 12, F)), b: () => kernel.boolean('difference', holed(2.5, 0, 12, F, 20), rod(5, 9, 13, F)), thread: 'b', zone: bore(2.5, m6.major, 0, 9), expected: 'threaded' },
+    { name: 'a standoff with a cosmetic M6 pin, its shoulder seated on the plate', tol: F, a: () => join(rod(3, 0, 8, F), rod(4.5, 8, 14, F)), b: () => holed(2.5, 0, 8, F, 20), thread: 'a', zone: { low: m6.minor, high: m6.major, from: 0, to: 8, internal: false, openFrom: true, openTo: false }, expected: 'threaded' },
+    { name: 'a rod 6 standing on the flat bottom of a blind bore tapped M6', tol: F, a: () => rod(3, 2, 12, F), b: () => join(prism(square(20), 0, 2).solid, holed(2.5, 2, 8, F, 20)), thread: 'b', zone: bore(2.5, m6.major, 2, 8, false), expected: 'threaded' },
+    // a fit that is joined to the thread: a countersunk head in its countersink, the two cones divided differently
+    { name: 'a countersunk screw 8 in an M8 bore with a countersink (the zone run out)', tol: F, a: () => join(rod(4, -2, 8.6, F), frustum(3, 7.6, 5.4, 10, F / 2)), b: () => sunk(3.4, F), thread: 'b', zone: bore(3.4, 4, 0, 8.6), expected: 'threaded and a fit' },
   ];
-  for (const c of zoneCases) {
-    const common = kernel.boolean('intersection', c.a, c.b);
-    const z = zoneOf(common, c.zone, tol + 1e-4);
-    const excused = z.byVertices && z.inner && z.around;
-    zones.push([c.name, fmt(volumeOf(common), 1), String(z.pieces), z.byVertices ? 'yes' : 'no', `${z.inner ? 'yes' : 'no'} (${fmt(z.nearest, 3)})`, `${z.around ? 'yes' : 'no'} (${fmt((z.widestGap * 180) / Math.PI, 0)}°)`, excused ? 'excused' : 'judged as every pair', c.mate ? 'a mate' : 'no mate']);
-    expect(excused, zones[zones.length - 1].join(' | ')).toBe(c.mate);
+  for (const c of cases) {
+    const [threaded, other] = c.thread === 'a' ? [c.a(), c.b()] : [c.b(), c.a()];
+    // the two bodies in both orders: with the threaded one first, and second
+    for (const otherFirst of [false, true]) {
+      const run = timed(() => {
+        const cut = zoneCut(threaded, other, c.zone, c.tol, otherFirst);
+        const m = otherFirst ? sharedBy(kernel, bodyOf(other), bodyOf(cut.rest), c.tol) : sharedBy(kernel, bodyOf(cut.rest), bodyOf(other), c.tol);
+        const left = 'message' in m ? `refused: ${m.message}` : verdictOf(m, NOISE, c.tol);
+        const outcome = !cut.taken ? `as every pair: ${left}` : left === 'nothing' ? 'threaded' : left === 'fit' ? 'threaded and a fit' : left === 'collision' ? 'a collision' : left;
+        return { cut, m, left, outcome };
+      });
+      const r = run.value;
+      const measured = r && !('message' in r.m) ? r.m : undefined;
+      rows.push([
+        c.name,
+        c.thread === 'a' ? 'the first' : 'the second',
+        otherFirst ? 'the other body first' : 'the threaded body first',
+        String(c.tol),
+        r ? r.cut.pieces.map((piece) => `${fmt(piece.volume, 2)} (${fmt(piece.off / piece.radius, 3)})`).join(', ') || 'none' : '-',
+        r ? fmt(r.cut.excused, 2) : '-',
+        measured ? fmt(measured.volume, 4) : '-',
+        measured ? fmt(measured.depth, 4) : '-',
+        r?.left ?? '',
+        r?.outcome ?? `error: ${run.error}`,
+        fmt(run.ms),
+      ]);
+      expect(r?.outcome, rows[rows.length - 1].join(' | ')).toBe(c.expected);
+    }
   }
-  table('7d. What two bodies share against the zone of a thread (at 0.05)', ['pair', 'shared mm³', 'pieces', 'every vertex in the zone', 'no triangle inside the lower radius (nearest to the axis)', 'around the axis (widest gap)', 'by the three rules', 'what it is'], zones);
+  table('8a. A pair with a thread: what the other body shares with the zone of the thread, and with the rest of the threaded body; a piece goes around when its centre is nearer to the axis than 0.827 of its radius', ['pair', 'the thread is on', 'order', 'chord tol', 'in the zone: mm³ (centre / radius)', 'excused mm³', 'the rest shares mm³', 'depth', 'which is', 'the pair is', 'ms'], rows);
+});
+
+// ---- the ends of a wall, read from the mesh of a body of the engine
+
+type V3 = [number, number, number];
+interface EndRead {
+  kind: 'open' | 'shoulder' | 'inside';
+  runOut: number;
+}
+// A prototype of `threadWall` and `threadEndAt` of the contract of D75: the side of the material at
+// a cylindrical face, and how the face ends at both ends of its axis.
+// - The rim of an end: the loop of the edges the face shares with other faces that goes around
+//   the axis and holds the extreme point of that end.
+// - The triangle of another face across an edge of the rim decides. Its face is a cylinder about
+//   the same axis with the same radius: the wall goes on. Else its third vertex: beyond the
+//   radius it lies outside the cylinder, within it or on it inside (a triangle with three vertices
+//   on a cylinder is a chord of it: the flat bottom of a blind hole, the flat end of a pin).
+//   Inside the cylinder is the air of a bore and the material of a pin.
+// - The run-out of an open end: over the faces across the rim, from the rim across their edges,
+//   how far beyond the end they lie within `band` of the wall on its material side. Read here on
+//   samples of the triangles; the implementation cuts them.
+function endsOf(solid: Solid, surfaces: readonly Surface[], wall: number, band: number): { internal: boolean; low: EndRead; high: EndRead } {
+  const s = surfaces[wall];
+  if (s.kind !== 'cylinder') throw new Error('the wall is not a cylinder');
+  const p = solid.positions;
+  const eps = 1e-4;
+  const at = (v: number): V3 => [p[3 * v], p[3 * v + 1], p[3 * v + 2]];
+  const along = (q: V3): number => (q[0] - s.origin[0]) * s.axis[0] + (q[1] - s.origin[1]) * s.axis[1] + (q[2] - s.origin[2]) * s.axis[2];
+  const across = (q: V3): V3 => {
+    const t = along(q);
+    return [q[0] - s.origin[0] - t * s.axis[0], q[1] - s.origin[1] - t * s.axis[1], q[2] - s.origin[2] - t * s.axis[2]];
+  };
+  const radial = (q: V3): number => Math.hypot(...across(q));
+  const u: V3 = Math.abs(s.axis[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0];
+  const e1 = across([s.origin[0] + u[0], s.origin[1] + u[1], s.origin[2] + u[2]]);
+  const e2: V3 = [s.axis[1] * e1[2] - s.axis[2] * e1[1], s.axis[2] * e1[0] - s.axis[0] * e1[2], s.axis[0] * e1[1] - s.axis[1] * e1[0]];
+  const angle = (q: V3): number => {
+    const r = across(q);
+    return Math.atan2(r[0] * e2[0] + r[1] * e2[1] + r[2] * e2[2], r[0] * e1[0] + r[1] * e1[1] + r[2] * e1[2]);
+  };
+  // vertices at one place are one vertex
+  const ids = new Map<string, number>();
+  const welded: number[] = [];
+  for (let v = 0; v < p.length / 3; v++) {
+    const key = `${Math.round(p[3 * v] * 1e4)},${Math.round(p[3 * v + 1] * 1e4)},${Math.round(p[3 * v + 2] * 1e4)}`;
+    let id = ids.get(key);
+    if (id === undefined) ids.set(key, (id = ids.size));
+    welded.push(id);
+  }
+  const corner = (t: number, k: number): number => solid.triangles[3 * t + (k % 3)];
+  const edgeKey = (a: number, c: number): string => (a < c ? `${a}:${c}` : `${c}:${a}`);
+  const byEdge = new Map<string, number[]>();
+  const count = solid.faceIds.length;
+  for (let t = 0; t < count; t++) {
+    for (let k = 0; k < 3; k++) {
+      const key = edgeKey(welded[corner(t, k)], welded[corner(t, k + 1)]);
+      byEdge.set(key, [...(byEdge.get(key) ?? []), t]);
+    }
+  }
+  // the side of the material, and the rim: the edges of the wall with a triangle of another face
+  let outward = 0;
+  const rim: { a: number; b: number; other: number }[] = [];
+  for (let t = 0; t < count; t++) {
+    if (solid.faceIds[t] !== wall) continue;
+    const [a, b, c] = [at(corner(t, 0)), at(corner(t, 1)), at(corner(t, 2))];
+    const n: V3 = [(b[1] - a[1]) * (c[2] - a[2]) - (b[2] - a[2]) * (c[1] - a[1]), (b[2] - a[2]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[2] - a[2]), (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])];
+    const out = across([(a[0] + b[0] + c[0]) / 3, (a[1] + b[1] + c[1]) / 3, (a[2] + b[2] + c[2]) / 3]);
+    outward += n[0] * out[0] + n[1] * out[1] + n[2] * out[2];
+    for (let k = 0; k < 3; k++) {
+      const others = (byEdge.get(edgeKey(welded[corner(t, k)], welded[corner(t, k + 1)])) ?? []).filter((x) => solid.faceIds[x] !== wall);
+      if (others.length) rim.push({ a: corner(t, k), b: corner(t, k + 1), other: others[0] });
+    }
+  }
+  const internal = outward < 0;
+  // the loops of the rim
+  const parent = new Map<number, number>();
+  const find = (x: number): number => {
+    let r = x;
+    while ((parent.get(r) ?? r) !== r) r = parent.get(r) as number;
+    parent.set(x, r);
+    return r;
+  };
+  for (const e of rim) parent.set(find(welded[e.a]), find(welded[e.b]));
+  const loops = new Map<number, typeof rim>();
+  for (const e of rim) loops.set(find(welded[e.a]), [...(loops.get(find(welded[e.a])) ?? []), e]);
+  const around = [...loops.values()].filter((loop) => {
+    const angles = loop.map((e) => angle(at(e.a))).sort((x, y) => x - y);
+    let gap = angles[0] + TAU - angles[angles.length - 1];
+    for (let i = 1; i < angles.length; i++) gap = Math.max(gap, angles[i] - angles[i - 1]);
+    return gap < Math.PI;
+  });
+  const read = (sign: 1 | -1): EndRead => {
+    const reach = (loop: typeof rim): number => Math.max(...loop.map((e) => sign * along(at(e.a))));
+    const loop = around.reduce((best, candidate) => (reach(candidate) > reach(best) ? candidate : best));
+    const end = reach(loop);
+    let [shoulder, goesOn] = [false, false];
+    const faces = new Set<number>();
+    for (const e of loop) {
+      const face = solid.faceIds[e.other];
+      const next = surfaces[face];
+      if (next.kind === 'cylinder' && Math.abs(next.radius - s.radius) < eps && Math.abs(Math.abs(next.axis[0] * s.axis[0] + next.axis[1] * s.axis[1] + next.axis[2] * s.axis[2]) - 1) < 1e-9 && radial(next.origin) < eps) {
+        goesOn = true;
+        continue;
+      }
+      const third = [0, 1, 2].map((k) => corner(e.other, k)).find((v) => welded[v] !== welded[e.a] && welded[v] !== welded[e.b]) as number;
+      const inside = radial(at(third)) <= s.radius + eps;
+      if (inside === internal) shoulder = true;
+      else faces.add(face);
+    }
+    if (shoulder) return { kind: 'shoulder', runOut: 0 };
+    if (goesOn) return { kind: 'inside', runOut: 0 };
+    // the run-out: from the rim across the edges of the faces next to it
+    const within = (q: V3): boolean => {
+      const r = radial(q);
+      return sign * along(q) >= end - eps && (internal ? r <= s.radius + band + eps : r >= s.radius - band - eps);
+    };
+    const samples = (t: number): V3[] => {
+      const [a, b, c] = [at(corner(t, 0)), at(corner(t, 1)), at(corner(t, 2))];
+      const mix = (i: number, j: number, steps: number): V3 => [0, 1, 2].map((k) => a[k] + ((b[k] - a[k]) * i + (c[k] - a[k]) * j) / steps) as V3;
+      const out: V3[] = [];
+      for (let i = 0; i <= 200; i++) out.push(mix(i, 0, 200), mix(0, i, 200), mix(i, 200 - i, 200));
+      for (let i = 0; i <= 24; i++) for (let j = 0; i + j <= 24; j++) out.push(mix(i, j, 24));
+      return out;
+    };
+    let runOut = 0;
+    const seen = new Set<number>();
+    const queue = loop.filter((e) => faces.has(solid.faceIds[e.other])).map((e) => e.other);
+    while (queue.length) {
+      const t = queue.pop() as number;
+      if (seen.has(t)) continue;
+      seen.add(t);
+      const inBand = samples(t).filter(within);
+      if (inBand.length === 0) continue;
+      runOut = Math.max(runOut, ...inBand.map((q) => sign * along(q) - end));
+      for (let k = 0; k < 3; k++) for (const next of byEdge.get(edgeKey(welded[corner(t, k)], welded[corner(t, k + 1)])) ?? []) if (!seen.has(next) && faces.has(solid.faceIds[next])) queue.push(next);
+    }
+    return { kind: 'open', runOut };
+  };
+  return { internal, low: read(-1), high: read(1) };
+}
+
+test('8b for the second review of D75: the ends of a wall read from the bodies of the engine', () => {
+  const ext = (id: string, sketch: string, loops: string[][], start: number, distance: number, operation: 'new' | 'add' | 'cut', target?: string): Command => ({
+    type: 'addFeature',
+    feature: { id, name: id, suppressed: false, type: 'extrude', profile: { type: 'regions', sketch, regions: loops.map((outerLoop) => ({ outerLoop })) }, extent: { type: 'distance', start, distance }, operation, ...(target ? { targets: [target] } : {}) },
+  });
+  const hole = (id: string, sketch: string, point: string, shape: HoleShape, target: string): Command => ({ type: 'addFeature', feature: { id, name: id, suppressed: false, type: 'hole', sketch, points: [point], shape, extent: { type: 'throughAll', side: 'forward' }, targets: [target] } });
+  const engine = newEngine();
+  const state = run(
+    engine,
+    // the jar and the lid of scenario 18 (calls.ts): a neck 40 across on a foot, a socket blind above
+    addSketch('jarS', XY),
+    sketchCircle('jarS', 'foot', 0, 0, 25),
+    sketchCircle('jarS', 'neck', 0, 0, 20),
+    ext('jar', 'jarS', [['foot'], ['neck']], 0, 5, 'new'),
+    ext('neckUp', 'jarS', [['neck']], 5, 15, 'add', 'jar'),
+    addSketch('lidS', XY),
+    sketchCircle('lidS', 'rim', 100, 0, 24),
+    sketchCircle('lidS', 'socket', 100, 0, 19.05),
+    ext('lid', 'lidS', [['rim'], ['socket']], 12, 10, 'new'),
+    ext('socketCut', 'lidS', [['socket']], 12, 8.5, 'cut', 'lid'),
+    // a plate 8 thick with a plain hole, a countersunk one and a counterbored one, their heads at the bottom
+    addSketch('plateS', XY),
+    sketchRectangle('plateS', 'o', 180, -20, 80, 40, null),
+    ext('plate', 'plateS', [rectLoop('o')], 0, 8, 'new'),
+    addSketch('holeS', XY),
+    { type: 'addPoint', sketch: 'holeS', id: 'h1', x: 200, y: 0 },
+    { type: 'addPoint', sketch: 'holeS', id: 'h2', x: 220, y: 0 },
+    { type: 'addPoint', sketch: 'holeS', id: 'h3', x: 240, y: 0 },
+    hole('plain', 'holeS', 'h1', { type: 'plain', diameter: 5 }, 'plate'),
+    hole('sunk', 'holeS', 'h2', { type: 'countersink', diameter: 5, headDiameter: 10, angle: Math.PI / 2 }, 'plate'),
+    hole('bored', 'holeS', 'h3', { type: 'counterbore', diameter: 5, headDiameter: 10, headDepth: 3 }, 'plate'),
+    // a rod 8 across with a chamfer of 1 at its top
+    addSketch('rodS', XY),
+    sketchCircle('rodS', 'r', 300, 0, 4),
+    ext('rod', 'rodS', [['r']], 0, 20, 'new'),
+    { type: 'addFeature', feature: { id: 'tip', name: 'tip', suppressed: false, type: 'chamfer', body: 'rod', edges: [{ a: cap('rod'), b: side('rod', 'r') }], distance: 1 } },
+    // a pin whose wall goes on under another name: two extrusions of one circle
+    addSketch('twoS', XY),
+    sketchCircle('twoS', 'w', 400, 0, 4),
+    ext('lower', 'twoS', [['w']], 0, 10, 'new'),
+    ext('upper', 'twoS', [['w']], 10, 10, 'add', 'lower'),
+    // a blind hole with a flat bottom, cut from the top of a block
+    addSketch('blockS', XY),
+    sketchRectangle('blockS', 'k', 480, -20, 40, 40, null),
+    ext('block', 'blockS', [rectLoop('k')], 0, 10, 'new'),
+    addSketch('blindS', XY),
+    sketchCircle('blindS', 'q', 500, 0, 3.4),
+    ext('blind', 'blindS', [['q']], 4, 6, 'cut', 'block'),
+  );
+  for (const [id, feature] of Object.entries(state.evaluation.features)) expect(feature.status, `${id}: ${feature.error?.message}`).toBe('ok');
+  const { bodies, faceNames, faceSurfaces } = state.evaluation;
+  const wallOf = (body: string, name: FaceName): number => {
+    const key = (n: FaceName): string => JSON.stringify(Object.entries(n).sort(([x], [y]) => (x < y ? -1 : 1)));
+    const face = bodies[body].faces.find((f) => key(faceNames[f.id]) === key(name));
+    if (!face) throw new Error(`${body} has no face ${JSON.stringify(name)}`);
+    return face.id;
+  };
+  const m8 = iso(8, 1.25);
+  const sunkCone = faceSurfaces[wallOf('plate', { feature: 'sunk', role: 'holeHead', point: 'h2' })];
+  const coneRunOut = sunkCone.kind === 'cone' ? 0.5 / Math.tan(sunkCone.halfAngle) : NaN;
+  // `band`: how far the root of the thread lies from the wall (M6 in a bore of 5, M8 on a pin of 8, the jar's 40 x 4 at 90°)
+  const walls: { name: string; body: string; face: FaceName; band: number; internal: boolean; low: EndRead; high: EndRead }[] = [
+    { name: 'the neck of the jar: on its foot, a flat free end', body: 'jar', face: side('neckUp', 'neck'), band: 1.25, internal: false, low: { kind: 'shoulder', runOut: 0 }, high: { kind: 'open', runOut: 0 } },
+    { name: 'the socket of the lid: a mouth in a plane, a flat blind bottom', body: 'lid', face: side('socketCut', 'socket'), band: 1.25, internal: true, low: { kind: 'open', runOut: 0 }, high: { kind: 'shoulder', runOut: 0 } },
+    { name: 'a plain hole through a plate', body: 'plate', face: { feature: 'plain', role: 'holeBore', point: 'h1' }, band: 0.5, internal: true, low: { kind: 'open', runOut: 0 }, high: { kind: 'open', runOut: 0 } },
+    { name: 'a countersunk hole: the cone below, a mouth above', body: 'plate', face: { feature: 'sunk', role: 'holeBore', point: 'h2' }, band: 0.5, internal: true, low: { kind: 'open', runOut: coneRunOut }, high: { kind: 'open', runOut: 0 } },
+    { name: 'a counterbored hole: the seat below, a mouth above', body: 'plate', face: { feature: 'bored', role: 'holeBore', point: 'h3' }, band: 0.5, internal: true, low: { kind: 'open', runOut: 0 }, high: { kind: 'open', runOut: 0 } },
+    { name: 'a rod with a chamfered tip: a flat end below, the chamfer above', body: 'rod', face: side('rod', 'r'), band: m8.major - m8.minor, internal: false, low: { kind: 'open', runOut: 0 }, high: { kind: 'open', runOut: m8.major - m8.minor } },
+    { name: 'the lower half of a pin made by two extrusions', body: 'lower', face: side('lower', 'w'), band: m8.major - m8.minor, internal: false, low: { kind: 'open', runOut: 0 }, high: { kind: 'inside', runOut: 0 } },
+    { name: 'its upper half', body: 'lower', face: side('upper', 'w'), band: m8.major - m8.minor, internal: false, low: { kind: 'inside', runOut: 0 }, high: { kind: 'open', runOut: 0 } },
+    { name: 'a blind hole with a flat bottom, cut from the top', body: 'block', face: side('blind', 'q'), band: 0.6, internal: true, low: { kind: 'shoulder', runOut: 0 }, high: { kind: 'open', runOut: 0 } },
+  ];
+  const rows: string[][] = [];
+  const text = (end: EndRead): string => (end.kind === 'open' ? `open, run-out ${fmt(end.runOut, 3)}` : end.kind);
+  for (const w of walls) {
+    const read = timed(() => endsOf(bodies[w.body].solid, faceSurfaces, wallOf(w.body, w.face), w.band));
+    const r = read.value;
+    rows.push([w.name, String(tris(bodies[w.body].solid)), r ? (r.internal ? 'a bore' : 'a pin') : '-', r ? text(r.low) : (read.error ?? ''), r ? text(r.high) : '', `${text(w.low)}; ${text(w.high)}`, fmt(read.ms, 1)]);
+    expect(r?.internal, rows[rows.length - 1].join(' | ')).toBe(w.internal);
+    for (const end of ['low', 'high'] as const) {
+      expect(r?.[end].kind, rows[rows.length - 1].join(' | ')).toBe(w[end].kind);
+      expect(Math.abs((r?.[end].runOut ?? NaN) - w[end].runOut), rows[rows.length - 1].join(' | ')).toBeLessThan(0.02);
+    }
+  }
+  table('8b. The ends of a wall, read from the mesh of bodies of the engine (chord tolerance 0.01)', ['wall', 'triangles of the body', 'side', 'low end', 'high end', 'expected', 'ms'], rows);
+});
+
+test('8c for the second review of D75: the phase of a mate, by the formula of the datum', () => {
+  // The crest of a thread: origin + s · axis + R · (zero turned by θ about axis), s = turn · lead · θ / 2π + k · pitch,
+  // zero the model's X axis turned by the phase about the axis.
+  type Thread = { origin: V3; axis: V3; phase: number; turn: 1 | -1; lead: number; pitch: number };
+  const R = 5;
+  const turned = (v: V3, a: V3, angle: number): V3 => {
+    const [c, sn, d] = [Math.cos(angle), Math.sin(angle), a[0] * v[0] + a[1] * v[1] + a[2] * v[2]];
+    const cr: V3 = [a[1] * v[2] - a[2] * v[1], a[2] * v[0] - a[0] * v[2], a[0] * v[1] - a[1] * v[0]];
+    return [0, 1, 2].map((i) => v[i] * c + cr[i] * sn + a[i] * d * (1 - c)) as V3;
+  };
+  const point = (t: Thread, theta: number, k: number): V3 => {
+    const dir = turned(turned([1, 0, 0], t.axis, t.phase), t.axis, theta);
+    const s = (t.turn * t.lead * theta) / TAU + k * t.pitch;
+    return [0, 1, 2].map((i) => t.origin[i] + s * t.axis[i] + R * dir[i]) as V3;
+  };
+  const off = (t: Thread, q: V3): number => {
+    let best = Infinity;
+    for (let k = -12; k <= 12; k++) for (let i = 0; i < 3600; i++) best = Math.min(best, Math.hypot(...point(t, (i * TAU) / 3600, k).map((x, j) => x - q[j])));
+    return best;
+  };
+  const rows: string[][] = [];
+  for (const turn of [1, -1] as const) {
+    for (const starts of [1, 2]) {
+      for (const phase of [0, 0.7]) {
+        const [pitch, L] = [1.5, 4.3];
+        const lead = pitch * starts;
+        const first: Thread = { origin: [0, 0, 0], axis: [0, 0, 1], phase, turn, lead, pitch };
+        const probe = point(first, 1.234, 2);
+        const same: Thread = { ...first, origin: [0, 0, L], phase: phase + (turn * TAU * L) / lead };
+        const otherFirst: Thread = { ...first, origin: [0, 0, L], axis: [0, 0, -1], phase: phase - (turn * TAU * L) / lead };
+        const other: Thread = { ...first, origin: [0, 0, L], axis: [0, 0, -1], phase: -phase - (turn * TAU * L) / lead };
+        rows.push([turn === 1 ? 'right' : 'left', String(starts), String(phase), fmt(off(same, probe), 4), fmt(off(otherFirst, probe), 4), fmt(off(other, probe), 4)]);
+        expect(off(same, probe)).toBeLessThan(0.01);
+        expect(off(other, probe)).toBeLessThan(0.01);
+      }
+    }
+  }
+  table('8c. How far a point of the first helix lies from the second one, M10 (pitch 1.5), the second origin 4.3 along the first axis', ['hand', 'starts', 'phase of the first', 'the same way: φ₁ + turn·2π·g/lead', 'the other way, as the first revision had it: φ₁ − turn·2π·L/lead', 'the other way: −φ₁ − turn·2π·L/lead'], rows);
 });
 
 function mulberry(seed: number): () => number {

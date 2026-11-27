@@ -6,9 +6,11 @@
 // the query `hardwareHole` gain, and the parts of the recompute the step is made of. No command, no
 // section of the document, no member of the kernel port, no new query, no schema step.
 //
-// Second version, after the first round of reviews (design.md, "Reviews"): the clearance is a radial
-// shift, the tool of a bore is a ring, the zone of the collisions is judged per piece by three
-// rules, a copy carries the datum of its listed face, the ends are read in both modes.
+// Third version, after two rounds of reviews (design.md, "Reviews"). The first: the clearance is
+// a radial shift, the tool of a bore is a ring, a copy carries the datum of its listed face, the
+// ends are read in both modes. The second: the zone of the collisions is a cut of the body with
+// the thread (no reading of the mesh two bodies share), an end is read from the surface of the
+// face across the rim and its third vertex, the phase of a mate that runs the other way.
 //
 // Two stages (design.md, "Stages"): stage 1 ships everything here that a cosmetic thread needs and
 // refuses `modelled: true` in the validator; stage 2 ships the tool, the faces and the checks of
@@ -37,8 +39,10 @@ import type { HARDWARE_HOLE_ARGS, HardwareHole } from '../2c-hole/contract';
 //   by a hole passes). Every face gets the same thread. A face on which the body has both a bore
 //   and a pin (one cylinder used both ways by a combine) is refused.
 // - `copies`: when true, the thread is also made on every face of the body whose name is a listed
-//   name with further copy tags of patterns of this document (the bores a pattern of a hole made;
-//   a tag of a pattern inside an inserted document is not followed: list such a face). A listed
+//   name with further copy tags of patterns of this document (the bores a pattern of a hole made).
+//   A tag is followed when the state has the transform of that copy (`StateD75.copyTransforms`),
+//   so not the tag of a pattern inside an inserted document and not the tag a combine with
+//   a clearance gives the faces of its pocket: list such a face. A listed
 //   face is never taken as a copy, and a copy of two listed names belongs to the one with the most
 //   tags in common. A count of the pattern that changes then needs no change here. The thread has
 //   to stand after the pattern; one that finds no copy has the warning `noCopies`. Absent: false.
@@ -69,9 +73,12 @@ import type { HARDWARE_HOLE_ARGS, HardwareHole } from '../2c-hole/contract';
 //   (the query hardwareHole with the use `tapped` and an allowance does the latter). A pin left at
 //   the nominal diameter takes a clearance up to about 0.108 · pitch at 60°; beyond that the
 //   grooves would leave nothing of the wall, which is `invalidThread` with the size to make.
-//   A modelled screw and a modelled nut are free of each other when their clearances add up to
-//   at least the chord tolerance of the document; below it the check of collisions lists the
-//   pair as a fit and takes seconds over it.
+//   A modelled screw and a modelled nut are free of each other when every radial gap between
+//   them is at least the chord tolerance of the document: between the flanks (the two clearances
+//   together) and between each crest and the root it faces. The clearance of a thread frees its
+//   flanks and its root; its crest is its wall, freed by the size of the wall or by the
+//   clearance of the mate. Below the tolerance the check of collisions lists the pair as a fit
+//   and takes seconds over it.
 // - `starts`: the number of ridges, a whole number from 1 to 16; absent: 1.
 // - `hand`: `right` or `left`. The copy of a face a mirror made (`copies`) gets this hand as well;
 //   a mirrored copy of the body is the mirror image and has the other one (`ThreadResult.hand`
@@ -167,7 +174,7 @@ declare module '../00-prep/contract' {
   // - `threadFlank`: a flank, a helical surface (`Surface` of the kind `general`). `side` is
   //   `start` for the flank whose normal out of the body points towards the start of the thread
   //   and `end` for the other. With the axis upright and the thread starting at the top, the flanks
-  //   `end` of a pin and `start` of a bore face down: they are the ones a printer has to bridge.
+  //   `end` face down, on a pin and in a bore alike: they are the ones a printer has to bridge.
   // - `threadRoot`: the bottom of the groove that was cut, a cylinder about the axis of the wall:
   //   the minor cylinder of an external thread, the major cylinder of an internal one, each
   //   shifted by the clearance. A profile with no flat at its root has none.
@@ -204,10 +211,13 @@ declare module '../00-prep/contract' {
   //   that tolerance (make it cosmetic, or lower the chord tolerance);
   // - the flat left on the wall is so narrow that the flanks of the tool meet within one chord
   //   tolerance beyond the wall;
+  // - a bore no wider than four lifts (`threadLift`): the ring of its tool would have no hole;
+  // - nothing is left of the span of the tool once it stops the lift short of a shoulder;
   // - two threads of the feature would cross (the cylinders that hold their tools meet): put them
   //   into two features;
-  // - something stands in the way of the tool within two lifts of the wall on its air side: a rib
-  //   or a boss on a pin, a key or a wide post in a bore (found after the cut, which is undone);
+  // - something crosses the hidden faces of the tool within two lifts of the wall on its air side:
+  //   a rib or a boss on a pin, a key or a wide post in a bore (found after the cut, which is
+  //   undone; the wall concerned in `refs`);
   // - the tool would have more than `MAX_THREAD_TRIANGLES` triangles.
   // `noCopies`, a warning: `copies` is true and the body has no copy of a listed face (the thread
   // stands before its pattern, or the pattern is gone). `refs`: `copies`.
@@ -229,10 +239,14 @@ declare module '../00-prep/contract' {
     threads?: ThreadResult[];
   }
   // A query does not read `Evaluation.threads` (the context takes it out of the evaluation it
-  // hands on, as it takes `bodies` and `faceSurfaces`): it asks for the threads of a body, which
-  // come with their datum where the pose of the query puts the body.
+  // hands on, as it takes `bodies` and `faceSurfaces`): it asks for the threads of a body.
+  // - `threads`: with their datum where the pose of the query puts the body (new objects).
+  // - `threadsAsModelled`: the published objects themselves, in the frame the mesh of the body
+  //   is in. A published thread keeps its identity while nothing of it changes (`threadResults`),
+  //   so a query keeps what it computes of a thread by that object beside the mesh.
   interface QueryContext {
     threads: (body: Id) => ThreadResult[];
+    threadsAsModelled: (body: Id) => readonly ThreadResult[];
   }
 }
 
@@ -248,8 +262,8 @@ export const THREAD_INFO: Omit<FeatureTypeInfo, 'updatable'> = {
     'A thread on cylindrical faces of one body: on a bore an internal thread, on a pin an external one (read from the body, not stated). The face gives the axis, the ends and the wall, which is the crest of the thread; `diameter` (nominal = major), `pitch` and optionally `flankAngle` (deg(60) when absent) and `depth` (the ISO proportion when absent) give the profile. ' +
     'A size of the catalog metricThreads fills them: `diameter` and `pitch` of its row; a bore has to be at the tap-drill size (`tapDrill` of the row; the query hardwareHole with the use `tapped` makes such a hole and answers with the fields of its thread) and a pin at the nominal diameter, else `invalidThread` says what the face would have to be. ' +
     '`modelled: false` is a cosmetic thread: the mesh stays and the thread is recorded (`threads` of get_model and get_body; the check of collisions lists a screw in such a bore under `threaded`, not as a collision). `modelled: true` cuts the helix, for printing. ' +
-    '`clearance` shifts the thread radially away from its mate (the thread of a diameter smaller or larger by twice it; the flanks are then clearance · sin(flankAngle / 2) from a basic mate); the wall is not moved, so make a pin at diameter − 2 · clearance and a bore wider by 2 · clearance, or the feature is refused once no crest is left (a pin at the nominal diameter takes about 0.1 · pitch). A printed pair is free in the check of collisions when its two clearances add up to the chord tolerance or more; a `flankAngle` of deg(90) suits large printed threads. ' +
-    '`direction`, `offset` and `length` place the thread along the face (`backward` from the mouth of a hole made from a sketch on a face); `phase` turns it, and `threads` of get_body says where each helix lies. `copies: true` threads the copies of the faces a pattern of this document made as well, each with the helix of its source carried along. `hand` is kept on the mirrored copy of a face and turned over on a mirrored body. The feature is no source of a pattern.',
+    '`clearance` shifts the thread radially away from its mate (the thread of a diameter smaller or larger by twice it; the flanks are then clearance · sin(flankAngle / 2) from a basic mate); the wall is not moved, so make a pin at diameter − 2 · clearance and a bore wider by 2 · clearance, or the feature is refused once no crest is left (a pin at the nominal diameter takes about 0.1 · pitch). A printed pair made that way is free in the check of collisions when its two clearances add up to the chord tolerance or more; a `flankAngle` of deg(90) suits large printed threads. ' +
+    '`direction`, `offset` and `length` place the thread along the face (`backward` from the mouth of a hole made from a sketch on a face); `phase` turns it, and `threads` of get_body says where each helix lies (a mate that runs the same way, its origin g further along: phase + turn · 2π · g / lead; one that runs the other way, its origin L along the first direction: −phase − turn · 2π · L / lead, turn 1 for a right-hand thread and −1 for a left-hand one). `copies: true` threads the copies of the faces a pattern of this document made as well, each with the helix of its source carried along. `hand` is kept on the mirrored copy of a face and turned over on a mirrored body. The feature is no source of a pattern.',
   fields: (Object.keys(THREAD_FIELDS) as (keyof typeof THREAD_FIELDS)[]).map((path) => ({ path, spec: THREAD_FIELDS[path] })),
   bodies: 'none',
 };
@@ -265,7 +279,8 @@ export const THREAD_INFO: Omit<FeatureTypeInfo, 'updatable'> = {
 //   hole, a narrower bore, the plate a pin stands on, a wider step, a fillet at its foot).
 //   A modelled thread ends flat `threadLift` short of it.
 // - `inside`: within the wall, by `offset` or `length`, or at an end of the wall where the wall
-//   goes on at the same radius under another name. A modelled thread ends flat there.
+//   goes on under another name (the face across the rim is a cylinder about the same axis with
+//   the same radius). A modelled thread ends flat there.
 export type ThreadEnd = 'open' | 'shoulder' | 'inside';
 
 // One thread on one face, as the evaluation publishes it (`Evaluation.threads`, in the order of
@@ -294,23 +309,31 @@ export type ThreadEnd = 'open' | 'shoulder' | 'inside';
 //   a right-hand thread and −1 for a left-hand one (by `hand` here), k any whole number.
 //   - `zero` of a listed face is the model's X axis made perpendicular to `axis` (the model's
 //     Y axis when `axis` is within about 26° of X: |x of the axis| above 0.9), turned by `phase`.
-//   - `zero` of a copy (`copies`) is that of its listed face moved by the transforms of the
-//     patterns that made the copy, made perpendicular to the axis of the copy again. So the
-//     helices of a circle of threaded holes are turned with their holes, as the helices of
-//     a circle of screws are that a pattern of a body made.
+//   - The helix of a copy (`copies`) is that of its listed face carried by the patterns that
+//     made the copy: the datum of the listed face (`origin`, `axis`, `zero`) is moved by their
+//     transforms, and the copy has the helix that datum gives with the stated hand (also after
+//     a mirror, which carries the datum and does not turn the hand). The record of the copy
+//     starts at the copy's own wall: where that lies `δ` further along the axis than the carried
+//     origin, `zero` is the carried one turned by `turn · 2π · δ / lead`, the same helix from the
+//     other origin. So the helices of a circle of threaded holes are turned with their holes, as
+//     the helices of a circle of screws are that a pattern of a body made.
 //   - It does not depend on `offset` or `length`: changing them trims the same helix.
 //   So a screw sits in a nut when their axes lie on one line and their helices are one curve:
 //   with the same hand, pitch and starts, and with `origin`, `axis` and `zero` of the two
 //   satisfying the formula above. Two threads that start from one plane in one direction with the
-//   same `phase` do. A second thread that runs the same way with its origin `g` further along
-//   that direction needs the phase `turn · 2π · g / lead` more; one that runs the other way (a bolt
-//   from above into a nut threaded from below), with its origin `L` from the first one's along the
-//   first direction, needs `−turn · 2π · L / lead`.
+//   same `phase` do. With `φ₁` the phase of the first: a second thread that runs the same way
+//   with its origin `g` further along that direction needs the phase `φ₁ + turn · 2π · g / lead`;
+//   one that runs the other way (a bolt from above into a nut threaded from below), with its
+//   origin `L` from the first one's along the first direction, needs `−φ₁ − turn · 2π · L / lead`
+//   (the first phase with the other sign: each thread turns the same base direction about its
+//   own direction).
 // - `ends`: how each end ends. `runOut`: how far beyond `from` (start) and `to` (end) the thread
 //   runs out through what follows an open end (the axial depth of a chamfer or a countersink
 //   until it is as wide as the major diameter); zero at every other end.
-// The span is the one the feature gave: a later feature that shortens the wall, or splits the
-// body, does not shorten `from` and `to`.
+// - `walls`: for each of `bodies`, in their order, the stretch of the axis (from `origin` along
+//   `axis`) that the triangles of the face still cover in that body. The span is the one the
+//   feature gave: a later feature that shortens the wall, or splits the body, does not shorten
+//   `from` and `to`; the check of collisions goes by the span cut to the stretch.
 export interface ThreadResult {
   feature: Id;
   face: FaceNameAfter;
@@ -333,17 +356,20 @@ export interface ThreadResult {
   to: number;
   ends: { start: ThreadEnd; end: ThreadEnd };
   runOut: { start: number; end: number };
+  walls: { from: number; to: number }[];
 }
 
 // What the state of the recompute keeps (internal): the published thread without `bodies`, with
 // the number of its face. `State.threads` shares unchanged records between states.
-export interface ThreadRecord extends Omit<ThreadResult, 'bodies' | 'face'> {
+export interface ThreadRecord extends Omit<ThreadResult, 'bodies' | 'face' | 'walls'> {
   face: number;
 }
 // - `threads`: the records, appended by the step of a thread feature in both modes.
 // - `copyTransforms`: by the copy tag of a pattern (`<pattern>:<index>` as in a face name), the
 //   transform of that copy, of a pattern of features and of bodies alike. The pattern step writes
-//   it; the thread step reads it for the datum of a copy.
+//   it; the thread step reads it for the datum of a copy, and follows with `copies` only a tag
+//   that is in it (a pattern inside an inserted document and a combine with a clearance write
+//   none).
 export interface StateD75 extends State {
   threads: readonly ThreadRecord[];
   copyTransforms: ReadonlyMap<string, RigidTransform>;
@@ -355,42 +381,47 @@ export interface StateD75 extends State {
 // insertion, put before `feature` as it is put before the feature of a face name.
 export declare function movedThread(record: ThreadRecord, transform: RigidTransform, face: number, prefix?: string): ThreadRecord;
 // The published list: for every record, the bodies of the state that have its face with the
-// material on the side `internal` says (the pass of `threadWall` over the triangles of the face in
-// that body, kept by the mesh); a record with no such body is left out.
+// material on the side `internal` says, and the stretch of the axis the face covers in each (the
+// pass of `threadWall` over the triangles of the face in that body, kept by the mesh); a record
+// with no such body is left out. The object published for a record is the same from one
+// evaluation to the next for as long as its face, its bodies and their stretches are the same.
 export declare function threadResults(state: StateD75): ThreadResult[];
 
 // ================================================================ the check of collisions
 
 // A pair of bodies of which a part of what they share is what a thread accounts for: a screw in
 // a bore with a cosmetic thread, a plain rod in a modelled nut. Such a pair is in `threaded` of
-// the report; what is left of its shared volume is judged as that of every pair is, so it is in
-// `threaded` alone (nothing left), also in `fits` (the head in its counterbore) or in `pairs`
-// instead (a screw too long for a blind bore).
-// - The zone of a thread on a body: between the wall and the root of that thread (a bore: from
-//   `radius` to `diameter / 2 + clearance`; a pin: from `diameter / 2 − depth − clearance` to
-//   `radius`) and along the axis from `from − runOut.start` to `to + runOut.end`.
-// - The rule, on every connected piece of what the two bodies share, within the chord tolerance
-//   of the document and the precision of the coordinates. A piece is excused by a thread when:
-//   1. every vertex of it lies within the outer radius and the two ends of the zone;
-//   2. no triangle of it comes nearer to the axis than the inner radius (the least distance of
-//      the triangle from the axis, not of its corners: a shared volume has vertices only on its
-//      rim, and a pin through a solid block has them all at the radius of the pin);
-//   3. the angles of its vertices about the axis leave no gap of half a turn or more (a body
-//      pushed into the thread from one side is no mate).
-// - Not excused: a piece between two modelled threads about one axis. Their meshes are the truth.
-// - Not excused: a piece between two threads about one axis that disagree in pitch, starts, hand
-//   as each lies, or nominal diameter. The pair is then in `pairs`, with `mismatch` saying what
-//   differs. "About one axis": the directions within the angle tolerance, the lines no further
-//   apart than the chord tolerance over the stretch the two zones share.
+// the report. What is left of the pair is judged as every pair is, so it is in `threaded` alone
+// (nothing left), in `threaded` and in `fits` (the head in its counterbore), or in `pairs` alone
+// (a screw too long for a blind bore, with the volume and depth of what is left).
+// - The zone of a thread on a body (`ThreadZone`): between the wall and the root of that thread
+//   and along the axis over the span the body still has of the wall, with the run-out at an open
+//   end it still has.
+// - The rule, for a pair of which one body has a thread whose ring meets the box of the other:
+//   1. the body with the thread is cut by the ring of the zone into the part in its zone and the
+//      rest (`zoneParts`);
+//   2. what the other body shares with the part in the zone: every connected piece of it with
+//      a volume has to go around the axis (`goesAround`). Then the zone is taken and the volume
+//      of those pieces is excused. A zone of which a piece does not go around (a body pushed into
+//      the thread from one side), or whose booleans the kernel refuses, changes nothing;
+//   3. the body without the rings of its taken zones stands in for it, and the pair is judged as
+//      every pair is (`sharedBy`, `verdictOf`, the refusals of D50).
+//   No boolean is made of a mesh two bodies share and nothing is read from its vertices: such
+//   a mesh holds a sheet without thickness where faces of the two lie flush (a seated head), in
+//   one order of the two bodies and not in the other (spike.md, Q).
+// - Not taken: a zone between two modelled threads about one axis. Their meshes are the truth.
+// - Not taken: a zone between two threads about one axis that do not agree (`threadsAgree`). The
+//   pair is then in `pairs`, with `mismatch` saying what differs.
 // - The other body need not carry a thread: a bought screw is a plain cylinder.
-// - `volume`: of the excused pieces. No depth: its measure is the slow part (a second for
-//   a thread) and is taken only of what is left.
-// - `threads`: every thread that excused a piece (one body in several threaded bores; of two
-//   agreeing threads on one piece, both).
-// - In a pose a pair is computed in the frame of its first body: the zones of the second are
-//   moved by the transform that puts it there.
-// - What the query keeps: the mesh the two share by the two meshes, as before; the judgement by
-//   the two meshes and the records on the two bodies (a cosmetic thread changes no mesh).
+// - `volume`: what was excused. No depth: it is measured of what is left alone.
+// - `threads`: the thread of every zone taken (one body in several threaded bores; when both
+//   bodies have agreeing threads there, both).
+// - In a pose the cut is made in the frame the body of the thread was modelled in; each of the
+//   two intersections is framed as every pair is, the one of step 2 with the body of the thread
+//   first.
+// - What the query keeps: the two parts of a body by its mesh and the published thread (which
+//   keeps its identity, `QueryContext.threadsAsModelled`); the intersections by the two meshes,
+//   as every pair. Nothing new is kept for a pair without a thread.
 export interface Threaded {
   a: Id; // the smaller ID, as in the other lists
   b: Id;
@@ -402,34 +433,65 @@ declare module '../../../packages/engine/src/types' {
     threaded?: Threaded[]; // present only when it has an entry
   }
 }
-// What the other lists of the report gain (a draft cannot widen a member of an engine type, so
-// these stand for the entries after this package):
-// - an entry of `pairs` between two threads that disagree carries `mismatch`, in words
-//   ("pitch 1.5 against 1.25", "a left-hand thread in a right-hand one");
-// - an entry of `cleared` (a pair the kernel refused, judged on the mesh as computed, D50) may be
-//   of the kind `threaded`: every piece excused, or what is left nothing or a fit.
+// What `pairs` gains (a draft cannot widen a member of an engine type, so this stands for the
+// entry after this package): an entry between two threads that do not agree carries `mismatch`,
+// in words ("pitch 1.5 against 1.25", "a left-hand thread in a right-hand one", "flanks at 90°
+// against 60°", "two internal threads"). `cleared` gains no kind: a pair whose rest the kernel
+// refuses is failed or cleared as every refused pair is, and keeps its entry in `threaded`.
 export type PairD75 = InterferenceReport['pairs'][number] & { mismatch?: string };
-export type ClearedKindD75 = 'threaded';
 // The smallest gap (D40) asks `interference` what a pair at a distance of zero shares, and reads
-// `pairs` and `fits`. A pair in `threaded` alone has the contact `threaded` (not `touching`, and
+// `pairs`, `fits`, `failed` and `cleared`. A pair with an entry in `threaded` and none in `pairs`,
+// `fits` or `failed`, and not cleared as a fit, has the contact `threaded` (not `touching`, and
 // no distance between a set screw and the wall of its bore).
 export type GapD75 = Gap | { a: Id; b: Id; distance: 0; contact: 'threaded' };
 
-// The zone of a record, in the frame the pair is computed in (`transform`: of the record's body
-// into that frame, absent for the first body of a pair and for a query without a pose).
+// The zone of a published thread on one of its bodies, in the frame of the thread given (as
+// modelled for the cut, as posed for `threadsAgree`).
+// - The radii: a bore from `radius` to `diameter / 2 + clearance`, a pin from `diameter / 2 −
+//   depth − clearance` to `radius`.
+// - Along the axis: the span cut to `walls` of that body, longer by the run-out at an end the
+//   wall still has. `openFrom`, `openTo`: the wall ends in the air there (an open end the wall
+//   still has).
+// - Zones of one body about one axis with the same radii whose spans touch or overlap are joined
+//   (`joinedZones`).
 export interface ThreadZone {
   origin: Vec3;
   axis: Vec3;
+  internal: boolean;
   low: number; // radii
   high: number;
   from: number; // along the axis, the run-outs included
   to: number;
+  openFrom: boolean;
+  openTo: boolean;
 }
-export declare function threadZone(record: ThreadRecord, transform?: RigidTransform): ThreadZone;
-// The three rules on one connected piece (a solid of `pieceSolids`).
-export declare function withinZone(piece: Solid, zone: ThreadZone, slack: number): boolean;
-// Whether two records are about one axis, and what differs between them when they are.
-export declare function threadsAgree(a: ThreadRecord, b: ThreadRecord, transformOfB: RigidTransform | undefined, chordTolerance: number): 'apart' | 'agree' | { mismatch: string };
+export declare function threadZone(thread: ThreadResult, body: Id): ThreadZone;
+export declare function joinedZones(zones: readonly ThreadZone[], chordTolerance: number): ThreadZone[];
+// The body of a thread cut by the ring of a zone: the ring is the zone grown by the chord
+// tolerance and the precision of the coordinates where it borders the material of the body (at
+// the root, and at an end that is not open) and by `lift` where it borders its air (beside the
+// wall, past an open end), so that no face of it lies in a face of the body; its outer polygon is
+// circumscribed. `inZone`: the body within the ring; `rest`: the body without it. Two booleans,
+// kept by the mesh and the published thread. Throws when the kernel refuses one.
+export declare function zoneParts(solid: Solid, zone: ThreadZone, chordTolerance: number, lift: number): { inZone: Solid; rest: Solid };
+// A piece goes around an axis when its centre of volume is nearer to the axis than this part of
+// the root of its mean squared distance from it: where the centre of a third of a ring lies,
+// sin 60° / (π / 3). A whole ring has 0, half of one 0.637, a straight wall pushed into an M8
+// thread from one side at least 0.94. Question 57 of the design.
+export const THREAD_AROUND = Math.sin(Math.PI / 3) / (Math.PI / 3);
+// The test of step 2 on one connected piece (a solid of `pieceSolids`) of what the other body
+// shares with the part in the zone, by sums over its triangles (its volume, its centre, its
+// second moment), to which a sheet without thickness adds nothing.
+export declare function goesAround(piece: Solid, zone: Pick<ThreadZone, 'origin' | 'axis'>): boolean;
+// Whether two threads, as the pose puts them, are about one axis, and what differs between them
+// when they are.
+// - `apart`: the directions differ by more than the angle tolerance, the lines lie further apart
+//   than the chord tolerance, or the two zones do not overlap along the axis.
+// - `agree`: one is internal and the other external, and the pitch, the number of starts, the
+//   hand as each lies, the nominal diameter, the flank angle and the depth are the same (lengths
+//   to the length tolerance, the angle to the angle tolerance).
+// - Else `mismatch`, in words.
+export declare function threadsAgree(a: ThreadResult, b: ThreadResult, chordTolerance: number): 'apart' | 'agree' | { mismatch: string };
 
 // ================================================================ the catalog
 
@@ -612,11 +674,12 @@ export const wallWindow = (profile: ThreadProfile, internal: boolean, clearance:
 };
 
 // How far a tool keeps from what it must not lie in (its hidden faces from the wall, its flat end
-// from a shoulder), how far it runs past an open end, and how near to an end of the wall an end
-// of a thread is taken to be at it. Above the sagitta of the polygons and above two bands of the
-// kernel adapter (`bandOf` of the body and the tool, 10⁻⁵ of their size), as the lift of a blend
-// is (D63); spike.md, C, H, J and P.
-export const threadLift = (chordTolerance: number, band: number): number => Math.max(0.05, 2 * chordTolerance, 2 * band);
+// from a shoulder), how far it runs past an open end, how near to an end of the wall an end of
+// a thread is taken to be at it, and how far the ring of a zone reaches into the air. Above the
+// sagitta of the polygons and above two bands of the kernel adapter (`bandOf` of the body, 10⁻⁵
+// of its size or of twice its distance from the origin), as the lift of a blend is (D63). Of the
+// body alone: the lift is needed where there is no tool. spike.md, C, H, J and P.
+export const threadLift = (chordTolerance: number, bandOfBody: number): number => Math.max(0.05, 2 * chordTolerance, 2 * bandOfBody);
 // A thread shallower than this many chord tolerances is not modelled (spike.md, H).
 export const MIN_THREAD_DEPTH_TOLERANCES = 5;
 // The most triangles the tool of one feature may have. By the rate of the spike (31 000 triangles
@@ -626,30 +689,37 @@ export const MAX_THREAD_TRIANGLES = 200_000;
 // The triangles of the tool of one wall, before it is built (stage 2): two per strip of the
 // profile (four strips) per line of the turn, per pitch of `length`, which is the span of the
 // tool (the thread with its run-outs and what it runs past an open end), and the two ends.
+// The count is made by the loops of the builder without building (no closed form is promised).
 export declare function threadTriangles(profile: ThreadProfile, wall: ThreadWall, length: number, chordTolerance: number): number;
 
-// An end of a thread at an end of its wall, read from the mesh of the body (both stages): the
-// triangles of other faces across the rim of the wall there. Each has one vertex that is not on
-// the rim; its distance from the axis is compared with the radius of the wall to the precision of
-// the coordinates (the vertices of a face lie on its exact surface, so the answer does not depend
-// on the size of the triangles). In this order:
-// 1. `shoulder`: one of those vertices lies on the air side of the wall (inside the radius of
-//    a bore, outside that of a pin).
-// 2. `inside`: otherwise, one of them lies on the cylinder of the wall: the wall goes on under
-//    another name.
-// 3. `open`: otherwise, with `runOut`: the faces next to the rim are walked across their edges
-//    for as long as they lie beyond the end and between the wall and the root cylinder of the
-//    shifted thread (a bore: within `major + clearance` of the axis; a pin: beyond
-//    `minor − clearance`); the largest distance beyond the end they reach inside that band, their
-//    edges cut where they leave it. Zero for a mouth in a plane; the axial depth of a chamfer or
-//    a countersink until it is as wide as the major diameter, and of a chamfered tip of a pin
-//    until it is as narrow as the minor one. A walk that meets a vertex on the air side of the
-//    wall ends there.
-export declare function threadEndAt(solid: Solid, wall: ThreadWall, end: 'low' | 'high', profile: ThreadProfile, clearance: number): { kind: 'shoulder' | 'inside' } | { kind: 'open'; runOut: number };
+// An end of a thread at an end of its wall, read from the mesh of the body and the descriptions
+// of its faces (both stages; a prototype in the spike, test 8b, spike.md, R).
+// - The rim of the end: of the loops of edges the wall shares with other faces, the one that
+//   goes around the axis and holds the extreme point of the wall at that end.
+// - The triangle of another face across an edge of the rim decides:
+//   - its face is a cylinder about the same axis with the same radius (`faces`): the wall goes on;
+//   - else its third vertex lies beyond the radius of the wall (its distance from the axis, to
+//     the precision of the coordinates): the triangle lies outside the cylinder;
+//   - else (within the radius, or on it: a flat cap is triangulated from the vertices of its
+//     boundary alone, and a triangle with three vertices on a cylinder is a chord of it): inside.
+//   Inside the cylinder is the air side of a bore and the material side of a pin.
+// - In this order, over all triangles across the rim:
+//   1. `shoulder`: one of them lies on the air side;
+//   2. `inside`: otherwise, the wall goes on at one of them;
+//   3. `open`: otherwise, with `runOut`: the faces across the rim are walked from the rim,
+//      triangle by triangle across their edges and no further than those faces; the largest
+//      distance beyond the end at which a part of a walked triangle lies in the band of the
+//      thread (a bore: within `major + clearance` of the axis; a pin: beyond `minor −
+//      clearance`). Zero for a mouth in a plane across the axis and for the seat of
+//      a counterbore; the axial depth of a chamfer or a countersink until it is as wide as the
+//      major diameter, and of a chamfered tip of a pin until it is as narrow as the minor one.
+export declare function threadEndAt(solid: Solid, faces: (face: number) => FaceInfo, wall: ThreadWall, end: 'low' | 'high', profile: ThreadProfile, clearance: number): { kind: 'shoulder' | 'inside' } | { kind: 'open'; runOut: number };
 
 // The tool of one wall (stage 2): the sweep of the axial profile along the helix between two
 // planes across the axis, cut flat at both while it is built (the spike's `buildSwept`; the same
 // triangles serve both hands, spike.md, L).
+// - The middle of the crest of the basic profile lies at `s = 0` at the angle of `zero`, as the
+//   datum of `ThreadResult` says (the profile of the spike starts half a pitch from it).
 // - A bore: a ring between a cylinder two lifts inside the wall and the thread surface of the
 //   shifted profile; between the grooves the ring ends one lift inside the wall, the flanks run
 //   on to there (the spike's kind `ridge`). A post in the middle of the bore is left alone.
@@ -659,11 +729,14 @@ export declare function threadEndAt(solid: Solid, wall: ThreadWall, end: 'low' |
 //   and the lift) or short of a shoulder (by the lift). `datum`: `origin`, `axis` and `zero` of
 //   the record.
 // - Faces: `threadFlank` start and end, `threadRoot`, `threadEnd` start and end, numbered from
-//   `firstFaceId` in that order. Both flat ends of every tool are `threadEnd`, whatever the end
-//   was read as; one in the air leaves no triangle.
+//   `firstFaceId` in that order. The flanks are named by their normals out of the body (the
+//   spike names them by the side of the profile, which is the other way round in a bore). Both
+//   flat ends of every tool are `threadEnd`, whatever the end was read as; one in the air leaves
+//   no triangle.
 // - The hidden faces (the cylinder beside the wall and the strips between the grooves) carry
-//   `guardFaceId`, a number that is no face of the model. A triangle of it in the body after the
-//   boolean means that something stood in the way of the tool: `invalidThread`.
+//   `guardFaceId`, a number that is no face of the model and is another for every wall of the
+//   feature. A triangle of it in the body after the boolean means that something crossed the
+//   hidden faces of the tool of that wall: `invalidThread` with that wall in `refs`.
 export declare function buildThreadTool(profile: ThreadProfile, wall: ThreadWall, datum: { origin: Vec3; axis: Vec3; zero: Vec3 }, clearance: number, from: number, to: number, chordTolerance: number, lift: number, firstFaceId: number, guardFaceId: number): Solid;
 
 // The description of a flank: an exact surface the engine does not describe further. Published as

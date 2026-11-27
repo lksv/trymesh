@@ -84,16 +84,20 @@ type GeometricConstraint =
   | { type: 'coincident';   a: Id; b: Id }            // point, point
   | { type: 'pointOnCurve'; point: Id; curve: Id }
   | { type: 'horizontal' | 'vertical'; line: Id }
+  | { type: 'horizontalPoints' | 'verticalPoints'; a: Id; b: Id }  // two points with one y, or one x (D75)
   | { type: 'parallel' | 'perpendicular' | 'equalLength'; a: Id; b: Id }  // lines
   | { type: 'tangent';      a: Id; b: Id }            // line–circle/arc, or two circles/arcs
   | { type: 'symmetric';    a: Id; b: Id; line: Id }  // points a, b symmetric about the infinite line of the line (axis)
   | { type: 'midpoint';     point: Id; line: Id }     // a point at the midpoint of a line
+  | { type: 'midpointPoints'; point: Id; a: Id; b: Id }  // a point halfway between two points (D75)
   | { type: 'equalRadius';  a: Id; b: Id }            // two circles or arcs, in any combination (D35, point 6)
   | { type: 'fixed';        point: Id; x: number; y: number };  // an own point at coordinates of the sketch; x, y are numeric fields
 
 type Dimension = { value: number; driving: boolean } & (
   | { type: 'distance';           a: Id; b: Id }      // point–point (length of a line = its end points)
   | { type: 'distancePointLine';  point: Id; line: Id }
+  | { type: 'distanceLineLine';   a: Id; b: Id }      // lines held parallel at the distance; 0 puts them on one line (D75)
+  | { type: 'distanceLineCircle'; line: Id; curve: Id }  // the gap between the line and the rim of a circle or arc, positive (D75)
   | { type: 'horizontalDistance' | 'verticalDistance'; a: Id; b: Id }   // point, point; signed: b.x − a.x, or b.y − a.y respectively
   | { type: 'angle';              a: Id; b: Id }      // lines; the angle from the direction of `a` to the direction of `b`, counter-clockwise, radians
   | { type: 'radius' | 'diameter'; curve: Id }
@@ -142,7 +146,7 @@ Conventions:
 - **The direction of a line** is from the point `a` to the point `b`. The angle of the dimension `angle` is signed and lies in the interval (−π, π].
 - **Order**, where sorted or canonically ordered IDs and names are spoken of, is the lexicographic order of strings. For comparison a face name is written as `feature/role/curve`.
 - **The base planes** have fixed right-handed coordinate systems (the X axis of the sketch, the Y axis of the sketch, the normal): XY = (+X, +Y, +Z), XZ = (+X, +Z, −Y), YZ = (+Y, +Z, +X).
-- **The sign of dimensions.** `horizontalDistance` and `verticalDistance` are signed (b − a) and may be negative; the UI chooses the order of the points so that the value comes out positive when it is created. The sign keeps a point from flipping to the other side while solving. `distance` and `distancePointLine` are unsigned and non-negative, `radius` and `diameter` positive.
+- **The sign of dimensions.** `horizontalDistance` and `verticalDistance` are signed (b − a) and may be negative; the UI chooses the order of the points so that the value comes out positive when it is created. The sign keeps a point from flipping to the other side while solving. `distance`, `distancePointLine` and `distanceLineLine` are unsigned and non-negative; `distanceLineCircle`, `radius` and `diameter` are positive (a gap of 0 is `tangent`). An unsigned distance keeps the side its operands were drawn on: a point (a line, the centre of a circle) stays on its side of the line.
 - **The tolerances of the engine** are fixed constants: a length tolerance of 1e-6 mm (a satisfied `coincident`, curves touching in profile detection) and an angular one of 1e-4 rad (faces in the same plane when the kind of an edge is determined). The tolerances of booleans are the kernel's business; the engine does not know them.
 - **The stamp** `solved.inputs` is computed by the engine as a fingerprint of the canonical form of the inputs (keys sorted by the convention above). The caller does not fill it in: in `addFeature` it sends the sketch with an empty stamp (`inputs: ''`, `external: {}`), or leaves it out (D73), and the engine overwrites it after the first solve.
 - **Extent of an extrusion** is a distance with a start offset, or "through all" for a cut (see Extrude, Extent and targets). A hole dimensioned by a fixed distance stops going through when the body gets thicker; a hole through all keeps going through.
@@ -175,9 +179,9 @@ interface FeatureBase {
 | Numbers | `1.5`, `.5`, `2e-3`; the decimal separator is a dot |
 | Operators | `+ - * / %` (remainder, sign of the dividend; 0 when the quotient is within the equality tolerance of an integer, so `(0.3 / 0.1) % 3 == 0` holds), `^` (power, right-associative, binds tighter than the sign: `-2 ^ 2` is −4), parentheses |
 | Names | Parameter names: letters of any alphabet, digits, underscore. A dot is reserved (a syntax error today) for values produced by the recompute |
-| Functions | `deg sin cos tan asin acos atan atan2 sqrt abs min max floor ceil round`. A name followed by `(` is a function, so a parameter may be called `min`; a function added later does not break older documents |
+| Functions | `deg sin cos tan asin acos atan atan2 sqrt abs min max floor ceil round if`. A name followed by `(` is a function, so a parameter may be called `min`; a function added later does not break older documents. `if(condition, a, b)` takes a truth value first (a comparison, as in a check) and two numbers, and is a number: `a` when the condition holds, otherwise `b`. Its arguments are always all evaluated, as both sides of `&&` (an unknown name or a parameter in error in either branch is an error), but a value that is not finite in the branch not taken is no error, also where that branch compares it: `if(n > 0, L / n, 0)` and `if(n > 0, if(L / n > 5, 1, 2), 0)` are 0 at `n = 0`. A number as the condition is refused with the hint `n != 0` |
 | Constants | `pi`; constant names are the only reserved names |
-| Checks | Comparisons `== != < <= > >=` and connectives `&& \|\| !`. `a == b` when they differ by at most 1e-9 · max(1, \|a\|, \|b\|); `<` means less than and not equal. Both sides of `&&` and `\|\|` are always evaluated, so an unknown name is an error of the check whichever side decides. Comparing a non-finite number (division by zero) is an error, not a result |
+| Checks | Comparisons `== != < <= > >=` and connectives `&& \|\| !`, in a check and in the condition of `if`. `a == b` when they differ by at most 1e-9 · max(1, \|a\|, \|b\|); `<` means less than and not equal. Both sides of `&&` and `\|\|` are always evaluated, so an unknown name is an error of the check whichever side decides. Comparing a non-finite number (division by zero) is an error, not a result |
 | Limits | At most 1000 characters and 100 levels of nesting; beyond that a syntax error. The parser and the evaluator are recursive and must stay off the stack limit |
 | Types | An expression is a number or a truth value, decided statically. A field and a parameter expect a number, a check expects a truth value; the wrong kind is rejected like a syntax error |
 

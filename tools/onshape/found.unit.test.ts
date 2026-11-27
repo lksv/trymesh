@@ -62,6 +62,88 @@ async function twoSketches(build: (s1: SketchKit, s2: SketchKit, op: string) => 
   return { report, records: report.records.filter((r) => r.sketch === 'Sketch_2'), sketch: result.document.features.find((f: any) => f.id === 'Sketch_2') };
 }
 
+describe('the midpoint of two points with ends outside the sketch (D75)', () => {
+  test('one end of another sketch beside an own one; both ends of another sketch: the one pair of its points about the middle', async () => {
+    const { records, sketch } = await twoSketches((s1, s2, op) => {
+      s1.line([0, 0], [10, 4]);
+      s1.point([3, 9]);
+      const m = s2.point([5, 2]);
+      const own = s2.point([8, -1]);
+      const n = s2.point([9, 1.5]);
+      // both ends named by vertices of Sketch 1: only (0, 0) and (10, 4) are images of each other about (5, 2)
+      s2.constrain('MIDPOINT', { localMidpoint: m, externalEntity1: { ext: encode(op, 'vertex', 0) }, externalEntity2: { ext: encode(op, 'vertex', 1) } });
+      // one end own: the other is the vertex at its image about the middle, (10, 4) for (8, −1) about (9, 1.5)
+      s2.constrain('MIDPOINT', { localMidpoint: n, localEntity1: own, externalEntity2: { ext: encode(op, 'vertex', 1) } });
+    });
+    expect(records.map((r) => [r.what, r.fate])).toEqual([['MIDPOINT of two points', 'written'], ['MIDPOINT of two points', 'written']]);
+    const [c, d] = records.map((r) => sketch.constraints[r.ids[0]]);
+    expect(c).toMatchObject({ type: 'midpointPoints', point: 'Sketch_2.p1' });
+    // the two ends are two different projected points of Sketch 1, the ends of its line
+    const from = (id: string) => sketch.external[id.split('/')[0]]?.sketch;
+    expect(new Set([c.a, c.b]).size).toBe(2);
+    expect([from(c.a), from(c.b)]).toEqual(['Sketch_1', 'Sketch_1']);
+    expect(d).toMatchObject({ type: 'midpointPoints', point: 'Sketch_2.p3', a: 'Sketch_2.p2' });
+    expect(from(d.b)).toBe('Sketch_1');
+    // the sketch is solved where it was drawn: the projections are where the fit found them
+    expect(sketch.points['Sketch_2.p1']).toEqual({ x: expect.closeTo(5, 9), y: expect.closeTo(2, 9) });
+    expect(sketch.points['Sketch_2.p2']).toEqual({ x: expect.closeTo(8, 9), y: expect.closeTo(-1, 9) });
+  });
+
+  test('review: the origin as one end is known before the other end is fitted, whichever of the two it is', async () => {
+    for (const originFirst of [false, true]) {
+      const { records, sketch } = await twoSketches((s1, s2, op) => {
+        // (2, 9) and (4, −7) are a pair about (3, 1) too: the end is the image of the origin, (6, 2)
+        s1.point([6, 2]);
+        s1.point([2, 9]);
+        s1.point([4, -7]);
+        const m = s2.point([3, 1]);
+        const [vertex, origin] = [{ ext: encode(op, 'vertex', 0) }, { ext: 'IB' }];
+        s2.constrain('MIDPOINT', { localMidpoint: m, externalEntity1: originFirst ? origin : vertex, externalEntity2: originFirst ? vertex : origin });
+      });
+      expect(records.map((r) => [r.what, r.fate])).toEqual([['MIDPOINT of two points', 'written']]);
+      const c = sketch.constraints[records[0].ids[0]];
+      const end = c.a === 'origin' ? c.b : c.a;
+      expect([c.a, c.b]).toContain('origin');
+      expect(sketch.external[end.split('/')[0]]).toMatchObject({ type: 'sketch', sketch: 'Sketch_1' });
+      // the sketch stays where it was drawn: the end is the point at (6, 2)
+      expect(sketch.points['Sketch_2.p1']).toEqual({ x: expect.closeTo(3, 9), y: expect.closeTo(1, 9) });
+    }
+  });
+
+  test('a middle of another sketch: the point at the mean of the two ends, also with the origin as one of them', async () => {
+    const { records, sketch } = await twoSketches((s1, s2, op) => {
+      s1.point([5, 2]);
+      s1.point([4, 1]);
+      s1.point([7, 7]);
+      const [a, b, far] = [s2.point([0, 0.5]), s2.point([10, 3.5]), s2.point([8, 2])];
+      s2.constrain('MIDPOINT', { externalMidpoint: { ext: encode(op, 'vertex', 0) }, localEntity1: a, localEntity2: b });
+      s2.constrain('MIDPOINT', { externalMidpoint: { ext: encode(op, 'vertex', 0) }, externalEntity1: { ext: 'IB' }, localEntity2: far });
+    });
+    expect(records.map((r) => [r.what, r.fate])).toEqual([['MIDPOINT of two points', 'written'], ['MIDPOINT of two points', 'written']]);
+    const [c, d] = records.map((r) => sketch.constraints[r.ids[0]]);
+    expect(c).toMatchObject({ type: 'midpointPoints', a: 'Sketch_2.p1', b: 'Sketch_2.p2' });
+    expect(d).toMatchObject({ type: 'midpointPoints', a: 'origin', b: 'Sketch_2.p3' });
+    // two different points of Sketch 1: (5, 2) for the first, (4, 1) for the second
+    expect(c.point).not.toBe(d.point);
+    for (const k of [c, d]) expect(sketch.external[k.point.split('/')[0]]).toMatchObject({ type: 'sketch', sketch: 'Sketch_1' });
+  });
+
+  test('several pairs of points about the middle, or none: lost, with the reason', async () => {
+    const { records } = await twoSketches((s1, s2, op) => {
+      // a rectangle about (5, 2): two pairs of opposite corners
+      s1.line([0, 0], [10, 0]);
+      s1.line([10, 4], [0, 4]);
+      const m = s2.point([5, 2]);
+      const off = s2.point([6, 2]);
+      s2.constrain('MIDPOINT', { localMidpoint: m, externalEntity1: { ext: encode(op, 'vertex', 0) }, externalEntity2: { ext: encode(op, 'vertex', 1) } });
+      s2.constrain('MIDPOINT', { localMidpoint: off, externalEntity1: { ext: encode(op, 'vertex', 0) }, externalEntity2: { ext: encode(op, 'vertex', 1) } });
+    });
+    expect(records.map((r) => [r.fate, r.cause])).toEqual([['lost', 'sketch'], ['lost', 'sketch']]);
+    expect(records[0].detail).toMatch(/2 candidates that are not the same by construction/);
+    expect(records[1].detail).toMatch(/no candidate fits/);
+  });
+});
+
 describe('an entity of another sketch', () => {
   test('a vertex with a curve through its place is the point; an edge with a point at its place is the curve', async () => {
     const { records, sketch } = await twoSketches((s1, s2, op) => {

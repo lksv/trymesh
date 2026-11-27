@@ -112,6 +112,8 @@ const EQUATIONS: { [T in Constraint['type']]: (c: Of<T>, g0: Geometry, held: Hel
     const [a, b] = lineOf(g, c.line);
     return [b[0] - a[0]];
   },
+  horizontalPoints: (c) => (g) => [g.point(c.b)[1] - g.point(c.a)[1]],
+  verticalPoints: (c) => (g) => [g.point(c.b)[0] - g.point(c.a)[0]],
   parallel: (c, g0) => {
     const scale = nonZero(Math.max(len(direction(g0, c.a)), len(direction(g0, c.b))));
     return (g) => [cross(direction(g, c.a), direction(g, c.b)) / scale];
@@ -216,6 +218,10 @@ const EQUATIONS: { [T in Constraint['type']]: (c: Of<T>, g0: Geometry, held: Hel
     const m = g.point(c.point);
     return [m[0] - (p[0] + q[0]) / 2, m[1] - (p[1] + q[1]) / 2];
   },
+  midpointPoints: (c) => (g) => {
+    const [a, b, m] = [g.point(c.a), g.point(c.b), g.point(c.point)];
+    return [m[0] - (a[0] + b[0]) / 2, m[1] - (a[1] + b[1]) / 2];
+  },
   // A zero distance is identity: a single equation would have a zero derivative in the solution.
   distance: (c) => (g) => {
     const d = sub(g.point(c.a), g.point(c.b));
@@ -228,6 +234,32 @@ const EQUATIONS: { [T in Constraint['type']]: (c: Of<T>, g0: Geometry, held: Hel
     };
     const s = sign(signed(g0));
     return (g) => [(c.value === 0 ? 1 : s) * signed(g) - c.value];
+  },
+  // Two equations, as the adapter's two primitives: the lines are parallel, and the point `a` of
+  // the line a lies at the distance from the line b, on the side where it lies in the solution
+  // (the adapter's distance is unsigned; at 0 it puts the point on the line). The adapter may
+  // measure from another end of either line (its `measuredEnd`, for the way to the solution): of
+  // parallel lines that is the same equation up to the first one, so the rows span the same space.
+  // Of two lines with a common end the second equation is zero at 0 and counts for nothing, as
+  // the adapter leaves it out.
+  distanceLineLine: (c, g0) => {
+    const scale = nonZero(Math.max(len(direction(g0, c.a)), len(direction(g0, c.b))));
+    const signed = (g: Geometry): number => {
+      const [a, b] = lineOf(g, c.b);
+      return cross(sub(b, a), sub(lineOf(g, c.a)[0], a)) / nonZero(len(sub(b, a)));
+    };
+    const s = sign(signed(g0));
+    return (g) => [cross(direction(g, c.a), direction(g, c.b)) / scale, (c.value === 0 ? 1 : s) * signed(g) - c.value];
+  },
+  // The centre lies the radius and the gap away from the line, on its side in the solution: the
+  // general form of a tangency of a line and a circle with the gap added.
+  distanceLineCircle: (c, g0) => {
+    const side = (g: Geometry): number => {
+      const [a, b] = lineOf(g, c.line);
+      return cross(sub(b, a), sub(centerOf(g, c.curve), a)) / nonZero(len(sub(b, a)));
+    };
+    const s = sign(side(g0));
+    return (g) => [s * side(g) - g.radius(c.curve) - c.value];
   },
   horizontalDistance: (c) => (g) => [g.point(c.b)[0] - g.point(c.a)[0] - c.value],
   verticalDistance: (c) => (g) => [g.point(c.b)[1] - g.point(c.a)[1] - c.value],

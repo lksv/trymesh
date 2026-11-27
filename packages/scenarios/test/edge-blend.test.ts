@@ -321,6 +321,23 @@ describe('the ends of an edge', () => {
     expect(faceKey((half.refs[1] as EdgeName).b)).toMatch(/^E\/side\/fr\d_c1$/);
   });
 
+  it('a box rounded evenly: a fillet as large as the corner is a sphere, refused with the radius; one nearer the axis than two lifts is refused before the kernel', () => {
+    // From the Gridfinity session (2026-11-26): the radius of the corner was refused with a bare
+    // "reaches the axis", and a size a hair smaller ended in a face that vanished or a kernelFailure.
+    const r = rounded(6);
+    const loop = topLoop(r);
+    const sphere = apply(r, fillet('c', 'E', loop, 6));
+    expect(sphere.code).toBe('blendDoesNotFit');
+    expect(sphere.message).toMatch(/reaches the axis of the circular edge \(the edge has a radius of 6 mm\): a corner rounded into a sphere is not supported; use a smaller size, one that keeps the fillet more than 0\.03 mm from the axis/);
+    expect(apply(r, chamfer('c', 'E', loop, 6)).message).toMatch(/a corner chamfered into a point is not supported/);
+    for (const size of [5.999, 5.99, 5.975]) {
+      const near = apply(r, fillet('c', 'E', loop, size));
+      expect(near.code, `${size}`).toBe('blendDoesNotFit');
+      expect(near.message).toMatch(/comes within 0\.0\d+ mm of the axis of the circular edge \(the edge has a radius of 6 mm\), nearer than the 0\.03 mm its tool needs/);
+    }
+    ok(apply(r, fillet('c', 'E', loop, 5.968)));
+  });
+
   it('a chain at a chord tolerance near the band of the kernel: the result is right or refused, never wrong', () => {
     const r = rounded(6);
     const loop = topLoop(r);

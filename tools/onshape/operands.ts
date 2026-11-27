@@ -259,7 +259,15 @@ export function edgeCandidates(engine: any, toBase: (w: V3) => V2, normal: V3, k
 // The candidates that fit every use: a point at the place of the local point it is coincident
 // with; a curve through it (within its extent when any candidate holds it so); a round curve of the
 // radius of the one it is equal to; a line in the direction a parallel or a perpendicular asks.
+// Of a midpoint of two points (D75): the middle (`MIDPOINT`, beside the two ends) at their mean;
+// an end (`MIDPOINT_END`, beside the middle and then the other end when it is known) at the image
+// of the other end about the middle, and with the other end unknown the first of every pair of
+// candidates that are images of each other about the middle (by x, then y), so that one pair
+// gives one candidate and the second end is then fitted as the image of the first.
 export function fitting(cands: Candidate[], type: string, locals: { k: string; at?: V2; ends?: [V2, V2]; radius?: number }[]): Candidate[] {
+  const points = locals.filter((l) => l.k === 'point' && l.at).map((l) => l.at as V2);
+  // an image about the middle carries the error of the middle twice
+  const near = (a: V2, b: V2, tolerance = 1e-6) => Math.hypot(a[0] - b[0], a[1] - b[1]) <= tolerance;
   const pt = locals.find((l) => l.k === 'point')?.at;
   const round = locals.find((l) => l.k === 'circle' || l.k === 'arc');
   const line = locals.find((l) => l.k === 'line')?.ends;
@@ -279,6 +287,12 @@ export function fitting(cands: Candidate[], type: string, locals: { k: string; a
         ok = Math.abs(Math.hypot(pt[0] - c.center![0], pt[1] - c.center![1]) - c.radius!) <= 1e-6;
         if (c.kind === 'arc') { const norm = (x: number) => ((x % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI); const t = Math.atan2(pt[1] - c.center![1], pt[0] - c.center![0]); beyond = norm(t - c.span![0]) > norm(c.span![1] - c.span![0]) + 1e-9; }
       }
+    } else if (type === 'MIDPOINT' && points.length === 2) ok = c.kind === 'point' && near(c.at!, [(points[0][0] + points[1][0]) / 2, (points[0][1] + points[1][1]) / 2]);
+    else if (type === 'MIDPOINT_END' && points.length >= 1) {
+      const image: V2 | undefined = c.kind === 'point' ? [2 * points[0][0] - c.at![0], 2 * points[0][1] - c.at![1]] : undefined;
+      if (!image) ok = false;
+      else if (points.length === 2) ok = near(image, points[1], 3e-6);
+      else ok = (c.at![0] < image[0] - 1e-6 || (Math.abs(c.at![0] - image[0]) <= 1e-6 && c.at![1] < image[1] - 1e-6)) && cands.some((o) => o.kind === 'point' && near(o.at!, image, 3e-6));
     } else if (type === 'EQUAL' && round) ok = (c.kind === 'circle' || c.kind === 'arc') && Math.abs(c.radius! - round.radius!) <= 1e-6;
     else if (type === 'EQUAL' && line) ok = c.kind === 'line' && Math.abs(Math.hypot(c.ends![1][0] - c.ends![0][0], c.ends![1][1] - c.ends![0][1]) - Math.hypot(line[1][0] - line[0][0], line[1][1] - line[0][1])) <= 1e-6;
     else if ((type === 'PARALLEL' || type === 'PERPENDICULAR') && line) {

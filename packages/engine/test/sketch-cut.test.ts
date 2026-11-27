@@ -194,6 +194,19 @@ describe('the cut of a line: pieces, keeper and constraints', () => {
     expect(sketchOf(after).constraints['e1']).toMatchObject({ type: 'equalLength' });
   });
 
+  it('the distance of two lines and of a line and a circle are of the infinite line: they stay on the keeper (D75)', () => {
+    const doc = build(
+      { a: [0, 0], b: [40, 0], c: [20, -5], d: [20, 5], p: [0, 20], q: [30, 20], o: [60, 15] },
+      { l: line('a', 'b'), v: line('c', 'd'), m: line('p', 'q'), k: [{ type: 'circle', center: 'o' }, 5] },
+      { apart: { type: 'distanceLineLine', a: 'l', b: 'm', value: 20, driving: true }, gap: { type: 'distanceLineCircle', line: 'l', curve: 'k', value: 10, driving: true } },
+    );
+    const { doc: after, ids } = tool(doc, 'split', { curve: 'l' });
+    expect(ids.span).toEqual([]);
+    expect(ids.reattached).toEqual([]);
+    expect(sketchOf(after).constraints['apart']).toEqual({ type: 'distanceLineLine', a: 'l', b: 'm', value: 20, driving: true });
+    expect(sketchOf(after).constraints['gap']).toEqual({ type: 'distanceLineCircle', line: 'l', curve: 'k', value: 10, driving: true });
+  });
+
   it('constraints moved to a span line that would repeat one there are not added twice', () => {
     // two lines on one line, both equal to m: after the split, both equalLength move to their spans
     const doc = build({ a: [0, 0], b: [40, 0], c: [20, -5], d: [20, 5], p: [0, 20], q: [10, 20] }, { l: line('a', 'b'), v: line('c', 'd'), m: line('p', 'q') }, { e1: { type: 'equalLength', a: 'l', b: 'm' } });

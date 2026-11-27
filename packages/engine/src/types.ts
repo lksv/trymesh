@@ -647,10 +647,14 @@ export type GeometricConstraint =
   | { type: 'coincident'; a: Id; b: Id } // point, point
   | { type: 'pointOnCurve'; point: Id; curve: Id }
   | { type: 'horizontal' | 'vertical'; line: Id }
+  // Two points on one line parallel to the X axis of the sketch (the same y), or to its Y axis (the
+  // same x), with no line between them (D75).
+  | { type: 'horizontalPoints' | 'verticalPoints'; a: Id; b: Id }
   | { type: 'parallel' | 'perpendicular' | 'equalLength'; a: Id; b: Id } // lines
   | { type: 'tangent'; a: Id; b: Id } // line–circle/arc, or two circles/arcs
   | { type: 'symmetric'; a: Id; b: Id; line: Id } // points a, b symmetric about the infinite line of the line (the axis)
   | { type: 'midpoint'; point: Id; line: Id } // a point at the middle of the line
+  | { type: 'midpointPoints'; point: Id; a: Id; b: Id } // a point halfway between points a and b, with no line between them (D75)
   | { type: 'equalRadius'; a: Id; b: Id } // circles or arcs
   // The point lies at the coordinates of the sketch. `x` and `y` are numeric fields
   // (`constraints/<id>/x`, `constraints/<id>/y`), so they may be expressions and the point moves
@@ -660,9 +664,21 @@ export type GeometricConstraint =
 // A fixed point in a command may leave its coordinates out: the point is then fixed where it is.
 export type FixedInput = { type: 'fixed'; point: Id; x?: number | Expr; y?: number | Expr };
 
+// A dimension in addConstraint may leave `driving` out: it is then a driving dimension, the usual
+// case. A reference dimension says `driving: false`. A stored dimension always has the flag.
+export type DimensionInput = Input<{ value: number; driving?: boolean } & DimensionShape>;
+
 export type DimensionShape =
   | { type: 'distance'; a: Id; b: Id } // point–point
   | { type: 'distancePointLine'; point: Id; line: Id }
+  // Two lines held parallel at the distance between their infinite lines (D75): it holds the
+  // lines parallel by itself, so a `parallel` beside it is redundant. 0 puts them on one line.
+  | { type: 'distanceLineLine'; a: Id; b: Id }
+  // The gap between the infinite line of the line and a circle or arc (its whole circle, D75): the
+  // distance of the centre from the line less the radius, positive. The circle stays on one side of
+  // the line; a gap of 0 is `tangent`. The distance to the centre is `distancePointLine` with the
+  // centre.
+  | { type: 'distanceLineCircle'; line: Id; curve: Id }
   | { type: 'horizontalDistance' | 'verticalDistance'; a: Id; b: Id } // oriented: b − a
   | { type: 'angle'; a: Id; b: Id } // lines; from the direction of `a` to the direction of `b`, counter-clockwise, radians
   | { type: 'radius' | 'diameter'; curve: Id };
@@ -1753,7 +1769,8 @@ export interface Issue {
 // - the tool reached material it must not touch: next to a convex edge within the size outside
 //   its faces (a slot narrower than the size, a piece of the body), or next to a concave edge
 //   a hollow just inside them (the foot of a boss that reaches the edge of the plate);
-// - it reaches the axis of a circular edge;
+// - it reaches the axis of a circular edge (a corner rounded into a sphere), or comes within two
+//   lifts of it;
 // - the ends of a straight piece meet within it (a piece shorter than the slant of its ends);
 // - it reaches past the end face in `refs`: deeper than a riser the edge ends at, into the
 //   material beyond it, or (added) standing out over a lower end wall;
@@ -2026,7 +2043,7 @@ export type Command =
   //   plane on that face; the straight end of a wall is named by the point its chain ends at
   //   (`wallEnd`), so re-pointing a free end renames that face.
   | { type: 'setCurvePoint'; sketch: Id; id: Id; point: CurvePointName; to: Id }
-  | { type: 'addConstraint'; sketch: Id; id: Id; constraint: Input<Constraint> | FixedInput } // `fixed` without x, y takes the position of the point
+  | { type: 'addConstraint'; sketch: Id; id: Id; constraint: Input<Constraint> | DimensionInput | FixedInput } // `fixed` without x, y takes the position of the point; a dimension without `driving` is driving
   | { type: 'removeConstraint'; sketch: Id; id: Id }
   // Without `value` neither the value nor the expression changes; a number removes the expression,
   // a string sets it. Switching to a reference dimension removes the expression; an expression given
@@ -2211,6 +2228,7 @@ export interface BodyDescription {
   bounds: { min: Vec3; max: Vec3 };
   faces: BodyFace[];
   edges: BodyEdge[];
+  total?: { faces: number; edges: number }; // with a filter (`feature`, `only`): the counts of the whole body
 }
 export interface BodyFace {
   name: FaceName;

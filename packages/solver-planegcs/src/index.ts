@@ -43,11 +43,11 @@ interface Pass {
 export async function createPlanegcsSolver(options: PlanegcsOptions = {}): Promise<SketchSolver> {
   const mod = await init_planegcs_module(options.locateFile ? { locateFile: options.locateFile } : undefined);
 
-  const run = (input: SolveInput, extra: { drag?: SolveInput['drag']; without?: Set<string>; algorithm?: Algorithm; collapsed?: Set<Id> } = {}): Pass => {
+  const run = (input: SolveInput, extra: { drag?: SolveInput['drag']; without?: Set<string>; algorithm?: Algorithm; collapsed?: Set<Id>; flipped?: boolean } = {}): Pass => {
     const gcs = new GcsWrapper(new mod.GcsSystem());
     try {
       gcs.debug_mode = DebugMode.NoDebug; // otherwise the solver prints to standard output
-      gcs.push_primitives_and_params(buildPrimitives(input, extra.drag, extra.without, extra.collapsed) as unknown as Primitive[]);
+      gcs.push_primitives_and_params(buildPrimitives(input, extra.drag, extra.without, extra.collapsed, extra.flipped) as unknown as Primitive[]);
       const status = gcs.solve(extra.algorithm);
       const conflicting = owners(gcs.get_gcs_conflicting_constraints());
       const redundantPrimitives = gcs.get_gcs_redundant_constraints();
@@ -93,6 +93,16 @@ export async function createPlanegcsSolver(options: PlanegcsOptions = {}): Promi
         let pass = run(from, { ...extra, collapsed });
         // The default algorithm (DogLeg) sometimes does not get there where another one does; FreeCAD does the same.
         if (first && !pass.ok && pass.conflicting.length === 0) pass = run(from, { ...extra, collapsed, algorithm: Algorithm.LevenbergMarquardt });
+        // A distance of two lines measured from the other line (D75, `measuredEnd`): the same
+        // constraint, which the library may reach where it did not reach the first form. A pass
+        // that got there by shrinking one of the lines to a point is not taken: the failure stays
+        // a failure, without a conflict found in a state the sketch never had.
+        if (first && !pass.ok && pass.conflicting.length === 0 && Object.values(from.constraints).some((c) => c.type === 'distanceLineLine' && c.driving)) {
+          for (const algorithm of [undefined, Algorithm.LevenbergMarquardt]) {
+            const turned = run(from, { ...extra, collapsed, flipped: true, algorithm });
+            if (turned.ok && !collapsedLine(from, turned.points)) return turned;
+          }
+        }
         if (pass.ok) return pass;
         const merged = mergedPairs(from).filter((id) => !collapsed.has(id));
         if (!merged.some((id) => pass.conflicting.includes(id))) return pass;
@@ -162,14 +172,14 @@ const clonePoints = (points: Record<Id, Point2>): Record<Id, Point2> =>
 // The primitives are ordered by ID so that the same input always gives the same output
 // regardless of the order of the keys in the objects.
 // The pair of points from which the library computes the symmetry: the symmetric points, for the
-// midpoint of a line its ends.
+// midpoint of a line its ends, for the midpoint of two points those two.
 function pairOf(c: Constraint, curves: Record<Id, Curve>): [Id, Id] | undefined {
-  if (c.type === 'symmetric') return [c.a, c.b];
+  if (c.type === 'symmetric' || c.type === 'midpointPoints') return [c.a, c.b];
   const line = c.type === 'midpoint' ? curves[c.line] : undefined;
   return line?.type === 'line' ? [line.a, line.b] : undefined;
 }
 
-// Constraints of symmetry and of the midpoint of a line whose pair of points merges in the input.
+// Constraints of symmetry and of a midpoint whose pair of points merges in the input.
 function mergedPairs(input: SolveInput): Id[] {
   return Object.keys(input.constraints).filter((id) => {
     const pair = pairOf(input.constraints[id], input.curves);
@@ -203,7 +213,7 @@ function spread(input: SolveInput, constraints: Id[]): SolveInput {
   return { ...input, points };
 }
 
-function buildPrimitives(input: SolveInput, drag?: SolveInput['drag'], without?: Set<string>, collapsed?: Set<Id>): Loose[] {
+function buildPrimitives(input: SolveInput, drag?: SolveInput['drag'], without?: Set<string>, collapsed?: Set<Id>, flipped?: boolean): Loose[] {
   const fixed = new Set(input.fixed);
   for (const id of [...Object.keys(input.points), ...Object.keys(input.curves), ...Object.keys(input.constraints)]) {
     if (isSynthetic(id)) throw new Error(`solver: the ID "${id}" collides with the auxiliary IDs of the adapter`);
@@ -286,13 +296,33 @@ function buildPrimitives(input: SolveInput, drag?: SolveInput['drag'], without?:
       if (!without?.has(`${SECOND}${id}`)) out.push({ id: `${SECOND}${id}`, type: 'coordinate_y', p_id: constraint.point, y: constraint.y });
       continue;
     }
+    if (constraint.type === 'distanceLineLine') {
+      // two primitives, each left out on its own (D75): the lines parallel, and an end of one line
+      // (`measuredEnd`) at the distance from the other (on it at 0: the unsigned distance has a
+      // kink there). A `parallel` of the same lines beside it leaves only the first one redundant.
+      const [a, b] = [lineOf(id, constraint.a, input.curves), lineOf(id, constraint.b, input.curves)];
+      for (const end of [a.a, a.b, b.a, b.b]) point(end);
+      if (!without?.has(id)) out.push({ id, type: 'parallel', l1_id: constraint.a, l2_id: constraint.b });
+      // Two lines with a common end that are parallel lie on one line already: at 0 the second
+      // primitive would say nothing (the library would call the constraint redundant), so it is
+      // left out. At another value there is no solution, and the distance is measured from the
+      // common end itself, an end of the line it is measured to: the library then names this
+      // constraint as the conflict in its first pass. Measured from a far end, it shrank a line
+      // to a point and named another constraint (second review of D75).
+      const common = [a.a, a.b].find((end) => end === b.a || end === b.b);
+      if (!without?.has(`${SECOND}${id}`) && !(common !== undefined && constraint.value === 0)) {
+        const from = common !== undefined ? { point: common, line: constraint.b } : measuredEnd(constraint, a, b, fixed, flipped === true);
+        out.push(constraint.value === 0 ? { id: `${SECOND}${id}`, type: 'point_on_line_pl', p_id: from.point, l_id: from.line } : { id: `${SECOND}${id}`, type: 'p2l_distance', p_id: from.point, l_id: from.line, distance: constraint.value });
+      }
+      continue;
+    }
     if (without?.has(id)) continue;
     if (collapsed?.has(id)) {
-      // the merged form: both points of the pair at one place, which lies on the axis (at the midpoint of the line)
+      // the merged form: both points of the pair at one place, which lies on the axis (at the midpoint of the line, or is the midpoint)
       const [a, b] = pairOf(constraint, input.curves) as [Id, Id];
       out.push({ id, type: 'p2p_coincident', p1_id: a, p2_id: b });
       if (constraint.type === 'symmetric') out.push({ id: `${SYNTHETIC}onAxis/${id}`, type: 'point_on_line_pl', p_id: a, l_id: constraint.line });
-      else if (constraint.type === 'midpoint') out.push({ id: `${SYNTHETIC}middle/${id}`, type: 'p2p_coincident', p1_id: constraint.point, p2_id: a });
+      else if (constraint.type === 'midpoint' || constraint.type === 'midpointPoints') out.push({ id: `${SYNTHETIC}middle/${id}`, type: 'p2p_coincident', p1_id: constraint.point, p2_id: a });
       continue;
     }
     out.push({ id, ...translate(id, constraint, input.curves, input.constraints, { points: input.points, fixed }) });
@@ -318,7 +348,52 @@ const neverASpline = (id: Id): never => {
   throw new Error(`solver: constraint ${id}: a spline is never an operand of a constraint`);
 };
 
-function translate(id: Id, c: Exclude<Constraint, { type: 'fixed' }>, curves: Record<Id, Curve>, constraints: Record<Id, Constraint>, ends: Ends): Record<string, unknown> & { type: string } {
+// The end the distance of two lines is measured from, and the line it is measured to (D75). Of
+// parallel lines every end of one is as far from the other, so the choice does not change the
+// meaning; it decides whether the library gets there from a freehand estimate. A fixed end
+// measured to a free line makes that line turn and move at once (an axis of the origin as the
+// first line failed from 45°); an end of the free line measured to the held one only moves it.
+// So: an end that is not fixed before a fixed one, in the order a.a, a.b, b.a, b.b. `other` takes
+// the first end of the other line by the same rule: the second try of a solve that failed, since
+// two free lines of which constraints hold one look alike here. (Lines with a common end do not
+// come here: the caller measures from that end.)
+type LineCurve = Extract<Curve, { type: 'line' }>;
+function measuredEnd(c: { a: Id; b: Id }, a: LineCurve, b: LineCurve, fixed: ReadonlySet<Id>, other: boolean): { point: Id; line: Id } {
+  const ends = [
+    { point: a.a, line: c.b },
+    { point: a.b, line: c.b },
+    { point: b.a, line: c.a },
+    { point: b.b, line: c.a },
+  ].map((end, index) => ({ ...end, held: fixed.has(end.point) ? 1 : 0, index }));
+  ends.sort((p, q) => p.held - q.held || p.index - q.index);
+  return (other ? ends.find((end) => end.line !== ends[0].line) : undefined) ?? ends[0];
+}
+
+// Did a pass shrink a line of a driving distance of two lines to a point? Such a "solution" meets
+// the parallelism by having no direction, with anything else the sketch asks; the second try of a
+// solve must not be taken for one (second review of D75).
+const COLLAPSED = 1e-6; // of the length the line had in the input
+function collapsedLine(input: SolveInput, points: Record<Id, Point2>): boolean {
+  const length = (at: Record<Id, Point2>, line: LineCurve): number => Math.hypot(at[line.b].x - at[line.a].x, at[line.b].y - at[line.a].y);
+  return Object.values(input.constraints).some(
+    (c) =>
+      c.type === 'distanceLineLine' &&
+      c.driving &&
+      [c.a, c.b].some((id) => {
+        const line = input.curves[id];
+        return line?.type === 'line' && length(points, line) <= COLLAPSED * length(input.points, line);
+      }),
+  );
+}
+
+// The line a constraint names, or an error of the adapter.
+function lineOf(id: Id, curveId: Id, curves: Record<Id, Curve>): Extract<Curve, { type: 'line' }> {
+  const curve = curves[curveId];
+  if (curve?.type !== 'line') throw new Error(`solver: the constraint ${id} expects a line, ${curveId} is ${curve?.type ?? 'unknown'}`);
+  return curve;
+}
+
+function translate(id: Id, c: Exclude<Constraint, { type: 'fixed' | 'distanceLineLine' }>, curves: Record<Id, Curve>, constraints: Record<Id, Constraint>, ends: Ends): Record<string, unknown> & { type: string } {
   const kind = (curveId: Id): Curve['type'] => {
     const curve = curves[curveId];
     if (!curve) throw new Error(`solver: the constraint ${id} refers to an unknown curve ${curveId}`);
@@ -352,6 +427,10 @@ function translate(id: Id, c: Exclude<Constraint, { type: 'fixed' }>, curves: Re
       return { type: 'horizontal_l', l_id: line(c.line) };
     case 'vertical':
       return { type: 'vertical_l', l_id: line(c.line) };
+    case 'horizontalPoints':
+      return { type: 'horizontal_pp', p1_id: c.a, p2_id: c.b };
+    case 'verticalPoints':
+      return { type: 'vertical_pp', p1_id: c.a, p2_id: c.b };
     case 'parallel':
       return { type: 'parallel', l1_id: line(c.a), l2_id: line(c.b) };
     case 'perpendicular':
@@ -428,10 +507,19 @@ function translate(id: Id, c: Exclude<Constraint, { type: 'fixed' }>, curves: Re
       const ends = curves[line(c.line)] as Extract<Curve, { type: 'line' }>;
       return { type: 'p2p_symmetric_ppp', p1_id: ends.a, p2_id: ends.b, p_id: c.point };
     }
+    case 'midpointPoints': // a and b symmetric about the point
+      return { type: 'p2p_symmetric_ppp', p1_id: c.a, p2_id: c.b, p_id: c.point };
     case 'distance':
       return { type: 'p2p_distance', p1_id: c.a, p2_id: c.b, distance: c.value };
     case 'distancePointLine':
       return { type: 'p2l_distance', p_id: c.point, l_id: line(c.line), distance: c.value };
+    case 'distanceLineCircle': {
+      // the library's form: |the distance of the centre from the line| = the radius + the gap; it
+      // takes an arc as its circle
+      const [l, k] = [line(c.line), kind(c.curve)];
+      if (k !== 'circle' && k !== 'arc') throw new Error(`solver: constraint ${id}: a distance from a line needs a circle or an arc, ${c.curve} is ${k}`);
+      return { type: 'c2ldistance', c_id: c.curve, l_id: l, dist: c.value };
+    }
     case 'horizontalDistance': // signed: b.x − a.x = value
       return { type: 'difference', param1: { o_id: c.a, prop: 'x' }, param2: { o_id: c.b, prop: 'x' }, difference: c.value };
     case 'verticalDistance': // signed: b.y − a.y = value

@@ -142,6 +142,8 @@ export const CONSTRAINTS: Record<Constraint['type'], ConstraintSpec> = {
   },
   horizontal: { title: 'Horizontal', summary: 'A line is parallel to the X axis of the sketch.', operands: [{ field: 'line', kinds: LINE }] },
   vertical: { title: 'Vertical', summary: 'A line is parallel to the Y axis of the sketch.', operands: [{ field: 'line', kinds: LINE }] },
+  horizontalPoints: { title: 'Horizontal points', summary: 'Two points have the same Y coordinate: they lie on one line parallel to the X axis of the sketch.', ...pair(POINT) },
+  verticalPoints: { title: 'Vertical points', summary: 'Two points have the same X coordinate: they lie on one line parallel to the Y axis of the sketch.', ...pair(POINT) },
   parallel: { title: 'Parallel', summary: 'Two lines are parallel.', ...pair(LINE) },
   perpendicular: { title: 'Perpendicular', summary: 'Two lines are perpendicular to each other.', ...pair(LINE) },
   equalLength: { title: 'Equal length', summary: 'Two lines have the same length.', ...pair(LINE), check: (_kinds, ids) => wholeLine(ids) },
@@ -171,6 +173,16 @@ export const CONSTRAINTS: Record<Constraint['type'], ConstraintSpec> = {
     ],
     check: (_kinds, [point, line], pointsOf) => wholeLine([line]) ?? (pointsOf(line).includes(point) ? 'the midpoint of a line cannot be its end' : undefined),
   },
+  midpointPoints: {
+    title: 'Midpoint of two points',
+    summary: 'A point lies exactly halfway between points a and b, which need no line between them.',
+    operands: [
+      { field: 'point', kinds: POINT },
+      { field: 'a', kinds: POINT },
+      { field: 'b', kinds: POINT },
+    ],
+    unordered: ['a', 'b'],
+  },
   equalRadius: { title: 'Equal radius', summary: 'Two circles or arcs have the same radius.', ...pair(ROUND) },
   fixed: {
     title: 'Fixed point',
@@ -187,6 +199,22 @@ export const CONSTRAINTS: Record<Constraint['type'], ConstraintSpec> = {
       { field: 'line', kinds: LINE },
     ],
     ...LENGTH,
+  },
+  distanceLineLine: {
+    title: 'Line to line distance',
+    summary: 'Two lines are parallel and their infinite lines lie this far apart; 0 puts them on one line. It holds the lines parallel by itself.',
+    ...pair(LINE),
+    ...LENGTH,
+  },
+  distanceLineCircle: {
+    title: 'Line to circle distance',
+    summary: 'The gap between the infinite line of the line and a circle or an arc (its whole circle): the distance of the centre from the line less the radius, positive. The circle stays on one side of the line. A gap of 0 is a tangency: use tangent. For the distance to the centre use the point to line distance with the centre.',
+    operands: [
+      { field: 'line', kinds: LINE },
+      { field: 'curve', kinds: ROUND },
+    ],
+    // positive: at 0 it would be a tangency without the forms a tangency has at a common end (D52)
+    ...dimension({ title: 'Distance', unit: 'mm', min: { value: 0, open: true } }),
   },
   horizontalDistance: { title: 'Horizontal distance', summary: 'The oriented difference of the X coordinates: b.x − a.x.', ...pair(POINT), ...ORIENTED },
   verticalDistance: { title: 'Vertical distance', summary: 'The oriented difference of the Y coordinates: b.y − a.y.', ...pair(POINT), ...ORIENTED },

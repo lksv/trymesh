@@ -42,6 +42,8 @@ describe('the equations of the constraints match the solver', () => {
     ],
     horizontal: [{ type: 'horizontal', line: 'ab' }],
     vertical: [{ type: 'vertical', line: 'cd' }],
+    horizontalPoints: [{ type: 'horizontalPoints', a: 'a', b: 'c' }],
+    verticalPoints: [{ type: 'verticalPoints', a: 'c', b: 'b' }],
     parallel: [{ type: 'parallel', a: 'ab', b: 'cd' }],
     perpendicular: [{ type: 'perpendicular', a: 'cd', b: 'ab' }],
     equalLength: [{ type: 'equalLength', a: 'ab', b: 'cd' }],
@@ -67,8 +69,23 @@ describe('the equations of the constraints match the solver', () => {
       { type: 'symmetric', a: 'w', b: 'a', line: 'cd' },
     ],
     midpoint: [{ type: 'midpoint', point: 'm', line: 'ab' }],
+    midpointPoints: [
+      { type: 'midpointPoints', point: 'w', a: 'a', b: 'c' },
+      { type: 'midpointPoints', point: 'n', a: 'm', b: 'e' },
+    ],
     distance: [{ type: 'distance', a: 'a', b: 'c', value: 25, driving: true }],
     distancePointLine: [{ type: 'distancePointLine', point: 'c', line: 'ab', value: 9, driving: true }],
+    // parallel and at the distance: two equations; at 0 on one line
+    distanceLineLine: [
+      { type: 'distanceLineLine', a: 'ab', b: 'cd', value: 12, driving: true },
+      { type: 'distanceLineLine', a: 'cd', b: 'ab', value: 0, driving: true },
+    ],
+    // a circle and an arc, each on the side it was drawn on, and nearly touching
+    distanceLineCircle: [
+      { type: 'distanceLineCircle', line: 'ab', curve: 'k', value: 5, driving: true },
+      { type: 'distanceLineCircle', line: 'cd', curve: 'r', value: 3, driving: true },
+      { type: 'distanceLineCircle', line: 'ab', curve: 'q', value: 0.001, driving: true },
+    ],
     horizontalDistance: [{ type: 'horizontalDistance', a: 'b', b: 'a', value: -17, driving: true }],
     verticalDistance: [{ type: 'verticalDistance', a: 'a', b: 'd', value: 11, driving: true }],
     angle: [
@@ -96,7 +113,7 @@ describe('the equations of the constraints match the solver', () => {
         expect(engine.getState().evaluation.features.S1.status, `${type} ${i}`).toBe('ok');
         const after = new SketchAnalysis(inputOf(engine));
         expect(after.residual, `${type} ${i}`).toBeLessThan(1e-6);
-        expect(after.degreesOfFreedom, `${type} ${i}`).toBe(before.degreesOfFreedom - (['coincident', 'symmetric', 'midpoint', 'fixed'].includes(type) ? 2 : 1));
+        expect(after.degreesOfFreedom, `${type} ${i}`).toBe(before.degreesOfFreedom - (['coincident', 'symmetric', 'midpoint', 'midpointPoints', 'fixed', 'distanceLineLine'].includes(type) ? 2 : 1));
         expect(after.surplus()).toEqual({ redundant: [], removable: [] });
         expect(dofOf(engine)).toBe(after.degreesOfFreedom);
       });

@@ -2,7 +2,7 @@
 // expression): the origin, the default planes, the angle, horizontal of two points, the distance of
 // two lines. Fixtures only.
 import { describe, expect, test } from 'vitest';
-import { expression, newEngine } from './common';
+import { engineNow, expression, newEngine } from './common';
 import { knownOperand } from './constraints';
 import { SketchKit, StudioKit, writeDump } from './kit';
 import { sketchFrame } from './sketch';
@@ -20,7 +20,7 @@ const convert = async (s: SketchKit, variables: { name: string; expression: stri
   const result = await convertStudio(input, studio.eid, report);
   const sketch = result.document.features.find((f: any) => f.type === 'sketch');
   const written = (i: number) => report.records[i].ids.map((id) => sketch.constraints[id]);
-  return { report, records: report.records, sketch, written };
+  return { report, result, records: report.records, sketch, written };
 };
 
 describe('the origin and the default planes', () => {
@@ -136,17 +136,81 @@ describe('the angle', () => {
   });
 });
 
-describe('horizontal of two points, the distance of two lines', () => {
-  test('horizontal of two points is a vertical distance of zero, which the probes leave alone', async () => {
+describe('the midpoint of two points (D75)', () => {
+  test('three own points: the middle named by `Midpoint`, the two ends by `Entity1` and `Entity2`', async () => {
     const s = new SketchKit('Sketch 1', 'F1', XY);
-    const [a, b] = [s.point([0, 1]), s.point([5, 1])];
-    s.constrain('HORIZONTAL', { localFirst: a, localSecond: b });
-    const { written, report } = await convert(s);
-    expect(written(0)[0]).toMatchObject({ type: 'verticalDistance', value: 0 });
-    expect(report.promises.S.notChanged).toEqual([`Sketch_1 ${report.records[0].ids[0]}`]);
+    const [m, a, b] = [s.point([5, 3]), s.point([0, 0]), s.point([10, 6])];
+    s.constrain('MIDPOINT', { localMidpoint: m, localEntity1: a, localEntity2: b });
+    const { records, written, sketch } = await convert(s);
+    expect(records[0]).toMatchObject({ what: 'MIDPOINT of two points', fate: 'written' });
+    expect(written(0)).toEqual([{ type: 'midpointPoints', point: 'Sketch_1.p1', a: 'Sketch_1.p2', b: 'Sketch_1.p3' }]);
+    expect(Object.keys(sketch.curves)).toEqual([]); // no construction line between the two
   });
 
-  test('parallel through other constraints: one point–line distance; free to turn: `parallel` joins the unit; not parallel: lost', async () => {
+  test('the origin as the middle of two own points, and as an end; the midpoint of a line stays what it was', async () => {
+    const s = new SketchKit('Sketch 1', 'F1', XY);
+    const [a, b, m, far] = [s.point([-4, -2]), s.point([4, 2]), s.point([3, 1]), s.point([6, 2])];
+    const l = s.line([0, 8], [10, 8]);
+    const on = s.point([5, 8]);
+    s.constrain('MIDPOINT', { externalMidpoint: { ext: 'IB' }, localEntity1: a, localEntity2: b });
+    s.constrain('MIDPOINT', { localMidpoint: m, externalEntity1: { ext: 'IB' }, localEntity2: far });
+    s.constrain('MIDPOINT', { localEntity1: on, localEntity2: l.id });
+    const { records, written } = await convert(s);
+    expect(records.map((r) => [r.what, r.fate])).toEqual([['MIDPOINT of two points', 'written'], ['MIDPOINT of two points', 'written'], ['MIDPOINT', 'written']]);
+    expect(written(0)).toEqual([{ type: 'midpointPoints', point: 'origin', a: 'Sketch_1.p1', b: 'Sketch_1.p2' }]);
+    expect(written(1)).toEqual([{ type: 'midpointPoints', point: 'Sketch_1.p3', a: 'origin', b: 'Sketch_1.p4' }]);
+    expect(written(2).map((c: any) => c.type)).toEqual(['midpoint']);
+  });
+
+  test('two of the three one point: lost, with the reason', async () => {
+    const s = new SketchKit('Sketch 1', 'F1', XY);
+    const [m, a] = [s.point([5, 3]), s.point([0, 0])];
+    s.constrain('MIDPOINT', { localMidpoint: m, localEntity1: a, localEntity2: a });
+    const { records } = await convert(s);
+    expect(records[0]).toMatchObject({ fate: 'lost', cause: 'kind', detail: 'two of the three points are one point' });
+  });
+});
+
+describe('horizontal of two points, the distance of two lines', () => {
+  test('horizontal and vertical of two points are the constraints of two points (D75), with no value for a probe to change', async () => {
+    const s = new SketchKit('Sketch 1', 'F1', XY);
+    const [a, b, c] = [s.point([0, 1]), s.point([5, 1]), s.point([5, 7])];
+    s.constrain('HORIZONTAL', { localFirst: a, localSecond: b });
+    s.constrain('VERTICAL', { localFirst: c, localSecond: b });
+    const { written, report, records } = await convert(s);
+    expect(records.map((r) => [r.what, r.fate])).toEqual([['HORIZONTAL of two points', 'written'], ['VERTICAL of two points', 'written']]);
+    expect(written(0)).toEqual([{ type: 'horizontalPoints', a: 'Sketch_1.p1', b: 'Sketch_1.p2' }]);
+    expect(written(1)).toEqual([{ type: 'verticalPoints', a: 'Sketch_1.p3', b: 'Sketch_1.p2' }]);
+    expect(report.promises.S.notChanged).toEqual([]);
+  });
+
+  test('a sketch along the Y of its base plane: Onshape\'s horizontal of two points is the vertical of two points', async () => {
+    // the X of the sketch along the base's Y, its Y along −X
+    const s = new SketchKit('Sketch 1', 'F1', matrix([0, 1, 0], [-1, 0, 0], [0, 0, 1]));
+    const [a, b] = [s.point([0, 1]), s.point([5, 1])];
+    s.constrain('HORIZONTAL', { localFirst: a, localSecond: b });
+    const { written } = await convert(s);
+    expect(written(0)).toMatchObject([{ type: 'verticalPoints' }]);
+  });
+
+  test('review: a pair that the distance of two lines of another pair holds parallel keeps its distance of a point', async () => {
+    // a ∥ c, the distances a–b and b–c: b is free to turn, so both pairs part; the first one helped holds the second
+    const s = new SketchKit('Sketch 1', 'F1', XY);
+    const [a, b, c] = [s.line([0, 0], [10, 0]), s.line([0, 4], [10, 4]), s.line([0, 9], [10, 9])];
+    s.constrain('PARALLEL', { localFirst: a.id, localSecond: c.id });
+    s.constrain('DISTANCE', { localFirst: a.id, localSecond: b.id, direction: 'MINIMUM', length: { q: '4 mm' } });
+    s.constrain('DISTANCE', { localFirst: b.id, localSecond: c.id, direction: 'MINIMUM', length: { q: '5 mm' } });
+    const { written, records, report, result } = await convert(s);
+    expect(records.map((r) => r.fate)).toEqual(['written', 'written', 'written']);
+    expect([written(1), written(2)].map((w) => w.map((k: any) => k.type))).toEqual([['distanceLineLine'], ['distancePointLine']]);
+    expect(report.promises.S.pairs).toHaveLength(2);
+    // nothing redundant: a second distance of two lines would follow from the first and the parallel
+    const engine = engineNow();
+    expect(engine.load(JSON.stringify(result.document)).ok).toBe(true);
+    expect(engine.diagnoseSketch('Sketch_1')).toMatchObject({ status: 'solved', redundant: [], removable: [] });
+  });
+
+  test('parallel through other constraints: one point–line distance; free to turn: the distance of two lines (D75); not parallel: lost', async () => {
     const s = new SketchKit('Sketch 1', 'F1', XY);
     const a = s.line([0, 0], [10, 0]);
     const b = s.line([0, 4], [10, 4]);
@@ -163,7 +227,20 @@ describe('horizontal of two points, the distance of two lines', () => {
     f.constrain('DISTANCE', { localFirst: c.id, localSecond: d.id, direction: 'MINIMUM', length: { q: '4 mm' } });
     f.constrain('LENGTH', { localFirst: c.id, direction: 'MINIMUM', length: { q: '10 mm' } });
     const free = await convert(f);
-    expect(free.written(0).map((x: any) => x.type)).toEqual(['distancePointLine', 'parallel']);
+    // one constraint that holds the pair parallel itself, with the value of the dimension
+    expect(free.written(0)).toEqual([{ type: 'distanceLineLine', a: 'Sketch_1.l1', b: 'Sketch_1.l2', value: 4, driving: true }]);
+    expect(free.records[0]).toMatchObject({ fate: 'written', detail: 'as `distanceLineLine`: the pair parted in the probe' });
+    expect(free.report.promises.S.pairs).toHaveLength(1);
+    expect(free.sketch.constraints[free.records[1].ids[0]]).toMatchObject({ type: 'distance', value: 10 });
+
+    // the expression of the dimension goes with it
+    const x = new SketchKit('Sketch 1', 'F1', XY);
+    const [x1, x2] = [x.line([0, 0], [10, 0]), x.line([0, 4], [10, 4])];
+    x.constrain('DISTANCE', { localFirst: x1.id, localSecond: x2.id, direction: 'MINIMUM', length: { q: '#D' } });
+    const named = await convert(x, [{ name: 'D', expression: '4 mm' }]);
+    const did = named.records[0].ids[0];
+    expect(named.sketch.constraints[did]).toMatchObject({ type: 'distanceLineLine', value: 4 });
+    expect(named.sketch.expressions[`constraints/${did}/value`]).toBe('D');
 
     const n = new SketchKit('Sketch 1', 'F1', XY);
     const e = n.line([0, 0], [10, 0]);

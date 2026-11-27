@@ -11,6 +11,9 @@ interface FunctionSpec {
   summary: string;
   args: number; // argument count; the minimum when `variadic`
   variadic?: boolean;
+  // The kind of each argument when not all are numbers (`if` takes a truth value first). A truth
+  // value reaches `apply` as 1 or 0.
+  argKinds?: ExprKind[];
   apply: (...args: number[]) => number;
 }
 const FUNCTIONS: Record<string, FunctionSpec> = {
@@ -29,6 +32,13 @@ const FUNCTIONS: Record<string, FunctionSpec> = {
   floor: { signature: 'floor(x)', summary: 'Rounds down to an integer.', args: 1, apply: Math.floor },
   ceil: { signature: 'ceil(x)', summary: 'Rounds up to an integer.', args: 1, apply: Math.ceil },
   round: { signature: 'round(x)', summary: 'Rounds to the nearest integer.', args: 1, apply: Math.round },
+  if: {
+    signature: 'if(condition, a, b)',
+    summary: 'a when the condition (a comparison, such as gz >= 3 && tabs == 1; a number n as a switch is n != 0) holds, otherwise b. All three arguments are always evaluated, so an unknown name or a parameter in error in either branch is an error; a division by zero in the branch not taken is not, even where that branch compares it.',
+    args: 3,
+    argKinds: ['check', 'number', 'number'],
+    apply: (condition, a, b) => (condition !== 0 ? a : b),
+  },
 };
 const CONSTANTS: Record<string, { summary: string; value: number }> = {
   pi: { summary: 'The constant π.', value: Math.PI },
@@ -41,7 +51,7 @@ export const EXPRESSION_FUNCTIONS: Record<string, { signature: string; summary: 
 export const EXPRESSION_CONSTANTS: Record<string, { summary: string; value: number }> = CONSTANTS;
 export const EXPRESSION_SYNTAX =
   'Numbers (1.5, 2e-3), operators + - * / % (remainder) ^ (power), parentheses, parameter names, constants and functions. ' +
-  'Checks also use the comparisons == != < <= > >= and the connectives && || !. Equality is compared with the tolerance 1e-9 · max(1, |a|, |b|); ' +
+  'Checks, and the condition of if(condition, a, b), also use the comparisons == != < <= > >= and the connectives && || !. Equality is compared with the tolerance 1e-9 · max(1, |a|, |b|); ' +
   'the remainder is 0 when the quotient is within that tolerance of an integer. Both sides of && and || are always evaluated. ' +
   'The decimal separator is a dot; a dot inside a name is reserved.';
 
@@ -237,7 +247,8 @@ class Parser {
         if (!this.take(')')) {
           do {
             const at = this.token.position;
-            args.push(this.typed(this.or(), 'number', at, `argument of ${token.text}`));
+            const kind = spec.argKinds?.[args.length] ?? 'number';
+            args.push(this.typed(this.or(), kind, at, kind === 'check' ? `argument of ${token.text} (for a number n as a switch write n != 0)` : `argument of ${token.text}`));
           } while (this.take(','));
           if (!this.take(')')) throw new SyntaxProblem('syntax', 'missing closing parenthesis', this.token.position);
         }
@@ -349,7 +360,13 @@ function compute(node: Node, lookup: Lookup): number | boolean {
     case 'name':
       return lookup(node.name, node.position);
     case 'call':
-      return FUNCTIONS[node.name].apply(...node.args.map((arg) => compute(arg, lookup) as number));
+      if (node.name === 'if') return chosen(node.args, lookup);
+      return FUNCTIONS[node.name].apply(
+        ...node.args.map((arg) => {
+          const value = compute(arg, lookup);
+          return typeof value === 'boolean' ? Number(value) : value;
+        }),
+      );
     case 'unary':
       return node.op === '-' ? -(compute(node.operand, lookup) as number) : !compute(node.operand, lookup);
     case 'binary': {
@@ -391,6 +408,23 @@ function compute(node: Node, lookup: Lookup): number | boolean {
       }
     }
   }
+}
+
+// `if`: every argument is evaluated, so an unknown name or a parameter in error in either branch is
+// an error, as for both sides of &&; a value that is not finite in the branch not taken (also where
+// that branch compares it, `if(n > 0, if(L / n > 5, 1, 2), 0)` at n = 0) is no error.
+function chosen([condition, a, b]: Node[], lookup: Lookup): number {
+  const holds = compute(condition, lookup) as boolean;
+  const branch = (node: Node, taken: boolean): number => {
+    try {
+      return compute(node, lookup) as number;
+    } catch (error) {
+      if (!taken && error instanceof EvaluationProblem && error.problem.code === NOT_FINITE.code) return 0;
+      throw error;
+    }
+  };
+  const [first, second] = [branch(a, holds), branch(b, !holds)];
+  return holds ? first : second;
 }
 
 // Values of the names an expression may use. Today the parameter table; later also values produced by the recompute.

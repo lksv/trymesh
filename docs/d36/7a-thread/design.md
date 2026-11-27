@@ -784,10 +784,17 @@ After this round nothing is open but what "Known limits" and "To verify before t
 
 ## Rows for the indexes
 
-For the merge, not written into the shared files by this branch beyond the two rows below.
+The design was merged with `master` on 2026-11-27 as a design without an implementation. The indexes say what is there today; what describes code is left for stage 1.
 
-- `docs/decisions.md`: the row D76 (written, with the state of today: reviewed in three rounds, the questions answered by the owner).
-- `docs/d36/README.md`: the row 7a and the numbers D76 and scenario 18 (written).
-- `docs/requirements.md`: scenario 18, "Threads: a plate of tapped holes, a stud in a collar, a jar and its lid" (D36, package 7a, D76), when stage 1 is implemented.
-- `docs/architecture.md`: a row for `architecture/thread.md`; `docs/ui.md`: a row for `ui/thread.md`.
-- `docs/backlog.md`, "Helix and modelled threads": a pointer to this design in place of the generator of a helical profile; the twist on an extrusion and helical gears stay there with the layered build of the spike. The candidates this design defers go there with it: the option `mirroredHand`, a record for the thread a difference leaves, a thread on a part of a cylinder, a second build after a refusal of the kernel.
+Written at the merge:
+
+- `docs/decisions.md`: the row D76 after `master`'s D75 (the state of today: reviewed in three rounds, the questions answered by the owner, not implemented), and a sentence under the table.
+- `docs/d36/README.md`: the row 7a, the state line, and the numbers: D76 and scenario 18 are taken by 7a, the next free ones are D77 and scenario 19.
+- `docs/backlog.md`, "Helix and modelled threads": a pointer to this design, which stands in place of the generator of a helical profile for threads (a spring or a coil stays that generator's; the twist on an extrusion and helical gears stay there with the layered build of the spike), and the candidates this design defers: the option `mirroredHand`, a record for the thread a difference leaves, a thread on a part of a cylinder, a second build after a refusal of the kernel, and the owner's two of 2026-11-27, a flag that threads every bore of a listed hole and a catalog of pipe threads G.
+- `README.md`: the decisions are D1 to D76. (The same words in `CLAUDE.md` are the owner's file to change.)
+
+Left for stage 1, on purpose: nothing of these exists before the code does.
+
+- `docs/requirements.md`: scenario 18, "Threads: a plate of tapped holes, a stud in a collar, a jar and its lid" (D36, package 7a, D76), with its test file, when its parts a and b are tested (stage 1); c and d with stage 2. Until then the number is only reserved in `docs/d36/README.md`.
+- `docs/architecture.md`: a row for `architecture/thread.md`, and that file; `docs/ui.md`: a row for `ui/thread.md`, and that file.
+- The rows of the other files of `docs/architecture/` and `docs/ui/` that the code map of this design touches (the parts list, the export, the check of collisions, the pattern).

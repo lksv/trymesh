@@ -53,14 +53,14 @@ describe('the API description', () => {
       type: 'batch',
       commands: [
         sketch('s'),
-        ...[1, 2, 3, 4, 5, 6, 7, 8].map((i): Command => ({ type: 'addPoint', sketch: 's', id: `p${i}`, x: 10 * i, y: 3 * i * (i % 2 ? 1 : -1) })),
+        ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map((i): Command => ({ type: 'addPoint', sketch: 's', id: `p${i}`, x: 10 * i, y: 3 * i * (i % 2 ? 1 : -1) })),
         { type: 'addCurve', sketch: 's', id: 'l1', curve: { type: 'line', a: 'p1', b: 'p2' } },
         { type: 'addCurve', sketch: 's', id: 'l2', curve: { type: 'line', a: 'p3', b: 'p4' } },
         { type: 'addCurve', sketch: 's', id: 'k1', curve: { type: 'circle', center: 'p5' }, radius: 4 },
         { type: 'addCurve', sketch: 's', id: 'k2', curve: { type: 'circle', center: 'p6' }, radius: 6 },
       ],
     });
-    const pick: Record<string, string[]> = { point: ['p7', 'p8'], line: ['l1', 'l2'], circle: ['k1', 'k2'], arc: [] };
+    const pick: Record<string, string[]> = { point: ['p7', 'p8', 'p9'], line: ['l1', 'l2'], circle: ['k1', 'k2'], arc: [] };
     for (const entry of catalog) {
       const used: Record<string, number> = {};
       const example = { ...entry.example };

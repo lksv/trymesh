@@ -1,12 +1,21 @@
 // The query `body`: a body described for a reader that does not hold its mesh. Every face with its
 // name, its surface and its area, every edge with its name and its shape.
 import { type Circle3, circleBetween } from '../surfaces';
-import type { BodyDescription, BodyEdge, BodyFace, BodyResult, EdgeKind, FaceName, Surface, Vec3 } from '../types';
+import type { BodyDescription, BodyEdge, BodyFace, BodyResult, EdgeKind, FaceName, Id, Surface, Vec3 } from '../types';
 import { add3, cross3, dot3, len3, mul3, sub3 } from '../util';
 import type { ArgSpecs } from './args';
 import type { QuerySpec } from './spec';
 
-export const BODY_ARGS = { body: { kind: 'body', title: 'Body' } } as const satisfies ArgSpecs;
+export const BODY_ARGS = {
+  body: { kind: 'body', title: 'Body' },
+  feature: {
+    kind: 'feature',
+    title: 'Only of the feature',
+    summary: 'only the faces this feature made, or a pattern of that ID copied (a face with a copy tag of it), and the edges with such a face on one side; for an inserted document the insert, all of its faces; for finding the edges of one hole or one pocket in a large body. A sketch or a plane makes no face, so the lists stay empty',
+    optional: true,
+  },
+  only: { kind: 'choice', options: ['faces', 'edges'], title: 'Only', summary: 'the faces or the edges alone, the other list left out', optional: true },
+} as const satisfies ArgSpecs;
 
 declare module './spec' {
   interface Queries {
@@ -100,16 +109,22 @@ function centreOf(surface: Surface): ((point: Vec3) => Vec3) | undefined {
   }
 }
 
+// A face the feature made, or a pattern with that ID copied. A face of an inserted document is
+// named by `<insert>/<its feature>` (and so are its copy tags), so the insert matches all of it.
+const fromFeature = (id: Id, feature: Id): boolean => id === feature || id.startsWith(`${feature}/`);
+const ofFeature = (name: FaceName, feature: Id): boolean => fromFeature(name.feature, feature) || (name.copy ?? []).some((tag) => fromFeature(tag.pattern, feature));
+
 export const body: QuerySpec<typeof BODY_ARGS, BodyDescription> = {
   title: 'Description of a body',
   summary: 'A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.',
   returns:
     '`volume` (mm³), `bounds` (`min`, `max`), `faces`: each `{ name, surface, area, meshNormal?, convex? }` (`surface` is a plane, a cylinder, a cone, a sphere, a torus, a swept or a general surface; `meshNormal` of a planar face is its unit normal out of the body; `convex` of a cylinder, a cone, a sphere or a torus is true for a pin, a ball or a ring and false for a hole, a socket or a groove), ' +
-    '`edges`: each `{ name, kind, length, segments }` and for a `line` its ends `from`, `to` and `gaps` (a cut interrupts it), for a `circle` its `circle: { center, axis, radius }`, exact: the circle of the two surfaces, whole even when the edge is an arc of it.',
+    '`edges`: each `{ name, kind, length, segments }` and for a `line` its ends `from`, `to` and `gaps` (a cut interrupts it), for a `circle` its `circle: { center, axis, radius }`, exact: the circle of the two surfaces, whole even when the edge is an arc of it. ' +
+    'With `feature` or `only` the lists hold what passes, and `total` the counts of the whole body (`faces`, `edges`); `volume` and `bounds` are always of the whole body. A large body lists hundreds of edges, so ask for the edges of the feature you want to chamfer or fillet.',
   args: BODY_ARGS,
   units: { volume: 'mm3', area: 'mm2', length: 'mm', radius: 'mm' },
   // The description is kept by the mesh: a body that did not change is not walked again.
-  run: (context, { body: id }) => {
+  run: (context, { body: id, feature, only }) => {
     const result = context.bodies[id];
     const names = context.state.evaluation.faceNames;
     const described = context.memo([result.solid], 'description', () => {
@@ -137,6 +152,11 @@ export const body: QuerySpec<typeof BODY_ARGS, BodyDescription> = {
       });
       return { volume: result.volume, bounds: result.bounds, faces, edges };
     });
-    return { body: id, ...described };
+    if (feature === undefined && only === undefined) return { body: id, ...described };
+    const total = { faces: described.faces.length, edges: described.edges.length };
+    const passes = (name: FaceName): boolean => feature === undefined || ofFeature(name, feature);
+    const faces = only === 'edges' ? [] : described.faces.filter((face) => passes(face.name));
+    const edges = only === 'faces' ? [] : described.edges.filter((edge) => passes(edge.name.a) || passes(edge.name.b));
+    return { body: id, volume: described.volume, bounds: described.bounds, faces, edges, total };
   },
 };

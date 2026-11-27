@@ -292,6 +292,65 @@ describe('constraints and dimensions from a selection', () => {
     expect(s.t.engine.getState().evaluation.features.s.status).toBe('ok');
   });
 
+  it('two parallel lines get their distance and a line with a circle the gap between them (D75)', () => {
+    const s = shapes();
+    s.t.run(lineCommands('s', s.t.view(), free(2, 6), free(9, 6), s.t.newId)!.commands);
+    const view = s.t.view();
+    const third = [...view.curves.values()].find((c) => c.shape.type === 'line' && c.id !== s.bottom && c.id !== s.right)!.id;
+    const kind = (ids: Id[], variant: 'auto' | 'horizontal' | 'vertical' = 'auto') => dimensionFor(variant, view, ids);
+    // parallel within the tolerance of the engine: the distance; otherwise the angle as before
+    expect(kind([s.bottom, third])).toEqual({ type: 'distanceLineLine', a: s.bottom, b: third, value: 5, driving: true });
+    expect(kind([third, s.right])).toMatchObject({ type: 'angle', a: third, b: s.right });
+    expect(kind([s.bottom, third], 'horizontal')).toBeUndefined();
+    // a line and a circle or an arc, in either order of the selection
+    expect(kind([s.right, s.circle])).toEqual({ type: 'distanceLineCircle', line: s.right, curve: s.circle, value: 13, driving: true });
+    expect(kind([s.arc, s.right])).toEqual({ type: 'distanceLineCircle', line: s.right, curve: s.arc, value: 28, driving: true });
+    expect(measure({ type: 'distanceLineCircle', line: s.bottom, curve: s.arc }, view)).toBe(-4);
+    expect(kind([s.bottom, s.arc])).toBeUndefined(); // the circle of the arc crosses the line: no gap to dimension
+    // the engine accepts them and nothing moves
+    const before = s.t.result().points;
+    for (const ids of [[s.bottom, third], [s.right, s.circle], [s.arc, s.right]]) s.t.run([{ type: 'addConstraint', sketch: 's', id: s.t.newId('k'), constraint: kind(ids)! }]);
+    expect(s.t.result().conflicting).toEqual([]);
+    expect(s.t.engine.getState().evaluation.features.s.status).toBe('ok');
+    for (const [id, p] of Object.entries(s.t.result().points)) expect([p.x, p.y], id).toEqual([expect.closeTo(before[id].x, 6), expect.closeTo(before[id].y, 6)]);
+  });
+
+  it('findings of the review of D75: an axis selected first, two lines on one line, a circle that touches', () => {
+    const t = setup();
+    t.run([
+      // nearly parallel to the X axis, within the tolerance of the engine: the far end of the axis as drawn is 1e6 away
+      { type: 'addPoint', sketch: 's', id: 'a', x: 0, y: 10 },
+      { type: 'addPoint', sketch: 's', id: 'b', x: 100, y: 10.005 },
+      { type: 'addCurve', sketch: 's', id: 'l', curve: { type: 'line', a: 'a', b: 'b' } },
+      // two pieces of one line
+      { type: 'addPoint', sketch: 's', id: 'c', x: 0, y: 30 },
+      { type: 'addPoint', sketch: 's', id: 'd', x: 20, y: 30 },
+      { type: 'addPoint', sketch: 's', id: 'e', x: 50, y: 30 },
+      { type: 'addPoint', sketch: 's', id: 'f', x: 80, y: 30 },
+      { type: 'addCurve', sketch: 's', id: 'm', curve: { type: 'line', a: 'c', b: 'd' } },
+      { type: 'addCurve', sketch: 's', id: 'n', curve: { type: 'line', a: 'f', b: 'e' } },
+      // a circle that touches the line m's line from above
+      { type: 'addPoint', sketch: 's', id: 'o', x: 60, y: 36 },
+      { type: 'addCurve', sketch: 's', id: 'k', curve: { type: 'circle', center: 'o' }, radius: 6 },
+    ]);
+    const kind = (ids: Id[]) => dimensionFor('auto', t.view(), ids);
+    // the distance is measured from the origin, as the engine measures it, in either order of the selection
+    expect(kind(['origin/x', 'l'])).toEqual({ type: 'distanceLineLine', a: 'origin/x', b: 'l', value: 10, driving: true });
+    expect(kind(['l', 'origin/x'])).toEqual({ type: 'distanceLineLine', a: 'l', b: 'origin/x', value: 10, driving: true });
+    expect(measure({ type: 'distanceLineLine', a: 'origin/y', b: 'l' }, t.view())).toBeCloseTo(10, 6); // from the origin too, not from the end of the axis a million away
+    // two lines on one line get exactly 0, the form in which the engine puts them on one line
+    expect(kind(['m', 'n'])).toEqual({ type: 'distanceLineLine', a: 'm', b: 'n', value: 0, driving: true });
+    // touching is a tangency, not a gap: the engine takes only a positive gap
+    expect(kind(['m', 'k'])).toBeUndefined();
+    expect(kind(['n', 'k'])).toBeUndefined();
+    // the engine takes the offers and the lines stay where they are
+    t.run([{ type: 'addConstraint', sketch: 's', id: 'x1', constraint: kind(['origin/x', 'l'])! }, { type: 'addConstraint', sketch: 's', id: 'x2', constraint: kind(['m', 'n'])! }]);
+    expect(t.result().conflicting).toEqual([]);
+    expect(t.result().points.a.y).toBeCloseTo(10, 6);
+    expect(t.result().points.b.y).toBeCloseTo(10, 6);
+    expect(t.result().points.e.y).toBeCloseTo(t.result().points.c.y, 6);
+  });
+
   it('measuring in the UI uses the same conventions as the reference dimensions of the engine', () => {
     const s = shapes();
     const dimensions: DimensionShape[] = [
@@ -299,6 +358,12 @@ describe('constraints and dimensions from a selection', () => {
       { type: 'horizontalDistance', a: s.top, b: s.start },
       { type: 'verticalDistance', a: s.top, b: s.start },
       { type: 'distancePointLine', point: s.top, line: s.bottom },
+      // D75: of two lines from the point a of the first, also when they are not parallel; of a
+      // circle the gap, negative where the arc's circle crosses the line
+      { type: 'distanceLineLine', a: s.right, b: s.bottom },
+      { type: 'distanceLineCircle', line: s.right, curve: s.circle },
+      { type: 'distanceLineCircle', line: s.right, curve: s.arc },
+      { type: 'distanceLineCircle', line: s.bottom, curve: s.arc },
       { type: 'angle', a: s.right, b: s.bottom },
       { type: 'angle', a: s.bottom, b: s.right },
       { type: 'radius', curve: s.arc },
@@ -312,8 +377,8 @@ describe('constraints and dimensions from a selection', () => {
 
   it('constraints without a special rule are offered by the catalog of the engine: symmetry and the midpoint of a line', () => {
     // the list of geometric constraints is the catalog without dimensions, so a new constraint of the engine is in it by itself
-    expect(GEOMETRIC_KINDS).toEqual(['coincident', 'pointOnCurve', 'horizontal', 'vertical', 'parallel', 'perpendicular', 'equalLength', 'tangent', 'symmetric', 'midpoint', 'equalRadius', 'fixed']);
-    expect(Object.keys(CONSTRAINTS).filter((type) => !GEOMETRIC_KINDS.includes(type as (typeof GEOMETRIC_KINDS)[number]))).toEqual(['distance', 'distancePointLine', 'horizontalDistance', 'verticalDistance', 'angle', 'radius', 'diameter']);
+    expect(GEOMETRIC_KINDS).toEqual(['coincident', 'pointOnCurve', 'horizontal', 'vertical', 'horizontalPoints', 'verticalPoints', 'parallel', 'perpendicular', 'equalLength', 'tangent', 'symmetric', 'midpoint', 'midpointPoints', 'equalRadius', 'fixed']);
+    expect(Object.keys(CONSTRAINTS).filter((type) => !GEOMETRIC_KINDS.includes(type as (typeof GEOMETRIC_KINDS)[number]))).toEqual(['distance', 'distancePointLine', 'distanceLineLine', 'distanceLineCircle', 'horizontalDistance', 'verticalDistance', 'angle', 'radius', 'diameter']);
 
     const t = setup();
     t.run([
@@ -335,6 +400,14 @@ describe('constraints and dimensions from a selection', () => {
     expect(offer('midpoint', ['axis', 'm'])).toEqual([{ type: 'midpoint', point: 'm', line: 'axis' }]);
     expect(offer('midpoint', ['m', 'k'])).toBeUndefined();
     expect(offer('midpoint', ['m'])).toBeUndefined();
+    // D75: two points level or plumb, in the order of the selection; of three points the first one selected is the middle
+    expect(offer('horizontalPoints', ['l', 'r'])).toEqual([{ type: 'horizontalPoints', a: 'l', b: 'r' }]);
+    expect(offer('verticalPoints', ['m', 'top'])).toEqual([{ type: 'verticalPoints', a: 'm', b: 'top' }]);
+    expect(offer('horizontalPoints', ['l', 'axis'])).toBeUndefined();
+    expect(offer('horizontalPoints', ['origin', 'r'])).toEqual([{ type: 'horizontalPoints', a: 'origin', b: 'r' }]);
+    expect(offer('midpointPoints', ['m', 'l', 'r'])).toEqual([{ type: 'midpointPoints', point: 'm', a: 'l', b: 'r' }]);
+    expect(offer('midpointPoints', ['l', 'r'])).toBeUndefined();
+    expect(offer('midpointPoints', ['m', 'l', 'axis'])).toBeUndefined();
     // a selection the engine would refuse by a rule of the constraint itself is not offered
     expect(offer('symmetric', ['origin', 'r', 'axis'])).toBeUndefined(); // the symmetric point is an end of the axis
     expect(offer('symmetric', ['top', 'r', 'axis'])).toBeUndefined();

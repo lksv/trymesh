@@ -1349,7 +1349,7 @@ export function tools(): Tool[] {
     },
     {
       name: 'get_body',
-      description: 'A body in detail: faces (name, planarity, area, normal) and edges (name, kind, ends). The names of faces and edges are used in references: the plane of a sketch on a face, the projection of an edge.',
+      description: 'A body in detail: faces (name, planarity, area, normal) and edges (name, kind, ends). The names of faces and edges are used in references: the plane of a sketch on a face, the projection of an edge. A large body (hundreds of edges) does not fit one answer: ask the tool query for the query body with `feature` (the faces of one feature and its copies, and their edges) or `only` (faces or edges).',
       inputSchema: { type: 'object', properties: { body: { type: 'string', description: 'Body ID: the ID of an extrusion with the operation new or of a split, or `<pattern>/<number>` for a copy made by a pattern (get_model lists them)' }, at: { type: 'string', description: 'feature ID; the state after it' } }, required: ['body'], additionalProperties: false },
       run: (engine, args) => bodyDetail(engine, optionalText(args, 'at'), text(args, 'body')),
     },

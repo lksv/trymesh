@@ -265,6 +265,17 @@ export function measure(sketch: SketchFeature, curves: Record<Id, Curve>, geomet
     } else if (c.type === 'distancePointLine') {
       const [p, l] = [point(c.point), line(c.line)];
       if (p && l) value = Math.abs(cross2(sub2(l[1], l[0]), sub2(p, l[0]))) / dist2(l[0], l[1]);
+    } else if (c.type === 'distanceLineLine') {
+      // from the point a of the line a to the line b, as the solver holds it (D75)
+      const [a, b] = [line(c.a), line(c.b)];
+      if (a && b) value = Math.abs(cross2(sub2(b[1], b[0]), sub2(a[0], b[0]))) / dist2(b[0], b[1]);
+    } else if (c.type === 'distanceLineCircle') {
+      // the distance of the centre from the line less the radius: negative while the circle crosses the line
+      const [l, round] = [line(c.line), curves[c.curve]];
+      const center = round?.type === 'circle' || round?.type === 'arc' ? point(round.center) : undefined;
+      const start = round?.type === 'arc' ? point(round.start) : undefined;
+      const radius = round?.type === 'circle' ? geometry.radii[c.curve] : center && start ? dist2(center, start) : undefined;
+      if (l && center && radius !== undefined) value = Math.abs(cross2(sub2(l[1], l[0]), sub2(center, l[0]))) / dist2(l[0], l[1]) - radius;
     } else if (c.type === 'angle') {
       const [a, b] = [line(c.a), line(c.b)];
       if (a && b) {

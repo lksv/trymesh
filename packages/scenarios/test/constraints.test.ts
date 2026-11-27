@@ -278,3 +278,180 @@ describe('findings of the review of point 6', () => {
     expect(HOLES.map((id) => at(copy, 'S2', `${id}c`))).toEqual(HOLES.map((id) => near(at(engine, 'S2', `${id}c`))));
   });
 });
+
+// The constraints of D75 against the real solver and kernel: a plate 60 × 40 × 5 in one sketch,
+// its three holes held a wall away from its edges and its slot drawn by distances of lines alone.
+// - q1: a wall from the bottom and from the left edge (the gap of a line and a circle);
+// - q2: a wall from the right edge, level with q1 (two points level);
+// - q3: halfway between q1 and q2 (the midpoint of two points);
+// - the slot `u`: four lines, each parallel to an edge of the plate at a distance (of two lines).
+const D75_HOLES = ['q1', 'q2', 'q3'];
+function walled(): Engine {
+  const engine = newEngine();
+  const d = (id: Id, shape: object, value: string): Command => add('S1', id, { ...shape, value } as Input<Constraint>);
+  const corners: [number, number][] = [[12, 27], [47, 30], [49, 36], [9, 33]];
+  run(
+    engine,
+    { type: 'setParameter', name: 'wall', expr: '5' },
+    { type: 'setParameter', name: 'bore', expr: '8' },
+    { type: 'setParameter', name: 'slot', expr: '6' },
+    addSketch('S1', XY),
+    rectangle('S1', 'r', 0, 0, 60, 40),
+    batch(
+      ...D75_HOLES.flatMap((id, i): Command[] => [
+        { type: 'addPoint', sketch: 'S1', id: `${id}c`, x: 12 + 20 * i, y: 8 + 4 * i },
+        { type: 'addCurve', sketch: 'S1', id, curve: { type: 'circle', center: `${id}c` }, radius: 2 + i },
+      ]),
+      ...corners.map(([x, y], i): Command => ({ type: 'addPoint', sketch: 'S1', id: `u${i + 1}`, x, y })),
+      ...['a', 'b', 'c', 'd'].map((name, i): Command => ({ type: 'addCurve', sketch: 'S1', id: `u${name}`, curve: { type: 'line', a: `u${i + 1}`, b: `u${((i + 1) % 4) + 1}` } })),
+    ),
+    d('size', { type: 'diameter', curve: 'q1' }, 'bore'),
+    add('S1', 'e12', { type: 'equalRadius', a: 'q1', b: 'q2' }),
+    add('S1', 'e13', { type: 'equalRadius', a: 'q1', b: 'q3' }),
+    d('w1', { type: 'distanceLineCircle', line: 'ra', curve: 'q1' }, 'wall'),
+    d('w2', { type: 'distanceLineCircle', line: 'rd', curve: 'q1' }, 'wall'),
+    d('w3', { type: 'distanceLineCircle', line: 'rb', curve: 'q2' }, 'wall'),
+    add('S1', 'level', { type: 'horizontalPoints', a: 'q1c', b: 'q2c' }),
+    add('S1', 'mid', { type: 'midpointPoints', point: 'q3c', a: 'q1c', b: 'q2c' }),
+    d('top', { type: 'distanceLineLine', a: 'rc', b: 'uc' }, 'wall'),
+    d('width', { type: 'distanceLineLine', a: 'uc', b: 'ua' }, 'slot'),
+    d('left', { type: 'distanceLineLine', a: 'rd', b: 'ud' }, '2 * wall'),
+    d('right', { type: 'distanceLineLine', a: 'ub', b: 'rb' }, '2 * wall'),
+    addExtrude('plate', 'S1', [rectLoop('r')], 5),
+  );
+  return engine;
+}
+const walledVolume = (wall: number, bore: number, slot: number): number => 5 * (60 * 40 - 3 * Math.PI * (bore / 2) ** 2 - (60 - 4 * wall) * slot);
+
+describe('a plate with holes a wall from its edges and a slot by distances of lines (D75)', () => {
+  it('the new constraints determine the sketch fully and the walls follow the parameters', () => {
+    const engine = walled();
+    let state = engine.getState();
+    expect(status(state)).toEqual({ S1: 'ok', plate: 'ok' });
+    expect(sketchOf(engine, 'S1')).toMatchObject({ degreesOfFreedom: 0, conflicting: [], redundant: [], valid: true });
+    expect(engine.diagnoseSketch('S1')).toEqual({ status: 'solved', degreesOfFreedom: 0, conflicting: [], duplicates: [], redundant: [], removable: [], free: [] });
+    const centres = () => D75_HOLES.map((id) => at(engine, 'S1', `${id}c`));
+    const slotBox = () => {
+      const points = ['u1', 'u2', 'u3', 'u4'].map((id) => at(engine, 'S1', id));
+      return [Math.min(...points.map((p) => p[0])), Math.min(...points.map((p) => p[1])), Math.max(...points.map((p) => p[0])), Math.max(...points.map((p) => p[1]))];
+    };
+    const box = (expected: number[]) => expected.map((value) => expect.closeTo(value, 6));
+    // wall 5 and bore 8: the centres 9 from the edges, the third one halfway; the slot 10 from the sides, 5 under the top edge, 6 wide
+    expect(centres()).toEqual([near([9, 9]), near([51, 9]), near([30, 9])]);
+    expect(slotBox()).toEqual(box([10, 29, 50, 35]));
+    for (const id of D75_HOLES) expect(sketchOf(engine, 'S1').radii[id]).toBeCloseTo(4, 8);
+    expect(volume(state.evaluation.bodies.plate.solid) / walledVolume(5, 8, 6)).toBeCloseTo(1, 2);
+    // the fields of the new dimensions are numeric fields with their expressions
+    expect(fieldsOf(state.document.features.find((f) => f.id === 'S1')!).filter((f) => f.expr !== undefined).map((f) => [f.path, f.expr, f.value])).toEqual([
+      ['constraints/size/value', 'bore', 8],
+      ['constraints/w1/value', 'wall', 5],
+      ['constraints/w2/value', 'wall', 5],
+      ['constraints/w3/value', 'wall', 5],
+      ['constraints/top/value', 'wall', 5],
+      ['constraints/width/value', 'slot', 6],
+      ['constraints/left/value', '2 * wall', 10],
+      ['constraints/right/value', '2 * wall', 10],
+    ]);
+
+    // a larger bore keeps the walls: the centres move in, not the rims out
+    state = run(engine, { type: 'setParameter', name: 'bore', expr: '14' });
+    expect(status(state)).toEqual({ S1: 'ok', plate: 'ok' });
+    expect(centres()).toEqual([near([12, 12]), near([48, 12]), near([30, 12])]);
+    expect(volume(state.evaluation.bodies.plate.solid) / walledVolume(5, 14, 6)).toBeCloseTo(1, 2);
+    // a thinner wall and a wider slot move everything at once
+    state = run(engine, batch({ type: 'setParameter', name: 'wall', expr: '3' }, { type: 'setParameter', name: 'slot', expr: '9' }));
+    expect(status(state)).toEqual({ S1: 'ok', plate: 'ok' });
+    expect(sketchOf(engine, 'S1')).toMatchObject({ degreesOfFreedom: 0, conflicting: [], redundant: [] });
+    expect(centres()).toEqual([near([10, 10]), near([50, 10]), near([30, 10])]);
+    expect(slotBox()).toEqual(box([6, 28, 54, 37]));
+    expect(volume(state.evaluation.bodies.plate.solid) / walledVolume(3, 14, 9)).toBeCloseTo(1, 2);
+
+    // reference dimensions of the new kinds measure: the gap from the top edge to the middle hole and
+    // from the slot to it, the distance of the slot's far side from the bottom edge
+    state = run(
+      engine,
+      batch(
+        add('S1', 'm1', { type: 'distanceLineCircle', line: 'rc', curve: 'q3', value: 1, driving: false }),
+        add('S1', 'm2', { type: 'distanceLineCircle', line: 'ua', curve: 'q3', value: 1, driving: false }),
+        add('S1', 'm3', { type: 'distanceLineLine', a: 'ra', b: 'uc', value: 1, driving: false }),
+      ),
+    );
+    expect(sketchOf(engine, 'S1').measurements).toEqual({ m1: expect.closeTo(40 - 10 - 7, 7), m2: expect.closeTo(28 - 10 - 7, 7), m3: expect.closeTo(37, 7) });
+    expect(sketchOf(engine, 'S1').degreesOfFreedom).toBe(0);
+
+    // undo, redo and a load of the saved document give the same model
+    const saved = engine.save();
+    const stored = JSON.parse(saved).features.find((f: { id: Id }) => f.id === 'S1');
+    expect(stored.constraints.w1).toEqual({ type: 'distanceLineCircle', line: 'ra', curve: 'q1', value: 3, driving: true });
+    expect(stored.constraints.mid).toEqual({ type: 'midpointPoints', point: 'q3c', a: 'q1c', b: 'q2c' });
+    expect(stored.expressions['constraints/left/value']).toBe('2 * wall');
+    const again = newEngine();
+    expect(again.load(saved).ok).toBe(true);
+    expect(again.save()).toBe(saved);
+    expect(volume(again.getState().evaluation.bodies.plate.solid)).toBeCloseTo(volume(state.evaluation.bodies.plate.solid), 6);
+    engine.undo();
+    engine.undo();
+    expect(centres()).toEqual([near([12, 12]), near([48, 12]), near([30, 12])]);
+    engine.redo();
+    expect(centres()).toEqual([near([10, 10]), near([50, 10]), near([30, 10])]);
+  });
+
+  it('what repeats a new constraint is redundant and what contradicts it a conflict, both by ID', () => {
+    const engine = walled();
+    // the distance of two lines holds them parallel: a parallel beside it follows from it
+    run(engine, add('S1', 'par', { type: 'parallel', a: 'rc', b: 'uc' }));
+    expect(sketchOf(engine, 'S1')).toMatchObject({ degreesOfFreedom: 0, conflicting: [] });
+    const diagnosis = engine.diagnoseSketch('S1');
+    expect(diagnosis).toMatchObject({ status: 'solved', degreesOfFreedom: 0, conflicting: [] });
+    expect(diagnosis.removable).toEqual(['par']);
+    expect(engine.explainConstraint('S1', 'par')).toMatchObject({ redundant: true });
+    engine.undo();
+    // a vertical distance of the two level centres that is not 0, and a centre fixed off the middle
+    for (const [extra, ids] of [
+      [{ type: 'verticalDistance', a: 'q1c', b: 'q2c', value: 2, driving: true }, ['level']],
+      [{ type: 'fixed', point: 'q3c', x: 20, y: 9 }, ['mid']],
+      [{ type: 'distancePointLine', point: 'q1c', line: 'ra', value: 20, driving: true }, ['w1']],
+      [{ type: 'distancePointLine', point: 'u1', line: 'rc', value: 2, driving: true }, ['width']],
+    ] as [Constraint, Id[]][]) {
+      const state = run(engine, add('S1', 'x', extra));
+      // a sketch in conflict keeps its last solved geometry and warns
+      expect(state.evaluation.features.S1.status, extra.type).toBe('warning');
+      const result = sketchOf(engine, 'S1');
+      expect(result.conflicting, extra.type).toEqual(expect.arrayContaining(['x', ...ids]));
+      engine.undo();
+      expect(engine.getState().evaluation.features.S1.status).toBe('ok');
+    }
+  });
+
+  it('a dragged centre slides only where the walls let it', () => {
+    const engine = walled();
+    // q3 is held by the middle: nothing moves
+    run(engine, { type: 'dragPoint', sketch: 'S1', point: 'q3c', x: 40, y: 20 });
+    expect(at(engine, 'S1', 'q3c')).toEqual(near([30, 9]));
+    // without the wall from the left edge q1 slides along the bottom edge, level with q2, and the middle follows
+    run(engine, { type: 'removeConstraint', sketch: 'S1', id: 'w2' });
+    expect(engine.diagnoseSketch('S1')).toMatchObject({ degreesOfFreedom: 1 });
+    run(engine, { type: 'dragPoint', sketch: 'S1', point: 'q1c', x: 21, y: 30 });
+    expect(D75_HOLES.map((id) => at(engine, 'S1', `${id}c`))).toEqual([near([21, 9]), near([51, 9]), near([36, 9])]);
+  });
+
+  it('review of D75: a line drawn far from parallel is turned to its distance from an axis of the origin, whichever is named first', () => {
+    for (const degrees of [20, 60, 85, 130]) {
+      for (const [a, b] of [['origin/x', 'l'], ['l', 'origin/x']]) {
+        const engine = newEngine();
+        const angle = (degrees * Math.PI) / 180;
+        const state = run(
+          engine,
+          addSketch('S', XY),
+          batch({ type: 'addPoint', sketch: 'S', id: 'p', x: 5, y: 12 }, { type: 'addPoint', sketch: 'S', id: 'q', x: 5 + 30 * Math.cos(angle), y: 12 + 30 * Math.sin(angle) }, { type: 'addCurve', sketch: 'S', id: 'l', curve: { type: 'line', a: 'p', b: 'q' } }),
+          dimension('S', 'k', { type: 'distanceLineLine', a, b }, 10),
+        );
+        const what = `${degrees}° ${a}`;
+        expect(state.evaluation.features.S.status, what).toBe('ok');
+        expect(sketchOf(engine, 'S'), what).toMatchObject({ degreesOfFreedom: 2, conflicting: [], redundant: [] });
+        expect([at(engine, 'S', 'p')[1], at(engine, 'S', 'q')[1]], what).toEqual([expect.closeTo(10, 6), expect.closeTo(10, 6)]);
+        expect(engine.diagnoseSketch('S'), what).toMatchObject({ status: 'solved', degreesOfFreedom: 2, redundant: [], removable: [] });
+      }
+    }
+  });
+});

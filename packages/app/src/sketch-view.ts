@@ -233,6 +233,12 @@ const endpoints = (view: SketchView, line: Id): [Vec2, Vec2] | undefined => {
   return shape?.type === 'line' ? [shape.a, shape.b] : undefined;
 };
 
+// The distance of a point from the infinite line through two points (from the first one when they merge).
+const distanceToLine = (p: Vec2, [a, b]: [Vec2, Vec2]): number => {
+  const length = dist(a, b);
+  return length === 0 ? dist(a, p) : Math.abs((b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0])) / length;
+};
+
 // The current value of a dimension from the positions in the sketch (the same conventions as the engine);
 // undefined = an operand is missing.
 export function measure(shape: DimensionShape, view: SketchView): number | undefined {
@@ -248,9 +254,20 @@ export function measure(shape: DimensionShape, view: SketchView): number | undef
     case 'distancePointLine': {
       const [p, ends] = [point(shape.point), endpoints(view, shape.line)];
       if (!p || !ends) return undefined;
-      const [a, b] = ends;
-      const length = dist(a, b);
-      return length === 0 ? dist(a, p) : Math.abs((b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0])) / length;
+      return distanceToLine(p, ends);
+    }
+    case 'distanceLineLine': {
+      // from the point a of the line a to the line b, as the engine measures it (D75); the point a
+      // of an axis of the origin is the origin, not the far end the view draws the axis from
+      const [first, second] = [endpoints(view, shape.a), endpoints(view, shape.b)];
+      if (!first || !second) return undefined;
+      return distanceToLine(isOriginAxis(shape.a) ? [0, 0] : first[0], second);
+    }
+    case 'distanceLineCircle': {
+      // the distance of the centre from the line less the radius
+      const [ends, round] = [endpoints(view, shape.line), view.curves.get(shape.curve)?.shape];
+      if (!ends || (round?.type !== 'circle' && round?.type !== 'arc')) return undefined;
+      return distanceToLine(round.center, ends) - round.radius;
     }
     case 'angle': {
       const [first, second] = [endpoints(view, shape.a), endpoints(view, shape.b)];

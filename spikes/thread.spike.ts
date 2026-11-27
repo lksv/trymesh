@@ -980,25 +980,26 @@ function frustum(r0: number, z0: number, r1: number, z1: number, tol: number): S
 }
 
 // The zone of a thread about Z: between the wall and the root of the thread (two radii; in a bore
-// the wall is the lower one) and two heights. An end is open when the wall ends in the air there.
+// the wall is the lower one) and two heights.
 interface Zone {
   low: number;
   high: number;
   from: number;
   to: number;
   internal: boolean;
-  openFrom: boolean;
-  openTo: boolean;
 }
-// A ring about Z that holds the zone of a thread: grown by `slack` where it borders the material
-// of the body with the thread (at the root, and at an end that is not open) and by `lift` where it
-// borders its air (beside the wall, past an open end), so that no face of it lies in a face of that
-// body. Its outer polygon is circumscribed (no chord of it dips into the zone).
+// A ring about Z that holds the zone of a thread: grown by `slack` at the root, into the material
+// of the body with the thread, and by `lift` everywhere else: beside the wall, into the air, and
+// at both ends, into the air of an open end and into the material of a shoulder alike. So no face
+// of it lies in a face of that body, or nearer to one than the lift (the third review: with the
+// slack alone at a shoulder the adapter refused the cut of a body in a pose in up to 28 of 30
+// cases, with the lift in none). Its outer polygon is circumscribed (no chord of it dips into
+// the zone).
 function ringOf(zone: Zone, slack: number, lift: number, tol: number): Solid {
   const [inner, outer] = zone.internal ? [zone.low - lift, zone.high + slack] : [zone.low - slack, zone.high + lift];
   const polygon = circle(0, 0, outer, tol);
   const k = 1 / Math.cos(Math.PI / polygon.length);
-  return prism(polygon.map(([x, y]): P => [x * k, y * k]), zone.from - (zone.openFrom ? lift : slack), zone.to + (zone.openTo ? lift : slack), [circle(0, 0, inner, tol)]).solid;
+  return prism(polygon.map(([x, y]): P => [x * k, y * k]), zone.from - lift, zone.to + lift, [circle(0, 0, inner, tol)]).solid;
 }
 // The volume of a closed mesh, how far its centre of volume lies from the Z axis, and the root of
 // its mean squared distance from that axis: sums over its triangles (the tetrahedra they make with
@@ -1016,7 +1017,10 @@ function centreOf(s: Solid): { volume: number; off: number; radius: number } {
   }
   return { volume: Math.abs(v), off: v !== 0 ? Math.hypot(cx / v, cy / v) : Infinity, radius: v !== 0 ? Math.sqrt(Math.max(0, rr / v)) : 0 };
 }
-const NOISE = 0.001; // mm³, the threshold of the check of collisions
+// A piece with less volume than this is not judged, and a zone is taken only when a piece above
+// it is there: the constant of the check of collisions (`INTERFERENCE_THRESHOLD`), not the
+// threshold a caller of the query may set. Sheets come out as pieces of 10⁻¹⁸ mm³ (the third review).
+const NOISE = 0.001; // mm³
 // A piece goes around the axis when its centre of volume is nearer to the axis than this part of
 // its radius: where the centre of a third of a ring lies (sin 60° / (π / 3)). Half a ring has 0.637,
 // a whole one 0; a straight wall pushed into an M8 thread from one side cannot go below 0.94.
@@ -1231,12 +1235,12 @@ test('8a for the second review of D75: the zone of a thread as a cut of its body
   const F = 0.01; // that of the pairs with flush faces (the default of a document)
   const beside = besideOf(C);
   // an M8 pin 20 long with a cosmetic thread: free at both ends
-  const pinZone: Zone = { low: m8.minor, high: m8.major, from: 0, to: 20, internal: false, openFrom: true, openTo: true };
+  const pinZone: Zone = { low: m8.minor, high: m8.major, from: 0, to: 20, internal: false };
   const pin = () => rod(m8.major, 0, 20, C);
   // a bore 10 deep with a countersink of 45° from z = 8 up: the cone reaches the major radius at z = 8 + (major − minor)
   const sunk = (radius: number, tol: number): Solid => kernel.boolean('difference', holed(radius, 0, 10, tol), frustum(radius - 0.5, 7.5, radius + 2.0001, 10.0001, tol));
   const modelledNut = (): Solid => kernel.boolean('difference', holed(b.minor + 0.1, 0, l, C), buildSwept(shapeOf(shifted(b, 0.1), { rootTo: b.minor + 0.1 - beside }), { kind: 'ridge', inner: b.minor + 0.1 - 2 * beside }, -beside, l + beside, C, take(FACES.length)).solid);
-  const bore = (low: number, high: number, from: number, to: number, openFrom = true): Zone => ({ low, high, from, to, internal: true, openFrom, openTo: true });
+  const bore = (low: number, high: number, from: number, to: number): Zone => ({ low, high, from, to, internal: true });
   type Outcome = 'threaded' | 'threaded and a fit' | 'a collision' | 'as every pair: collision';
   // `thread`: which of the two bodies has the thread whose zone is given
   const cases: { name: string; tol: number; a: () => Solid; b: () => Solid; thread: 'a' | 'b'; zone: Zone; expected: Outcome }[] = [
@@ -1251,14 +1255,15 @@ test('8a for the second review of D75: the zone of a thread as a cut of its body
     { name: 'a clamp around 200° of the M8 pin, 0.4 mm into it', tol: C, a: pin, b: () => kernel.boolean('difference', holed(m8.major - 0.4, 5, 15, C), wedge()), thread: 'a', zone: pinZone, expected: 'threaded' },
     { name: 'a rod 8 in an M8 bore with a countersink: the zone of the wall alone', tol: C, a: () => rod(m8.major, -2, 12, C), b: () => sunk(m8.minor, C), thread: 'b', zone: bore(m8.minor, m8.major, 0, 8), expected: 'a collision' },
     { name: 'the same, the zone run out through the countersink', tol: C, a: () => rod(m8.major, -2, 12, C), b: () => sunk(m8.minor, C), thread: 'b', zone: bore(m8.minor, m8.major, 0, 8 + (m8.major - m8.minor)), expected: 'threaded' },
-    { name: 'a rod 8 too long for a blind M8 bore: 2 mm into its bottom', tol: C, a: () => rod(m8.major, -2, 12, C), b: () => join(prism(square(10), -5, 0).solid, holed(m8.minor, 0, 10, C)), thread: 'b', zone: bore(m8.minor, m8.major, 0, 10, false), expected: 'a collision' },
+    { name: 'a rod 8 too long for a blind M8 bore: 2 mm into its bottom', tol: C, a: () => rod(m8.major, -2, 12, C), b: () => join(prism(square(10), -5, 0).solid, holed(m8.minor, 0, 10, C)), thread: 'b', zone: bore(m8.minor, m8.major, 0, 10), expected: 'a collision' },
     { name: 'a plain rod 10 in a modelled M10 nut (clearance 0.1)', tol: C, a: () => rod(b.major, -2, l + 2, C), b: modelledNut, thread: 'b', zone: bore(b.minor + 0.1, b.major + 0.1, 0, l), expected: 'threaded' },
     // flush faces beside the thread (the second review): a sheet without thickness in what the two share
     { name: 'a plain rod 6 through a plate tapped M6 (no flush face)', tol: F, a: () => rod(3, -2, 10, F), b: () => holed(2.5, 0, 8, F, 20), thread: 'b', zone: bore(2.5, m6.major, 0, 8), expected: 'threaded' },
     { name: 'a screw with its head (10 across) seated on the top face', tol: F, a: () => join(rod(3, -2, 8, F), rod(5, 8, 11, F)), b: () => holed(2.5, 0, 8, F, 20), thread: 'b', zone: bore(2.5, m6.major, 0, 8), expected: 'threaded' },
     { name: 'a screw with its head in a counterbore of the same diameter', tol: F, a: () => join(rod(3, -2, 9, F), rod(5, 9, 12, F)), b: () => kernel.boolean('difference', holed(2.5, 0, 12, F, 20), rod(5, 9, 13, F)), thread: 'b', zone: bore(2.5, m6.major, 0, 9), expected: 'threaded' },
-    { name: 'a standoff with a cosmetic M6 pin, its shoulder seated on the plate', tol: F, a: () => join(rod(3, 0, 8, F), rod(4.5, 8, 14, F)), b: () => holed(2.5, 0, 8, F, 20), thread: 'a', zone: { low: m6.minor, high: m6.major, from: 0, to: 8, internal: false, openFrom: true, openTo: false }, expected: 'threaded' },
-    { name: 'a rod 6 standing on the flat bottom of a blind bore tapped M6', tol: F, a: () => rod(3, 2, 12, F), b: () => join(prism(square(20), 0, 2).solid, holed(2.5, 2, 8, F, 20)), thread: 'b', zone: bore(2.5, m6.major, 2, 8, false), expected: 'threaded' },
+    { name: 'a standoff with a cosmetic M6 pin, its shoulder seated on the plate', tol: F, a: () => join(rod(3, 0, 8, F), rod(4.5, 8, 14, F)), b: () => holed(2.5, 0, 8, F, 20), thread: 'a', zone: { low: m6.minor, high: m6.major, from: 0, to: 8, internal: false }, expected: 'threaded' },
+    { name: 'a rod 6 standing on the flat bottom of a blind bore tapped M6', tol: F, a: () => rod(3, 2, 12, F), b: () => join(prism(square(20), 0, 2).solid, holed(2.5, 2, 8, F, 20)), thread: 'b', zone: bore(2.5, m6.major, 2, 8), expected: 'threaded' },
+    { name: 'a rod 6 that is 0.02 too long for that blind bore', tol: F, a: () => rod(3, 1.98, 12, F), b: () => join(prism(square(20), 0, 2).solid, holed(2.5, 2, 8, F, 20)), thread: 'b', zone: bore(2.5, m6.major, 2, 8), expected: 'a collision' },
     // a fit that is joined to the thread: a countersunk head in its countersink, the two cones divided differently
     { name: 'a countersunk screw 8 in an M8 bore with a countersink (the zone run out)', tol: F, a: () => join(rod(4, -2, 8.6, F), frustum(3, 7.6, 5.4, 10, F / 2)), b: () => sunk(3.4, F), thread: 'b', zone: bore(3.4, 4, 0, 8.6), expected: 'threaded and a fit' },
   ];

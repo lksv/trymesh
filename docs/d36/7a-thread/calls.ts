@@ -155,7 +155,9 @@ export function boltChecks(): boolean {
   const gapOk = gap.distance === 0 && gap.contact === 'threaded';
   // a rod too thick for the thread reaches beyond its major diameter: a collision as before
   const tooThick = unwrap(engine.query('interference', { bodies: ['bolt', 'plate'] }, { state: done(engine.preview({ type: 'setParameter', name: 'boltD', expr: '8' })) }));
-  // the bolt gets its own cosmetic thread: still excused, and both threads are named; with another
+  // the bolt gets its own cosmetic thread: still excused, and both threads are named (the bolt's
+  // runs up its shank and the plate's down from the mouths: opposite directions on one line, and
+  // the two zones overlap in their radii, so the two are about one axis and agree); with another
   // pitch (that of M5) or the other hand the pair is a collision that says what differs
   const boltThread = (pitch: number, hand: 'right' | 'left' = 'right', flankAngle?: Expr): CommandAfter => thread('boltThread', { body: 'bolt', faces: [side('bolt', 'shank')], modelled: false, diameter: 'boltD', pitch, hand, direction: 'forward', ...(flankAngle ? { flankAngle } : {}) });
   const m6 = DATA_CATALOGS.metricThreads.rows['M6'].pitch;

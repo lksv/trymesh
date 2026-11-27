@@ -10,7 +10,9 @@
 // a radial shift, the tool of a bore is a ring, a copy carries the datum of its listed face, the
 // ends are read in both modes. The second: the zone of the collisions is a cut of the body with
 // the thread (no reading of the mesh two bodies share), an end is read from the surface of the
-// face across the rim and its third vertex, the phase of a mate that runs the other way.
+// face across the rim and its third vertex, the phase of a mate that runs the other way. The
+// third (on the diff): the ring grows by the lift at every end, a piece is judged above a fixed
+// volume, two threads are about one axis only when their zones overlap in their radii too.
 //
 // Two stages (design.md, "Stages"): stage 1 ships everything here that a cosmetic thread needs and
 // refuses `modelled: true` in the validator; stage 2 ships the tool, the faces and the checks of
@@ -400,10 +402,12 @@ export declare function threadResults(state: StateD75): ThreadResult[];
 // - The rule, for a pair of which one body has a thread whose ring meets the box of the other:
 //   1. the body with the thread is cut by the ring of the zone into the part in its zone and the
 //      rest (`zoneParts`);
-//   2. what the other body shares with the part in the zone: every connected piece of it with
-//      a volume has to go around the axis (`goesAround`). Then the zone is taken and the volume
-//      of those pieces is excused. A zone of which a piece does not go around (a body pushed into
-//      the thread from one side), or whose booleans the kernel refuses, changes nothing;
+//   2. what the other body shares with the part in the zone: every connected piece of it above
+//      `THREAD_PIECE_VOLUME` has to go around the axis (`goesAround`), and there has to be one.
+//      Then the zone is taken and the volume of those pieces is excused. A zone of which a piece
+//      does not go around (a body pushed into the thread from one side), which has no piece (a
+//      rod that passes the hole without touching it), or whose booleans the kernel refuses,
+//      changes nothing;
 //   3. the body without the rings of its taken zones stands in for it, and the pair is judged as
 //      every pair is (`sharedBy`, `verdictOf`, the refusals of D50).
 //   No boolean is made of a mesh two bodies share and nothing is read from its vertices: such
@@ -416,12 +420,15 @@ export declare function threadResults(state: StateD75): ThreadResult[];
 // - `volume`: what was excused. No depth: it is measured of what is left alone.
 // - `threads`: the thread of every zone taken (one body in several threaded bores; when both
 //   bodies have agreeing threads there, both).
-// - In a pose the cut is made in the frame the body of the thread was modelled in; each of the
-//   two intersections is framed as every pair is, the one of step 2 with the body of the thread
-//   first.
-// - What the query keeps: the two parts of a body by its mesh and the published thread (which
-//   keeps its identity, `QueryContext.threadsAsModelled`); the intersections by the two meshes,
-//   as every pair. Nothing new is kept for a pair without a thread.
+// - In a pose the cut is made in the frame the body of the thread was modelled in. The two
+//   meshes of an intersection meet as the two bodies of a pair do: the first as modelled, the
+//   second moved by the transform between them (`FramedD75.relative`). Step 2 is made with the
+//   body of the thread first; when both bodies have a taken zone, the rest of the second is
+//   moved by that transform.
+// - What the query keeps: the two parts of a body by its mesh and the published threads of the
+//   zone (one, or the several of a joined zone; each keeps its identity,
+//   `QueryContext.threadsAsModelled`); the intersections by the two meshes, as every pair.
+//   Nothing new is kept for a pair without a thread.
 export interface Threaded {
   a: Id; // the smaller ID, as in the other lists
   b: Id;
@@ -450,8 +457,7 @@ export type GapD75 = Gap | { a: Id; b: Id; distance: 0; contact: 'threaded' };
 // - The radii: a bore from `radius` to `diameter / 2 + clearance`, a pin from `diameter / 2 −
 //   depth − clearance` to `radius`.
 // - Along the axis: the span cut to `walls` of that body, longer by the run-out at an end the
-//   wall still has. `openFrom`, `openTo`: the wall ends in the air there (an open end the wall
-//   still has).
+//   wall still has.
 // - Zones of one body about one axis with the same radii whose spans touch or overlap are joined
 //   (`joinedZones`).
 export interface ThreadZone {
@@ -462,18 +468,30 @@ export interface ThreadZone {
   high: number;
   from: number; // along the axis, the run-outs included
   to: number;
-  openFrom: boolean;
-  openTo: boolean;
 }
 export declare function threadZone(thread: ThreadResult, body: Id): ThreadZone;
 export declare function joinedZones(zones: readonly ThreadZone[], chordTolerance: number): ThreadZone[];
-// The body of a thread cut by the ring of a zone: the ring is the zone grown by the chord
-// tolerance and the precision of the coordinates where it borders the material of the body (at
-// the root, and at an end that is not open) and by `lift` where it borders its air (beside the
-// wall, past an open end), so that no face of it lies in a face of the body; its outer polygon is
+// The body of a thread cut by the ring of a zone. The ring is the zone grown by the chord
+// tolerance and the precision of the coordinates at the root, into the material of the body, and
+// by `lift` (`threadLift`) everywhere else: beside the wall, into the air, and at both ends, into
+// the air of an open end and into the material of a shoulder alike. So no face of it lies in
+// a face of the body or nearer to one than the lift (with the chord tolerance at a shoulder the
+// kernel refused the cut of a body in a pose: design.md, "To verify" 1). Its outer polygon is
 // circumscribed. `inZone`: the body within the ring; `rest`: the body without it. Two booleans,
-// kept by the mesh and the published thread. Throws when the kernel refuses one.
+// kept by the mesh and the published threads of the zone. Throws when the kernel refuses one.
 export declare function zoneParts(solid: Solid, zone: ThreadZone, chordTolerance: number, lift: number): { inZone: Solid; rest: Solid };
+// A connected piece of what another body shares with the part in a zone is judged when its
+// volume is above this, mm³: the constant of the check of collisions (`INTERFERENCE_THRESHOLD`),
+// not the threshold a caller gives the query, which may be zero. A sheet comes out as pieces of
+// 10⁻¹⁸ mm³, most of which do not go around. A zone is taken only when it has a piece above it.
+export const THREAD_PIECE_VOLUME = 0.001;
+// What `pairInFrame` and `framed` of `query/pose.ts` hand out after this package (a draft cannot
+// widen their result): also `relative`, the transform that puts the second body into the frame
+// of the first (absent when neither was moved), for the meshes that stand in for a body of
+// a posed pair: the part in a zone and the rest.
+export interface FramedD75 {
+  relative?: RigidTransform;
+}
 // A piece goes around an axis when its centre of volume is nearer to the axis than this part of
 // the root of its mean squared distance from it: where the centre of a third of a ring lies,
 // sin 60° / (π / 3). A whole ring has 0, half of one 0.637, a straight wall pushed into an M8
@@ -485,8 +503,11 @@ export const THREAD_AROUND = Math.sin(Math.PI / 3) / (Math.PI / 3);
 export declare function goesAround(piece: Solid, zone: Pick<ThreadZone, 'origin' | 'axis'>): boolean;
 // Whether two threads, as the pose puts them, are about one axis, and what differs between them
 // when they are.
-// - `apart`: the directions differ by more than the angle tolerance, the lines lie further apart
-//   than the chord tolerance, or the two zones do not overlap along the axis.
+// - `apart`: the directions are neither parallel nor opposite within the angle tolerance (`axis`
+//   is the direction a thread runs in: a bolt from above meets a hole threaded from above the
+//   other way), the lines lie further apart than the chord tolerance, or the two zones do not
+//   overlap along the axis or in their radii (`low` to `high`: the external M10 and the internal
+//   M6 of one bushing are apart from each other's mates).
 // - `agree`: one is internal and the other external, and the pitch, the number of starts, the
 //   hand as each lies, the nominal diameter, the flank angle and the depth are the same (lengths
 //   to the length tolerance, the angle to the angle tolerance).
@@ -701,13 +722,16 @@ export declare function threadTriangles(profile: ThreadProfile, wall: ThreadWall
 //   - else its third vertex lies beyond the radius of the wall (its distance from the axis, to
 //     the precision of the coordinates): the triangle lies outside the cylinder;
 //   - else (within the radius, or on it: a flat cap is triangulated from the vertices of its
-//     boundary alone, and a triangle with three vertices on a cylinder is a chord of it): inside.
+//     boundary alone, and a triangle with three vertices on a cylinder is a chord of it; a vertex
+//     a boolean made lies on a chord, a little inside): inside.
 //   Inside the cylinder is the air side of a bore and the material side of a pin.
 // - In this order, over all triangles across the rim:
 //   1. `shoulder`: one of them lies on the air side;
-//   2. `inside`: otherwise, the wall goes on at one of them;
-//   3. `open`: otherwise, with `runOut`: the faces across the rim are walked from the rim,
-//      triangle by triangle across their edges and no further than those faces; the largest
+//   2. `inside`: otherwise, the wall goes on along the whole rim;
+//   3. `open`: otherwise (also a rim where the wall goes on over a part and is open over the
+//      rest), with `runOut`: the faces across the rim are walked from the rim, triangle by
+//      triangle across their edges, no further than those faces and only through triangles
+//      with a part in the band beyond the end; the largest
 //      distance beyond the end at which a part of a walked triangle lies in the band of the
 //      thread (a bore: within `major + clearance` of the axis; a pin: beyond `minor −
 //      clearance`). Zero for a mouth in a plane across the axis and for the seat of

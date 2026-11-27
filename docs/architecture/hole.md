@@ -98,8 +98,8 @@ Five catalogs in `catalogs/hardware.ts`, one per source, each a `DataCatalog` wi
 
 `query/hardware-hole.ts`, an entry of `QUERIES`; it reads no state.
 
-- **Arguments**: `use` (`clearance`, `socketHead`, `countersunk`, `nutPocket`, `heatSetInsert`), `size` (a key of the catalogs), `fit` (the clearance series, `medium` when left out), `allowance` (an expression added to every diameter and to the size across flats; its syntax is checked, `invalidArguments` otherwise).
-- **Answer**: `shape` in the input form of a hole shape (numbers, or `"<number> + <allowance>"` with an allowance), `label` ("M3 countersunk screw"), `depth` for an insert, `from` (the catalogs used).
+- **Arguments**: `use` (`clearance`, `socketHead`, `countersunk`, `nutPocket`, `heatSetInsert`, and `tapped` of D76), `size` (a key of the catalogs), `fit` (the clearance series, `medium` when left out), `allowance` (an expression added to every diameter and to the size across flats; its syntax is checked, `invalidArguments` otherwise).
+- **Answer**: `shape` in the input form of a hole shape (numbers, or `"<number> + <allowance>"` with an allowance), `label` ("M3 countersunk screw"; none for `tapped`), `depth` for an insert, `thread` for `tapped` (`diameter`, `pitch`, `label`, and with an allowance `clearance`, `"(<allowance>) / 2"`), `from` (the catalogs used).
 - It looks at `use` first and asks only the catalogs that use reads:
 
   | Use | Shape | From |
@@ -109,7 +109,9 @@ Five catalogs in `catalogs/hardware.ts`, one per source, each a `DataCatalog` wi
   | countersunk | countersink: the clearance hole, the head diameter, the head angle as `deg(…)` | `clearanceHoles`, `countersunkScrews` |
   | nutPocket | nut pocket: the clearance hole, across flats, the thickness as the depth, rotation 0 | `clearanceHoles`, `hexNuts` |
   | heatSetInsert | plain: the hole diameter; `depth`: the hole depth | `heatSetInserts` |
+  | tapped (D76) | plain: the tap drill; `thread`: the fields of a thread feature for its bores ([thread.md](thread.md)) | `metricThreads` |
 
+- A tapped hole has no label: the parts list counts a piece of hardware per labelled hole, and the screw of a tapped hole is counted at the clearance hole it comes through; a hole whose bores carry a thread is not listed as `unlabelled` either. With an allowance the bore is wider by it, and the thread gets half of it as its radial clearance, so that the bore stays within the window of the thread (a printed M3: 2.8 against the bound 3.3 − 0.27).
 - The angle of a countersink always comes back as an expression in degrees: the tool `query` prints numbers rounded to six decimal places, which an angle in radians rarely survives.
 - A size a catalog does not have is `notAvailable` with the argument `size`; the message names the catalog and the sizes it has.
 - MCP reaches it through the tool `query`; the form of the hole in the app calls it with the button *Fill from the catalog* ([ui/hole.md](../ui/hole.md)).

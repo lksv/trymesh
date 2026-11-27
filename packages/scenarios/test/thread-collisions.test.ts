@@ -5,7 +5,7 @@ import { type Command, type Engine, type EngineState, type Id, type Interference
 import { createManifoldKernel } from '@trymesh/kernel-manifold';
 import { createPlanegcsSolver } from '@trymesh/solver-planegcs';
 import { describe, expect, it } from 'vitest';
-import { XY, addSketch, batch, newEngine, run, volume } from './kit';
+import { XY, addSketch, batch, circle, newEngine, run, volume } from './kit';
 import { blindHole, bodyPattern, bore, box, combine, hole, m6, plane, point, prism, rod, rodSide, split, statusOf, thread, threadsOf } from './thread-kit';
 
 interface Seen {
@@ -410,5 +410,69 @@ describe('a threaded pair the kernel refuses (D50 and D76)', () => {
     if (!gap.ok) throw new Error(gap.error.message);
     expect(gap.result.pairs).toEqual([{ a: 'bolt', b: 'plate', distance: 0, contact: 'threaded' }]);
     expect(gap.result.cleared).toEqual([{ a: 'bolt', b: 'plate' }]);
+  });
+});
+
+// The second round of the review of stage 1 (D76): two tapped holes of one plate crossing at less
+// than the crossing angle, a bolt seated in the vertical one.
+describe('the review of stage 1, second round', () => {
+  // the plate with a vertical tapped M6 and a second one crossing it at z = 10 at `degrees` from it
+  function crossing(degrees: number): Engine {
+    const a = (degrees * Math.PI) / 180;
+    for (const sign of [1, -1]) {
+      const engine = newEngine();
+      const hole = (id: Id, sketch: Id, p: Id): Command => ({ type: 'addFeature', feature: { id, name: id, suppressed: false, type: 'hole', sketch, points: [p], shape: { type: 'plain', diameter: 5 }, extent: { type: 'throughAll', side: 'forward' }, targets: ['plate'] } });
+      const state = run(
+        engine,
+        box('plate', -25, -25, 25, 25, 0, 20),
+        batch(addSketch('vS', XY), ...point('vS', 'h', 0, 0), hole('v', 'vS', 'h')),
+        { type: 'addFeature', feature: { id: 'tp', name: 'tp', suppressed: false, type: 'plane', base: { kind: 'base', plane: 'XY' }, offset: 0, tilt: { axis: { kind: 'base', axis: 'Y' }, angle: a } } } as Command,
+        batch(addSketch('sS', { kind: 'plane', feature: 'tp' }), ...point('sS', 'q', sign * -10 * Math.sin(a), 0), hole('s', 'sS', 'q')),
+        thread('tv', m6('plate', [bore('v', 'h')], { direction: 'forward' })),
+        thread('ts', m6('plate', [bore('s', 'q')], { direction: 'forward' })),
+      );
+      const [slanted] = threadsOf(state, 'ts');
+      if (!slanted) continue;
+      const d = [-slanted.origin[0], -slanted.origin[1], 10 - slanted.origin[2]];
+      const s = d[0] * slanted.axis[0] + d[1] * slanted.axis[1] + d[2] * slanted.axis[2];
+      if (Math.hypot(d[0] - s * slanted.axis[0], d[1] - s * slanted.axis[1], d[2] - s * slanted.axis[2]) < 0.01) return engine;
+    }
+    throw new Error(`no plate with holes crossing at ${degrees}°`);
+  }
+
+  it('a threaded bolt seated in one of two tapped holes crossing at 30° or 44° is threaded: the other hole is a third thread', () => {
+    for (const degrees of [30, 44]) {
+      const engine = crossing(degrees);
+      run(engine, rod('bolt', 0, 0, 3, -2, 22), thread('tb', m6('bolt', [rodSide('bolt')])));
+      const report = seen(engine);
+      expect(report.pairs, `${degrees}°`).toEqual([]);
+      expect(report.threaded.map(([a, b, , threads]) => [a, b, [...threads].sort()]), `${degrees}°`).toEqual([['bolt', 'plate', ['tb@bolt', 'ts@plate', 'tv@plate']]]);
+    }
+  });
+
+  it('a thread that truly disagrees is not hidden: another pitch in the vertical hole, a second bolt of the other hand in the slanted one', () => {
+    const pitch = crossing(30);
+    run(pitch, rod('bolt', 0, 0, 3, -2, 22), thread('tb', { ...m6('bolt', [rodSide('bolt')]), pitch: 1.25 }));
+    const wrong = seen(pitch);
+    expect(wrong.threaded).toEqual([]);
+    expect(wrong.pairs).toEqual([['bolt', 'plate', expect.any(Number), expect.stringMatching(/pitch 1.25 against 1|the axes meet at 30°/)]]);
+    const hand = crossing(30);
+    const state = run(hand, rod('bolt', 0, 0, 3, -2, 22), thread('tb', m6('bolt', [rodSide('bolt')])));
+    const [slanted] = threadsOf(state, 'ts');
+    // the second bolt: a rod of 6 along the slanted axis, from a sketch on the tilted plane
+    run(
+      hand,
+      batch(addSketch('b2S', { kind: 'plane', feature: 'tp' }), circle('b2S', 'b2', ...(((): [number, number] => {
+        const sketch = state.evaluation.features.sS.sketch!.points.q;
+        return [sketch.x, sketch.y];
+      })()), 3), { type: 'addFeature', feature: { id: 'bolt2', name: 'bolt2', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: 'b2S', regions: [{ outerLoop: ['b2'] }] }, extent: { type: 'distance', start: -5, distance: 40 }, operation: 'new' } }),
+      thread('tb2', m6('bolt2', [{ feature: 'bolt2', role: 'side', curve: 'b2' }], { hand: 'left' })),
+    );
+    expect(slanted).toBeDefined();
+    const outcome = hand.query('interference', { bodies: ['bolt', 'bolt2', 'plate'] });
+    if (!outcome.ok) throw new Error(outcome.error.message);
+    const byPair = (a: Id, b: Id) => outcome.result.pairs.find((p) => p.a === a && p.b === b);
+    expect(byPair('bolt2', 'plate')?.mismatch).toMatch(/a left-hand thread in a right-hand one|the axes meet at 30°/);
+    expect(outcome.result.threaded?.map((t) => `${t.a} ${t.b}`)).toEqual(['bolt plate']);
   });
 });

@@ -1,6 +1,6 @@
 // The query `interference`: which bodies share a volume (D35, point 5), and which pairs share what
 // a thread accounts for (D76).
-import { INTERFERENCE_THRESHOLD, THREAD_PIECE_VOLUME, type SharedVolume, type ThreadJudgement, type ThreadZone, boxesApart, goesAround, interferenceReport, joinedZones, movedZone, ringBox, ringOf, sharedBy, threadZone, threadsAgree } from '../interference';
+import { INTERFERENCE_THRESHOLD, THREAD_PIECE_VOLUME, type SharedVolume, type ThreadJudgement, type ThreadZone, boxesApart, goesAround, interferenceReport, joinedZones, movedZone, onOneLine, ringBox, ringOf, sharedBy, threadZone, threadsAgree } from '../interference';
 import { bandOf } from '../recompute/body-boolean';
 import { precisionOf, threadLift } from '../recompute/thread';
 import { type RigidTransform, inverse, pieceSolids, volumeOf } from '../solid';
@@ -58,14 +58,21 @@ function judgeThreaded(context: QueryContext, a: Id, b: Id, pair: { a: BodyResul
   const zbInA = zb.zones.map((zone) => movedZone(zone, relative));
   // the threads of the two bodies that meet have to agree
   const agreeing: [number, number][] = [];
+  const mismatches: { i: number; j: number; offLine: boolean; mismatch: string }[] = [];
   for (const [i, zoneA] of za.zones.entries()) {
     for (const [j, zoneB] of zbInA.entries()) {
       const verdict = threadsAgree(zoneA, zoneB, tolerance, () => ringsMeet(context, zoneA, za, zoneB, zb, tolerance));
       if (verdict === 'apart') continue;
-      if (verdict !== 'agree') return { mismatch: verdict.mismatch };
-      agreeing.push([i, j]);
+      if (verdict === 'agree') agreeing.push([i, j]);
+      else mismatches.push({ i, j, offLine: !onOneLine(zoneA, zoneB, tolerance), mismatch: verdict.mismatch });
     }
   }
+  // a thread off the line of a mate that agrees is a third thread that does not concern it (a bolt
+  // in one of two tapped holes that cross): left out, and its zone judged on its own; any other
+  // mismatch judges the pair whole
+  const mated = (i: number, j: number): boolean => agreeing.some(([x, y]) => (x === i && y !== j) || (y === j && x !== i));
+  const mismatch = mismatches.find((m) => !(m.offLine && mated(m.i, m.j)));
+  if (mismatch) return { mismatch: mismatch.mismatch };
   // two modelled threads that agree: their meshes are the truth, neither zone is taken
   const notTaken = { a: new Set<number>(), b: new Set<number>() };
   for (const [i, j] of agreeing) {

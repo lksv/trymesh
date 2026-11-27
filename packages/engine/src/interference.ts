@@ -290,6 +290,8 @@ function line(a: Pick<ThreadZone, 'origin' | 'axis'>, b: Pick<ThreadZone, 'origi
   const apart = Math.max(off(b.origin, a), off(a.origin, b));
   return { one: angle <= ANGLE_TOLERANCE && apart <= distance, apart, angle };
 }
+// Are the axes of two zones, in one frame, on one line (as `threadsAgree` reads it)?
+export const onOneLine = (a: Pick<ThreadZone, 'origin' | 'axis'>, b: Pick<ThreadZone, 'origin' | 'axis'>, chordTolerance: number): boolean => line(a, b, chordTolerance).one;
 // Zones of one body about one axis with the same radii whose spans touch or overlap are one zone,
 // when their threads are the same in every field `threadsAgree` compares and in their clearance:
 // the axes to the angle tolerance, the lines and the radii to the length tolerance, the spans to

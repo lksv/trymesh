@@ -469,6 +469,8 @@ export function threadRecords(feature: ThreadFeature, state: State, solid: Solid
     const to = feature.length === undefined ? length : from + feature.length;
     if (from >= length - precision) return { code: 'invalidThread', refs: [name, 'offset'], detail: `the offset of ${digits(from)} reaches the far end of the face, which is ${digits(length)} long: the thread has no length` };
     if (to > length + precision) return { code: 'invalidThread', refs: [name, 'length'], detail: `the thread would end ${digits(to)} from the start of the face, which is ${digits(length)} long: it would pass the far end by ${digits(to - length)}` };
+    // a span no longer than the lift would apply to no body (`stretchOf`)
+    if (to - from <= lift) return { code: 'invalidThread', refs: [name, 'length'], detail: `a thread ${digits(to - from)} long is no longer than the lift of ${digits(lift)} (twice the chord tolerance, at least 0.05): it would be on no body` };
     // an end within the lift of an end of the wall is at that end
     const [atStart, atEnd] = [from < lift, to > length - lift];
     const band = wall.internal ? profile.major + clearance : profile.minor - clearance;

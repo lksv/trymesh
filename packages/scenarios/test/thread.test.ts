@@ -544,3 +544,17 @@ describe('the review of stage 1', () => {
     expect(threadsOf(state, 't').map((t) => t.bodies)).toEqual([['A'], ['copyA/1']]);
   });
 });
+
+// The second round of the review of stage 1 (D76).
+describe('the review of stage 1, second round', () => {
+  it('a thread no longer than the lift is refused; a body a later cut leaves no more than the lift of the span loses it', () => {
+    const short = run(newEngine(), rod('pin', 0, 0, 3, 0, 20), thread('t', m6('pin', [rodSide('pin')], { direction: 'forward', offset: 5, length: 0.04 })));
+    expect(statusOf(short, 't')).toBe('error:invalidThread');
+    expect(short.evaluation.features.t.error?.message).toMatch(/a thread 0\.04 long is no longer than the lift of 0\.05 .*it would be on no body/);
+    expect(statusOf(run(newEngine(), rod('pin', 0, 0, 3, 0, 20), thread('t', m6('pin', [rodSide('pin')], { direction: 'forward', offset: 5, length: 0.06 }))), 't')).toBe('ok');
+    for (const [left, published] of [[0.04, 0], [0.06, 1]] as const) {
+      const cut = run(newEngine(), rod('pin', 0, 0, 3, 0, 20), thread('t', m6('pin', [rodSide('pin')], { direction: 'forward', length: 5 })), box('cut', -5, -5, 5, 5, left, 30, 'cut', 'pin'));
+      expect(threadsOf(cut, 't'), `${left} left`).toHaveLength(published);
+    }
+  });
+});

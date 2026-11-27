@@ -78,7 +78,9 @@ export interface PartsSum {
 // - `bought`: the bodies with the use `reference`: bought or given parts, with the mass of their
 //   data sheet.
 // - `hardware`: what goes into the labelled holes: screws, nuts, inserts. No masses.
-// - `unlabelled`: hole features without a label that made holes; only when there are some.
+// - `unlabelled`: hole features without a label that made holes, with the count of their holes
+//   whose bore carries no thread (a tapped hole has no label on purpose, D76); only when there are
+//   some.
 // - `auxiliary`: the bodies with the use `auxiliary`, which are no parts; only when there are some.
 // - `totals`: the sums; `hardware.count` is the number of labelled holes.
 export interface PartsList {
@@ -193,7 +195,10 @@ function touch(a: Cut, b: Cut): boolean {
     }
   return false;
 }
-export function holeCounts(doc: Document, bodies: Readonly<Record<Id, { solid: Solid; faces: readonly { id: number }[] }>>, faceNames: readonly FaceName[], surface: (body: Id, face: number) => Surface | undefined): Map<Id, number> {
+// `skip`: the cuts to leave out, by their feature and the key of their point and copy tags (the
+// threaded holes, which `unlabelled` does not list, D76).
+export const cutKey = (name: FaceName): string => JSON.stringify([name.feature, (name as { point?: Id }).point, name.copy ?? []]);
+export function holeCounts(doc: Document, bodies: Readonly<Record<Id, { solid: Solid; faces: readonly { id: number }[] }>>, faceNames: readonly FaceName[], surface: (body: Id, face: number) => Surface | undefined, skip?: ReadonlySet<string>): Map<Id, number> {
   // the hole features of the document and of the documents it inserts, under their prefixed IDs (D62)
   const holes = new Set(featuresWithInserted(doc).filter((f) => f.feature.type === 'hole').map((f) => f.id));
   // feature → cut (its point and its copy tags) → where it is
@@ -203,6 +208,7 @@ export function holeCounts(doc: Document, bodies: Readonly<Record<Id, { solid: S
     for (const face of body.faces) {
       const name = faceNames[face.id];
       if (!name || !holes.has(name.feature) || (name.role !== 'holeBore' && name.role !== 'holeHead')) continue;
+      if (skip?.has(cutKey(name))) continue;
       const shape = surface(id, face.id);
       if (shape?.kind !== 'cylinder' && shape?.kind !== 'cone') continue;
       const length = len3(shape.axis);
@@ -364,6 +370,10 @@ function partsListOf(context: QueryContext): PartsList {
   // the hardware: the holes the bodies that are parts have, by the label of their feature
   const parts = Object.fromEntries(Object.entries(context.bodies).filter(([id]) => properties[id].use !== 'auxiliary'));
   const counts = holeCounts(doc, parts, evaluation.faceNames, (body, face) => context.surface(body, evaluation.faceNames[face]));
+  // a hole whose bore carries a thread takes no piece of its own (a tapped hole, D76): the
+  // unlabelled holes are counted without the threaded ones
+  const threaded = new Set(Object.keys(parts).flatMap((body) => context.threadsAsModelled(body).filter((thread) => thread.face.role === 'holeBore').map((thread) => cutKey(thread.face))));
+  const plain = threaded.size ? holeCounts(doc, parts, evaluation.faceNames, (body, face) => context.surface(body, evaluation.faceNames[face]), threaded) : counts;
   const hardware: HardwareRow[] = [];
   const unlabelled: HoleCount[] = [];
   // an inserted hole feature (D62) stands at the place of its insertion, under its prefixed ID
@@ -373,7 +383,8 @@ function partsListOf(context: QueryContext): PartsList {
     const hole: HoleCount = { feature: id, count };
     const { label } = feature;
     if (label === undefined) {
-      unlabelled.push(hole);
+      const left = plain.get(id);
+      if (left !== undefined) unlabelled.push({ feature: id, count: left });
       continue;
     }
     const existing = hardware.find((candidate) => candidate.label === label);
@@ -406,7 +417,7 @@ export const partsList: QuerySpec<typeof PARTS_LIST_ARGS, PartsList> = {
     'So the label of a hole should name the piece that goes into it, with what the catalog does not know ("M3x10 countersunk screw"), and a hole that takes no piece of its own should have none. Every copy counts, also one laid out for printing. The answer is for the model as modelled, whatever the pose.',
   returns:
     '`printed` and `bought` (rows: `name`, `count`, `bodies`, `material`, `color`, `volume` in mm3 of one, `density` in g/cm3, `mass` in g of one with `massFrom` (`mass` or `density`), or `noMass` (`notStated`, `inError`), `totalMass` in g, `copyOf` (the body the chain of sources starts at, when it is a body of the model and not in this row), `mirrored` (the mesh of that body, mirrored), `differs` (no longer the mesh of that body)), ' +
-    '`hardware` (rows: `label`, `count`, `holes`: the hole features with the label and the holes of each), `unlabelled` (hole features without a label, with their holes), `auxiliary` (bodies that are no parts), ' +
+    '`hardware` (rows: `label`, `count`, `holes`: the hole features with the label and the holes of each), `unlabelled` (hole features without a label, with their holes; a hole whose bore carries a thread is not counted there), `auxiliary` (bodies that are no parts), ' +
     '`totals` (`printed` and `bought`: `count` of bodies, `mass` in g of those that have one, `withoutMass`: how many have none; `hardware.count`). Hardware has no mass.',
   args: PARTS_LIST_ARGS,
   significant: { mass: 6, totalMass: 6 },

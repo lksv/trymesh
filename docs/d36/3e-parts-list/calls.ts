@@ -305,7 +305,7 @@ const insertOf = (thread: number) => {
   const rows = DATA_CATALOGS.heatSetInserts.rows;
   const size = Object.keys(rows).find((key) => rows[key].thread === thread) ?? fail(`the catalog heatSetInserts has no insert M${thread}`);
   const answer = unwrap(engine.query('hardwareHole', { use: 'heatSetInsert', size, allowance: 'holeComp' }));
-  return { shape: answer.shape, label: answer.label, depth: answer.depth ?? fail('an insert has a depth') };
+  return { shape: answer.shape, label: answer.label ?? fail('an insert has a label'), depth: answer.depth ?? fail('an insert has a depth') };
 };
 const XY = { kind: 'base', plane: 'XY' } as const;
 const hole = (id: Id, sketch: Id, point: Id, target: Id, shape: Input<HoleShape>, start: number, distance: number, label: string): Command => ({

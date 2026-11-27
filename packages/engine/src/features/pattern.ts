@@ -2,6 +2,7 @@
 // of its copies: turned around an axis, shifted along a direction, or mirrored in a plane (D53).
 import { GRID_STRIDE, MAX_PATTERN_PLACES, PATTERN_ANGLE, PATTERN_COUNT, PATTERN_LENGTH, PATTERN_SPACING } from '../pattern-numbers';
 import { applyTool, axis, frame, issue, lookup } from '../recompute/services';
+import { copyKey, movedThread, threadsOn } from '../recompute/thread';
 import type { Model, Placement, State, Step, StepContext } from '../recompute/state';
 import { type RigidTransform, compose, reflection, rotation, shift, transformFace, transformSolid } from '../solid';
 import type { AxisRef, FaceName, Id, IssueCode, LinearSpan, PatternFeature, PatternTransform, Vec3 } from '../types';
@@ -89,6 +90,10 @@ function step(feature: PatternFeature, { state, deps, done, failed }: StepContex
   if ('code' in copies) return failed(copies.code, copies.refs, copies.detail);
   const placements = copies.map(({ transform, index }): Placement => ({ transform, copy: { pattern: feature.id, index } }));
   const { source } = feature;
+  // the transform of every copy, by its tag: a thread with `copies` carries the helix of a face
+  // to its copies by it, and follows only the tags that are here (D76)
+  const copyTransforms = new Map(state.copyTransforms);
+  for (const { transform, copy } of placements) copyTransforms.set(copyKey(copy), transform);
 
   if (source.type === 'body') {
     const solid = lookup(state.bodies, source.body);
@@ -99,6 +104,10 @@ function step(feature: PatternFeature, { state, deps, done, failed }: StepContex
     const faces = [...new Set(solid.faceIds)].sort((a, b) => a - b);
     const model: Model = { bodies: { ...state.bodies }, faceNames: [...state.faceNames], faceInfos: [...state.faceInfos], faceIds: new Map(state.faceIds) };
     const created: Id[] = [];
+    // the threads on the faces of the body go with it (D76); a mirror turns their hand
+    const carried = threadsOn(state, solid);
+    const threads = [...state.threads];
+    const turned = { left: 0, right: 0 };
     for (const { transform, copy } of placements) {
       const renumbered = new Map<number, number>();
       for (const face of faces) {
@@ -111,8 +120,14 @@ function step(feature: PatternFeature, { state, deps, done, failed }: StepContex
       const id = `${feature.id}/${copy.index}`;
       model.bodies[id] = transformSolid(transform, solid, (face) => renumbered.get(face) as number);
       created.push(id);
+      for (const record of carried) {
+        const moved = movedThread(record, transform, renumbered.get(record.face) as number);
+        threads.push(moved);
+        if (moved.hand !== moved.stated && record.hand === record.stated) turned[moved.hand]++;
+      }
     }
-    return { state: done({ status: 'ok', warnings: [], bodies: created }, model) };
+    const warnings = turned.left + turned.right ? [issue('mirroredThread', created, mirroredText(turned))] : [];
+    return { state: done({ status: warnings.length ? 'warning' : 'ok', warnings, bodies: created }, { ...model, threads, copyTransforms }) };
   }
 
   // Features: a source that is missing, suppressed or in error has no recipe. A source that ended
@@ -132,7 +147,13 @@ function step(feature: PatternFeature, { state, deps, done, failed }: StepContex
     }
   }
   const warnings = idle.length ? [issue('noEffect', idle, 'some copies changed none or only some of their targets')] : [];
-  return { state: done({ status: warnings.length ? 'warning' : 'ok', warnings }, model) };
+  return { state: done({ status: warnings.length ? 'warning' : 'ok', warnings }, { ...model, copyTransforms }) };
+}
+
+// What the warning `mirroredThread` says: how many threads a mirror of a body turned to which hand.
+function mirroredText(turned: { left: number; right: number }): string {
+  const parts = (['left', 'right'] as const).filter((hand) => turned[hand]).map((hand) => `${turned[hand]} thread${turned[hand] === 1 ? '' : 's'} became ${hand}-hand`);
+  return `${parts.join(' and ')} on the mirrored copy; a thread feature placed after the mirror, on the faces of the copy, keeps the stated hand`;
 }
 
 // A copy of a pattern: its transform and its number (`<pattern>/<index>`, the tag of its faces,

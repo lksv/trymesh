@@ -1,6 +1,6 @@
 // The rows a pick of the view or an entity of a sketch marks (hover.ts), for the kinds of objects
 // the driven case of app.test.ts does not build.
-import { type FaceName, type SketchFeature, emptySketch } from '@trymesh/engine';
+import { type FaceName, type SketchFeature, type ThreadResult, emptySketch } from '@trymesh/engine';
 import { describe, expect, it } from 'vitest';
 import { pickRows, sketchRows } from '../src/hover';
 
@@ -19,6 +19,15 @@ describe('the rows of a pick of the view', () => {
   it('a face of an inserted body, two levels down and copied there and here: the insertion and the pattern of this document', () => {
     const name: FaceName = { feature: 'kit/b/ring', role: 'endCap', copy: [{ pattern: 'kit/b/p', index: 1 }, { pattern: 'row', index: 2 }] };
     expect(pickRows(face('kit/b/ring', name))).toEqual(['feature:kit', 'feature:row', 'body:kit/b/ring']);
+  });
+
+  it('a face with a thread (D76): the thread feature as well, not for another body or another face', () => {
+    const bore: FaceName = { feature: 'taps', role: 'holeBore', point: 'h' };
+    const threads = [{ feature: 'm6', face: bore, bodies: ['plate'] }, { feature: 'ins/m8', face: { feature: 'ins/taps', role: 'holeBore', point: 'h' }, bodies: ['ins/plate'] }] as unknown as ThreadResult[];
+    expect(pickRows(face('plate', bore), threads)).toEqual(['feature:taps', 'feature:m6', 'feature:plate', 'body:plate']);
+    expect(pickRows(face('other', bore), threads)).toEqual(['feature:taps', 'feature:other', 'body:other']);
+    expect(pickRows(face('plate', { ...bore, point: 'k' }), threads)).toEqual(['feature:taps', 'feature:plate', 'body:plate']);
+    expect(pickRows(face('ins/plate', { feature: 'ins/taps', role: 'holeBore', point: 'h' }), threads)).toEqual(['feature:ins', 'body:ins/plate']);
   });
 
   it('a face of a mesh: its feature', () => {

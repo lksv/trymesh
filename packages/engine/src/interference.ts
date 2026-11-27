@@ -1,8 +1,8 @@
 // Interference of bodies: the volume two bodies share, pair by pair (D35, point 5).
 import { coordinatePrecision } from './mesh-distance';
-import { type Reach, penetration, thickestPiece, volumeOf, volumeOfPieces } from './solid';
-import type { BodyResult, Id, InterferenceReport, Solid, SolidKernel } from './types';
-import { has } from './util';
+import { type Reach, type RigidTransform, penetration, thickestPiece, transformPoint, transformVector, volumeOf, volumeOfPieces } from './solid';
+import type { BodyResult, Id, InterferenceReport, Solid, SolidKernel, Threaded, ThreadResult, Vec3 } from './types';
+import { ANGLE_TOLERANCE, LENGTH_TOLERANCE, add3, cross3, dot3, has, len3, mul3, sub3, unit3 } from './util';
 
 // Volumes up to this are noise, not a collision. In the spike flush faces, a pin in the hole cut
 // by the same circle and identical cylinders gave exactly zero, and gears with a negative backlash
@@ -172,6 +172,16 @@ export const boxesApart = (a: BodyResult['bounds'], b: BodyResult['bounds']): bo
 //   a fit puts it in `cleared`; a collision, or no second opinion, leaves it in `failed`, neither
 //   colliding nor clear. The second opinion never puts a pair in `pairs` or `fits`.
 // - Boxes that do not overlap need no kernel: the volume is zero.
+// - `threaded` (D76): for a pair with a thread, what the threads make of it, or undefined when they
+//   change nothing. With `taken` the pair is judged by `shared` of the judgement (what the rests of
+//   the bodies share) and is listed in `threaded` unless that is a collision (then it is in `pairs`
+//   alone, with what is left; a refused pair stays in `threaded` beside `failed` or `cleared`); with
+//   `mismatch` it is judged whole and its entry of `pairs` says what differs.
+export interface ThreadJudgement {
+  shared?: SharedVolume;
+  taken?: { volume: number; threads: Threaded['threads'] };
+  mismatch?: string;
+}
 export function interferenceReport(
   bodies: Readonly<Record<Id, unknown>>,
   chosen: readonly Id[] | undefined,
@@ -179,6 +189,7 @@ export function interferenceReport(
   tolerance: number,
   pair: (a: Id, b: Id) => { a: BodyResult; b: BodyResult } | undefined,
   shared: (a: BodyResult, b: BodyResult) => SharedVolume,
+  threaded?: (a: Id, b: Id, computed: { a: BodyResult; b: BodyResult }) => ThreadJudgement | undefined,
 ): InterferenceReport {
   const wanted = chosen === undefined ? undefined : new Set(chosen);
   const ids = Object.keys(bodies).filter((id) => wanted === undefined || wanted.has(id));
@@ -188,11 +199,16 @@ export function interferenceReport(
       const [a, b] = ids[i] < ids[j] ? [ids[i], ids[j]] : [ids[j], ids[i]];
       report.checked++;
       const computed = pair(a, b);
-      const result = !computed || boxesApart(computed.a.bounds, computed.b.bounds) ? NOTHING : shared(computed.a, computed.b);
+      const apart = !computed || boxesApart(computed.a.bounds, computed.b.bounds);
+      const judged = apart || !threaded ? undefined : threaded(a, b, computed);
+      const result = apart ? NOTHING : (judged?.shared ?? shared(computed.a, computed.b));
+      const mismatch = judged?.mismatch === undefined ? {} : { mismatch: judged.mismatch };
+      const verdict = 'message' in result ? undefined : verdictOf(result, threshold, tolerance);
+      if (judged?.taken && verdict !== 'collision') (report.threaded ??= []).push({ a, b, volume: judged.taken.volume, threads: judged.taken.threads });
       if (!('message' in result)) {
         // `pairs` and `fits` are written here only, from a mesh the kernel verified
-        const verdict = verdictOf(result, threshold, tolerance);
-        if (verdict !== 'nothing') (verdict === 'fit' ? report.fits : report.pairs).push({ a, b, volume: result.volume, depth: result.depth });
+        if (verdict === 'fit') report.fits.push({ a, b, volume: result.volume, depth: result.depth });
+        else if (verdict === 'collision') report.pairs.push({ a, b, volume: result.volume, depth: result.depth, ...mismatch });
         continue;
       }
       const second = result.asComputed;
@@ -207,3 +223,194 @@ export function interferenceReport(
   }
   return report;
 }
+
+// ---------------------------------------------------------------- threads (D76)
+
+// A connected piece of what another body shares with the part of a body in the zone of a thread is
+// judged when its volume is above this, mm³: the constant of the check of collisions, not the
+// threshold a caller gives the query, which may be zero. A sheet comes out as pieces of 10⁻¹⁸ mm³,
+// most of which do not go around. A zone is taken only when it has a piece above it.
+export const THREAD_PIECE_VOLUME = INTERFERENCE_THRESHOLD;
+// A piece goes around an axis when its centre of volume is nearer to the axis than this part of
+// the root of its mean squared distance from it: where the centre of a third of a ring lies,
+// sin 60° / (π / 3). A whole ring has 0, half of one 0.637, a straight wall pushed into an M8
+// thread from one side at least 0.94 (question 57 of D76).
+export const THREAD_AROUND = Math.sin(Math.PI / 3) / (Math.PI / 3);
+
+// The zone of a published thread on one of its bodies, in the frame of that thread: between the
+// wall and the root of the thread, along the axis over the span the body still has of the wall,
+// longer by the run-out at an open end it still has. `threads`: the threads of the zone (several
+// for a joined zone).
+export interface ThreadZone {
+  origin: Vec3;
+  axis: Vec3; // unit
+  internal: boolean;
+  low: number; // radii
+  high: number;
+  from: number; // along the axis from `origin`, the run-outs included
+  to: number;
+  threads: ThreadResult[];
+}
+// `lift`: of the body (`threadLift`), the distance within which the stretch of a body still has an
+// end of the wall as the thread was made on it. Undefined: the body has no part of the span.
+export function threadZone(thread: ThreadResult, body: Id, lift: number): ThreadZone | undefined {
+  const i = thread.bodies.indexOf(body);
+  if (i < 0) return undefined;
+  const wall = thread.walls[i];
+  // an end of the thread at an end of the wall the body still has runs out there
+  const startHad = thread.ends.start !== 'inside' && wall.from <= thread.from + lift;
+  const endHad = thread.ends.end !== 'inside' && wall.to >= thread.to - lift;
+  const from = startHad ? wall.from - thread.runOut.start : Math.max(thread.from, wall.from);
+  const to = endHad ? wall.to + thread.runOut.end : Math.min(thread.to, wall.to);
+  if (!(to > from)) return undefined;
+  const [low, high] = thread.internal ? [thread.radius, thread.diameter / 2 + thread.clearance] : [thread.diameter / 2 - thread.depth - thread.clearance, thread.radius];
+  return { origin: thread.origin, axis: unit3(thread.axis), internal: thread.internal, low, high, from, to, threads: [thread] };
+}
+
+// Do two threads have the same profile (the fields `threadsAgree` compares and the clearance)?
+const sameThread = (a: ThreadResult, b: ThreadResult): boolean =>
+  a.internal === b.internal && a.hand === b.hand && a.starts === b.starts && Math.abs(a.pitch - b.pitch) <= LENGTH_TOLERANCE && Math.abs(a.diameter - b.diameter) <= LENGTH_TOLERANCE && Math.abs(a.depth - b.depth) <= LENGTH_TOLERANCE && Math.abs(a.flankAngle - b.flankAngle) <= ANGLE_TOLERANCE && Math.abs(a.clearance - b.clearance) <= LENGTH_TOLERANCE;
+// The span of zone `b` along the axis of zone `a`, from the origin of `a`.
+function spanOn(a: Pick<ThreadZone, 'origin' | 'axis'>, b: Pick<ThreadZone, 'origin' | 'axis' | 'from' | 'to'>): [number, number] {
+  const [x, y] = [b.from, b.to].map((s) => dot3(sub3(add3(b.origin, mul3(b.axis, s)), a.origin), a.axis));
+  return x < y ? [x, y] : [y, x];
+}
+// Two axes on one line: parallel or opposite within the angle tolerance, and no further apart than
+// `distance`; the second number is how far apart they are (the larger of the distances of the
+// two origins from the other line), the third the angle between them.
+function line(a: Pick<ThreadZone, 'origin' | 'axis'>, b: Pick<ThreadZone, 'origin' | 'axis'>, distance: number): { one: boolean; apart: number; angle: number } {
+  const angle = Math.asin(Math.min(1, len3(cross3(a.axis, b.axis))));
+  const off = (p: Vec3, z: Pick<ThreadZone, 'origin' | 'axis'>): number => {
+    const d = sub3(p, z.origin);
+    return len3(sub3(d, mul3(z.axis, dot3(d, z.axis))));
+  };
+  const apart = Math.max(off(b.origin, a), off(a.origin, b));
+  return { one: angle <= ANGLE_TOLERANCE && apart <= distance, apart, angle };
+}
+// Zones of one body about one axis with the same radii whose spans touch or overlap are one zone,
+// when their threads are the same in every field `threadsAgree` compares and in their clearance:
+// the axes to the angle tolerance, the lines and the radii to the length tolerance, the spans to
+// the lift. Two different threads on one wall stay two zones.
+export function joinedZones(zones: readonly ThreadZone[], lift: number): ThreadZone[] {
+  const out: ThreadZone[] = [];
+  for (const zone of zones) {
+    const joined = out.findIndex(
+      (other) => sameThread(other.threads[0], zone.threads[0]) && line(other, zone, LENGTH_TOLERANCE * Math.max(1, zone.high)).one && Math.abs(other.low - zone.low) <= LENGTH_TOLERANCE * Math.max(1, zone.high) && Math.abs(other.high - zone.high) <= LENGTH_TOLERANCE * Math.max(1, zone.high) && (([x, y]) => x <= other.to + lift && other.from <= y + lift)(spanOn(other, zone)),
+    );
+    if (joined < 0) {
+      out.push(zone);
+      continue;
+    }
+    const other = out[joined];
+    const [x, y] = spanOn(other, zone);
+    out[joined] = { ...other, from: Math.min(other.from, x), to: Math.max(other.to, y), threads: [...other.threads, ...zone.threads] };
+  }
+  return out;
+}
+
+// A zone moved by a rigid transform (the zone of the second body of a pair into the frame of the
+// first).
+export const movedZone = (zone: ThreadZone, t: RigidTransform | undefined): ThreadZone => (t ? { ...zone, origin: transformPoint(t, zone.origin), axis: unit3(transformVector(t, zone.axis)) } : zone);
+
+// The ring of a zone: the zone grown by `slack` (the chord tolerance and the precision of the
+// coordinates) at the root, into the material of its body, and by `lift` everywhere else: beside
+// the wall, into the air, and at both ends. A closed mesh whose faces carry `face`; its outer
+// polygon is circumscribed and its inner one inscribed, so no chord of it dips into the zone.
+export function ringOf(zone: ThreadZone, slack: number, lift: number, tolerance: number, face: number): Solid {
+  const [inner, outer] = zone.internal ? [zone.low - lift, zone.high + slack] : [zone.low - slack, zone.high + lift];
+  const [z0, z1] = [zone.from - lift, zone.to + lift];
+  const step = Math.min(2 * Math.acos(Math.max(-1, 1 - Math.min(tolerance / outer, 1))), Math.PI / 4);
+  const n = Math.max(8, Math.ceil((2 * Math.PI) / step - 1e-9));
+  const grow = 1 / Math.cos(Math.PI / n);
+  const [e1, e2] = acrossAxis(zone.axis);
+  const at = (radius: number, angle: number, z: number): Vec3 => add3(add3(zone.origin, mul3(zone.axis, z)), add3(mul3(e1, radius * Math.cos(angle)), mul3(e2, radius * Math.sin(angle))));
+  const positions: number[] = [];
+  const triangles: number[] = [];
+  const push = (p: Vec3): number => (positions.push(...p), positions.length / 3 - 1);
+  const ring = (radius: number, z: number): number[] => Array.from({ length: n }, (_, i) => push(at(radius, (2 * Math.PI * i) / n, z)));
+  const [ob, ot] = [ring(outer * grow, z0), ring(outer * grow, z1)];
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    triangles.push(ob[i], ob[j], ot[j], ob[i], ot[j], ot[i]);
+  }
+  if (inner > 1e-9) {
+    const [ib, it] = [ring(inner, z0), ring(inner, z1)];
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n;
+      triangles.push(ib[i], it[j], ib[j], ib[i], it[i], it[j]);
+      triangles.push(ob[i], ib[i], ib[j], ob[i], ib[j], ob[j]); // the bottom
+      triangles.push(ot[i], ot[j], it[j], ot[i], it[j], it[i]); // the top
+    }
+  } else {
+    const [cb, ct] = [push(at(0, 0, z0)), push(at(0, 0, z1))];
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n;
+      triangles.push(cb, ob[j], ob[i], ct, ot[i], ot[j]);
+    }
+  }
+  return { positions: Float32Array.from(positions), triangles: Uint32Array.from(triangles), faceIds: new Uint32Array(triangles.length / 3).fill(face) };
+}
+function acrossAxis(axis: Vec3): [Vec3, Vec3] {
+  const ref: Vec3 = Math.abs(axis[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0];
+  const e1 = unit3(sub3(ref, mul3(axis, dot3(ref, axis))));
+  return [e1, cross3(axis, e1)];
+}
+// A box that holds the ring of a zone.
+export function ringBox(zone: ThreadZone, slack: number, lift: number): BodyResult['bounds'] {
+  const radius = (zone.internal ? zone.high + slack : zone.high + lift) / Math.cos(Math.PI / 8);
+  const [p, q] = [add3(zone.origin, mul3(zone.axis, zone.from - lift)), add3(zone.origin, mul3(zone.axis, zone.to + lift))];
+  const reach = [0, 1, 2].map((k) => radius * Math.sqrt(Math.max(0, 1 - zone.axis[k] * zone.axis[k])));
+  return { min: [0, 1, 2].map((k) => Math.min(p[k], q[k]) - reach[k]) as Vec3, max: [0, 1, 2].map((k) => Math.max(p[k], q[k]) + reach[k]) as Vec3 };
+}
+
+// Does a piece go around the axis of a zone? Sums over its triangles (its volume, its centre, its
+// second moment about the axis), to which a sheet without thickness adds nothing.
+export function goesAround(piece: Solid, zone: Pick<ThreadZone, 'origin' | 'axis'>): boolean {
+  const [e1, e2] = acrossAxis(zone.axis);
+  const p = piece.positions;
+  const local = (i: number): Vec3 => {
+    const d: Vec3 = [p[3 * i] - zone.origin[0], p[3 * i + 1] - zone.origin[1], p[3 * i + 2] - zone.origin[2]];
+    return [dot3(d, e1), dot3(d, e2), dot3(d, zone.axis)];
+  };
+  let [v, cx, cy, rr] = [0, 0, 0, 0];
+  for (let t = 0; t < piece.triangles.length; t += 3) {
+    const [a, b, c] = [local(piece.triangles[t]), local(piece.triangles[t + 1]), local(piece.triangles[t + 2])];
+    const d = dot3(a, cross3(b, c)) / 6;
+    v += d;
+    cx += (d * (a[0] + b[0] + c[0])) / 4;
+    cy += (d * (a[1] + b[1] + c[1])) / 4;
+    for (const k of [0, 1]) rr += (d / 10) * (a[k] ** 2 + b[k] ** 2 + c[k] ** 2 + a[k] * b[k] + a[k] * c[k] + b[k] * c[k]);
+  }
+  if (v === 0) return false;
+  return Math.hypot(cx / v, cy / v) < THREAD_AROUND * Math.sqrt(Math.max(0, rr / v));
+}
+
+// Whether two zones of threads, in one frame, concern each other, and what differs between their
+// threads when they do. "On one line": the directions parallel or opposite within the angle
+// tolerance and the lines no further apart than the chord tolerance.
+// - `apart`: the rings of the two zones do not meet. On one line: the zones do not overlap along
+//   the axis or in their radii. Off one line: the two rings share no volume (`meet`, which builds
+//   them and asks the kernel).
+// - `agree`: on one line, one internal and the other external, and the pitch, the number of starts,
+//   the hand as each lies, the nominal diameter, the flank angle and the depth the same.
+// - Else `mismatch`, in words.
+export function threadsAgree(a: ThreadZone, b: ThreadZone, chordTolerance: number, meet: () => boolean): 'apart' | 'agree' | { mismatch: string } {
+  const on = line(a, b, chordTolerance);
+  if (!on.one) {
+    if (!meet()) return 'apart';
+    return { mismatch: on.angle > ANGLE_TOLERANCE ? `the axes meet at ${round((on.angle * 180) / Math.PI)}°` : `the axes are ${round(on.apart)} apart` };
+  }
+  const [x, y] = spanOn(a, b);
+  if (y <= a.from || a.to <= x || b.high <= a.low || a.high <= b.low) return 'apart';
+  const [s, t] = [a.threads[0], b.threads[0]];
+  const differs: string[] = [];
+  if (s.internal === t.internal) differs.push(`two ${s.internal ? 'internal' : 'external'} threads`);
+  if (s.hand !== t.hand) differs.push(`a ${t.hand}-hand thread in a ${s.hand}-hand one`);
+  if (Math.abs(s.diameter - t.diameter) > LENGTH_TOLERANCE) differs.push(`diameter ${round(s.diameter)} against ${round(t.diameter)}`);
+  if (Math.abs(s.pitch - t.pitch) > LENGTH_TOLERANCE) differs.push(`pitch ${round(s.pitch)} against ${round(t.pitch)}`);
+  if (s.starts !== t.starts) differs.push(`${s.starts} starts against ${t.starts}`);
+  if (Math.abs(s.flankAngle - t.flankAngle) > ANGLE_TOLERANCE) differs.push(`flanks at ${round((s.flankAngle * 180) / Math.PI)}° against ${round((t.flankAngle * 180) / Math.PI)}°`);
+  else if (Math.abs(s.depth - t.depth) > LENGTH_TOLERANCE) differs.push(`depth ${round(s.depth)} against ${round(t.depth)}`);
+  return differs.length ? { mismatch: differs.join(', ') } : 'agree';
+}
+const round = (value: number): string => String(Number(value.toPrecision(3)));

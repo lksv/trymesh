@@ -1620,6 +1620,48 @@ describe('the app, driven as a user drives it', () => {
     await matches(h, 'chamfer-fillet');
   });
 
+  it('a cosmetic thread on a pin: the face picked in the view, a size of the catalog, the fields, the helix in the view, the summary (D76)', async () => {
+    const h = await start();
+    const sketch = 'pinS';
+    outside(h, {
+      type: 'batch',
+      commands: [
+        { type: 'addFeature', feature: emptySketch(sketch, 'pin sketch', { kind: 'base', plane: 'XY' }) },
+        { type: 'addPoint', sketch, id: 'c', x: 0, y: 0 },
+        { type: 'addConstraint', sketch, id: 'fc', constraint: { type: 'fixed', point: 'c', x: 0, y: 0 } },
+        { type: 'addCurve', sketch, id: 'k', curve: { type: 'circle', center: 'c' }, radius: 5 },
+        { type: 'addConstraint', sketch, id: 'rk', constraint: { type: 'radius', curve: 'k', value: 5, driving: true } },
+        { type: 'addFeature', feature: { id: 'pin', name: 'Pin', suppressed: false, type: 'extrude', profile: { type: 'regions', sketch, regions: [{ outerLoop: ['k'] }] }, extent: { type: 'distance', start: 0, distance: 20 }, operation: 'new' } },
+      ],
+    });
+    h.record('a pin of 10 mm, 20 long');
+
+    h.press('toolbar', 'Thread');
+    h.record('a new thread: picking faces is armed, M6 until a size is chosen');
+    h.click(at(-3, -4, 10));
+    h.record('the side of the pin picked: an M6 thread on a pin of 10 is refused, the error says the size');
+    h.choose('Size (ISO metric)', 'M10');
+    h.record('M10 from the catalog: diameter, pitch and label filled in, the preview draws the helix');
+    h.type(h.field('Length (mm; empty: to the far end of the face)'), '12');
+    h.choose('Hand', 'left');
+    h.record('12 long, left-hand');
+    h.press('panel', 'OK');
+    h.record('OK: the thread is in the document');
+    const feature = h.engine.getState().document.features.find((f) => f.type === 'thread');
+    expect(feature).toMatchObject({ body: 'pin', faces: [{ feature: 'pin', role: 'side', curve: 'k' }], modelled: false, diameter: 10, pitch: 1.5, hand: 'left', length: 12, label: 'M10' });
+    expect(h.engine.getState().evaluation.features[feature!.id].status).toBe('ok');
+    // the view draws the helix of the thread: 12 long, every point a hair off the wall
+    const helix = h.view.scene.lines.find((line) => line.color === 0x0f766e);
+    expect(helix?.segments.length).toBeGreaterThan(6 * 8 * 8);
+    for (let i = 0; i < helix!.segments.length; i += 3) {
+      expect(Math.hypot(helix!.segments[i], helix!.segments[i + 1])).toBeCloseTo(5.05, 6);
+      expect(helix!.segments[i + 2]).toBeGreaterThanOrEqual(8 - 1e-9);
+    }
+    h.row('Thread 1').click();
+    h.record('selected: the summary');
+    await matches(h, 'thread');
+  });
+
   it('the properties of a body: the form, the line of the body, the view, the export, an entry whose body is gone (D48)', async () => {
     const h = await start();
     h.press('toolbar', 'Sketch');

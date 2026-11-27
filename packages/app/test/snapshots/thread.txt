@@ -1,0 +1,653 @@
+
+=== 1. a pin of 10 mm, 20 long
+  engine: execute({"type":"batch","commands":[{"type":"addFeature","feature":{"id":"pinS","name":"pin sketch","suppressed":false,"type":"sketch","plane":{"kind":"base","plane":"XY"},"points":{},"radii":{},"curves":{},"constraints":{},"external":{},"solved":{"inputs":"","external":{}}}},{"type":"addPoint","sketch":"pinS","id":"c","x":0,"y":0},{"type":"addConstraint","sketch":"pinS","id":"fc","constraint":{"type":"fixed","point":"c","x":0,"y":0}},{"type":"addCurve","sketch":"pinS","id":"k","curve":{"type":"circle","center":"c"},"radius":5},{"type":"addConstraint","sketch":"pinS","id":"rk","constraint":{"type":"radius","curve":"k","value":5,"driving":true}},{"type":"addFeature","feature":{"id":"pin","name":"Pin","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"pinS","regions":[{"outerLoop":["k"]}]},"extent":{"type":"distance","start":0,"distance":20},"operation":"new"}}]}) -> ok
+  features: pinS, pin
+  feature pinS:
+      {"id":"pinS","name":"pin sketch","suppressed":false,"type":"sketch","plane":{"kind":"base","plane":"XY"}}
+      point c: {"x":0,"y":0}
+      radius k: 5
+      curve k: {"type":"circle","center":"c"}
+      constraint fc: {"type":"fixed","point":"c","x":0,"y":0}
+      constraint rk: {"type":"radius","curve":"k","value":5,"driving":true}
+  feature pin:
+      {"id":"pin","name":"Pin","suppressed":false,"type":"extrude","profile":{"type":"regions","sketch":"pinS","regions":[{"outerLoop":["k"]}]},"extent":{"type":"distance","start":0,"distance":20},"operation":"new"}
+  document: {"parameters":[],"checks":[],"settings":{"chordTolerance":0.01},"schemaVersion":10}
+  toolbar:
+      div.group
+        button title="Empty document": "New"
+        button: "Open"
+        button: "Save"
+        button: "Export STL"
+        input type=file hidden
+      div.group
+        button title="Connect to the MCP server (packages/mcp): the AI then reads and changes the document open in the app": "AI"
+      div.group
+        button title="Ctrl+Z": "↶ Undo"
+        button disabled title="Ctrl+Shift+Z": "↷ Redo"
+      div.group
+        button title="A new sketch on a plane or a planar face": "Sketch"
+        button title="Extrude regions of a sketch": "Extrude"
+        button title="Turn regions of a sketch about an axis in its plane": "Revolve"
+        button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
+        button title="Chamfer edges of a body by a distance": "Chamfer"
+        button title="Round edges of a body by a radius": "Fillet"
+        button title="A thread on bores or pins of a body (cosmetic: drawn as its helix, the mesh stays)": "Thread"
+        button title="A plane offset from a plane or a planar face": "Plane"
+        button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
+        button title="Place a stored mesh (a bought part read from an STL file) as a body": "Mesh"
+        button title="Insert another document (a part saved as a document file) as a part of this one": "Insert"
+        button title="Join, subtract or intersect finished bodies; subtract with a clearance": "Combine"
+        button title="Cut a body into two by a plane; both parts get the cut face": "Split"
+      div.group
+        select value="" title="Ask a query about the model"
+          option selected value="": "Queries…"
+          option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported. A screw in a bore with a thread (D76) overlaps it by design: such a pair is listed under `threaded`, not as a collision.": "Interference"
+          option value="sketchDiagnosis" title="How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.": "Diagnosis of a sketch"
+          option value="constraintExplanation" title="Whether a constraint of a sketch follows from other constraints, and from which.": "Explanation of a constraint"
+          option value="sketchContacts" title="Where the curves of a sketch that form regions cross, touch, end on each other or overlap apart from common points, which is what makes its profile invalid, and what the sketch tool split would do at each place. Ask it when a sketch reports `valid: false`, before split and trim.": "Contacts of the outline curves of a sketch"
+          option value="sketchSources" title="The sketches before a sketch on the timeline and whether each lies on a parallel plane, and, for one of them, every point and curve a projection may name, placed in the coordinates of the asking sketch. Ask it before addExternal with `type: "sketch"` or the sketch tool projectSketch.": "What a sketch can project from earlier sketches"
+          option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+          option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
+          option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, spheres, tori, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
+          option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
+          option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
+          option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece (all bodies of the state without `bodies`). A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`, and so is a reference part without `bodies` when it states neither a mass nor a density; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
+          option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
+          option value="hardwareHole" title="The shape of a hole for a screw, a nut or a heat-set insert of a size, from the hardware catalogs: put `shape` and `label` of the answer into a feature of the type hole (and for an insert `depth` into its extent). A tapped hole (the use `tapped`) is a plain hole at the tap drill of the catalog metricThreads and a feature of the type thread on its bores: put `shape` into the hole (it has no label: the screw is counted at the hole it comes through) and the fields of `thread` into the thread feature. The heads and the nut are the largest sizes the standards allow and nothing is added to them; room for the printer is the allowance, best a parameter. The catalogs are clearanceHoles, socketHeadScrews, countersunkScrews, hexNuts, heatSetInserts and metricThreads; the query `catalog` shows their rows and sources.": "Hole for a piece of hardware"
+          option value="mechanism" title="The links and joints of the model as resolved for the state asked about: where each link stands in the pose, the numbers and the axis of each joint, and what is in error. With `beyond`, what hangs on that joint. Asked with `after: { type: "setPose", … }` it answers for a pose that is not written.": "Mechanism"
+          option value="partsList" title="What to print and what to buy: the bodies of the model as rows of parts, and the hardware of the hole features. A printed part is a body with the use `part`, a bought part one with the use `reference` (body properties); auxiliary bodies are no parts. A body and its copies made by a pattern are one row with a count while they are the same part: a mirror image is another part, and so is a copy with another material, colour, mass or name, and a body that a feature changed after the pattern (so model what every copy should have before the pattern). Hardware is counted from the labels of the hole features: one piece per hole the model has, by where the holes are (a hole through several bodies is one hole, and so are holes that continue one another on one line; a copy of a body at another place has its holes too, also one further along the same line; a hole that missed or was cut away is not counted). So the label of a hole should name the piece that goes into it, with what the catalog does not know ("M3x10 countersunk screw"), and a hole that takes no piece of its own should have none. Every copy counts, also one laid out for printing. The answer is for the model as modelled, whatever the pose.": "Parts list"
+          option value="entryCurves" title="The curves of one entry of `external` of a sketch at their places, a page at a time: of an imported outline (get_sketch lists its first curves only), of a projection, or the copies of a mirror or pattern. A spline comes with its control points (`control`: `<id>/<i>` stands at `control[i]`), which constraints and projections may name, and where it runs.": "The curves of an entry of a sketch"
+          option value="sketchRegions" title="The regions of a sketch with their whole references, as an extrusion or a revolution names them (`{ outerLoop: [...] }`), a page at a time: get_sketch prints a loop of more than twenty curves short, with the `index` to ask here. `curve` keeps the regions a curve bounds (the way from a curve of an imported outline to the region to extrude); `holes` lists the curves of the holes too.": "The regions of a sketch"
+        select value="" title="Export the model in a format of the engine"
+          option selected value="": "Export…"
+          option value="stl" title="Bodies as triangle meshes in binary STL, for a slicer. One file with the chosen bodies, or with `perBody` a folder with a file per body (one printable part per file).": "STL"
+          option value="3mf" title="Bodies as the objects of one 3MF document, for a slicer: each body is an object with its name (the name of the body properties), its ID as the part number and, when the body has a colour, a base material with that colour, named by the material of the body. One file, in millimetres, the bodies where they are modelled. The file is a ZIP, compressed when the engine has a compressor: about a fifth of the size of the STL of the same bodies; otherwise about a quarter larger than the STL.": "3MF"
+          option value="dxf" title="The outline a plane cuts out of bodies as a DXF drawing in millimetres, for laser cutting and drilling templates (the same cut as the query section). A whole circle is a CIRCLE with the centre and radius of its surface; every other loop is one closed POLYLINE with lines and arcs. Outer loops are on the layer OUTER, holes on the layer HOLES. The coordinates are the x and y of the plane, as the query section reports them. One file in the form of DXF release 12.": "DXF (outline)"
+          option value="svg" title="The outline a plane cuts out of bodies as an SVG drawing with one user unit per millimetre (the same cut as the query section). A whole circle is a `circle` with the centre and radius of its surface; every other loop is one closed `path` with lines and arcs; class `outer` or `hole`, a group per body. The y of the plane points up and that of SVG down: a point (u, v) of the plane is written (u, −v). Stroked, not filled. One file.": "SVG (outline)"
+          option value="partsCsv" title="The parts list of the model (the query partsList) as one CSV table for a spreadsheet: a record per kind of printed part, of bought part and of hardware, with its count, material, colour, the mass of one and of all in grams, a note for a row of copies that are not in the row of their source, and the IDs of its bodies or hole features. Comma separated, UTF-8, a decimal point. One file.": "Parts list (CSV)"
+          option value="urdf" title="The mechanism as a URDF robot description for ROS and simulators: a folder with robot.urdf and one binary STL per body in metres in the frame of its link. One tree from one root link; the frame of a link at the axis of its joint with the axes of the model; the mass, centre of mass and inertia of each link from its bodies (query mass); a visual and a collision mesh per body. Every revolute and prismatic joint needs `effort` and `velocity` (setJoint). The root is not fixed: the simulator decides.": "URDF (robot)"
+          option value="mjcf" title="The mechanism as a MuJoCo model: a folder with robot.xml and one binary STL per body in metres in the frame of its link. One tree from one root link, welded to the world; the frame of a link at the axis of its joint with the axes of the model; the mass, centre of mass and inertia of each link from its bodies (query mass); a mesh geom per body, the two links of a joint excluded from contact; a motor per joint with an `effort` (with `gearRatio`), `rotorInertia · gearRatio²` as the armature of the joint, and the pose of the document as the keyframe `pose`.": "MJCF (MuJoCo)"
+        button disabled title="Check which bodies share a volume": "Collisions"
+      div.group
+        button: "Fit all"
+        button title="Save a picture of the model as PNG: the bodies that are shown, from the camera of the view and cut as the view is; without the selection, sketches, planes and dimensions": "Save picture"
+        button.active title="Show or hide the planes XY, XZ, YZ": "Base planes"
+  timeline:
+      h2: "Timeline"
+      div.row.ok
+        span.dot: "●"
+        span.name: "pin sketch"
+        button.icon title="Hide or show": "👁"
+        button.icon disabled title="Move earlier": "↑"
+        button.icon title="Move later": "↓"
+        button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
+      div.row.ok
+        span.dot: "●"
+        span.name: "Pin"
+        button.icon title="Hide or show": "👁"
+        button.icon title="Move earlier": "↑"
+        button.icon disabled title="Move later": "↓"
+        button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
+  panel:
+      h2: "Model"
+      p.hint: "The right mouse button orbits, the wheel zooms, the middle button (or Shift + right) pans. On a touchpad: Alt/Option + drag orbits, Alt + Shift + drag pans, two fingers zoom. A feature on the timeline is edited by a double click."
+      h2: "Parameters (0)"
+      div.constraint
+        input.pname value="" placeholder="name"
+        input.expr value="" placeholder="expression, e.g. 2 * a"
+        button: "Add"
+      p.hint: "An expression can be typed into numeric fields and dimensions instead of a number. Angles in an expression are in radians; write degrees as deg(30)."
+      h2: "Checks (0)"
+      div.constraint
+        input.pname value="" placeholder="name"
+        input.expr value="" placeholder="condition, e.g. a < b"
+        button: "Add"
+      h2: "Mechanism"
+      p.hint: "Links are bodies that move as one piece; a joint moves its child link against its parent. The model as modelled is the zero of every joint."
+      div.buttons
+        button title="Bodies that move as one piece": "New link"
+        button disabled title="A joint moves its child link against its parent link": "New joint"
+        button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
+  status: Start with a sketch: the Sketch button and a choice of plane.
+  view: 2 scene(s) set
+  scene:
+      bodies: pin
+      line #26303c width 1.5: 600 numbers, sum 8002.116
+      line #8b9bb4 width 1: 24 numbers, sum 372.03
+      line #8b9bb4 width 1: 24 numbers, sum 248.02
+      line #8b9bb4 width 1: 24 numbers, sum 124.01
+      line #5b7aa8 width 1.5: 576 numbers, sum -0.657
+      fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, 0, 1]: 8 numbers, sum 17.716
+      fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [0, -1, 0]: 8 numbers, sum 17.716
+      fill #8b9bb4 opacity 0.08 at [0, 0, 0] normal [1, 0, 0]: 8 numbers, sum 17.716
+  view: fit [-20, -20, -20] .. [20, 20, 20]
+
+=== 2. a new thread: picking faces is armed, M6 until a size is chosen
+  engine: getState("pin")  (x2)
+  toolbar:
+    +   button disabled title="Ctrl+Z": "↶ Undo"
+    -   button title="Ctrl+Z": "↶ Undo"
+    -   button title="A new sketch on a plane or a planar face": "Sketch"
+    -   button title="Extrude regions of a sketch": "Extrude"
+    -   button title="Turn regions of a sketch about an axis in its plane": "Revolve"
+    -   button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
+    -   button title="Chamfer edges of a body by a distance": "Chamfer"
+    -   button title="Round edges of a body by a radius": "Fillet"
+    -   button title="A thread on bores or pins of a body (cosmetic: drawn as its helix, the mesh stays)": "Thread"
+    -   button title="A plane offset from a plane or a planar face": "Plane"
+    -   button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
+    -   button title="Place a stored mesh (a bought part read from an STL file) as a body": "Mesh"
+    -   button title="Insert another document (a part saved as a document file) as a part of this one": "Insert"
+    -   button title="Join, subtract or intersect finished bodies; subtract with a clearance": "Combine"
+    -   button title="Cut a body into two by a plane; both parts get the cut face": "Split"
+    - div.group
+    -   select value="" title="Ask a query about the model"
+    -     option selected value="": "Queries…"
+    -     option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported. A screw in a bore with a thread (D76) overlaps it by design: such a pair is listed under `threaded`, not as a collision.": "Interference"
+    -     option value="sketchDiagnosis" title="How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.": "Diagnosis of a sketch"
+    -     option value="constraintExplanation" title="Whether a constraint of a sketch follows from other constraints, and from which.": "Explanation of a constraint"
+    -     option value="sketchContacts" title="Where the curves of a sketch that form regions cross, touch, end on each other or overlap apart from common points, which is what makes its profile invalid, and what the sketch tool split would do at each place. Ask it when a sketch reports `valid: false`, before split and trim.": "Contacts of the outline curves of a sketch"
+    -     option value="sketchSources" title="The sketches before a sketch on the timeline and whether each lies on a parallel plane, and, for one of them, every point and curve a projection may name, placed in the coordinates of the asking sketch. Ask it before addExternal with `type: "sketch"` or the sketch tool projectSketch.": "What a sketch can project from earlier sketches"
+    -     option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+    -     option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
+    -     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, spheres, tori, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
+    -     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
+    -     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
+    -     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece (all bodies of the state without `bodies`). A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`, and so is a reference part without `bodies` when it states neither a mass nor a density; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
+    -     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
+    -     option value="hardwareHole" title="The shape of a hole for a screw, a nut or a heat-set insert of a size, from the hardware catalogs: put `shape` and `label` of the answer into a feature of the type hole (and for an insert `depth` into its extent). A tapped hole (the use `tapped`) is a plain hole at the tap drill of the catalog metricThreads and a feature of the type thread on its bores: put `shape` into the hole (it has no label: the screw is counted at the hole it comes through) and the fields of `thread` into the thread feature. The heads and the nut are the largest sizes the standards allow and nothing is added to them; room for the printer is the allowance, best a parameter. The catalogs are clearanceHoles, socketHeadScrews, countersunkScrews, hexNuts, heatSetInserts and metricThreads; the query `catalog` shows their rows and sources.": "Hole for a piece of hardware"
+    -     option value="mechanism" title="The links and joints of the model as resolved for the state asked about: where each link stands in the pose, the numbers and the axis of each joint, and what is in error. With `beyond`, what hangs on that joint. Asked with `after: { type: "setPose", … }` it answers for a pose that is not written.": "Mechanism"
+    -     option value="partsList" title="What to print and what to buy: the bodies of the model as rows of parts, and the hardware of the hole features. A printed part is a body with the use `part`, a bought part one with the use `reference` (body properties); auxiliary bodies are no parts. A body and its copies made by a pattern are one row with a count while they are the same part: a mirror image is another part, and so is a copy with another material, colour, mass or name, and a body that a feature changed after the pattern (so model what every copy should have before the pattern). Hardware is counted from the labels of the hole features: one piece per hole the model has, by where the holes are (a hole through several bodies is one hole, and so are holes that continue one another on one line; a copy of a body at another place has its holes too, also one further along the same line; a hole that missed or was cut away is not counted). So the label of a hole should name the piece that goes into it, with what the catalog does not know ("M3x10 countersunk screw"), and a hole that takes no piece of its own should have none. Every copy counts, also one laid out for printing. The answer is for the model as modelled, whatever the pose.": "Parts list"
+    -     option value="entryCurves" title="The curves of one entry of `external` of a sketch at their places, a page at a time: of an imported outline (get_sketch lists its first curves only), of a projection, or the copies of a mirror or pattern. A spline comes with its control points (`control`: `<id>/<i>` stands at `control[i]`), which constraints and projections may name, and where it runs.": "The curves of an entry of a sketch"
+    -     option value="sketchRegions" title="The regions of a sketch with their whole references, as an extrusion or a revolution names them (`{ outerLoop: [...] }`), a page at a time: get_sketch prints a loop of more than twenty curves short, with the `index` to ask here. `curve` keeps the regions a curve bounds (the way from a curve of an imported outline to the region to extrude); `holes` lists the curves of the holes too.": "The regions of a sketch"
+    -   select value="" title="Export the model in a format of the engine"
+    -     option selected value="": "Export…"
+    -     option value="stl" title="Bodies as triangle meshes in binary STL, for a slicer. One file with the chosen bodies, or with `perBody` a folder with a file per body (one printable part per file).": "STL"
+    -     option value="3mf" title="Bodies as the objects of one 3MF document, for a slicer: each body is an object with its name (the name of the body properties), its ID as the part number and, when the body has a colour, a base material with that colour, named by the material of the body. One file, in millimetres, the bodies where they are modelled. The file is a ZIP, compressed when the engine has a compressor: about a fifth of the size of the STL of the same bodies; otherwise about a quarter larger than the STL.": "3MF"
+    -     option value="dxf" title="The outline a plane cuts out of bodies as a DXF drawing in millimetres, for laser cutting and drilling templates (the same cut as the query section). A whole circle is a CIRCLE with the centre and radius of its surface; every other loop is one closed POLYLINE with lines and arcs. Outer loops are on the layer OUTER, holes on the layer HOLES. The coordinates are the x and y of the plane, as the query section reports them. One file in the form of DXF release 12.": "DXF (outline)"
+    -     option value="svg" title="The outline a plane cuts out of bodies as an SVG drawing with one user unit per millimetre (the same cut as the query section). A whole circle is a `circle` with the centre and radius of its surface; every other loop is one closed `path` with lines and arcs; class `outer` or `hole`, a group per body. The y of the plane points up and that of SVG down: a point (u, v) of the plane is written (u, −v). Stroked, not filled. One file.": "SVG (outline)"
+    -     option value="partsCsv" title="The parts list of the model (the query partsList) as one CSV table for a spreadsheet: a record per kind of printed part, of bought part and of hardware, with its count, material, colour, the mass of one and of all in grams, a note for a row of copies that are not in the row of their source, and the IDs of its bodies or hole features. Comma separated, UTF-8, a decimal point. One file.": "Parts list (CSV)"
+    -     option value="urdf" title="The mechanism as a URDF robot description for ROS and simulators: a folder with robot.urdf and one binary STL per body in metres in the frame of its link. One tree from one root link; the frame of a link at the axis of its joint with the axes of the model; the mass, centre of mass and inertia of each link from its bodies (query mass); a visual and a collision mesh per body. Every revolute and prismatic joint needs `effort` and `velocity` (setJoint). The root is not fixed: the simulator decides.": "URDF (robot)"
+    -     option value="mjcf" title="The mechanism as a MuJoCo model: a folder with robot.xml and one binary STL per body in metres in the frame of its link. One tree from one root link, welded to the world; the frame of a link at the axis of its joint with the axes of the model; the mass, centre of mass and inertia of each link from its bodies (query mass); a mesh geom per body, the two links of a joint excluded from contact; a motor per joint with an `effort` (with `gearRatio`), `rotorInertia · gearRatio²` as the armature of the joint, and the pose of the document as the keyframe `pose`.": "MJCF (MuJoCo)"
+    -   button disabled title="Check which bodies share a volume": "Collisions"
+    - div.group
+  timeline:
+    +   button.icon disabled title="Hide or show": "👁"
+    -   button.icon title="Hide or show": "👁"
+    +   button.icon disabled title="Move later": "↓"
+    +   button.icon disabled title="Roll the model back to here: further features are inserted after this one": "⇤"
+    -   button.icon title="Move later": "↓"
+    -   button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
+    +   button.icon disabled title="Hide or show": "👁"
+    +   button.icon disabled title="Move earlier": "↑"
+    -   button.icon title="Hide or show": "👁"
+    -   button.icon title="Move earlier": "↑"
+    +   button.icon disabled title="Roll the model back to here: further features are inserted after this one": "⇤"
+    -   button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
+  panel:
+    + h2: "New thread"
+    + p: "Body: the body of the first face picked"
+    + ol.edges
+    + p.hint: "No face picked yet."
+    + div.buttons
+    +   button: "Picking… (click to stop)"
+    + label
+    +   input type=checkbox unchecked
+    +   "Also the copies of a pattern (the bores a pattern of the hole made)"
+    + fieldset
+    +   legend: "From the catalog"
+    +   label
+    +     "Size (ISO metric)"
+    +     select value="M6"
+    +       option value="": "—"
+    +       option value="M2": "M2"
+    +       option value="M2.5": "M2.5"
+    +       option value="M3": "M3"
+    +       option value="M3.5": "M3.5"
+    +       option value="M4": "M4"
+    +       option value="M5": "M5"
+    +       option selected value="M6": "M6"
+    +       option value="M7": "M7"
+    +       option value="M8": "M8"
+    +       option value="M8x1": "M8x1"
+    +       option value="M10": "M10"
+    +       option value="M10x1.25": "M10x1.25"
+    +       option value="M10x1": "M10x1"
+    +       option value="M12": "M12"
+    +       option value="M12x1.5": "M12x1.5"
+    +       option value="M12x1.25": "M12x1.25"
+    +       option value="M14": "M14"
+    +       option value="M14x1.5": "M14x1.5"
+    +       option value="M16": "M16"
+    +       option value="M16x1.5": "M16x1.5"
+    +       option value="M18": "M18"
+    +       option value="M18x2": "M18x2"
+    +       option value="M18x1.5": "M18x1.5"
+    +       option value="M20": "M20"
+    +       option value="M20x2": "M20x2"
+    +       option value="M20x1.5": "M20x1.5"
+    +       option value="M22": "M22"
+    +       option value="M22x2": "M22x2"
+    +       option value="M22x1.5": "M22x1.5"
+    +       option value="M24": "M24"
+    +       option value="M24x2": "M24x2"
+    +       option value="M27": "M27"
+    +       option value="M27x2": "M27x2"
+    +       option value="M30": "M30"
+    +       option value="M30x2": "M30x2"
+    +       option value="M33": "M33"
+    +       option value="M33x2": "M33x2"
+    +       option value="M36": "M36"
+    +       option value="M36x3": "M36x3"
+    +       option value="M39": "M39"
+    +       option value="M39x3": "M39x3"
+    +       option value="M42": "M42"
+    +       option value="M42x3": "M42x3"
+    +       option value="M45": "M45"
+    +       option value="M45x3": "M45x3"
+    +       option value="M48": "M48"
+    +       option value="M48x3": "M48x3"
+    +       option value="M52": "M52"
+    +       option value="M52x4": "M52x4"
+    +       option value="M56": "M56"
+    +       option value="M56x4": "M56x4"
+    +       option value="M60": "M60"
+    +       option value="M60x4": "M60x4"
+    +       option value="M64": "M64"
+    +       option value="M64x4": "M64x4"
+    +   p#thread-walls.hint
+    + label
+    +   "Nominal (major) diameter (mm)"
+    +   span.field
+    +     input value="6"
+    +     small.computed data-field="diameter" data-unit="mm"
+    + label
+    +   "Pitch (mm)"
+    +   span.field
+    +     input value="1"
+    +     small.computed data-field="pitch" data-unit="mm"
+    + label
+    +   "Depth of the profile (mm; empty: the ISO proportion)"
+    +   span.field
+    +     input value="" placeholder="ISO proportion"
+    + label
+    +   "Angle between the flanks (°; empty: 60°)"
+    +   span.field
+    +     input value="" placeholder="60"
+    + label
+    +   "Clearance, radial (mm; empty: none)"
+    +   span.field
+    +     input value="" placeholder="0"
+    + label
+    +   "Starts (empty: 1)"
+    +   span.field
+    +     input value="" placeholder="1"
+    + label
+    +   "Hand"
+    +   select value="right"
+    +     option selected value="right": "Right-hand"
+    +     option value="left": "Left-hand"
+    + label
+    +   "Direction"
+    +   select value="backward"
+    +     option value="forward": "From the end the axis points away from, along it"
+    +     option selected value="backward": "From the other end, against the axis (the mouth of a hole made from a sketch on a face)"
+    + label
+    +   "Offset from the end of the face (mm; empty: none)"
+    +   span.field
+    +     input value="" placeholder="0"
+    + label
+    +   "Length (mm; empty: to the far end of the face)"
+    +   span.field
+    +     input value="" placeholder="to the far end"
+    + label
+    +   "Phase (°; empty: 0)"
+    +   span.field
+    +     input value="" placeholder="0"
+    + label
+    +   "Label (for people; empty = none)"
+    +   input value="M6"
+    + label
+    +   input type=checkbox unchecked disabled
+    +   "Modelled"
+    + p.hint: "This build makes cosmetic threads: the mesh stays, the thread is recorded and drawn as its helix, and a screw in such a bore is not a collision. A modelled thread comes later."
+    + p#draft-facts.hint
+    + p#draft-problem.issue.error
+    - h2: "Model"
+    - p.hint: "The right mouse button orbits, the wheel zooms, the middle button (or Shift + right) pans. On a touchpad: Alt/Option + drag orbits, Alt + Shift + drag pans, two fingers zoom. A feature on the timeline is edited by a double click."
+    - h2: "Parameters (0)"
+    - div.constraint
+    -   input.pname value="" placeholder="name"
+    -   input.expr value="" placeholder="expression, e.g. 2 * a"
+    -   button: "Add"
+    - p.hint: "An expression can be typed into numeric fields and dimensions instead of a number. Angles in an expression are in radians; write degrees as deg(30)."
+    - h2: "Checks (0)"
+    - div.constraint
+    -   input.pname value="" placeholder="name"
+    -   input.expr value="" placeholder="condition, e.g. a < b"
+    -   button: "Add"
+    - h2: "Mechanism"
+    - p.hint: "Links are bodies that move as one piece; a joint moves its child link against its parent. The model as modelled is the zero of every joint."
+    +   button.primary disabled: "OK"
+    +   button: "Cancel"
+    -   button title="Bodies that move as one piece": "New link"
+    -   button disabled title="A joint moves its child link against its parent link": "New joint"
+    -   button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
+  status: Click cylindrical faces of one body in the view (a bore or a pin): a click on a picked face removes it.
+  view: 1 scene(s) set
+
+=== 3. the side of the pin picked: an M6 thread on a pin of 10 is refused, the error says the size
+  engine: getState("pin")
+  engine: preview({"type":"addFeature","feature":{"id":"t1","name":"Thread 1","suppressed":false,"type":"thread","body":"pin","faces":[{"feature":"pin","role":"side","curve":"k"}],"modelled":false,"diameter":6,"pitch":1,"hand":"right","direction":"backward","label":"M6"},"index":2}, "t1") -> ok
+  engine: getState("pin")
+  panel:
+    + p: "Body: Pin"
+    - p: "Body: the body of the first face picked"
+    +   li
+    +     "Pin – side"
+    +     small: "pin/side/k"
+    +     button title="Take the face out of the list": "Remove"
+    - p.hint: "No face picked yet."
+    + p#draft-problem.issue.error: "The fields and the faces do not make a thread. (a pin of 10 is wider than the major diameter 6 of the thread) (the face Pin – side)"
+    - p#draft-problem.issue.error
+    +   button.primary: "OK"
+    -   button.primary disabled: "OK"
+  status: 1 face picked.
+  view: 2 scene(s) set
+  scene:
+    + face pin #2 #0ea5e9 opacity 0.3
+  view: mark at [-2.994, -3.993, 9.981]
+
+=== 4. M10 from the catalog: diameter, pitch and label filled in, the preview draws the helix
+  engine: preview({"type":"addFeature","feature":{"id":"t1","name":"Thread 1","suppressed":false,"type":"thread","body":"pin","faces":[{"feature":"pin","role":"side","curve":"k"}],"modelled":false,"diameter":10,"pitch":1.5,"hand":"right","direction":"backward","label":"M10"},"index":2}, "t1") -> ok
+  engine: getState("pin")
+  panel:
+    +     select value="M10"
+    -     select value="M6"
+    +       option value="M6": "M6"
+    -       option selected value="M6": "M6"
+    +       option selected value="M10": "M10"
+    -       option value="M10": "M10"
+    +   p#thread-walls.hint: "Pin – side: a pin of 10, for this thread 10 (the nominal diameter)"
+    -   p#thread-walls.hint
+    +     input value="10"
+    -     input value="6"
+    +     input value="1.5"
+    -     input value="1"
+    +     input value="" placeholder="0.812"
+    -     input value="" placeholder="ISO proportion"
+    +   input value="M10"
+    -   input value="M6"
+    + p#draft-facts.hint: "1 thread; depth 0.812, minor diameter 8.376, lead 1.5 mm."
+    + p#draft-problem.issue.warning
+    - p#draft-facts.hint
+    - p#draft-problem.issue.error: "The fields and the faces do not make a thread. (a pin of 10 is wider than the major diameter 6 of the thread) (the face Pin – side)"
+  status: M10: diameter 10, pitch 1.5; a bore takes the tap drill 8.5, a pin the nominal diameter.
+  view: 1 scene(s) set
+
+=== 5. 12 long, left-hand
+  engine: preview({"type":"addFeature","feature":{"id":"t1","name":"Thread 1","suppressed":false,"type":"thread","body":"pin","faces":[{"feature":"pin","role":"side","curve":"k"}],"modelled":false,"diameter":10,"pitch":1.5,"hand":"right","direction":"backward","label":"M10","length":12},"index":2}, "t1") -> ok
+  engine: getState("pin")
+  engine: preview({"type":"addFeature","feature":{"id":"t1","name":"Thread 1","suppressed":false,"type":"thread","body":"pin","faces":[{"feature":"pin","role":"side","curve":"k"}],"modelled":false,"diameter":10,"pitch":1.5,"hand":"left","direction":"backward","label":"M10","length":12},"index":2}, "t1") -> ok
+  engine: getState("pin")
+  panel:
+    +   select value="left"
+    +     option value="right": "Right-hand"
+    +     option selected value="left": "Left-hand"
+    -   select value="right"
+    -     option selected value="right": "Right-hand"
+    -     option value="left": "Left-hand"
+    +     input value="12" placeholder="to the far end"
+    -     input value="" placeholder="to the far end"
+  view: 2 scene(s) set
+
+=== 6. OK: the thread is in the document
+  engine: getState("pin")
+  engine: execute({"type":"addFeature","feature":{"id":"t1","name":"Thread 1","suppressed":false,"type":"thread","body":"pin","faces":[{"feature":"pin","role":"side","curve":"k"}],"modelled":false,"diameter":10,"pitch":1.5,"hand":"left","direction":"backward","label":"M10","length":12},"index":2}) -> ok
+  features: pinS, pin, t1
+  feature t1:
+      {"id":"t1","name":"Thread 1","suppressed":false,"type":"thread","body":"pin","faces":[{"feature":"pin","role":"side","curve":"k"}],"modelled":false,"diameter":10,"pitch":1.5,"hand":"left","direction":"backward","length":12,"label":"M10"}
+  toolbar:
+    +   button title="Ctrl+Z": "↶ Undo"
+    -   button disabled title="Ctrl+Z": "↶ Undo"
+    +   button title="A new sketch on a plane or a planar face": "Sketch"
+    +   button title="Extrude regions of a sketch": "Extrude"
+    +   button title="Turn regions of a sketch about an axis in its plane": "Revolve"
+    +   button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
+    +   button title="Chamfer edges of a body by a distance": "Chamfer"
+    +   button title="Round edges of a body by a radius": "Fillet"
+    +   button title="A thread on bores or pins of a body (cosmetic: drawn as its helix, the mesh stays)": "Thread"
+    +   button title="A plane offset from a plane or a planar face": "Plane"
+    +   button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
+    +   button title="Place a stored mesh (a bought part read from an STL file) as a body": "Mesh"
+    +   button title="Insert another document (a part saved as a document file) as a part of this one": "Insert"
+    +   button title="Join, subtract or intersect finished bodies; subtract with a clearance": "Combine"
+    +   button title="Cut a body into two by a plane; both parts get the cut face": "Split"
+    + div.group
+    +   select value="" title="Ask a query about the model"
+    +     option selected value="": "Queries…"
+    +     option value="interference" title="Which bodies share a volume, pair by pair. Bodies that only touch are not reported. A screw in a bore with a thread (D76) overlaps it by design: such a pair is listed under `threaded`, not as a collision.": "Interference"
+    +     option value="sketchDiagnosis" title="How far a sketch is determined: its degrees of freedom, the entities that can still move, and the constraints that are duplicate, redundant or in conflict.": "Diagnosis of a sketch"
+    +     option value="constraintExplanation" title="Whether a constraint of a sketch follows from other constraints, and from which.": "Explanation of a constraint"
+    +     option value="sketchContacts" title="Where the curves of a sketch that form regions cross, touch, end on each other or overlap apart from common points, which is what makes its profile invalid, and what the sketch tool split would do at each place. Ask it when a sketch reports `valid: false`, before split and trim.": "Contacts of the outline curves of a sketch"
+    +     option value="sketchSources" title="The sketches before a sketch on the timeline and whether each lies on a parallel plane, and, for one of them, every point and curve a projection may name, placed in the coordinates of the asking sketch. Ask it before addExternal with `type: "sketch"` or the sketch tool projectSketch.": "What a sketch can project from earlier sketches"
+    +     option value="body" title="A body in detail: its faces with their names, surfaces and areas, and its edges with their names and shapes. The names are what references use: the plane of a sketch on a face, the projection of an edge, an entity in the arguments of another query.": "Description of a body"
+    +     option value="catalog" title="A table of data the engine carries, such as sizes of hardware or densities of materials. A catalog fills in fields; the document stores the numbers, not a reference to the row.": "Data catalog"
+    +     option value="measure" title="Distance and angle between two faces, edges or sketch points. Exact for planes, cylinders, cones, spheres, tori, straight and circular edges and sketch points; the smallest distance on the mesh for every pair. The time grows with the number of triangles of the two faces.": "Measure"
+    +     option value="section" title="What a plane cuts out of the bodies: closed loops with their areas and, for every piece of a loop, the face it lies on.": "Section"
+    +     option value="gap" title="How close bodies are to each other: for every pair within the search distance the smallest distance between their surfaces and where it is. Two bodies ask about one pair. Bodies that touch or collide have the distance zero. Every pair of the bodies asked about is examined, so the time grows with the number of bodies, with their triangles and with the search distance.": "Smallest gap"
+    +     option value="mass" title="Mass, centre of mass and inertia of one body or of several taken as one rigid piece (all bodies of the state without `bodies`). A body counts with the mass or the density of its body properties; `densities` overrides them by body (a what-if in another material), and `density` serves every body that states neither. A fill factor scales the bodies that take `density`. An auxiliary body adds nothing and is listed in `skipped`, and so is a reference part without `bodies` when it states neither a mass nor a density; a body whose mass or density cannot be evaluated fails the query.": "Mass properties"
+    +     option value="print" title="How a body prints in given orientations: its size against the bed, the area that lies on the bed and the area that overhangs, per named face. Several orientations in one call can be compared. An orientation is a direction that is up, or the planar face that lies on the bed. It does not know bridges, wall thickness or supports.": "Print check"
+    +     option value="hardwareHole" title="The shape of a hole for a screw, a nut or a heat-set insert of a size, from the hardware catalogs: put `shape` and `label` of the answer into a feature of the type hole (and for an insert `depth` into its extent). A tapped hole (the use `tapped`) is a plain hole at the tap drill of the catalog metricThreads and a feature of the type thread on its bores: put `shape` into the hole (it has no label: the screw is counted at the hole it comes through) and the fields of `thread` into the thread feature. The heads and the nut are the largest sizes the standards allow and nothing is added to them; room for the printer is the allowance, best a parameter. The catalogs are clearanceHoles, socketHeadScrews, countersunkScrews, hexNuts, heatSetInserts and metricThreads; the query `catalog` shows their rows and sources.": "Hole for a piece of hardware"
+    +     option value="mechanism" title="The links and joints of the model as resolved for the state asked about: where each link stands in the pose, the numbers and the axis of each joint, and what is in error. With `beyond`, what hangs on that joint. Asked with `after: { type: "setPose", … }` it answers for a pose that is not written.": "Mechanism"
+    +     option value="partsList" title="What to print and what to buy: the bodies of the model as rows of parts, and the hardware of the hole features. A printed part is a body with the use `part`, a bought part one with the use `reference` (body properties); auxiliary bodies are no parts. A body and its copies made by a pattern are one row with a count while they are the same part: a mirror image is another part, and so is a copy with another material, colour, mass or name, and a body that a feature changed after the pattern (so model what every copy should have before the pattern). Hardware is counted from the labels of the hole features: one piece per hole the model has, by where the holes are (a hole through several bodies is one hole, and so are holes that continue one another on one line; a copy of a body at another place has its holes too, also one further along the same line; a hole that missed or was cut away is not counted). So the label of a hole should name the piece that goes into it, with what the catalog does not know ("M3x10 countersunk screw"), and a hole that takes no piece of its own should have none. Every copy counts, also one laid out for printing. The answer is for the model as modelled, whatever the pose.": "Parts list"
+    +     option value="entryCurves" title="The curves of one entry of `external` of a sketch at their places, a page at a time: of an imported outline (get_sketch lists its first curves only), of a projection, or the copies of a mirror or pattern. A spline comes with its control points (`control`: `<id>/<i>` stands at `control[i]`), which constraints and projections may name, and where it runs.": "The curves of an entry of a sketch"
+    +     option value="sketchRegions" title="The regions of a sketch with their whole references, as an extrusion or a revolution names them (`{ outerLoop: [...] }`), a page at a time: get_sketch prints a loop of more than twenty curves short, with the `index` to ask here. `curve` keeps the regions a curve bounds (the way from a curve of an imported outline to the region to extrude); `holes` lists the curves of the holes too.": "The regions of a sketch"
+    +   select value="" title="Export the model in a format of the engine"
+    +     option selected value="": "Export…"
+    +     option value="stl" title="Bodies as triangle meshes in binary STL, for a slicer. One file with the chosen bodies, or with `perBody` a folder with a file per body (one printable part per file).": "STL"
+    +     option value="3mf" title="Bodies as the objects of one 3MF document, for a slicer: each body is an object with its name (the name of the body properties), its ID as the part number and, when the body has a colour, a base material with that colour, named by the material of the body. One file, in millimetres, the bodies where they are modelled. The file is a ZIP, compressed when the engine has a compressor: about a fifth of the size of the STL of the same bodies; otherwise about a quarter larger than the STL.": "3MF"
+    +     option value="dxf" title="The outline a plane cuts out of bodies as a DXF drawing in millimetres, for laser cutting and drilling templates (the same cut as the query section). A whole circle is a CIRCLE with the centre and radius of its surface; every other loop is one closed POLYLINE with lines and arcs. Outer loops are on the layer OUTER, holes on the layer HOLES. The coordinates are the x and y of the plane, as the query section reports them. One file in the form of DXF release 12.": "DXF (outline)"
+    +     option value="svg" title="The outline a plane cuts out of bodies as an SVG drawing with one user unit per millimetre (the same cut as the query section). A whole circle is a `circle` with the centre and radius of its surface; every other loop is one closed `path` with lines and arcs; class `outer` or `hole`, a group per body. The y of the plane points up and that of SVG down: a point (u, v) of the plane is written (u, −v). Stroked, not filled. One file.": "SVG (outline)"
+    +     option value="partsCsv" title="The parts list of the model (the query partsList) as one CSV table for a spreadsheet: a record per kind of printed part, of bought part and of hardware, with its count, material, colour, the mass of one and of all in grams, a note for a row of copies that are not in the row of their source, and the IDs of its bodies or hole features. Comma separated, UTF-8, a decimal point. One file.": "Parts list (CSV)"
+    +     option value="urdf" title="The mechanism as a URDF robot description for ROS and simulators: a folder with robot.urdf and one binary STL per body in metres in the frame of its link. One tree from one root link; the frame of a link at the axis of its joint with the axes of the model; the mass, centre of mass and inertia of each link from its bodies (query mass); a visual and a collision mesh per body. Every revolute and prismatic joint needs `effort` and `velocity` (setJoint). The root is not fixed: the simulator decides.": "URDF (robot)"
+    +     option value="mjcf" title="The mechanism as a MuJoCo model: a folder with robot.xml and one binary STL per body in metres in the frame of its link. One tree from one root link, welded to the world; the frame of a link at the axis of its joint with the axes of the model; the mass, centre of mass and inertia of each link from its bodies (query mass); a mesh geom per body, the two links of a joint excluded from contact; a motor per joint with an `effort` (with `gearRatio`), `rotorInertia · gearRatio²` as the armature of the joint, and the pose of the document as the keyframe `pose`.": "MJCF (MuJoCo)"
+    +   button disabled title="Check which bodies share a volume": "Collisions"
+    + div.group
+  timeline:
+    +   button.icon title="Hide or show": "👁"
+    -   button.icon disabled title="Hide or show": "👁"
+    +   button.icon title="Move later": "↓"
+    +   button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
+    -   button.icon disabled title="Move later": "↓"
+    -   button.icon disabled title="Roll the model back to here: further features are inserted after this one": "⇤"
+    +   button.icon title="Hide or show": "👁"
+    +   button.icon title="Move earlier": "↑"
+    +   button.icon title="Move later": "↓"
+    +   button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
+    + div.row.ok
+    +   span.dot: "●"
+    +   span.name: "Thread 1"
+    +   button.icon disabled title="A body is hidden at the feature that created it": "👁"
+    +   button.icon title="Move earlier": "↑"
+    -   button.icon disabled title="Hide or show": "👁"
+    -   button.icon disabled title="Move earlier": "↑"
+    +   button.icon title="Roll the model back to here: further features are inserted after this one": "⇤"
+    -   button.icon disabled title="Roll the model back to here: further features are inserted after this one": "⇤"
+  panel:
+    + h2: "Model"
+    + p.hint: "The right mouse button orbits, the wheel zooms, the middle button (or Shift + right) pans. On a touchpad: Alt/Option + drag orbits, Alt + Shift + drag pans, two fingers zoom. A feature on the timeline is edited by a double click."
+    + h2: "Parameters (0)"
+    + div.constraint
+    +   input.pname value="" placeholder="name"
+    +   input.expr value="" placeholder="expression, e.g. 2 * a"
+    +   button: "Add"
+    + p.hint: "An expression can be typed into numeric fields and dimensions instead of a number. Angles in an expression are in radians; write degrees as deg(30)."
+    + h2: "Checks (0)"
+    + div.constraint
+    +   input.pname value="" placeholder="name"
+    +   input.expr value="" placeholder="condition, e.g. a < b"
+    +   button: "Add"
+    + h2: "Mechanism"
+    + p.hint: "Links are bodies that move as one piece; a joint moves its child link against its parent. The model as modelled is the zero of every joint."
+    - h2: "New thread"
+    - p: "Body: Pin"
+    - ol.edges
+    -   li
+    -     "Pin – side"
+    -     small: "pin/side/k"
+    -     button title="Take the face out of the list": "Remove"
+    +   button title="Bodies that move as one piece": "New link"
+    +   button disabled title="A joint moves its child link against its parent link": "New joint"
+    +   button disabled title="Every value without an expression to zero, or as near to it as its limits allow": "Reset pose"
+    -   button: "Picking… (click to stop)"
+    - label
+    -   input type=checkbox unchecked
+    -   "Also the copies of a pattern (the bores a pattern of the hole made)"
+    - fieldset
+    -   legend: "From the catalog"
+    -   label
+    -     "Size (ISO metric)"
+    -     select value="M10"
+    -       option value="": "—"
+    -       option value="M2": "M2"
+    -       option value="M2.5": "M2.5"
+    -       option value="M3": "M3"
+    -       option value="M3.5": "M3.5"
+    -       option value="M4": "M4"
+    -       option value="M5": "M5"
+    -       option value="M6": "M6"
+    -       option value="M7": "M7"
+    -       option value="M8": "M8"
+    -       option value="M8x1": "M8x1"
+    -       option selected value="M10": "M10"
+    -       option value="M10x1.25": "M10x1.25"
+    -       option value="M10x1": "M10x1"
+    -       option value="M12": "M12"
+    -       option value="M12x1.5": "M12x1.5"
+    -       option value="M12x1.25": "M12x1.25"
+    -       option value="M14": "M14"
+    -       option value="M14x1.5": "M14x1.5"
+    -       option value="M16": "M16"
+    -       option value="M16x1.5": "M16x1.5"
+    -       option value="M18": "M18"
+    -       option value="M18x2": "M18x2"
+    -       option value="M18x1.5": "M18x1.5"
+    -       option value="M20": "M20"
+    -       option value="M20x2": "M20x2"
+    -       option value="M20x1.5": "M20x1.5"
+    -       option value="M22": "M22"
+    -       option value="M22x2": "M22x2"
+    -       option value="M22x1.5": "M22x1.5"
+    -       option value="M24": "M24"
+    -       option value="M24x2": "M24x2"
+    -       option value="M27": "M27"
+    -       option value="M27x2": "M27x2"
+    -       option value="M30": "M30"
+    -       option value="M30x2": "M30x2"
+    -       option value="M33": "M33"
+    -       option value="M33x2": "M33x2"
+    -       option value="M36": "M36"
+    -       option value="M36x3": "M36x3"
+    -       option value="M39": "M39"
+    -       option value="M39x3": "M39x3"
+    -       option value="M42": "M42"
+    -       option value="M42x3": "M42x3"
+    -       option value="M45": "M45"
+    -       option value="M45x3": "M45x3"
+    -       option value="M48": "M48"
+    -       option value="M48x3": "M48x3"
+    -       option value="M52": "M52"
+    -       option value="M52x4": "M52x4"
+    -       option value="M56": "M56"
+    -       option value="M56x4": "M56x4"
+    -       option value="M60": "M60"
+    -       option value="M60x4": "M60x4"
+    -       option value="M64": "M64"
+    -       option value="M64x4": "M64x4"
+    -   p#thread-walls.hint: "Pin – side: a pin of 10, for this thread 10 (the nominal diameter)"
+    - label
+    -   "Nominal (major) diameter (mm)"
+    -   span.field
+    -     input value="10"
+    -     small.computed data-field="diameter" data-unit="mm"
+    - label
+    -   "Pitch (mm)"
+    -   span.field
+    -     input value="1.5"
+    -     small.computed data-field="pitch" data-unit="mm"
+    - label
+    -   "Depth of the profile (mm; empty: the ISO proportion)"
+    -   span.field
+    -     input value="" placeholder="0.812"
+    - label
+    -   "Angle between the flanks (°; empty: 60°)"
+    -   span.field
+    -     input value="" placeholder="60"
+    - label
+    -   "Clearance, radial (mm; empty: none)"
+    -   span.field
+    -     input value="" placeholder="0"
+    - label
+    -   "Starts (empty: 1)"
+    -   span.field
+    -     input value="" placeholder="1"
+    - label
+    -   "Hand"
+    -   select value="left"
+    -     option value="right": "Right-hand"
+    -     option selected value="left": "Left-hand"
+    - label
+    -   "Direction"
+    -   select value="backward"
+    -     option value="forward": "From the end the axis points away from, along it"
+    -     option selected value="backward": "From the other end, against the axis (the mouth of a hole made from a sketch on a face)"
+    - label
+    -   "Offset from the end of the face (mm; empty: none)"
+    -   span.field
+    -     input value="" placeholder="0"
+    - label
+    -   "Length (mm; empty: to the far end of the face)"
+    -   span.field
+    -     input value="12" placeholder="to the far end"
+    - label
+    -   "Phase (°; empty: 0)"
+    -   span.field
+    -     input value="" placeholder="0"
+    - label
+    -   "Label (for people; empty = none)"
+    -   input value="M10"
+    - label
+    -   input type=checkbox unchecked disabled
+    -   "Modelled"
+    - p.hint: "This build makes cosmetic threads: the mesh stays, the thread is recorded and drawn as its helix, and a screw in such a bore is not a collision. A modelled thread comes later."
+    - p#draft-facts.hint: "1 thread; depth 0.812, minor diameter 8.376, lead 1.5 mm."
+    - p#draft-problem.issue.warning
+    - div.buttons
+    -   button.primary: "OK"
+    -   button: "Cancel"
+  status: Thread added.
+  view: 2 scene(s) set
+  scene:
+    + line #0f766e width 1: 2304 numbers, sum 42977.1
+    - face pin #2 #0ea5e9 opacity 0.3
+
+=== 7. selected: the summary
+  timeline:
+    + div.row.ok.selected
+    - div.row.ok
+  panel:
+    + h2: "Thread"
+    + label
+    +   "Feature name"
+    +   input value="Thread 1"
+    + div.buttons
+    +   button.primary: "Edit feature"
+    +   button: "Suppress"
+    +   button: "Delete"
+    + p.hint: "M10, left-hand, cosmetic, on 1 face of Pin."
+    - h2: "Model"
+    - p.hint: "The right mouse button orbits, the wheel zooms, the middle button (or Shift + right) pans. On a touchpad: Alt/Option + drag orbits, Alt + Shift + drag pans, two fingers zoom. A feature on the timeline is edited by a double click."
+  view: 1 scene(s) set
+  scene:
+    + face pin #2 #f97316 opacity 0.3

@@ -84,14 +84,16 @@ const isCopy = (ref: unknown): ref is CopyRef => typeof ref === 'object' && ref 
 const isFace = (ref: unknown): ref is FaceName => typeof ref === 'object' && ref !== null && typeof (ref as { feature?: unknown }).feature === 'string' && typeof (ref as { role?: unknown }).role === 'string';
 const isEdge = (ref: unknown): ref is EdgeName => typeof ref === 'object' && ref !== null && isFace((ref as { a?: unknown }).a) && isFace((ref as { b?: unknown }).b);
 // The issues of a chamfer and a fillet (D63) name edges and faces; a missing edge of theirs too.
-const BY_FACES: readonly IssueCode[] = ['unsupportedEdge', 'blendDoesNotFit', 'brokenReference'];
+// A thread (D76) names its faces too.
+const BY_FACES: readonly IssueCode[] = ['unsupportedEdge', 'blendDoesNotFit', 'brokenReference', 'invalidThread'];
 // An edge by the labels of its two faces.
 export const edgeLabel = (name: EdgeName, nameOf: NameOf, typeOf?: TypeOf): string => `${faceLabel(name.a, nameOf, typeOf)} × ${faceLabel(name.b, nameOf, typeOf)}`;
 
 // Issues whose string refs are bodies and features (the targets a cut missed or would remove,
 // a missing target or source). Other issues keep their refs to themselves (constraints, field paths).
 // A combine names its tool in an invalidClearance (then the faces) and in a kernelFailure (D56).
-const NAMED: readonly IssueCode[] = ['noEffect', 'emptyResult', 'brokenReference', 'invalidClearance', 'kernelFailure'];
+// A mirror of a body names the copies whose threads it turned (D76).
+const NAMED: readonly IssueCode[] = ['noEffect', 'emptyResult', 'brokenReference', 'invalidClearance', 'kernelFailure', 'mirroredThread'];
 
 // The message of the engine with what the issue is about appended. A pattern names the copy that
 // failed or had no effect as `{ copy, feature }` in refs, whatever the issue is.

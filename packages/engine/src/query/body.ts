@@ -120,9 +120,10 @@ export const body: QuerySpec<typeof BODY_ARGS, BodyDescription> = {
   returns:
     '`volume` (mm³), `bounds` (`min`, `max`), `faces`: each `{ name, surface, area, meshNormal?, convex? }` (`surface` is a plane, a cylinder, a cone, a sphere, a torus, a swept or a general surface; `meshNormal` of a planar face is its unit normal out of the body; `convex` of a cylinder, a cone, a sphere or a torus is true for a pin, a ball or a ring and false for a hole, a socket or a groove), ' +
     '`edges`: each `{ name, kind, length, segments }` and for a `line` its ends `from`, `to` and `gaps` (a cut interrupts it), for a `circle` its `circle: { center, axis, radius }`, exact: the circle of the two surfaces, whole even when the edge is an arc of it. ' +
-    'With `feature` or `only` the lists hold what passes, and `total` the counts of the whole body (`faces`, `edges`); `volume` and `bounds` are always of the whole body. A large body lists hundreds of edges, so ask for the edges of the feature you want to chamfer or fillet.',
+    'With `feature` or `only` the lists hold what passes, and `total` the counts of the whole body (`faces`, `edges`); `volume` and `bounds` are always of the whole body. A large body lists hundreds of edges, so ask for the edges of the feature you want to chamfer or fillet. ' +
+    '`threads` (only when the body has one): the threads on its faces (D76), each with its feature, its face, whether it is internal, the profile (`diameter`, `pitch`, `depth`, `flankAngle`, `clearance`, `starts`, `hand` as it lies), `radius` of the wall, where its helix lies (`origin`, `axis`, `zero`, the span `from` to `to` along the axis), how its ends end (`ends`, `runOut`) and `walls` (the stretch of the axis each body still has of the wall).',
   args: BODY_ARGS,
-  units: { volume: 'mm3', area: 'mm2', length: 'mm', radius: 'mm' },
+  units: { volume: 'mm3', area: 'mm2', length: 'mm', radius: 'mm', diameter: 'mm', pitch: 'mm', depth: 'mm', clearance: 'mm', flankAngle: 'rad', from: 'mm', to: 'mm', start: 'mm', end: 'mm' },
   // The description is kept by the mesh: a body that did not change is not walked again.
   run: (context, { body: id, feature, only }) => {
     const result = context.bodies[id];
@@ -152,11 +153,14 @@ export const body: QuerySpec<typeof BODY_ARGS, BodyDescription> = {
       });
       return { volume: result.volume, bounds: result.bounds, faces, edges };
     });
-    if (feature === undefined && only === undefined) return { body: id, ...described };
+    // the threads are outside what is kept by the mesh: a cosmetic thread changes no mesh (D76)
+    const threads = context.threads(id);
+    const withThreads = threads.length ? { threads } : {};
+    if (feature === undefined && only === undefined) return { body: id, ...described, ...withThreads };
     const total = { faces: described.faces.length, edges: described.edges.length };
     const passes = (name: FaceName): boolean => feature === undefined || ofFeature(name, feature);
     const faces = only === 'edges' ? [] : described.faces.filter((face) => passes(face.name));
     const edges = only === 'faces' ? [] : described.edges.filter((edge) => passes(edge.name.a) || passes(edge.name.b));
-    return { body: id, volume: described.volume, bounds: described.bounds, faces, edges, total };
+    return { body: id, volume: described.volume, bounds: described.bounds, faces, edges, total, ...withThreads };
   },
 };

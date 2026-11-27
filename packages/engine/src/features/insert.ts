@@ -7,6 +7,7 @@ import { evaluateParameters, parameterNameProblem } from '../expression';
 import { environmentText, insertedFaceName, losslessNumber, placedSolid } from '../recompute/insertion';
 import { frameOf, placementTransform } from '../recompute/placement';
 import { issue } from '../recompute/services';
+import { movedThread } from '../recompute/thread';
 import type { InsertedBody, InsertionRecord, Step, StepContext } from '../recompute/state';
 import { bodyOwner } from '../sketch-content';
 import { transformFace } from '../solid';
@@ -135,11 +136,13 @@ function step(feature: InsertFeature, context: StepContext): Step {
     inserted[id] = { feature: feature.id, document: feature.document, body, inherited: has(record.recompute.inherited, body) ? record.recompute.inherited[body] : {} };
     created.push(id);
   });
+  // the threads on the faces brought, placed and prefixed as the faces are (D76)
+  const threads = [...state.threads, ...inner.threads.filter((thread) => renumbered.has(thread.face)).map((thread) => movedThread(thread, transform, renumbered.get(thread.face) as number, `${feature.id}/`))];
   const warning = insertedIssues(feature.id, entry.document, record);
   return {
     state: done(
       { status: warning ? 'warning' : 'ok', warnings: warning ? [warning] : [], bodies: created, facts: placementFacts(transform) },
-      { bodies, faceNames, faceInfos, faceIds, insertions: { ...state.insertions, [feature.id]: record }, inserted },
+      { bodies, faceNames, faceInfos, faceIds, insertions: { ...state.insertions, [feature.id]: record }, inserted, threads },
     ),
   };
 }

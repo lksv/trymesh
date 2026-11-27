@@ -156,7 +156,10 @@ const sameNumbers = (a: RigidTransform, b: RigidTransform): boolean => a === b |
 // a joint along a coordinate axis stay in one plane bit for bit, however the joints nearer the root
 // stand. Both arguments are bodies a context handed out. Undefined when neither was moved: they are
 // the modelled bodies already. The pair is ordered: the frame is that of the first body.
-export function pairInFrame(a: BodyResult, b: BodyResult): { a: BodyResult; b: BodyResult; back: RigidTransform } | undefined {
+// `relative` is the transform that puts the second body as modelled (`bModelled`) into that frame,
+// for the meshes that stand in for a body of the pair (the part of a body in the zone of a thread
+// and the rest, D76).
+export function pairInFrame(a: BodyResult, b: BodyResult): { a: BodyResult; b: BodyResult; back: RigidTransform; relative: RigidTransform; bModelled: BodyResult } | undefined {
   const [first, second] = [records.get(a), records.get(b)];
   if (!first && !second) return undefined;
   const [A, motionsA] = first ? [first.modelled, first.motions] : [a, []];
@@ -168,11 +171,16 @@ export function pairInFrame(a: BodyResult, b: BodyResult): { a: BodyResult; b: B
   for (let i = motionsA.length - 1; i >= common; i--) relative = compose(relative, inverse(motionsA[i]));
   for (let i = common; i < motionsB.length; i++) relative = compose(relative, motionsB[i]);
   const keep = Math.max(first?.keep ?? 0, second?.keep ?? 0);
-  return { a: A, b: movedBody(B, relative, keep), back: first ? first.transform : IDENTITY };
+  return { a: A, b: movedBody(B, relative, keep), back: first ? first.transform : IDENTITY, relative, bModelled: B };
+}
+// How many moved copies of a mesh a pair keeps, for a mesh that stands in for one of its bodies.
+export function keepOf(a: BodyResult, b: BodyResult): number {
+  return Math.max(records.get(a)?.keep ?? POSES_KEPT, records.get(b)?.keep ?? POSES_KEPT);
 }
 
 // A pair as a query about pairs reads it: in the frame of the first body when either moved.
-export function framed(bodies: Readonly<Record<Id, BodyResult>>, a: Id, b: Id): { a: BodyResult; b: BodyResult; back?: RigidTransform } {
+// `relative` and `bModelled` as for `pairInFrame`; absent when neither moved.
+export function framed(bodies: Readonly<Record<Id, BodyResult>>, a: Id, b: Id): { a: BodyResult; b: BodyResult; back?: RigidTransform; relative?: RigidTransform; bModelled?: BodyResult } {
   const [A, B] = [bodies[a], bodies[b]];
   return pairInFrame(A, B) ?? { a: A, b: B };
 }

@@ -26,7 +26,7 @@ interface Extra {
 type HoleMode = DraftMode<HoleFeature, Extra>;
 
 export const KINDS: Record<HoleShape['type'], string> = { plain: 'Plain', counterbore: 'Counterbore', countersink: 'Countersink', nutPocket: 'Nut pocket' };
-const USES: Record<Use, string> = { clearance: 'Clearance hole', socketHead: 'Socket head cap screw', countersunk: 'Countersunk screw', nutPocket: 'Hex nut', heatSetInsert: 'Heat-set insert' };
+const USES: Record<Use, string> = { clearance: 'Clearance hole', socketHead: 'Socket head cap screw', countersunk: 'Countersunk screw', nutPocket: 'Hex nut', heatSetInsert: 'Heat-set insert', tapped: 'Tapped hole (then a thread on its bores)' };
 const FITS: Record<Fit, string> = { fine: 'Fine', medium: 'Medium', coarse: 'Coarse' };
 const SIDE_OPTIONS = ['backward', 'forward'] as const;
 // The labels of the numeric fields of a shape: the unit for a bare number.
@@ -57,6 +57,7 @@ const READS: Record<Use, (keyof typeof DATA_CATALOGS)[]> = {
   countersunk: ['clearanceHoles', 'countersunkScrews'],
   nutPocket: ['clearanceHoles', 'hexNuts'],
   heatSetInsert: ['heatSetInserts'],
+  tapped: ['metricThreads'],
 };
 // The sizes a use can answer: those every catalog it reads has (ISO 4762 has no M3.5, ISO 273 has).
 const sizesOf = (use: Use): string[] => {
@@ -194,7 +195,7 @@ function catalogFields(m: HoleMode, host: PanelHost, option: (value: string, lab
     const args: QueryArgs<'hardwareHole'> = { use: m.extra.use, size, fit: m.extra.fit, ...(m.extra.allowance.trim() ? { allowance: m.extra.allowance.trim() } : {}) };
     const answer = host.engine.query('hardwareHole', args);
     if (!answer.ok) return host.say(answer.error.message, true);
-    const { shape, label, depth } = answer.result;
+    const { shape, label, depth, thread } = answer.result;
     // An insert is a blind hole of its depth: the start of the draft stays and so does its direction
     // (the sign of its distance, or the side of "through all": backward is against the normal).
     // A screw or a nut leaves the extent as it is. The status line says what the extent is.
@@ -203,8 +204,11 @@ function catalogFields(m: HoleMode, host: PanelHost, option: (value: string, lab
     const distance = current.type === 'distance' ? (typeof current.distance === 'number' ? current.distance : m.preview?.evaluation.features[m.draft.id]?.values?.['extent/distance']) : undefined;
     const sign = current.type === 'throughAll' ? (current.side === 'backward' ? -1 : 1) : distance !== undefined && distance > 0 ? 1 : -1;
     const extent: HoleDraft['extent'] = depth === undefined ? current : withFrom<HoleDraft['extent']>({ type: 'distance', start: current.type === 'distance' ? current.start : 0, distance: sign * depth }, current.from);
-    m.draft = { ...m.draft, shape, label, extent };
-    host.say(`${label}: the sizes from ${answer.result.from.join(' and ')}; the extent ${depth === undefined ? 'stays' : 'is now'} ${extentText(extent)}.`);
+    // a tapped hole has no label (D76): the screw is counted at the hole it comes through
+    const { label: _old, ...rest } = m.draft;
+    m.draft = { ...rest, shape, ...(label === undefined ? {} : { label }), extent };
+    const named = label ?? `${thread?.label ?? size} tapped hole`;
+    host.say(`${named}: the sizes from ${answer.result.from.join(' and ')}; the extent ${depth === undefined ? 'stays' : 'is now'} ${extentText(extent)}.${thread ? ` Then add a thread ${thread.label} on its bores (the button Thread with a bore selected).` : ''}`);
     draftChanged(host);
   };
   return [
@@ -214,7 +218,7 @@ function catalogFields(m: HoleMode, host: PanelHost, option: (value: string, lab
       h('legend', {}, 'From the catalog'),
       select('For', (value) => ((m.extra.use = value as Use), host.renderPanel()), ...(Object.keys(USES) as Use[]).map((use) => option(use, USES[use], use === m.extra.use))),
       select('Size', (value) => (m.extra.size = value), ...sizes.map((key) => option(key, key, key === size))),
-      m.extra.use === 'heatSetInsert' ? null : select('Series of the through hole', (value) => (m.extra.fit = value as Fit), ...(Object.keys(FITS) as Fit[]).map((fit) => option(fit, FITS[fit], fit === m.extra.fit))),
+      m.extra.use === 'heatSetInsert' || m.extra.use === 'tapped' ? null : select('Series of the through hole', (value) => (m.extra.fit = value as Fit), ...(Object.keys(FITS) as Fit[]).map((fit) => option(fit, FITS[fit], fit === m.extra.fit))),
       h('label', {}, 'Allowance (an expression added to the diameters, such as a parameter; empty = none)', h('input', { value: m.extra.allowance, oninput: (event: Event) => (m.extra.allowance = (event.target as HTMLInputElement).value) })),
       h('div', { className: 'buttons' }, h('button', { textContent: 'Fill from the catalog', disabled: size === undefined, onclick: fill })),
     ),

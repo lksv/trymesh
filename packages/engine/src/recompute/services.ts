@@ -45,6 +45,9 @@ export const MESSAGE: Record<IssueCode, string> = {
   jointOutOfLimits: 'The value of the joint is outside its limits.',
   brokenCopies: 'A mirror or pattern of the sketch cannot make all its copies.',
   insertedIssues: 'The inserted document did not recompute cleanly with the values of this insertion: a feature of it is in error or a check of it fails.',
+  invalidThread: 'The fields and the faces do not make a thread.',
+  noCopies: 'The thread takes the copies of its faces, and the body has no copy of a listed face: the thread stands before its pattern, or the pattern is gone.',
+  mirroredThread: 'The mirror turned the hand of threads on its copy: the copy is the mirror image of the body.',
 };
 export const issue = (code: IssueCode, refs?: unknown[], detail?: string): Issue => ({ code, message: detail ? `${MESSAGE[code]} (${detail})` : MESSAGE[code], ...(refs ? { refs } : {}) });
 

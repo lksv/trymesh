@@ -3,7 +3,7 @@
 import { axis as axisOf, frame as frameOf, lookup } from '../recompute/services';
 import type { State } from '../recompute/state';
 import { transformFrame, transformPoint, transformSurface, transformVector } from '../solid';
-import type { Deflater, Document, Evaluation, SolidKernel } from '../types';
+import type { Deflater, Document, Evaluation, SolidKernel, ThreadResult } from '../types';
 import { faceNumber, has } from '../util';
 import { poseOf } from './pose';
 import { type QueryContext, QueryFailure, type RefProblem } from './spec';
@@ -81,10 +81,17 @@ export interface ContextDeps {
 //   when it is read; reading a body whose pose is not known (a joint on its way has no motion)
 //   throws `QueryFailure('failed', …)` naming the joint.
 export function queryContext(name: string, evaluation: Evaluation, internals: Internals, deps: ContextDeps, geometry?: 'modelled'): QueryContext {
-  const { bodies: modelledBodies, faceSurfaces, ...modelled } = evaluation;
+  const { bodies: modelledBodies, faceSurfaces, threads: allThreads, ...modelled } = evaluation;
   const { state } = internals;
   const pose = geometry === 'modelled' ? undefined : poseOf(internals.document.mechanism, evaluation.mechanism, modelledBodies);
   const bodies = pose ? pose.bodies : modelledBodies;
+  // the threads of a body, kept for the context: the same list for every call
+  const byBody = new Map<string, ThreadResult[]>();
+  const threadsOn = (body: string): ThreadResult[] => {
+    let found = byBody.get(body);
+    if (!found) byBody.set(body, (found = allThreads.filter((thread) => thread.bodies.includes(body))));
+    return found;
+  };
   const problem = (code: string, detail?: string): RefProblem => ({ problem: code === 'nonPlanarFace' || code === 'invalidAxis' ? code : 'brokenReference', ...(detail ? { detail } : {}) });
   return {
     state: { document: internals.document, evaluation: modelled },
@@ -109,6 +116,12 @@ export function queryContext(name: string, evaluation: Evaluation, internals: In
       return moved ? { origin: transformPoint(moved, line.point), direction: transformVector(moved, line.direction) } : { origin: line.point, direction: line.direction };
     },
     face: (name) => faceNumber(state, name),
+    threadsAsModelled: (body) => threadsOn(body),
+    threads(body) {
+      const own = threadsOn(body);
+      const moved = own.length ? pose?.transformOf(body) : undefined;
+      return moved ? own.map((thread) => ({ ...thread, origin: transformPoint(moved, thread.origin), axis: transformVector(moved, thread.axis), zero: transformVector(moved, thread.zero) })) : [...own];
+    },
     sketch: (id) => lookup(state.sketches, id),
     kernel: guarded(deps.kernel),
     // not wrapped: a format hands it to `zip`, which turns its failure into `failed`

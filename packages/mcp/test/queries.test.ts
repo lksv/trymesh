@@ -199,6 +199,12 @@ describe('the query hardwareHole through the tool (D46)', () => {
     expect(feature).toMatchObject({ shape: { type: 'countersink', angle: Math.PI / 2 }, expressions: { 'shape/angle': 'deg(90)' } });
     expect(call(engine, { query: 'hardwareHole', args: { use: 'nutPocket', size: 'nope' } })).toEqual({ error: expect.stringMatching(/^notAvailable: hardwareHole: size: the catalog clearanceHoles has no size "nope"/) });
   });
+
+  it('the use tapped (D76): a plain hole at the tap drill without a label, the fields of the thread with half of the allowance as its clearance', () => {
+    const engine = model();
+    expect(call(engine, { query: 'hardwareHole', args: { use: 'tapped', size: 'M3', allowance: 'holeComp' } })).toEqual({ shape: { type: 'plain', diameter: '2.5 + holeComp' }, thread: { diameter: 3, pitch: 0.5, clearance: '(holeComp) / 2', label: 'M3' }, from: ['metricThreads'] });
+    expect(call(engine, { query: 'hardwareHole', args: { use: 'tapped', size: 'M3x9' } })).toEqual({ error: expect.stringMatching(/^notAvailable: hardwareHole: size: the catalog metricThreads has no size "M3x9"/) });
+  });
 });
 
 describe('the query partsList through the tool (D57)', () => {

@@ -113,7 +113,7 @@ export type Surface =
 //   it asks its context (`QueryContext.surface`), which answers in the pose it was asked about.
 // - One number of a face can lie in two bodies: a cut through two targets leaves the faces of
 //   the one tool in both. That is why a surface in a pose is asked by body and face.
-export interface EvaluationAfter extends Omit<Evaluation, 'features' | 'bodies' | 'faceNames'> {
+export interface EvaluationAfter extends Omit<Evaluation, 'features' | 'bodies' | 'faceNames' | 'threads'> {
   features: Record<Id, FeatureResultAfter>;
   bodies: Record<Id, BodyResultAfter>;
   faceNames: FaceNameAfter[];

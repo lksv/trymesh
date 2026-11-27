@@ -94,7 +94,7 @@ interface Given {
 function contextOf(doc: Document, bodies: Record<Id, Given>): QueryContext {
   const results: Record<Id, BodyResult> = Object.fromEntries(Object.entries(bodies).map(([id, { solid }]) => [id, { solid, faces: [], edges: [], volume: volumeOf(solid), bounds: { min: [0, 0, 0], max: [0, 0, 0] } }]));
   const bodyProperties = Object.fromEntries(Object.entries(bodies).map(([id, { properties }]) => [id, { name: id, use: 'part', ...properties }]));
-  return { state: { document: doc, evaluation: { faceNames: [], bodyProperties } }, bodies: results, surface: () => undefined } as unknown as QueryContext;
+  return { state: { document: doc, evaluation: { faceNames: [], bodyProperties } }, bodies: results, surface: () => undefined, threadsAsModelled: () => [] } as unknown as QueryContext;
 }
 const ask = (context: QueryContext): PartsList => partsList.run(context, {});
 const told = (r: PartRow): string => `${r.name} × ${r.count}: ${r.bodies.join(' ')}${r.copyOf ? ` (${r.differs ? 'differs from' : r.mirrored ? 'mirror image of' : 'copy of'} ${r.copyOf})` : ''}`;

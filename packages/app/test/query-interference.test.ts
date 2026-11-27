@@ -71,3 +71,23 @@ describe('the views of the collisions and of the gap with cleared pairs (D50)', 
     expect(gapView.note?.(result, panelOf())).toEqual({ text: 'Gaps: 3 pair(s) of bodies within 5 mm of each other. 1 further apart. 2 pair(s) rest on a mesh the kernel did not verify.', error: false });
   });
 });
+
+describe('the views of the collisions and of the gap with threads (D76)', () => {
+  it('threaded pairs are a group of their own after the cleared ones, a picked one draws its two bodies; a mismatch is said in the row of its collision; the note counts them', async () => {
+    harness = await startApp();
+    const result: InterferenceReport = {
+      pairs: [{ a: 'nut', b: 'stud', volume: 68.9, depth: 0.5, mismatch: 'a left-hand thread in a right-hand one' }],
+      fits: [],
+      failed: [],
+      threaded: [{ a: 'bolt', b: 'plate', volume: 68.93, threads: [{ feature: 'm6', face: { feature: 'taps', role: 'holeBore', point: 'h' }, body: 'plate' }] }],
+      checked: 6,
+    };
+    expect(texts(interferenceView.answer?.(result, {} as never, panelOf()) ?? [])).toEqual([
+      'body nut × body stud68.9 mm³; the threads do not agree: a left-hand thread in a right-hand one',
+      expect.stringMatching(/^Threaded: /),
+      'body bolt × body platethreaded, 68.93 mm³ excused',
+    ]);
+    expect(interferenceView.note?.(result, panelOf())).toMatchObject({ text: expect.stringMatching(/^Collisions: 1 pair\(s\) of bodies share a volume\. 1 pair\(s\) threaded\./), error: true });
+    expect(interferenceView.scene?.(result, {} as never, panelOf(1))).toMatchObject({ bodies: [{ body: 'bolt' }, { body: 'plate' }] });
+  });
+});

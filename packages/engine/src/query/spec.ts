@@ -9,7 +9,7 @@
 // so adding a query edits no shared type; the registry gets one line.
 import type { SketchState } from '../recompute/state';
 import type { Unit } from '../catalog';
-import type { ArgPath, AxisRef, BodyResult, Deflater, Document, Evaluation, FaceName, Frame, Id, PlaneRef, SolidKernel, Surface, Vec3 } from '../types';
+import type { ArgPath, AxisRef, BodyResult, Deflater, Document, Evaluation, FaceName, Frame, Id, PlaneRef, SolidKernel, Surface, ThreadResult, Vec3 } from '../types';
 import type { ArgSpecs, ArgsOf, RunArgsOf } from './args';
 
 // What a query computes from. It answers for one state: the document and the evaluation in
@@ -27,8 +27,9 @@ import type { ArgSpecs, ArgsOf, RunArgsOf } from './args';
 //   where the model has them. The axis of a round face (D60) belongs to its body and is posed.
 // - An export is the opposite: its context always has the bodies as modelled.
 export interface QueryContext {
-  // The document and the evaluation as modelled, without the geometry of bodies.
-  state: { document: Document; evaluation: Omit<Evaluation, 'bodies' | 'faceSurfaces'> };
+  // The document and the evaluation as modelled, without the geometry of bodies (and without the
+  // threads, which belong to bodies: `threads`).
+  state: { document: Document; evaluation: Omit<Evaluation, 'bodies' | 'faceSurfaces' | 'threads'> };
   bodies: Readonly<Record<Id, BodyResult>>;
   surface(body: Id, face: FaceName): Surface | undefined; // undefined: the body has no such face
   // Directed: for a face the normal points out of the body. The problem is the code the recompute
@@ -37,6 +38,14 @@ export interface QueryContext {
   axis(ref: AxisRef): { origin: Vec3; direction: Vec3 } | RefProblem;
   // The number of a named face: the index into `faceNames`, and `id` of a face of a body.
   face(name: FaceName): number | undefined;
+  // The threads on the faces of a body (D76), in the order of `Evaluation.threads`.
+  // - `threads`: with their datum (`origin`, `axis`, `zero`) where the pose puts the body; the
+  //   objects of the evaluation where it stands as modelled.
+  // - `threadsAsModelled`: the published objects themselves, in the frame the mesh of the body is
+  //   in. A published thread keeps its identity while nothing of it changes, so a query keeps what
+  //   it computes of a thread by that object beside the mesh.
+  threads(body: Id): ThreadResult[];
+  threadsAsModelled(body: Id): readonly ThreadResult[];
   // What the recompute kept about a sketch (the input of the solver with the positions used, how
   // the solve ended, the analysis of freedom). Undefined: the sketch did not evaluate.
   sketch(sketch: Id): SketchState | undefined;

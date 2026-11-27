@@ -708,7 +708,7 @@ describe('scenario 13, the part of 3e: what to print and what to buy, one questi
     const rows = DATA_CATALOGS.heatSetInserts.rows;
     const size = Object.keys(rows).find((key) => rows[key].thread === thread) as string;
     const answer = unwrap(engine.query('hardwareHole', { use: 'heatSetInsert', size, allowance: 'holeComp' }));
-    return { shape: answer.shape, label: answer.label, depth: answer.depth as number };
+    return { shape: answer.shape, label: answer.label as string, depth: answer.depth as number };
   };
   const hole = (id: Id, sketch: Id, point: Id, target: Id, shape: Input<HoleShape>, start: number, distance: number, label: string): Command => ({
     type: 'addFeature',

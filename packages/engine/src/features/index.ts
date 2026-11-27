@@ -20,8 +20,9 @@ import { plane } from './plane';
 import { revolve } from './revolve';
 import { sketch } from './sketch';
 import { split } from './split';
+import { thread } from './thread';
 
-export const FEATURE_TYPES: { [K in Feature['type']]: FeatureModule<Extract<Feature, { type: K }>> } = { plane, sketch, extrude, pattern, hole, mesh, combine, split, revolve, chamfer, fillet, insert };
+export const FEATURE_TYPES: { [K in Feature['type']]: FeatureModule<Extract<Feature, { type: K }>> } = { plane, sketch, extrude, pattern, hole, mesh, combine, split, revolve, chamfer, fillet, insert, thread };
 
 // The public part of the registry.
 export const FEATURE_TYPE_INFO: Record<Feature['type'], FeatureTypeInfo> = Object.fromEntries(

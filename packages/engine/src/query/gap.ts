@@ -41,8 +41,11 @@ export const GAP_ARGS = {
 //   material of the other, whose surfaces do not meet), `fit` (round faces within the chord
 //   tolerance of each other), `touching` (neither: flush faces, or less than that query reports),
 //   `unknown` (the surfaces meet and the kernel could not verify what they share; the measure of
-//   the collisions is not carried here). A pair that
-//   query lists in `cleared` (D50) is a fit when it was cleared as one and touches otherwise.
+//   the collisions is not carried here), `threaded` (what they share is what a thread accounts
+//   for, D76: the pair is in `threaded` of that query and in none of `pairs`, `fits` and `failed`;
+//   a screw in a tapped hole, a set screw inside its bore). A pair that query lists in `cleared`
+//   (D50) is a fit when it was cleared as one, threaded when it has an entry in `threaded`, and
+//   touches otherwise.
 // - `between`, for a distance above zero: the two points the gap lies between, `a` on the body
 //   `a`, and the face each lies on. Where a point lies on an edge or a corner, the face named is
 //   the one that faces the other body most directly: the wall of a bore, not the cap it ends in.
@@ -51,7 +54,7 @@ export const GAP_ARGS = {
 //   bodies that has a face which is not planar, plus the precision of the coordinates). An
 //   estimate, not a bound.
 export type Gap = { a: Id; b: Id } & (
-  | { distance: 0; contact: 'touching' | 'fit' | 'collision' | 'unknown' }
+  | { distance: 0; contact: 'touching' | 'fit' | 'collision' | 'unknown' | 'threaded' }
   | { distance: number; contact?: never; between: { a: Vec3; b: Vec3; faceA: FaceName; faceB: FaceName }; accuracy: number } // mm
 );
 
@@ -101,9 +104,10 @@ type Contact = Extract<Gap, { contact: string }>['contact'];
 function sharedBy(context: QueryContext, a: Id, b: Id): { contact: Contact; message?: string; cleared: boolean } {
   const shared = interference.run(context, { bodies: [a, b], threshold: INTERFERENCE_THRESHOLD });
   if (shared.failed.length) return { contact: 'unknown', message: shared.failed[0].message, cleared: false };
+  const threaded = (shared.threaded?.length ?? 0) > 0;
   const cleared = shared.cleared?.[0];
-  if (cleared) return { contact: cleared.kind === 'fit' ? 'fit' : 'touching', cleared: true };
-  return { contact: shared.pairs.length ? 'collision' : shared.fits.length ? 'fit' : 'touching', cleared: false };
+  if (cleared) return { contact: cleared.kind === 'fit' ? 'fit' : threaded ? 'threaded' : 'touching', cleared: true };
+  return { contact: shared.pairs.length ? 'collision' : shared.fits.length ? 'fit' : threaded ? 'threaded' : 'touching', cleared: false };
 }
 
 // What was measured between two meshes, without the names of anything: an answer is remembered by
@@ -140,7 +144,9 @@ function gapOf(context: QueryContext, a: Id, b: Id, within: number): { answer: P
   // Boxes that far apart hold no two points closer, and neither body can lie inside the other.
   const boxes = boxDistance(A, B);
   if (boxes >= within && boxes > precision) return { answer: 'apart', cleared: false };
-  const { first, measured, cleared } = context.memo([A.solid, B.solid], `within:${within};tolerance:${context.state.document.settings.chordTolerance}`, (): Remembered => {
+  // the published threads of the two bodies are owners too: a thread added to an unchanged mesh
+  // changes the answer (D76)
+  const { first, measured, cleared } = context.memo([A.solid, B.solid, ...context.threadsAsModelled(a), ...context.threadsAsModelled(b)], `within:${within};tolerance:${context.state.document.settings.chordTolerance}`, (): Remembered => {
     const found = closest({ solid: A.solid }, { solid: B.solid }, reach);
     const answer = (value: Measured, cleared = false): Remembered => ({ first: A.solid, measured: value, cleared });
     if (found && found.distance <= precision) {
@@ -178,7 +184,7 @@ export const gap: QuerySpec<typeof GAP_ARGS, GapReport> = {
   returns:
     '`pairs`: the pairs closer than `within`, the closest first, at most `maxPairs`, each with `a`, `b` (`a` is the smaller ID) and `distance` (mm, measured on the meshes). ' +
     'A distance above zero comes with `between` (the two points `a` and `b` and the face each lies on, `faceA` and `faceB`: the feature to change) and `accuracy` (mm: an estimate of how far the meshes may be from the exact shapes). ' +
-    'A distance of zero comes with `contact`: `touching` (flush faces), `fit` (round faces within the chord tolerance), `collision` (a shared volume, also a body wholly inside another) or `unknown` (the kernel could not verify what they share). ' +
+    'A distance of zero comes with `contact`: `touching` (flush faces), `fit` (round faces within the chord tolerance), `collision` (a shared volume, also a body wholly inside another), `threaded` (what they share is what a thread accounts for: a screw in a tapped hole) or `unknown` (the kernel could not verify what they share). ' +
     '`close`: how many pairs are closer than `within`. `apart`: how many are further apart (not measured). `failed`: pairs that could not be measured, with the reason, at most `maxPairs`; `refused`: how many. `checked`: pairs examined. `truncated` when either list was cut. ' +
     '`cleared` (only when it has an entry, not cut): pairs `{ a, b }` whose answer rests on a pair the query `interference` cleared by an intersection the kernel computed and did not verify.',
   args: GAP_ARGS,

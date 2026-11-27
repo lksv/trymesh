@@ -1,8 +1,8 @@
 // What the scene of the app is drawn with: its colours, and points of a plane as lines in the world.
-import type { Frame, Vec2, Vec3 } from '@trymesh/engine';
+import type { Frame, ThreadResult, Vec2, Vec3 } from '@trymesh/engine';
 import type { HalfSpace } from './viewport';
 
-export const COLOR = { edge: 0x26303c, select: 0xf97316, hover: 0x0ea5e9, sketch: 0x1d4ed8, determined: 0x1c2430, implied: 0x7c3aed, idle: 0x5b7aa8, construction: 0xb45309, external: 0xa21caf, rubber: 0x64748b, plane: 0x8b9bb4, region: 0x2563eb, clash: 0xdc2626, cut: 0x7a8794 };
+export const COLOR = { edge: 0x26303c, select: 0xf97316, hover: 0x0ea5e9, sketch: 0x1d4ed8, determined: 0x1c2430, implied: 0x7c3aed, idle: 0x5b7aa8, construction: 0xb45309, external: 0xa21caf, rubber: 0x64748b, plane: 0x8b9bb4, region: 0x2563eb, clash: 0xdc2626, cut: 0x7a8794, thread: 0x0f766e };
 
 export const toWorld = (frame: Frame, u: number, v: number): Vec3 => [
   frame.origin[0] + u * frame.x[0] + v * frame.y[0],
@@ -81,4 +81,36 @@ export function insideFill(at: Vec2, loops: ArrayLike<number>[]): boolean {
     return odd;
   };
   return loops.length > 0 && inside(loops[0]) && !loops.slice(1).some(inside);
+}
+
+// The most points of the lines of one thread: fewer per turn when there are many turns.
+export const THREAD_POINTS = 4000;
+const THREAD_POINTS_PER_TURN = 48;
+// The helix of a thread (D76) as segments (six numbers each): one line per start, on the wall and
+// lifted a hair to the air side (into a bore, off a pin), from `from` to `to` along its axis. It
+// follows the datum of the record: the middle of the crest passes `origin + s · axis` at the angle
+// θ from `zero` (right-hand about `axis`) with `s = turn · lead · θ / 2π + k · pitch`.
+export function threadLines(thread: Pick<ThreadResult, 'origin' | 'axis' | 'zero' | 'radius' | 'internal' | 'pitch' | 'starts' | 'hand' | 'from' | 'to'>): number[] {
+  const { origin, axis, zero, pitch, starts } = thread;
+  const turn = thread.hand === 'left' ? -1 : 1;
+  const lead = pitch * starts;
+  const radius = thread.radius * (thread.internal ? 0.99 : 1.01);
+  const side: Vec3 = [axis[1] * zero[2] - axis[2] * zero[1], axis[2] * zero[0] - axis[0] * zero[2], axis[0] * zero[1] - axis[1] * zero[0]];
+  const length = Math.max(0, thread.to - thread.from);
+  const turns = length / lead;
+  const perTurn = Math.max(8, Math.min(THREAD_POINTS_PER_TURN, Math.floor(THREAD_POINTS / Math.max(1, starts * turns))));
+  const steps = Math.max(1, Math.ceil(turns * perTurn));
+  const out: number[] = [];
+  for (let k = 0; k < starts; k++) {
+    let last: Vec3 | undefined;
+    for (let i = 0; i <= steps; i++) {
+      const s = thread.from + (length * i) / steps;
+      const theta = (2 * Math.PI * (s - k * pitch)) / (turn * lead);
+      const [c, n] = [Math.cos(theta), Math.sin(theta)];
+      const point: Vec3 = [0, 1, 2].map((j) => origin[j] + s * axis[j] + radius * (c * zero[j] + n * side[j])) as Vec3;
+      if (last) out.push(...last, ...point);
+      last = point;
+    }
+  }
+  return out;
 }

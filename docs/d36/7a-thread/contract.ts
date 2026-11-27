@@ -390,7 +390,7 @@ export interface ThreadRecord extends Omit<ThreadResult, 'bodies' | 'face' | 'wa
 //   it; the thread step reads it for the datum of a copy, and follows with `copies` only a tag
 //   that is in it (a pattern inside an inserted document and a combine with a clearance write
 //   none).
-export interface StateD76 extends State {
+export interface StateD76 extends Omit<State, 'threads' | 'copyTransforms'> {
   threads: readonly ThreadRecord[];
   copyTransforms: ReadonlyMap<string, RigidTransform>;
 }

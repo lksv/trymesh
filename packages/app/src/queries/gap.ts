@@ -20,6 +20,7 @@ const CONTACT: Record<Extract<Gap, { contact: string }>['contact'], { text: stri
   fit: { text: 'fit', title: 'Round faces reach into each other by no more than the chord tolerance: a pin in a hole of the same diameter' },
   collision: { text: 'collision', title: 'The two bodies share a volume' },
   unknown: { text: 'touching or colliding', title: 'The surfaces meet, and the kernel could not verify what the two bodies share' },
+  threaded: { text: 'threaded', title: 'What the two bodies share is what a thread accounts for: a screw in a tapped hole' },
 };
 
 export const gapView: QueryView<'gap'> = {

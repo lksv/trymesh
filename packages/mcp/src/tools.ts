@@ -64,6 +64,7 @@ import {
   placedOutlineBox,
   updateHolds,
   type SketchResult,
+  type ThreadResult,
   poseNote,
   printedBodies,
   sketchTool,
@@ -427,12 +428,21 @@ function insertionPreview(engine: Engine, args: Record<string, unknown>): unknow
   };
 }
 
+// The threads of a body as get_model lists them (D76), when it has any: a line each, the label or
+// `diameter x pitch`, internal or external, cosmetic or modelled, the hand when it is left, the face
+// and the feature.
+const threadLine = (t: ThreadResult): string => `${t.label ?? `${round(t.diameter)} x ${round(t.pitch)}`}, ${t.internal ? 'internal' : 'external'}, ${t.modelled ? 'modelled' : 'cosmetic'}${t.hand === 'left' ? ', left-hand' : ''}, on ${faceLabel(t.face)} (${t.feature})`;
+function threadsInfo(state: EngineState, id: Id): { threads?: string[] } {
+  const lines = state.evaluation.threads.filter((t) => t.bodies.includes(id)).map(threadLine);
+  return lines.length ? { threads: lines } : {};
+}
+
 // `whole`: the state is that at the end of the timeline (no `at`).
 function modelSummary(state: EngineState, whole = true): unknown {
   const { document, evaluation } = state;
   return {
     features: document.features.map((feature) => featureSummary(feature, evaluation.features[feature.id])),
-    bodies: Object.entries(evaluation.bodies).map(([id, body]) => ({ id, ...solidInfo(body), faces: body.faces.length, edges: body.edges.length, ...propertiesInfo(state, id) })),
+    bodies: Object.entries(evaluation.bodies).map(([id, body]) => ({ id, ...solidInfo(body), faces: body.faces.length, edges: body.edges.length, ...propertiesInfo(state, id), ...threadsInfo(state, id) })),
     problems: document.features.filter((feature) => ['error', 'warning'].includes(evaluation.features[feature.id]?.status ?? '')).map((feature) => feature.id),
     ...(document.parameters.length ? { parameters: Object.fromEntries(parametersInfo(state).parameters.map((p) => [p.name, p.value ?? { error: p.error }])) } : {}),
     ...mechanismInfo(state, whole),
@@ -457,7 +467,7 @@ function featuresSummary(state: EngineState, ids: unknown): unknown {
   const bodies = listed.flatMap((feature) => evaluation.features[feature.id]?.bodies ?? []).filter((id) => has(evaluation.bodies, id));
   return {
     features: listed.map((feature) => featureSummary(feature, evaluation.features[feature.id])),
-    bodies: bodies.map((id) => ({ id, ...solidInfo(evaluation.bodies[id]), faces: evaluation.bodies[id].faces.length, edges: evaluation.bodies[id].edges.length, ...propertiesInfo(state, id) })),
+    bodies: bodies.map((id) => ({ id, ...solidInfo(evaluation.bodies[id]), faces: evaluation.bodies[id].faces.length, edges: evaluation.bodies[id].edges.length, ...propertiesInfo(state, id), ...threadsInfo(state, id) })),
   };
 }
 
@@ -483,6 +493,8 @@ function bodyDetail(engine: Engine, at: string | undefined, id: string): unknown
     max: answer.result.bounds.max.map(round),
     faces: answer.result.faces.map((face) => ({ name: face.name as unknown as Json, label: faceLabel(face.name), planar: face.surface.kind === 'plane', area: round(face.area), ...(face.meshNormal ? { normal: face.meshNormal.map(round) } : {}) })),
     edges: answer.result.edges.map((edge) => ({ name: edge.name as unknown as Json, label: `${faceLabel(edge.name.a)} | ${faceLabel(edge.name.b)}`, kind: edge.kind, ...edgeShape(edge) })),
+    // the threads on its faces (D76), with where each helix lies
+    ...(answer.result.threads ? { threads: answer.result.threads.map((t) => ({ line: threadLine(t), ...(roundedResult(t) as object) })) } : {}),
   }, state);
 }
 
@@ -1271,7 +1283,7 @@ export function tools(): Tool[] {
     {
       name: 'get_model',
       description:
-        'Model overview: features on the timeline with their state, errors and field expressions, bodies with volume and size (as modelled, whatever the pose) and what their body properties state (name, colour, material, use, density, mass in g, the body a copy takes after), the mechanism when it has a link (links with their bodies, joints with type, parent, child, axis, numbers and expressions, the roots when there are several), the stored meshes when there are any (ID, name, triangles, size of the bounds, the features that place each in `usedBy`), parameter values, checks that fail, and what is in error (`bodyPropertyErrors`: a density or a mass that cannot be evaluated). ' +
+        'Model overview: features on the timeline with their state, errors and field expressions, bodies with volume and size (as modelled, whatever the pose), what their body properties state (name, colour, material, use, density, mass in g, the body a copy takes after) and their threads (a line each: the label or diameter x pitch, internal or external, cosmetic or modelled, the hand when left, the face), the mechanism when it has a link (links with their bodies, joints with type, parent, child, axis, numbers and expressions, the roots when there are several), the stored meshes when there are any (ID, name, triangles, size of the bounds, the features that place each in `usedBy`), parameter values, checks that fail, and what is in error (`bodyPropertyErrors`: a density or a mass that cannot be evaluated). ' +
         'Without `at` also `bodyPropertiesWithoutBody` (entries of body properties whose body is gone, which a body made again under that ID takes over), `jointErrors`, `jointDriveErrors` (a field of the drive of a joint whose expression fails: it blocks no pose, the export of a robot refuses it), `linksMissingBodies` and `bodiesInNoLink`. `at` = the state after the given feature. `features` (a list of feature IDs) answers with those features alone and the bodies they create, in the shape of the whole model.',
       inputSchema: {
         type: 'object',
@@ -1349,14 +1361,14 @@ export function tools(): Tool[] {
     },
     {
       name: 'get_body',
-      description: 'A body in detail: faces (name, planarity, area, normal) and edges (name, kind, ends). The names of faces and edges are used in references: the plane of a sketch on a face, the projection of an edge. A large body (hundreds of edges) does not fit one answer: ask the tool query for the query body with `feature` (the faces of one feature and its copies, and their edges) or `only` (faces or edges).',
+      description: 'A body in detail: faces (name, planarity, area, normal), edges (name, kind, ends) and, when it has any, its threads (D76: the line get_model prints, the profile, where the helix lies and how its ends end). The names of faces and edges are used in references: the plane of a sketch on a face, the projection of an edge. A large body (hundreds of edges) does not fit one answer: ask the tool query for the query body with `feature` (the faces of one feature and its copies, and their edges) or `only` (faces or edges).',
       inputSchema: { type: 'object', properties: { body: { type: 'string', description: 'Body ID: the ID of an extrusion with the operation new or of a split, or `<pattern>/<number>` for a copy made by a pattern (get_model lists them)' }, at: { type: 'string', description: 'feature ID; the state after it' } }, required: ['body'], additionalProperties: false },
       run: (engine, args) => bodyDetail(engine, optionalText(args, 'at'), text(args, 'body')),
     },
     {
       name: 'check_interference',
       description:
-        'Which bodies collide. `pairs` are the collisions: pairs of bodies that share a volume above the threshold, with the volume in mm³ and `depth` in mm, how deep one body reaches into the other. `fits` are pairs with round faces in which neither body reaches deeper into the other than the chord tolerance of the document (`tolerance` in the answer; the precision of the coordinates is added to it): round faces are polygons, so a pin in a hole of the same diameter overlaps the wall by slivers wherever the two polygons are turned differently; such a pair is not a collision of the design, and the model cannot tell it from a real overlap of round faces that shallow (two round faces that bulge towards each other may overlap by about twice the tolerance before they collide). Where a planar face of one body reaches into a planar face of the other, away from the slivers of a round face, the pair is a collision however shallow. Bodies that only touch (flush faces) and overlaps thinner than about two millionths of the largest coordinate of the pair are not reported at all. `pairs` and `fits` rest only on an intersection the kernel verified. When the kernel refuses to verify the intersection of a pair, the intersection as it computed it is measured by the same rule; it may only clear the pair: `cleared` (only when it has an entry) lists such pairs with `kind` (`nothing` or `fit`), `volume` and `depth`: clear, by a mesh nobody verified. `failed` lists pairs that are neither colliding nor clear: the kernel refused them and what it computed measures as a collision or could not be measured; the message gives the reason and, when measured, the volume and depth as computed, not verified. Use it after building or changing parts that must not overlap (gears in mesh, a pin in its bore). `at` and `after` as for the tool query: `after` previews a command (a pose, a parameter) and checks the bodies after it, writing nothing.',
+        'Which bodies collide. `pairs` are the collisions: pairs of bodies that share a volume above the threshold, with the volume in mm³ and `depth` in mm, how deep one body reaches into the other. `fits` are pairs with round faces in which neither body reaches deeper into the other than the chord tolerance of the document (`tolerance` in the answer; the precision of the coordinates is added to it): round faces are polygons, so a pin in a hole of the same diameter overlaps the wall by slivers wherever the two polygons are turned differently; such a pair is not a collision of the design, and the model cannot tell it from a real overlap of round faces that shallow (two round faces that bulge towards each other may overlap by about twice the tolerance before they collide). Where a planar face of one body reaches into a planar face of the other, away from the slivers of a round face, the pair is a collision however shallow. Bodies that only touch (flush faces) and overlaps thinner than about two millionths of the largest coordinate of the pair are not reported at all. `pairs` and `fits` rest only on an intersection the kernel verified. When the kernel refuses to verify the intersection of a pair, the intersection as it computed it is measured by the same rule; it may only clear the pair: `cleared` (only when it has an entry) lists such pairs with `kind` (`nothing` or `fit`), `volume` and `depth`: clear, by a mesh nobody verified. `failed` lists pairs that are neither colliding nor clear: the kernel refused them and what it computed measures as a collision or could not be measured; the message gives the reason and, when measured, the volume and depth as computed, not verified. `threaded` (only when it has an entry, D76) lists pairs of which a part of what they share is what a thread accounts for (a screw in a tapped hole, a plain rod of the nominal diameter in a threaded bore), with the volume excused in mm³ and the threads (`{ feature, face, body }`); what is left of such a pair is judged as every pair (a head in its counterbore is also in `fits`; a screw too long for a blind bore is a collision, in `pairs` alone with what is left), and two threads that meet and do not agree make the pair a collision whose entry of `pairs` says what differs in `mismatch`. Use it after building or changing parts that must not overlap (gears in mesh, a pin in its bore). `at` and `after` as for the tool query: `after` previews a command (a pose, a parameter) and checks the bodies after it, writing nothing.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -1392,7 +1404,7 @@ export function tools(): Tool[] {
         // significant digits, not decimal places: a volume above a small threshold must not round to zero
         const rounded = <T extends Pick<Interference, 'volume' | 'depth'>>(pair: T): T => ({ ...pair, volume: Number(pair.volume.toPrecision(6)), depth: Number(pair.depth.toPrecision(4)) });
         const state = previewed ?? stateAt(engine, at);
-        const answer = { ...report, pairs: report.pairs.map(rounded), fits: report.fits.map(rounded), ...(report.cleared ? { cleared: report.cleared.map(rounded) } : {}), tolerance: state.document.settings.chordTolerance, ...(report.checked === 0 ? { note: 'The model has fewer than two bodies: nothing was checked.' } : {}) };
+        const answer = { ...report, pairs: report.pairs.map(rounded), fits: report.fits.map(rounded), ...(report.cleared ? { cleared: report.cleared.map(rounded) } : {}), ...(report.threaded ? { threaded: report.threaded.map((entry) => ({ ...entry, volume: Number(entry.volume.toPrecision(6)) })) } : {}), tolerance: state.document.settings.chordTolerance, ...(report.checked === 0 ? { note: 'The model has fewer than two bodies: nothing was checked.' } : {}) };
         return posed(answer, state);
       },
     },

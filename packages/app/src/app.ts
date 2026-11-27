@@ -605,7 +605,7 @@ export class App implements SketchHost, SceneHost {
   private hoveredRows(): RowKey[] {
     if (!this.pointerAt) return [];
     const m = this.mode;
-    if (m.kind !== 'sketch') return pickRows(this.hover);
+    if (m.kind !== 'sketch') return pickRows(this.hover, this.view().evaluation.threads);
     const snap = m.cursor?.snap;
     const entity = m.hover ?? (snap && snap.kind !== 'foreign' ? snap.id : undefined);
     return [...sketchRows(this.sketchContext()?.feature, entity), ...pickRows(m.hoverEdge)];

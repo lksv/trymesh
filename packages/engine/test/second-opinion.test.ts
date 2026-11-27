@@ -171,7 +171,7 @@ describe('the second opinion of the kernel (D50)', () => {
     const bodies = { A: a, B: b };
     const document = emptyDocument();
     const mechanism = DOCUMENT_SECTIONS.mechanism.evaluate(document.mechanism, document, bodies, {}, { sketches: {} } as unknown as State).result;
-    const evaluation = { bodies, faceSurfaces: [], faceNames: [], features: {}, parameters: {}, checks: {}, bodyProperties: {}, mechanism } as unknown as Evaluation;
+    const evaluation = { bodies, faceSurfaces: [], faceNames: [], features: {}, parameters: {}, checks: {}, bodyProperties: {}, mechanism, threads: [] } as unknown as Evaluation;
     const internals = { document, state: { faceIds: new Map(), sketches: {} } as unknown as State };
     const memo = new Memo();
     const ask = (threshold: number): InterferenceReport => QUERIES.interference.run(queryContext('interference', evaluation, internals, { kernel, memo }), { threshold } as never) as InterferenceReport;

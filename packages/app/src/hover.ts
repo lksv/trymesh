@@ -6,7 +6,7 @@
 // Keys: `feature:<id>` (a row of the timeline), `body:<id>` (the line of a body in the model
 // panel), `entity:<id>` (a row of the sketch panel that names an entity of the sketch, or an entry
 // of `external`).
-import { type Id, type SketchFeature, bodyOwner, entityIndex } from '@trymesh/engine';
+import { type Id, type SketchFeature, type ThreadResult, bodyOwner, entityIndex, faceKey } from '@trymesh/engine';
 import type { ViewPick } from './host';
 
 export type RowKey = `${'feature' | 'body' | 'entity'}:${string}`;
@@ -33,11 +33,13 @@ const featureRow = (id: Id): RowKey => `feature:${bodyOwner(id).feature}`;
 //   made the body it lies on (a split, a pattern of a body, a mesh, an insertion), and the body;
 // - an edge: the same of both its faces;
 // - a plane: the row of a plane feature (the base planes have no row).
-export function pickRows(pick: ViewPick | undefined): RowKey[] {
+// - a face with a thread (D76): also the thread feature (`threads`: those of the shown state).
+export function pickRows(pick: ViewPick | undefined, threads: readonly ThreadResult[] = []): RowKey[] {
   if (!pick) return [];
   if (pick.kind === 'plane') return pick.ref.kind === 'plane' ? [featureRow(pick.ref.feature)] : [];
   const faces = pick.kind === 'face' ? [pick.name] : [pick.name.a, pick.name.b];
-  const features = [...faces.flatMap((face) => [face.feature, ...(face.copy ?? []).map((tag) => tag.pattern)]), pick.body];
+  const threaded = pick.kind === 'face' ? threads.filter((t) => t.bodies.includes(pick.body) && faceKey(t.face) === faceKey(pick.name)).map((t) => t.feature) : [];
+  const features = [...faces.flatMap((face) => [face.feature, ...(face.copy ?? []).map((tag) => tag.pattern)]), ...threaded, pick.body];
   return [...new Set<RowKey>([...features.map(featureRow), `body:${pick.body}`])];
 }
 

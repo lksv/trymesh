@@ -2,6 +2,7 @@
 import type { SketchAnalysis } from '../analysis';
 import type { OutlineCurve, Profile, Region, SketchCurve, SketchGeometry } from '../sketch';
 import type { FaceInfo, RigidTransform } from '../solid';
+import type { ThreadRecord } from './thread';
 import type { CheckResult, CopyTag, Document, ExpressionError, FaceName, Facts, Feature, FeatureResult, FieldPath, Frame, Id, Issue, IssueCode, Point2, SketchFeature, SketchSolver, Solid, SolidKernel, SolveInput, SolveResult, StoredDocument, Vec2 } from '../types';
 
 export interface Deps {
@@ -37,6 +38,15 @@ export interface State {
   // body adds nothing (its copies inherit through their source). The body properties read it
   // after the timeline.
   inserted: Record<Id, InsertedBody>;
+  // The threads so far (D76): the records the step of a thread feature appended, and the copies
+  // a pattern of a body and an insertion made of them, each on the number of its face. Published
+  // as `Evaluation.threads` (`threadResults` of recompute/thread.ts).
+  threads: readonly ThreadRecord[];
+  // The transform of every copy a pattern of this document made, of features and of bodies, by its
+  // copy tag (`<pattern>:<index>`, `copyKey`). The thread step reads it for the helix of a copy and
+  // follows with `copies` only a tag that is in it (a pattern inside an inserted document and
+  // a combine with a clearance write none).
+  copyTransforms: ReadonlyMap<string, RigidTransform>;
 }
 
 // What an inserted body passes on to the body properties here (D62): what its chain in the inserted

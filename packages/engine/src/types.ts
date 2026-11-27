@@ -235,7 +235,7 @@ export interface Check {
 
 // ---------------------------------------------------------------- features
 
-export type Feature = PlaneFeature | SketchFeature | ExtrudeFeature | PatternFeature | HoleFeature | MeshFeature | CombineFeature | SplitFeature | RevolveFeature | ChamferFeature | FilletFeature | InsertFeature;
+export type Feature = PlaneFeature | SketchFeature | ExtrudeFeature | PatternFeature | HoleFeature | MeshFeature | CombineFeature | SplitFeature | RevolveFeature | ChamferFeature | FilletFeature | InsertFeature | ThreadFeature;
 
 export interface FeatureBase {
   id: Id;
@@ -992,6 +992,103 @@ export interface FilletFeature extends FeatureBase {
   radius: number;
 }
 
+// A thread on cylindrical faces of one body (D76): on a bore an internal thread, on a pin an
+// external one. The face gives the axis, the two ends and the radius of the wall, which is the
+// crest of the thread as made (the minor diameter of an internal thread, the major diameter of an
+// external one); the feature states the profile. Whether a face is a bore or a pin is read from
+// the body (the side its material is on), never stated.
+// - `body`, `faces`: at least one face of that body, none twice. Each has to be a whole cylinder:
+//   a `Surface` of the kind `cylinder` whose triangles cover every angle about its axis (a rounded
+//   corner, the end of a slot and a bore slit along its whole length are refused: cut a slit after
+//   the thread; a bore crossed by a hole passes). Every face gets the same thread. A face on which
+//   the body has both a bore and a pin (one cylinder used both ways by a combine) is refused.
+// - `copies`: when true, the thread is also made on every face of the body whose name is a listed
+//   name with further copy tags of patterns of this document (the bores a pattern of a hole made).
+//   A tag is followed when the pattern step recorded the transform of that copy, so not the tag of
+//   a pattern inside an inserted document and not the tag a combine with a clearance gives the
+//   faces of its pocket: list such a face. A listed face is never taken as a copy, and a copy of
+//   two listed names belongs to the one with the most tags in common. A count of the pattern that
+//   changes then needs no change here. The thread has to stand after the pattern; one that finds
+//   no copy has the warning `noCopies`. Absent: false.
+// - `modelled`: false is a cosmetic thread: the geometry does not change (a bore stays at its
+//   tap-drill diameter, a pin at the diameter it was made with) and the evaluation records the
+//   thread (`Evaluation.threads`). True would cut the helix into the mesh; this build makes
+//   cosmetic threads only, and a command or a document with `modelled: true` is invalid.
+// - The basic profile, in the axial plane: a trapezoid ridge per pitch.
+//   - `diameter`: the nominal diameter, which is the major diameter of the basic profile (8 for
+//     M8), mm.
+//   - `pitch`: from ridge to ridge along the axis, mm. The lead is `pitch · starts`.
+//   - `flankAngle`: the angle between the two flanks, radians; absent: `deg(60)`, the ISO metric
+//     profile. Printed threads take more (`deg(90)`: no flank overhangs by more than 45°).
+//   - `depth`: the radial height of the basic profile, from the major to the minor diameter, mm.
+//     Absent: 5/8 of the height of the sharp V of the pitch and the angle,
+//     `5 · pitch / (16 · tan(flankAngle / 2))`, which for 60° is 0.541266 · pitch, the ISO profile
+//     (ISO 68-1; the minor diameter is then D − 1.082532 · P as in ISO 724).
+//   - The flats follow: what the two flanks leave of a pitch, `pitch − 2 · depth · tan(flankAngle / 2)`,
+//     is divided 1 : 2 between the flat at the major diameter and the flat at the minor diameter
+//     (P/8 and P/4 for the ISO profile). Less than nothing left is `invalidThread`.
+// - `clearance`: a radial shift away from the mate, mm, zero or more; absent: 0. The thread made
+//   is the basic thread of a diameter smaller by twice the clearance (on a pin) or larger by twice
+//   it (in a bore): its flanks and its root move radially by the clearance. Between the flanks of
+//   this thread and a basic mate that leaves `clearance · sin(flankAngle / 2)` (half of it at 60°).
+//   The crest is the wall as it was made and does not move, so the wall has to suit the clearance:
+//   make a pin at `diameter − 2 · clearance` and a bore at the tap drill plus `2 · clearance`
+//   (the query hardwareHole with the use `tapped` and an allowance does the latter). A pin left at
+//   the nominal diameter takes a clearance up to about 0.108 · pitch at 60°; beyond that the
+//   grooves would leave nothing of the wall, which is `invalidThread` with the size to make.
+//   Two threads are free of each other when every radial gap between them is at least the chord
+//   tolerance of the document: between the flanks (the two clearances together) and between each
+//   crest and the root it faces. The clearance of a thread frees its flanks and its root; its crest
+//   is its wall, freed by the size of the wall or by the clearance of the mate.
+// - `starts`: the number of ridges, a whole number from 1 to 16; absent: 1.
+// - `hand`: `right` or `left`. The copy of a face a mirror made (`copies`) gets this hand as well;
+//   a mirrored copy of the body is the mirror image and has the other one (`ThreadResult.hand`
+//   says what came out, and the pattern that mirrored the body has the warning `mirroredThread`;
+//   a thread feature placed after the mirror keeps the stated hand). For the other hand on
+//   a mirrored copy of a face, list that copy in a second thread feature.
+// - `direction`, `offset`, `length`: where along the face the thread is. `forward` starts at the
+//   end of the face its axis points away from and runs along the axis of the face (the sense of
+//   `AxisRef` of the kind `face`: for an extrusion and a hole the normal of the sketch); `backward`
+//   starts at the other end and runs against it. For a hole or a cut made from a sketch on a face,
+//   whose normal points out of the body, a thread from the mouth is `backward`, as the hole itself
+//   is. The thread starts `offset` (mm, zero or more; absent: 0) from that end and is `length`
+//   long (mm, above 0); absent: to the other end of the face. A thread that would pass the other
+//   end is `invalidThread`. An end nearer to an end of the face than the lift (0.05 mm at the
+//   least, twice the chord tolerance) is taken to be at that end.
+// - `phase`: turns the thread about its axis, radians by the right-hand rule about the direction
+//   of the thread; absent: 0. See `ThreadResult` for where the helix lies.
+// - `label`: free text for people ("M8", "M8x1", "lid 40 x 4"), at most 200 characters; the
+//   engine reads nothing out of it.
+// - The face the thread is on keeps its name and its surface. The feature creates no body and
+//   leaves no tool a pattern could repeat: a pattern of the body copies its threads with it, and
+//   the bores a pattern of a hole made are reached by `copies`.
+// - The result tells in `facts`: `depth` (of the basic profile used), `minorDiameter`
+//   (`diameter − 2 · depth`), `lead`, `crestFlat` and `rootFlat` (the flats of the basic profile at
+//   the major and the minor diameter), `threads` (how many were made: the listed faces and their
+//   copies) and with `copies` also `copies` (how many copies were found).
+// - Errors: `brokenReference` (the body, or a face it does not have, in `refs`), `invalidThread`
+//   (see ErrorCode), `invalidExpression` (a field). Warning: `noCopies`. A feature in error changes
+//   nothing and records no thread.
+export interface ThreadFeature extends FeatureBase {
+  type: 'thread';
+  body: Id;
+  faces: FaceName[];
+  copies?: boolean;
+  modelled: boolean;
+  diameter: number;
+  pitch: number;
+  depth?: number;
+  flankAngle?: number;
+  clearance?: number;
+  starts?: number;
+  hand: 'right' | 'left';
+  direction: 'forward' | 'backward';
+  offset?: number;
+  length?: number;
+  phase?: number;
+  label?: string;
+}
+
 // The shape of one hole, a variant by `type`. The wider part (the head) is at the mouth of the hole,
 // where the extent starts. No field has a default.
 // - `plain`: a cylinder of `diameter`.
@@ -1474,6 +1571,99 @@ export interface Evaluation {
   mechanism: MechanismResult; // the mechanism resolved against this state
   meshes: Record<Id, MeshResult>; // what the stored meshes are, without their data (D55)
   documents: Record<Id, StoredDocumentResult>; // what the stored documents are, without a recompute (D62)
+  threads: ThreadResult[]; // the threads of the state (D76), see ThreadResult
+}
+
+// How an end of a thread ends, read from the mesh of the body before the thread feature at every
+// recompute (D76):
+// - `open`: at an end of the wall beyond which the bore goes on into the open (a mouth in a face,
+//   a counterbore, a chamfer or a countersink) or the pin ends (its free end, a chamfered tip);
+//   also where the wall goes on over a part of the rim and is open over the rest. The thread
+//   runs out there, through a chamfer as a tap cuts it.
+// - `shoulder`: at an end of the wall where material stands in the way (the bottom of a blind
+//   hole, a narrower bore, the plate a pin stands on, a wider step, a fillet at its foot).
+// - `inside`: within the wall, by `offset` or `length`, or at an end of the wall where the wall
+//   goes on under another name along the whole rim (the face across the rim is a cylinder about
+//   the same axis with the same radius).
+export type ThreadEnd = 'open' | 'shoulder' | 'inside';
+
+// One thread on one face, as the evaluation publishes it (`Evaluation.threads`, in the order of
+// the features and of their faces, copies after the listed faces; the copies a pattern of a body
+// or an insertion made after them).
+// - `feature`, `face`: the thread feature and the face it is on (for a copy the name of the copy;
+//   for a thread an insertion brought, both prefixed as the faces of an insertion are).
+// - `bodies`: the bodies that have that face in this state with the material on the side the
+//   thread was made for. A later feature may move the face to another body (a union), leave it
+//   on two (a split) or remove it; a difference leaves the face in its target with the other
+//   sense (the bore of a tool becomes a pin), and the thread is not listed there. A thread on no
+//   body is not listed.
+// - `internal`: on a bore. `modelled`: cut into the mesh (always false in this build).
+// - `diameter`, `pitch`, `depth`, `flankAngle`, `clearance`, `starts`, `label`: as the feature
+//   gives them, with the defaults filled in. `radius`: of the wall.
+// - `hand`: the hand the thread has where it lies: the stated one on the faces of the feature and
+//   on their copies (also a mirrored copy of a face), the other one on a mirrored copy of the
+//   body.
+// - Where the helix lies. `origin` is the point of the axis in the plane of the end of the face the
+//   thread starts from (the extreme point of the face along the axis, read from its mesh);
+//   `axis` is the unit direction the thread runs in; `zero` is a unit vector across the axis. The
+//   thread is between `from` and `to`, distances from `origin` along `axis` (`offset` and
+//   `offset + length`). The centre of the crest of a ridge of the basic profile (of an external
+//   thread the middle of its ridge, of an internal one the middle of its groove: one curve for
+//   both) is at `origin + s · axis + (diameter / 2) · (zero turned by θ about axis)` with
+//   `s = turn · lead · θ / 2π + k · pitch`, θ by the right-hand rule about `axis`, `turn` +1 for
+//   a right-hand thread and −1 for a left-hand one (by `hand` here), k any whole number.
+//   - `zero` of a listed face is the model's X axis made perpendicular to `axis` (the model's
+//     Y axis when `axis` is within about 26° of X: |x of the axis| above 0.9), turned by `phase`.
+//   - The helix of a copy (`copies`) is that of its listed face carried by the patterns that
+//     made the copy: the datum of the listed face (`origin`, `axis`, `zero`) is moved by their
+//     transforms, and the copy has the helix that datum gives with the stated hand (also after
+//     a mirror, which carries the datum and does not turn the hand). The record of the copy
+//     starts at the copy's own wall: where that lies `δ` further along the axis than the carried
+//     origin, `zero` is the carried one turned by `turn · 2π · δ / lead`, the same helix from the
+//     other origin. So the helices of a circle of threaded holes are turned with their holes, as
+//     the helices of a circle of screws are that a pattern of a body made.
+//   - It does not depend on `offset` or `length`: changing them trims the same helix.
+//   So a screw sits in a nut when their axes lie on one line and their helices are one curve:
+//   with the same hand, pitch and starts, and with `origin`, `axis` and `zero` of the two
+//   satisfying the formula above. Two threads that start from one plane in one direction with the
+//   same `phase` do. With `φ₁` the phase of the first: a second thread that runs the same way
+//   with its origin `g` further along that direction needs the phase `φ₁ + turn · 2π · g / lead`;
+//   one that runs the other way (a bolt from above into a nut threaded from below), with its
+//   origin `L` from the first one's along the first direction, needs `−φ₁ − turn · 2π · L / lead`
+//   (the first phase with the other sign: each thread turns the same base direction about its
+//   own direction).
+// - `ends`: how each end ends. `runOut`: how far beyond the end of the wall the thread runs out
+//   through what follows an open end (the axial depth of a chamfer or a countersink until it is
+//   as wide as the major diameter); zero at every other end. It is counted from the end of the
+//   wall, which is taken for the end of a thread that ends within the lift of it (`from` and `to`
+//   stay as stated).
+// - `walls`: for each of `bodies`, in their order, the stretch of the axis (from `origin` along
+//   `axis`) that the triangles of the face still cover in that body. The span is the one the
+//   feature gave: a later feature that shortens the wall, or splits the body, does not shorten
+//   `from` and `to`; the check of collisions goes by the span cut to the stretch.
+export interface ThreadResult {
+  feature: Id;
+  face: FaceName;
+  bodies: Id[];
+  internal: boolean;
+  modelled: boolean;
+  diameter: number;
+  pitch: number;
+  depth: number;
+  flankAngle: number;
+  clearance: number;
+  starts: number;
+  hand: 'right' | 'left';
+  label?: string;
+  radius: number;
+  origin: Vec3;
+  axis: Vec3;
+  zero: Vec3;
+  from: number;
+  to: number;
+  ends: { start: ThreadEnd; end: ThreadEnd };
+  runOut: { start: number; end: number };
+  walls: { from: number; to: number }[];
 }
 
 // A stored document as the evaluation describes it (D62), without recomputing it: the bodies an
@@ -1657,12 +1847,50 @@ export interface Interference {
 // - `failed`: pairs that are neither colliding nor clear: the kernel refused them and what it
 //   computed measures as a collision or could not be measured. The message gives the reason of
 //   the refusal and then, when it was measured, the volume and depth as computed, not verified.
+// - `threaded` (D76): pairs of which a part of what they share is what a thread accounts for
+//   (`Threaded`). Present only when it has an entry.
+// - An entry of `pairs` between two bodies with threads that meet and do not agree carries
+//   `mismatch`, in words ("pitch 1.5 against 1.25", "a left-hand thread in a right-hand one",
+//   "the axes are 0.3 apart"): the pair was judged whole.
 export interface InterferenceReport {
-  pairs: Interference[];
+  pairs: (Interference & { mismatch?: string })[];
   fits: Interference[];
   failed: { a: Id; b: Id; message: string }[];
   cleared?: Cleared[];
+  threaded?: Threaded[];
   checked: number; // number of pairs examined
+}
+// A pair of bodies of which a part of what they share is what a thread accounts for (D76): a screw
+// in a bore with a cosmetic thread, a plain rod of the nominal diameter in it. What is left of the
+// pair is judged as every pair is, so it is in `threaded` alone (nothing left), in `threaded` and
+// in `fits` (the head in its counterbore), or in `pairs` alone with the volume and depth of what is
+// left (a screw too long for a blind bore).
+// - The zone of a thread on a body: between the wall and the root of that thread (a bore: from the
+//   wall to `diameter / 2 + clearance`; a pin: from `diameter / 2 − depth − clearance` to the
+//   wall), along the axis over the span the body still has of the wall (`walls`), longer by the
+//   run-out at an open end it still has.
+// - The body with the thread is cut by a ring that holds the zone; what the other body shares
+//   with the part in the zone is taken when every connected piece of it above 0.001 mm³ goes
+//   around the axis (its centre of volume nearer to the axis than 0.827 of its radius: more than
+//   about a third of a turn) and there is one. A body pushed into the thread from one side, or a
+//   rod that misses the hole, takes nothing. The rest of the body with the thread is then judged
+//   against the other body as every pair is, so a pin through a solid block, a rod thicker than
+//   the major diameter or a screw too long for a blind bore still collide.
+// - The other body need not carry a thread (a bought screw is a plain cylinder). When it does and
+//   the two threads meet, they have to agree: on one line (parallel or opposite axes within
+//   1e-4 rad, no further apart than the chord tolerance), one internal and the other external,
+//   and the pitch, the starts, the hand, the diameter, the flank angle and the depth the same.
+//   Otherwise no zone is taken and the pair is judged whole, with `mismatch` on its entry of
+//   `pairs`. Threads whose zones do not meet do not concern each other.
+// - `volume`: what was excused, mm³: the sum over the zones taken, with the larger of the two for
+//   two agreeing threads about one line. No depth: it is measured of what is left alone.
+// - `threads`: the thread of every zone taken (one body in several threaded bores; when both bodies
+//   have agreeing threads there, both).
+export interface Threaded {
+  a: Id; // the smaller ID, as in the other lists
+  b: Id;
+  volume: number; // mm³
+  threads: { feature: Id; face: FaceName; body: Id }[];
 }
 // A pair the kernel refused and its intersection as computed clears. `kind`: what that mesh
 // measures as, by the threshold of the call: `nothing` (it shares nothing, or only touches) or
@@ -1763,6 +1991,22 @@ export interface Issue {
 // - a convex and a concave edge of the feature (both in `refs`) meet at a vertex: two features;
 // - it meets the second edge in `refs` at a vertex in a way the feature cannot join (an arc at an
 //   angle, different angles at a reflex corner), or their two tools leave a step there.
+// invalidThread: the fields and the faces of a thread feature do not make a thread (D76). `refs`:
+// the face concerned, or the paths of the fields. The message gives the numbers:
+// - a face is not a cylinder, is only a part of one (cut a slit after the thread), or the body has
+//   it both as a bore and as a pin;
+// - the profile does not fit into a pitch (the flanks would cross: a depth too large for the
+//   pitch and the angle);
+// - a bore narrower than the minor diameter of the thread (the tap-drill size), or so wide that
+//   less than half of the depth is left; a pin wider than the major diameter, or so narrow that
+//   less than half of the depth is left. The bound on the side the clearance shifts the thread to
+//   moves with it (a bore up to `diameter + 2 · clearance − depth`, a pin down to
+//   `diameter − 2 · clearance − depth`);
+// - the clearance leaves no crest on the wall: the grooves would take the whole face. The message
+//   names the size the wall would have to be (`diameter − 2 · clearance` for a pin) and the
+//   largest clearance the wall as it is takes;
+// - the thread would pass the far end of its face, or has no length;
+// - a face already has a thread over a part of that length (of an earlier feature, in `refs`).
 // blendDoesNotFit: the chamfer or fillet does not fit (D63). `refs`: the edge and the face
 // concerned. The message says which:
 // - a face of the edge would vanish (a radius larger than the face is wide), or the new face would;
@@ -1797,6 +2041,7 @@ export type ErrorCode =
   | 'invalidAxis'
   | 'unsupportedEdge'
   | 'blendDoesNotFit'
+  | 'invalidThread'
   | 'jointLimits' // a joint of the mechanism: its lower limit is above its upper one
   | 'jointOutOfLimits'; // a joint of the mechanism: its value is outside its limits
 
@@ -1827,7 +2072,16 @@ export type WarningCode =
   // (`external/<entry>/transform/count`, `…/second/count`, …) of a grid of more than 200 places or
   // whose copies would stand in one place (no copies at all). The rest of the sketch is solved and
   // its profile found with the copies that could be made.
-  | 'brokenCopies';
+  | 'brokenCopies'
+  // A thread feature with `copies` found no copy of a listed face on its body (D76): it stands
+  // before its pattern, or the pattern is gone. `refs`: `copies`.
+  | 'noCopies'
+  // A pattern that mirrors a body turned the hand of threads on its copy (D76): the copy is the
+  // mirror image, so a right-hand thread on it is left-hand. `refs`: the copies. The message says
+  // how many became left-hand (or right-hand), and that a thread feature placed after the mirror,
+  // on the faces of the copy, keeps the stated hand. A mirror of a mirror gives the stated hand
+  // back and warns of none.
+  | 'mirroredThread';
 
 export type IssueCode = ErrorCode | WarningCode;
 
@@ -2173,7 +2427,10 @@ export type FeaturePatch =
   | Patch<Pick<ChamferFeature, 'body' | 'edges' | 'distance'>>
   | Patch<Pick<FilletFeature, 'body' | 'edges' | 'radius'>>
   // `parameters` merges key by key (`null` removes a value); `placement` as for a mesh feature
-  | Patch<Pick<InsertFeature, 'document' | 'placement' | 'parameters' | 'bodies'>>;
+  | Patch<Pick<InsertFeature, 'document' | 'placement' | 'parameters' | 'bodies'>>
+  // `faces` is replaced whole; `null` removes `copies`, `depth`, `length`, `label` and the fields
+  // with a default (`flankAngle`, `clearance`, `starts`, `offset`, `phase`)
+  | Patch<Pick<ThreadFeature, 'body' | 'faces' | 'copies' | 'modelled' | 'diameter' | 'pitch' | 'depth' | 'flankAngle' | 'clearance' | 'starts' | 'hand' | 'direction' | 'offset' | 'length' | 'phase' | 'label'>>;
 
 // ---------------------------------------------------------------- queries
 
@@ -2229,6 +2486,9 @@ export interface BodyDescription {
   faces: BodyFace[];
   edges: BodyEdge[];
   total?: { faces: number; edges: number }; // with a filter (`feature`, `only`): the counts of the whole body
+  // The threads on the faces of the body (D76), in a posed query where the pose puts them; only
+  // when it has one. Not filtered by `feature` or `only`.
+  threads?: ThreadResult[];
 }
 export interface BodyFace {
   name: FaceName;

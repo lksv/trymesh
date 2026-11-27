@@ -12,6 +12,7 @@
 import type { Unit } from './catalog';
 import { clearanceHoles, countersunkScrews, heatSetInserts, hexNuts, socketHeadScrews } from './catalogs/hardware';
 import { MATERIALS } from './catalogs/materials';
+import { metricThreads } from './catalogs/threads';
 import { has } from './util';
 
 export interface DataCatalog<Row extends { [K in keyof Row]: number | string }> {
@@ -35,7 +36,7 @@ export interface CatalogTable {
 export interface Catalogs {}
 export type CatalogSet = { [N in keyof Catalogs]: Catalogs[N] extends { [K in keyof Catalogs[N]]: number | string } ? DataCatalog<Catalogs[N]> : never };
 
-export const DATA_CATALOGS: CatalogSet = { clearanceHoles, socketHeadScrews, countersunkScrews, hexNuts, heatSetInserts, materials: MATERIALS };
+export const DATA_CATALOGS: CatalogSet = { clearanceHoles, socketHeadScrews, countersunkScrews, hexNuts, heatSetInserts, materials: MATERIALS, metricThreads };
 
 // The table of the catalog `name`, with all its rows or with the one row `key`. A row type written
 // as an interface is not a dictionary to the compiler, so a catalog is taken with its columns and

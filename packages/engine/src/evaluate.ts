@@ -5,6 +5,7 @@ import { atPath, fieldsOf, withPath } from './document';
 import { type Environment, evaluateCheck, evaluateNumber, evaluateParameters } from './expression';
 import { specOf } from './features/index';
 import { issue, lookup } from './recompute/services';
+import { threadResults } from './recompute/thread';
 import { type KeptResults, type Sections, evaluateSections } from './sections/index';
 import type { Deps, Done, DragTarget, Failed, InsertedRecompute, SketchState, State, Step, WriteBack } from './recompute/state';
 import { inheritedProperties } from './sections/body-properties';
@@ -64,7 +65,7 @@ export class Evaluator {
     // the section `meshes` a mesh feature places, which it reads through `input` (D55)
     const sections = evaluateSections(doc, bodies, parameters, final, this.kept);
     return {
-      evaluation: { features: final.features, bodies, faceNames: final.faceNames, faceSurfaces: this.surfaces(final.faceInfos), parameters, checks, ...sections.results },
+      evaluation: { features: final.features, bodies, faceNames: final.faceNames, faceSurfaces: this.surfaces(final.faceInfos), parameters, checks, ...sections.results, threads: threadResults(final) },
       state: final,
       writeBacks,
       trace,
@@ -124,7 +125,7 @@ export class Evaluator {
   }
 
   private run(doc: Document, options: EvaluateOptions): { state: State; writeBacks: Map<Id, WriteBack>; trace: Trace } {
-    let state: State = this.initial.get(doc.settings) ?? { features: {}, bodies: {}, faceNames: [], faceInfos: [], faceIds: new Map(), planes: {}, sketches: {}, tools: {}, chordTolerance: doc.settings.chordTolerance, insertions: {}, inserted: {} };
+    let state: State = this.initial.get(doc.settings) ?? { features: {}, bodies: {}, faceNames: [], faceInfos: [], faceIds: new Map(), planes: {}, sketches: {}, tools: {}, chordTolerance: doc.settings.chordTolerance, insertions: {}, inserted: {}, threads: [], copyTransforms: new Map() };
     this.initial.set(doc.settings, state);
     const writeBacks = new Map<Id, WriteBack>();
     const trace: Trace = new Map();

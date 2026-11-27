@@ -50,6 +50,7 @@ const PROFILE_SOURCES: { [T in Feature['type']]: (feature: Extract<Feature, { ty
   chamfer: () => undefined,
   fillet: () => undefined,
   insert: () => undefined,
+  thread: () => undefined,
 };
 export const profileSourceOf = (feature: Feature): ProfileSource | undefined => (PROFILE_SOURCES[feature.type] as (f: Feature) => ProfileSource | undefined)(feature);
 
@@ -2881,6 +2882,14 @@ export function renamePatches(document: Document, sketch: SketchFeature, renames
         handled = ['edges'];
         const edges = withFaces(feature.edges, face);
         if (edges !== feature.edges) patch.edges = edges.map((edge, i) => (edge === feature.edges[i] ? edge : canonicalEdge(edge)));
+        break;
+      }
+      case 'thread': {
+        // the walls of a thread (D76), as the edges of a blend: a face renamed one to one is
+        // renamed in the list
+        handled = ['faces'];
+        const faces = withFaces(feature.faces, face);
+        if (faces !== feature.faces) patch.faces = faces;
         break;
       }
       case 'plane': {

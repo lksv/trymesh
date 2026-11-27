@@ -165,7 +165,7 @@ describe('commands of the timeline', () => {
     invalid(doc, { type: 'addFeature', feature: extrude('E2', 'S1', { operation: 'cut', targets: [] }) }, /targets/);
     // a loaded document with such a reference depends on the owner of the body
     expect(featureRefs(extrude('E2', 'S1', { operation: 'cut', targets: ['P/2'] }))).toEqual(['S1', 'P']);
-    expect(Object.keys(FEATURE_TYPE_INFO).sort()).toEqual(['chamfer', 'combine', 'extrude', 'fillet', 'hole', 'insert', 'mesh', 'pattern', 'plane', 'revolve', 'sketch', 'split']);
+    expect(Object.keys(FEATURE_TYPE_INFO).sort()).toEqual(['chamfer', 'combine', 'extrude', 'fillet', 'hole', 'insert', 'mesh', 'pattern', 'plane', 'revolve', 'sketch', 'split', 'thread']);
     expect(FEATURE_TYPE_INFO.extrude).toMatchObject({ bodies: 'self', updatable: ['profile', 'extent', 'operation', 'targets'] });
     expect(FEATURE_TYPE_INFO.sketch).toMatchObject({ bodies: 'none', updatable: [] });
   });

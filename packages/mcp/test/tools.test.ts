@@ -1539,3 +1539,41 @@ describe('edges, one feature of get_model, and the facts in the answer of execut
     expect(callTool(engine, 'get_model', { features: [] })).toEqual({ ok: false, error: 'argument "features": a list of feature IDs that is not empty is expected' });
   });
 });
+
+describe('threads through the tools (D76)', () => {
+  it('get_model and get_body list the threads of a body; check_interference lists a threaded pair; the API describes the feature', () => {
+    const engine = newEngine();
+    const disc = (s: string, id: string, x: number, r: number): Command[] => [
+      { type: 'addFeature', feature: { id: s, name: s, suppressed: false, type: 'sketch', plane: { kind: 'base', plane: 'XY' }, points: {}, radii: {}, curves: {}, constraints: {}, external: {}, solved: { inputs: '', external: {} } } },
+      { type: 'addPoint', sketch: s, id: `${id}c`, x, y: 0 },
+      { type: 'addConstraint', sketch: s, id: `${id}f`, constraint: { type: 'fixed', point: `${id}c`, x, y: 0 } },
+      { type: 'addCurve', sketch: s, id, curve: { type: 'circle', center: `${id}c` }, radius: r },
+      { type: 'addConstraint', sketch: s, id: `${id}r`, constraint: { type: 'radius', curve: id, value: r, driving: true } },
+    ];
+    const extrude = (id: string, s: string, curve: string, start: number, distance: number, operation: 'new' | 'cut', targets?: string[]): Command => ({ type: 'addFeature', feature: { id, name: id, suppressed: false, type: 'extrude', profile: { type: 'regions', sketch: s, regions: [{ outerLoop: [curve] }] }, extent: { type: 'distance', start, distance }, operation, ...(targets ? { targets } : {}) } });
+    execute(engine, {
+      type: 'batch',
+      commands: [
+        ...disc('s1', 'nut', 0, 10),
+        extrude('plate', 's1', 'nut', 0, 8, 'new'),
+        ...disc('s2', 'b', 0, 2.5),
+        extrude('bore', 's2', 'b', -1, 10, 'cut', ['plate']),
+        { type: 'addFeature', feature: { id: 'm6', name: 'm6', suppressed: false, type: 'thread', body: 'plate', faces: [{ feature: 'bore', role: 'side', curve: 'b' }], modelled: false, diameter: 6, pitch: 1, hand: 'right', direction: 'backward', label: 'M6' } },
+        ...disc('s3', 'r', 0, 3),
+        extrude('bolt', 's3', 'r', -2, 12, 'new'),
+      ],
+    });
+    const model = ok(engine, 'get_model');
+    expect(model.bodies.find((b: { id: string }) => b.id === 'plate').threads).toEqual(['M6, internal, cosmetic, on bore/side/b (m6)']);
+    expect(model.bodies.find((b: { id: string }) => b.id === 'bolt')).not.toHaveProperty('threads');
+    const body = ok(engine, 'get_body', { body: 'plate' });
+    expect(body.threads).toHaveLength(1);
+    expect(body.threads[0]).toMatchObject({ line: 'M6, internal, cosmetic, on bore/side/b (m6)', feature: 'm6', internal: true, radius: 2.5, from: 0, to: 8 });
+    const report = ok(engine, 'check_interference');
+    expect(report.pairs).toEqual([]);
+    expect(report.threaded).toEqual([{ a: 'bolt', b: 'plate', volume: expect.any(Number), threads: [{ feature: 'm6', face: { feature: 'bore', role: 'side', curve: 'b' }, body: 'plate' }] }]);
+    expect(String(report.threaded[0].volume).replace('.', '').length).toBeLessThanOrEqual(7);
+    expect(JSON.stringify(ok(engine, 'describe_api', { type: 'ThreadFeature' }))).toMatch(/copies/);
+    expect(ok(engine, 'query', { query: 'hardwareHole', args: { use: 'tapped', size: 'M6' } })).toMatchObject({ shape: { type: 'plain', diameter: 5 }, thread: { diameter: 6, pitch: 1, label: 'M6' } });
+  });
+});

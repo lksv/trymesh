@@ -341,7 +341,7 @@ describe('a module per feature type (D37): what the move could have changed unse
   });
 
   it('the order of the registry and of the fields of a type is what clients were told', () => {
-    expect(Object.keys(FEATURE_TYPE_INFO)).toEqual(['plane', 'sketch', 'extrude', 'pattern', 'hole', 'mesh', 'combine', 'split', 'revolve', 'chamfer', 'fillet', 'insert']);
+    expect(Object.keys(FEATURE_TYPE_INFO)).toEqual(['plane', 'sketch', 'extrude', 'pattern', 'hole', 'mesh', 'combine', 'split', 'revolve', 'chamfer', 'fillet', 'insert', 'thread']);
     refused(emptyDocument(), { type: 'addFeature', feature: { ...planeFeature, type: 'nope' } as unknown as PlaneFeature }, /one of the values plane, sketch, extrude, pattern, hole, mesh, combine, split, revolve/);
     const paths = FEATURE_TYPE_INFO.extrude.fields.map((field) => field.path);
     expect(paths.slice(-5)).toEqual(['extent/start', 'extent/distance', 'extent/taper', 'extent/start', 'extent/gap']);
@@ -692,7 +692,7 @@ describe('the mechanism: the review of D49', () => {
     };
     const document = { ...emptyDocument(), mechanism: section };
     const mechanism = DOCUMENT_SECTIONS.mechanism.evaluate(section, document, bodies, {}, { sketches: {} } as unknown as State).result;
-    const evaluation = { bodies, faceSurfaces: [], faceNames: names, features: {}, parameters: {}, checks: {}, bodyProperties: {}, mechanism } as unknown as Evaluation;
+    const evaluation = { bodies, faceSurfaces: [], faceNames: names, features: {}, parameters: {}, checks: {}, bodyProperties: {}, mechanism, threads: [] } as unknown as Evaluation;
     const internals = { document, state: { faceIds: new Map(), sketches: {} } as unknown as State };
     return (name: QueryName, args: object) => QUERIES[name].run(queryContext(name, evaluation, internals, { kernel, memo }), args as never);
   };

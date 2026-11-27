@@ -3,8 +3,9 @@
 // the fits are rows, a fit marked as one; the pairs the kernel could not verify are listed with
 // the reason (and, since D50, what it computed); a picked row draws its two bodies in two colours; the note counts the fits and the
 // failures. The pairs the kernel refused and its intersection as computed cleared (D50) are rows
-// of their own after the fits, and the note counts them.
-import type { Cleared, Interference } from '@trymesh/engine';
+// of their own after the fits, and the note counts them. The pairs a thread accounts for (D76) are
+// a third group after those, and a collision of two threads that do not agree says what differs.
+import type { Cleared, Interference, Threaded } from '@trymesh/engine';
 import { fmt, h } from '../dom';
 import { COLOR } from '../draw';
 import type { QueryView } from './index';
@@ -13,12 +14,20 @@ export const interferenceView: QueryView<'interference'> = {
   immediate: true,
   answer(result, _args, panel) {
     // collisions first, then the fits, then the cleared pairs; `picked` counts through the three lists
-    const row = (pair: Interference, index: number, fit: boolean): HTMLElement =>
+    const row = (pair: Interference & { mismatch?: string }, index: number, fit: boolean): HTMLElement =>
       h(
         'div',
         { className: `row ${panel.picked === index ? 'selected' : ''}`, title: `Highlight the two bodies. One reaches ${fmt(pair.depth)} mm into the other`, onclick: () => panel.pick(panel.picked === index ? undefined : index) },
         h('span', { className: 'name', textContent: `${panel.bodyName(pair.a)} × ${panel.bodyName(pair.b)}` }),
-        h('small', {}, `${fit ? 'fit, ' : ''}${fmt(pair.volume)} mm³`),
+        h('small', {}, `${fit ? 'fit, ' : ''}${fmt(pair.volume)} mm³${pair.mismatch ? `; the threads do not agree: ${pair.mismatch}` : ''}`),
+      );
+    const threaded = result.threaded ?? [];
+    const threadedRow = (pair: Threaded, index: number): HTMLElement =>
+      h(
+        'div',
+        { className: `row ${panel.picked === index ? 'selected' : ''}`, title: 'Highlight the two bodies. What they share within the zone of a thread is what the thread accounts for', onclick: () => panel.pick(panel.picked === index ? undefined : index) },
+        h('span', { className: 'name', textContent: `${panel.bodyName(pair.a)} × ${panel.bodyName(pair.b)}` }),
+        h('small', {}, `threaded, ${fmt(pair.volume)} mm³ excused`),
       );
     const cleared = result.cleared ?? [];
     const clearedRow = (pair: Cleared, index: number): HTMLElement =>
@@ -37,19 +46,22 @@ export const interferenceView: QueryView<'interference'> = {
       ...result.fits.map((pair, index) => row(pair, result.pairs.length + index, true)),
       ...(cleared.length ? [h('p', { className: 'hint' }, 'Cleared by a mesh the kernel did not verify: the kernel refused to verify the intersection of these pairs, and the intersection as it computed it shows no collision.')] : []),
       ...cleared.map((pair, index) => clearedRow(pair, result.pairs.length + result.fits.length + index)),
+      ...(threaded.length ? [h('p', { className: 'hint' }, 'Threaded: a part of what these pairs share is what a thread accounts for (a screw in a tapped hole); what is left of a pair is judged as every pair, above (a pair whose rest collides is listed there alone).')] : []),
+      ...threaded.map((pair, index) => threadedRow(pair, result.pairs.length + result.fits.length + cleared.length + index)),
       ...result.failed.map((pair) => h('p', { className: 'issue warning' }, `${panel.bodyName(pair.a)} × ${panel.bodyName(pair.b)}: not verified, neither colliding nor clear (${pair.message})`)),
     ];
   },
   scene(result, _args, panel) {
-    const pair = panel.picked === undefined ? undefined : [...result.pairs, ...result.fits, ...(result.cleared ?? [])][panel.picked];
+    const pair = panel.picked === undefined ? undefined : [...result.pairs, ...result.fits, ...(result.cleared ?? []), ...(result.threaded ?? [])][panel.picked];
     return pair ? { bodies: [{ body: pair.a, color: COLOR.select }, { body: pair.b, color: COLOR.clash }] } : {};
   },
   note(result) {
     const failed = result.failed.length ? ` ${result.failed.length} pair(s) could not be verified.` : '';
     const fits = result.fits.length ? ` ${result.fits.length} fit(s) within the chord tolerance.` : '';
     const cleared = result.cleared?.length ? ` ${result.cleared.length} pair(s) cleared by a mesh the kernel did not verify.` : '';
+    const threaded = result.threaded?.length ? ` ${result.threaded.length} pair(s) threaded.` : '';
     return result.pairs.length
-      ? { text: `Collisions: ${result.pairs.length} pair(s) of bodies share a volume.${fits}${cleared}${failed}`, error: true }
-      : { text: `No collisions: ${result.checked} pair(s) checked.${fits}${cleared}${failed}`, error: result.failed.length > 0 };
+      ? { text: `Collisions: ${result.pairs.length} pair(s) of bodies share a volume.${fits}${cleared}${threaded}${failed}`, error: true }
+      : { text: `No collisions: ${result.checked} pair(s) checked.${fits}${cleared}${threaded}${failed}`, error: result.failed.length > 0 };
   },
 };

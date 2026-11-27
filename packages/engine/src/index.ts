@@ -37,7 +37,7 @@ export type { ClearanceHoleRow, CountersunkScrewRow, HeatSetInsertRow, HexNutRow
 export { HARDWARE_HOLE_ARGS, type HardwareHole } from './query/hardware-hole';
 export { HOLE_FIELDS, HOLE_SHAPES } from './features/hole';
 export { EXPORT_FORMATS, exportPathProblem } from './export/index';
-export { cosmeticThreadNote, cosmeticThreadNotes } from './export/notes';
+export { meshNotes } from './export/notes';
 export { threadLabel } from './recompute/thread';
 export { IMPORT_FORMATS, type ImportOutcome, type MeshReport, fileNameOf, fileStemOf, idFromFile, importAccept, importFormatOf, importMesh, meshNameOf } from './import/index';
 export { type AnyImportFormat, type ImportCatalog, ImportFailure, type ImportFormat, type ImportFormatSpec, type ImportFormats, type ImportOptions, type ReadTriangles } from './import/spec';

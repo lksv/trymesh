@@ -3,7 +3,8 @@
 // a body adds them (`stl`, `3mf`, `urdf`, `mjcf`); the MCP server prints them with the files, and
 // the app shows them where it reports an export. A modelled thread is in the mesh and has no note.
 import { threadLabel } from '../recompute/thread';
-import type { Id, ThreadResult } from '../types';
+import type { Evaluation, Id, ThreadResult } from '../types';
+import { chosenIds } from './bodies';
 
 // The line of one body, or nothing when it has no cosmetic thread: `body "plate": 6 cosmetic
 // threads (M6), not in the mesh: tap or cut them after printing`.
@@ -18,5 +19,10 @@ export function cosmeticThreadNote(body: Id, threads: readonly ThreadResult[]): 
 export function cosmeticThreadNotes(bodies: readonly Id[], threadsOf: (body: Id) => readonly ThreadResult[]): string[] {
   return [...new Set(bodies)].flatMap((body) => cosmeticThreadNote(body, threadsOf(body)) ?? []);
 }
+// The notes of `Engine.exportMesh('stl', bodies)` for the same `bodies` of the same state: the
+// bodies the entry `stl` writes (`chosenIds`), so a caller of `exportMesh` (the buttons of the app,
+// the tool `export_stl`) says what the file leaves out without choosing the bodies again.
+export const meshNotes = (evaluation: Pick<Evaluation, 'bodyProperties' | 'threads'>, bodies?: readonly Id[]): string[] =>
+  cosmeticThreadNotes(chosenIds(evaluation.bodyProperties, bodies), () => evaluation.threads);
 // `notes` of an `Exported`, only when there are some.
 export const notesOf = (notes: string[]): { notes?: string[] } => (notes.length ? { notes } : {});

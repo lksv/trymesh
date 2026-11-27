@@ -38,7 +38,7 @@ Between the stages (D76): what the meshes leave out is said where the app hands 
 | Where | What it shows | Reads |
 |---|---|---|
 | The status bar after an export of the form *Export* | "Exported model.stl (… bytes). body "plate": 6 cosmetic threads (M6), not in the mesh: tap or cut them after printing." | `notes` of `Engine.export` |
-| The status bar after *Export STL* of the toolbar or of the line of a body | "Exported model.stl. body "plate": …"; nothing when no exported body has a cosmetic thread | `cosmeticThreadNotes` over `Evaluation.threads` |
+| The status bar after *Export STL* of the toolbar or of the line of a body | "Exported model.stl. body "plate": …"; nothing when no exported body has a cosmetic thread | `meshNotes` with the list given to `exportMesh` |
 | The view of the print check | a hint after the rows: "Cosmetic threads, not in the mesh and not judged here: Plate (6). Tap or cut them after printing." | `cosmeticThreads` of `print` |
 | The view of the parts list | the detail of a row ends "threads of each: 6 × M6 internal, cosmetic"; a body with a cosmetic thread and its copy without one are two rows | `threads` of a row of `partsList` |
 

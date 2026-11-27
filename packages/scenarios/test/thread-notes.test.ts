@@ -1,10 +1,10 @@
 // The point between the stages of D76 against the real adapters: the notes of an export about
 // cosmetic threads, the bodies with them in the print check, and the threads of a row of the
 // parts list (a body with a cosmetic thread and its copy without one are two rows).
-import type { Command, Engine, Exported, PartRow } from '@trymesh/engine';
+import type { Command, Document, Engine, Exported, PartRow } from '@trymesh/engine';
 import { describe, expect, it } from 'vitest';
 import { newEngine, run } from './kit';
-import { bodyPattern, bore, box, hole, m6, mirrorIn, along, rod, rodSide, thread } from './thread-kit';
+import { along, bodyPattern, bore, box, featurePattern, hole, m6, mirrorIn, rod, rodSide, thread } from './thread-kit';
 
 const exported = (engine: Engine, format: string, options: object = {}): Exported => {
   const outcome = engine.export(format as never, options as never);
@@ -71,6 +71,42 @@ describe('the threads of the parts list', () => {
     const image = rows(engine).find((r) => r.bodies.includes('mirrored/1'));
     expect(image).toMatchObject({ count: 1, mirrored: true, copyOf: 'plate', threads: [{ label: 'M6', count: 2 }] });
     expect(engine.getState().evaluation.threads.filter((t) => t.bodies.includes('mirrored/1')).map((t) => t.hand)).toEqual(['left', 'left']);
+  });
+
+  // review of the point between the stages
+  it('a copy threaded by a feature of its own like its source stays in the row; another pitch splits it', () => {
+    const engine = newEngine();
+    const copyBore = (point: string, ...more: { pattern: string; index: number }[]) => ({ ...bore('taps', point), copy: [...more, { pattern: 'plates', index: 1 }] });
+    run(engine, box('plate', 0, 0, 40, 20, 0, 8), hole('taps', [['h1', 10, 10], ['h2', 30, 10]], 5, 'plate'), bodyPattern('plates', 'plate', along('Y', 2, 30)));
+    run(engine, thread('t1', { ...m6('plate', [bore('taps', 'h1')]), label: 'M6' }), thread('t2', { ...m6('plates/1', [copyBore('h1')]), label: 'M6' }));
+    expect(rows(engine).filter((row) => row.name === 'plate' || row.bodies.includes('plate')).map((row) => [row.bodies, row.threads])).toEqual([[['plate', 'plates/1'], [{ label: 'M6', internal: true, modelled: false, count: 1 }]]]);
+    const coarse = run(engine, { type: 'updateFeature', id: 't2', patch: { pitch: 1.25 } } as Command);
+    expect(coarse.evaluation.features.t2.status).toBe('ok');
+    expect(rows(engine).filter((row) => row.bodies.includes('plate') || row.bodies.includes('plates/1')).map((row) => row.bodies)).toEqual([['plate'], ['plates/1']]);
+    // the same thread at another hole of the copy is another part
+    run(engine, { type: 'updateFeature', id: 't2', patch: { pitch: 1, faces: [copyBore('h2')] } } as Command);
+    expect(rows(engine).filter((row) => row.bodies.includes('plate') || row.bodies.includes('plates/1')).map((row) => row.bodies)).toEqual([['plate'], ['plates/1']]);
+  });
+
+  it('the tags of a pattern of features inside the body stay: threads at two copies of a hole are two parts', () => {
+    const engine = newEngine();
+    const tagged = (...copy: { pattern: string; index: number }[]) => ({ ...bore('taps', 'h'), ...(copy.length ? { copy } : {}) });
+    run(engine, box('plate', 0, 0, 40, 20, 0, 8), hole('taps', [['h', 10, 10]], 5, 'plate'), featurePattern('row', ['taps'], along('X', 2, 20)), bodyPattern('plates', 'plate', along('Y', 2, 30)));
+    run(engine, thread('t1', { ...m6('plate', [tagged()]), label: 'M6' }), thread('t2', { ...m6('plates/1', [tagged({ pattern: 'row', index: 1 }, { pattern: 'plates', index: 1 })]), label: 'M6' }));
+    expect(engine.getState().evaluation.features.t2.status).toBe('ok');
+    expect(rows(engine).filter((row) => row.bodies.includes('plate') || row.bodies.includes('plates/1')).map((row) => row.bodies)).toEqual([['plate'], ['plates/1']]);
+    run(engine, { type: 'updateFeature', id: 't2', patch: { faces: [tagged({ pattern: 'plates', index: 1 })] } } as Command);
+    expect(rows(engine).filter((row) => row.bodies.includes('plate') || row.bodies.includes('plates/1')).map((row) => row.bodies)).toEqual([['plate', 'plates/1']]);
+  });
+
+  it('two insertions of one threaded part are one row, as their meshes are', () => {
+    const shop = newEngine();
+    run(shop, ...plate().slice(0, 3));
+    const part = JSON.parse(shop.save()) as Document;
+    const engine = newEngine();
+    const insert = (id: string, x: number): Command => ({ type: 'addFeature', feature: { id, name: id, suppressed: false, type: 'insert', document: 'p', placement: { frame: { kind: 'base', plane: 'XY' }, x } } as never });
+    run(engine, { type: 'addDocument', id: 'p', document: part } as Command, insert('a', 0), insert('b', 100));
+    expect(rows(engine).map((row) => [row.bodies, row.threads])).toEqual([[['a/plate', 'b/plate'], [{ label: 'M6', internal: true, modelled: false, count: 2 }]]]);
   });
 
   it('the file of the parts list says the threads in the note of a row', () => {

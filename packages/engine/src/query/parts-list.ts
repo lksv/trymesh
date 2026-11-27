@@ -6,6 +6,7 @@ import { partName } from '../sections/body-properties';
 import { shapeOrigin } from '../solid';
 import { threadLabel } from '../recompute/thread';
 import { faceKey } from '../face-roles';
+import { bodyOwner } from '../sketch-content';
 import type { BodyPropertiesResult, Document, FaceName, Id, Solid, Surface, ThreadResult, Vec3 } from '../types';
 import { ANGLE_TOLERANCE, LENGTH_TOLERANCE, cross3, dot3, len3, sub3 } from '../util';
 import type { ArgSpecs } from './args';
@@ -303,14 +304,25 @@ export function holeCounts(doc: Document, bodies: Readonly<Record<Id, { solid: S
 
 // ---------------------------------------------------------------- the rows of bodies
 
-// The threads of a body for the key of a row: each by what does not depend on where the body
-// stands (rule 4 below), sorted.
-function threadsKey(threads: readonly ThreadResult[]): string {
-  return JSON.stringify(
-    threads
-      .map((t) => JSON.stringify([t.feature, faceKey({ ...t.face, copy: undefined } as FaceName), t.internal, t.modelled, t.diameter, t.pitch, t.depth, t.flankAngle, t.clearance, t.starts, t.hand, t.from, t.to, t.label ?? null]))
-      .sort(),
-  );
+// The threads of a body for the key of a row (rule 4 below): each by where it is on the mesh and
+// what it is, not by what made the body or the thread, sorted. The face is taken as the body's own:
+// without the tags of the patterns that copy bodies (which only say which copy the body is; the
+// tags of a pattern of features inside the body stay) and without the prefix of the insertion the
+// body comes from (`ins/taps` is `taps`), so that copies and insertions of one part compare alike.
+// The thread feature is left out: one part threaded by a feature per copy is still one part.
+function threadsKeyOf(doc: Document): (body: Id, threads: readonly ThreadResult[]) => string {
+  const bodyPatterns = new Set(featuresWithInserted(doc).flatMap(({ id, feature }) => (feature.type === 'pattern' && feature.source.type === 'body' ? [id] : [])));
+  const insertions = new Set(doc.features.flatMap((feature) => (feature.type === 'insert' ? [feature.id] : [])));
+  return (body, threads) => {
+    const from = bodyOwner(sourceRoot(doc, body)).feature;
+    const prefix = insertions.has(from) ? `${from}/` : '';
+    const own = (id: Id): Id => (prefix && id.startsWith(prefix) ? id.slice(prefix.length) : id);
+    const where = (face: FaceName): string => {
+      const copy = (face.copy ?? []).filter((tag) => !bodyPatterns.has(tag.pattern)).map((tag) => ({ ...tag, pattern: own(tag.pattern) }));
+      return faceKey({ ...face, feature: own(face.feature), copy: copy.length ? copy : undefined } as FaceName);
+    };
+    return JSON.stringify(threads.map((t) => JSON.stringify([where(t.face), t.internal, t.modelled, t.diameter, t.pitch, t.depth, t.flankAngle, t.clearance, t.starts, t.hand, t.from, t.to, t.label ?? null])).sort());
+  };
 }
 // `threads` of a row: the threads of one body by kind, in the order they first come.
 function threadsOf(threads: readonly ThreadResult[]): { threads?: PartRow['threads'] } {
@@ -336,10 +348,11 @@ const weighsBy = (p: BodyPropertiesResult): string => (p.mass !== undefined ? (p
 // 3. they have the same name (`partName`);
 // 4. they have the same threads (D76): a cosmetic thread is not in the mesh, so a body with one
 //    and its copy without one are two rows. A thread is compared by what does not depend on where
-//    its body stands: its feature, its face without the copy tags, its profile, its hand where it
-//    lies, its span and whether it is internal or modelled. A copy made by a pattern of the body
-//    carries the threads of its source and stays in its row; a mirrored copy is another row by
-//    rule 1, and its hand is turned with it.
+//    its body stands or what made it: its face as the body's own (`threadsKeyOf`), its profile,
+//    its hand where it lies, its span, its label and whether it is internal or modelled. A copy
+//    made by a pattern of the body carries the threads of its source and stays in its row, and so
+//    does a copy threaded by a feature of its own alike; a mirrored copy is another row by rule 1,
+//    and its hand is turned with it.
 // The rows are in the order of their first bodies in the model. Nothing is measured.
 function partsListOf(context: QueryContext): PartsList {
   const { document: doc, evaluation } = context.state;
@@ -352,6 +365,7 @@ function partsListOf(context: QueryContext): PartsList {
     if (number === undefined) meshes.set(solid, (number = meshes.size));
     return number;
   };
+  const threadsKey = threadsKeyOf(doc);
   const groups = new Map<string, Id[]>(); // in the order of their first bodies
   const auxiliary: Id[] = [];
   for (const id of Object.keys(context.bodies)) {
@@ -361,7 +375,7 @@ function partsListOf(context: QueryContext): PartsList {
       continue;
     }
     const origin = originOf(id);
-    const key = JSON.stringify([numberOf(origin.solid), origin.mirrored, result.use, result.material ?? null, result.color ?? null, result.density ?? null, weighsBy(result), partName(doc, id), threadsKey(context.threadsAsModelled(id))]);
+    const key = JSON.stringify([numberOf(origin.solid), origin.mirrored, result.use, result.material ?? null, result.color ?? null, result.density ?? null, weighsBy(result), partName(doc, id), threadsKey(id, context.threadsAsModelled(id))]);
     const group = groups.get(key);
     if (group) group.push(id);
     else groups.set(key, [id]);

@@ -36,7 +36,7 @@ import {
   type BodyPropertiesResult,
   QueryFailure,
   bodyFileName,
-  cosmeticThreadNotes,
+  meshNotes,
   bodyPropertiesWithoutBody,
   constraintOperands,
   constraintPath,
@@ -1562,7 +1562,7 @@ export function tools(): Tool[] {
         const file = (bodies: string[]) => ({ bodies, triangles: bodies.reduce((sum, id) => sum + all[id].solid.triangles.length / 3, 0), base64: base64(engine.exportMesh('stl', bodies)) });
         const unique = [...new Set(chosen)];
         // the bodies with cosmetic threads, which the mesh does not carry (D76)
-        const notes = cosmeticThreadNotes(unique, () => engine.getState().evaluation.threads);
+        const notes = meshNotes(engine.getState().evaluation, unique);
         return { files: args.perBody === true ? unique.map((id) => ({ name: bodyFileName(id), ...file([id]) })) : [file(unique)], ...(notes.length ? { notes } : {}) };
       },
     },

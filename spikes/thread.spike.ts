@@ -1299,6 +1299,68 @@ test('8a for the second review of D75: the zone of a thread as a cut of its body
   table('8a. A pair with a thread: what the other body shares with the zone of the thread, and with the rest of the threaded body; a piece goes around when its centre is nearer to the axis than 0.827 of its radius', ['pair', 'the thread is on', 'order', 'chord tol', 'in the zone: mm³ (centre / radius)', 'excused mm³', 'the rest shares mm³', 'depth', 'which is', 'the pair is', 'ms'], rows);
 });
 
+test('8d for the second opinion on the third review of D75: two threads whose axes are not one line', () => {
+  // A cosmetic M10 stud in a plate with a cosmetic M10 thread (a bore of 8.5), the stud `e` off the
+  // axis of the bore, at the default tolerance. Each zone alone still holds a piece that goes
+  // around, so with both zones cut and only the two rests judged, the pair came out `threaded`.
+  // The rule since: two threads whose rings meet and whose axes are not one line do not agree,
+  // no zone is taken, and the pair is judged whole.
+  const tol = 0.01;
+  const m10 = iso(10, 1.5);
+  const moved = (solid: Solid, x: number): Solid => ({ ...solid, positions: Float32Array.from(solid.positions, (v, i) => (i % 3 === 0 ? v + x : v)) });
+  const rodAt = (radius: number, z0: number, z1: number, x: number): Solid => prism(circle(0, 0, radius, tol), z0, z1, [], shift([1, 0, 0], x)).solid;
+  const verdict = (a: Solid, b: Solid): string => {
+    const m = sharedBy(kernel, bodyOf(a), bodyOf(b), tol);
+    return 'message' in m ? `refused: ${m.message}` : `${verdictOf(m, NOISE, tol)}${m.volume > NOISE ? ` (${fmt(m.volume, 2)} mm³, ${fmt(m.depth, 3)} deep)` : ''}`;
+  };
+  // whether two threads about Z, `e` apart, are about one axis: apart when their rings do not meet
+  const agreeOf = (a: Zone, b: Zone, e: number): 'apart' | 'agree' | 'mismatch' => {
+    const lift = besideOf(tol);
+    if (e <= tol) return a.to < b.from || b.to < a.from || a.high < b.low || b.high < a.low ? 'apart' : 'agree';
+    const [ringA, ringB] = [ringOf(a, tol + 1e-4, lift, tol), moved(ringOf(b, tol + 1e-4, lift, tol), e)];
+    return Math.abs(volumeOf(kernel.boolean('intersection', ringA, ringB))) > NOISE ? 'mismatch' : 'apart';
+  };
+  const boreZone: Zone = { low: 4.25, high: m10.major, from: 0, to: 8, internal: true };
+  const studZone: Zone = { low: m10.minor, high: m10.major, from: -2, to: 12, internal: false };
+  const rows: string[][] = [];
+  for (const e of [0, 0.1, 0.3, 0.8]) {
+    const plate = prism(square(15), 0, 8, [circle(0, 0, 4.25, tol)]).solid;
+    const stud = rodAt(5, -2, 12, e);
+    const a = zoneCut(plate, stud, boreZone, tol, false);
+    // the zone of the stud about its own axis: cut at the origin, against the plate moved the other way
+    const b = zoneCut(rodAt(5, -2, 12, 0), moved(plate, -e), studZone, tol, false);
+    const agree = agreeOf(boreZone, studZone, e);
+    const outcome = agree === 'mismatch' ? `the axes are ${e} apart: judged whole, a ${verdict(plate, stud).split(' ')[0]}` : verdict(a.rest, stud).startsWith('nothing') ? 'threaded' : 'a collision';
+    rows.push([String(e), verdict(plate, stud), `${a.taken ? 'taken' : 'not taken'} (${a.pieces.map((piece) => fmt(piece.off / piece.radius, 3)).join(', ')})`, `${b.taken ? 'taken' : 'not taken'} (${b.pieces.map((piece) => fmt(piece.off / piece.radius, 3)).join(', ')})`, verdict(a.rest, stud), verdict(a.rest, moved(b.rest, e)), agree, outcome]);
+    expect(agree, rows[rows.length - 1].join(' | ')).toBe(e === 0 ? 'agree' : 'mismatch');
+    expect(outcome, rows[rows.length - 1].join(' | ')).toBe(e === 0 ? 'threaded' : `the axes are ${e} apart: judged whole, a collision`);
+  }
+  table('8d. A cosmetic M10 stud off the axis of a cosmetic M10 bore (at 0.01)', ['off the axis', 'the pair as a whole', 'the zone of the bore alone', 'the zone of the stud alone', 'the rest of the plate against the whole stud', 'the two rests (what both zones cut left)', 'the two threads', 'the pair is'], rows);
+
+  // What must stay excused: two threaded holes side by side in one plate, M6 and M8, a screw with
+  // a cosmetic thread in each. The thread of a screw and that of the other hole are apart (their
+  // rings do not meet), so each pair is judged by the hole its screw is in.
+  const m6 = iso(6, 1);
+  const m8 = iso(8, 1.25);
+  const two = prism(rect(60, 30), 0, 8, [circle(-10, 0, 2.5, tol), circle(10, 0, 3.4, tol)]).solid;
+  const holes = [
+    { name: 'M6', x: -10, bore: { low: 2.5, high: m6.major, from: 0, to: 8, internal: true } as Zone, screw: { low: m6.minor, high: m6.major, from: -2, to: 10, internal: false } as Zone },
+    { name: 'M8', x: 10, bore: { low: 3.4, high: m8.major, from: 0, to: 8, internal: true } as Zone, screw: { low: m8.minor, high: m8.major, from: -2, to: 10, internal: false } as Zone },
+  ];
+  const side: string[][] = [];
+  for (const hole of holes) {
+    const other = holes.find((h) => h !== hole) as (typeof holes)[number];
+    const screw = rodAt(hole.screw.high, -2, 10, 0);
+    // in the frame of the hole the screw is in
+    const cut = zoneCut(moved(two, -hole.x), screw, hole.bore, tol, false);
+    const [own, across] = [agreeOf(hole.bore, hole.screw, 0), agreeOf(other.bore, hole.screw, Math.abs(other.x - hole.x))];
+    const outcome = own === 'agree' && across === 'apart' && cut.taken && verdict(cut.rest, screw).startsWith('nothing') ? 'threaded' : 'not excused';
+    side.push([`a screw ${hole.name} in its hole`, own, across, `${fmt(cut.excused, 2)}`, verdict(cut.rest, screw), outcome]);
+    expect(outcome, side[side.length - 1].join(' | ')).toBe('threaded');
+  }
+  table('8d. Two tapped holes 20 apart in one plate, a threaded screw in each', ['pair', 'its thread and that of its hole', 'its thread and that of the other hole', 'excused mm³', 'the rest shares', 'the pair is'], side);
+});
+
 // ---- the ends of a wall, read from the mesh of a body of the engine
 
 type V3 = [number, number, number];
@@ -1311,7 +1373,8 @@ interface EndRead {
 // - The rim of an end: the loop of the edges the face shares with other faces that goes around
 //   the axis and holds the extreme point of that end.
 // - The triangle of another face across an edge of the rim decides. Its face is a cylinder about
-//   the same axis with the same radius: the wall goes on. Else its third vertex: beyond the
+//   the same axis with the same radius: the wall goes on (such a face is not walked for the
+//   run-out). Else its third vertex: beyond the
 //   radius it lies outside the cylinder, within it or on it inside (a triangle with three vertices
 //   on a cylinder is a chord of it: the flat bottom of a blind hole, the flat end of a pin).
 //   Inside the cylinder is the air of a bore and the material of a pin.
@@ -1407,7 +1470,9 @@ function endsOf(solid: Solid, surfaces: readonly Surface[], wall: number, band: 
       else faces.add(face);
     }
     if (shoulder) return { kind: 'shoulder', runOut: 0 };
-    if (goesOn) return { kind: 'inside', runOut: 0 };
+    // inside only where the wall goes on along the whole rim; a rim that is open over a part runs
+    // out by what the faces of that part give (the faces where the wall goes on are not walked)
+    if (goesOn && faces.size === 0) return { kind: 'inside', runOut: 0 };
     // the run-out: from the rim across the edges of the faces next to it
     const within = (q: V3): boolean => {
       const r = radial(q);

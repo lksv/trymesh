@@ -275,14 +275,15 @@ export const THREAD_INFO: Omit<FeatureTypeInfo, 'updatable'> = {
 // How an end of a thread ends, read from the mesh of the body before the feature at every
 // recompute, in both modes (design.md, "The ends"):
 // - `open`: at an end of the wall beyond which the bore goes on into the open (a mouth in a face,
-//   a counterbore, a chamfer or a countersink) or the pin ends (its free end, a chamfered tip).
-//   The thread runs out there, through a chamfer as a tap cuts it.
+//   a counterbore, a chamfer or a countersink) or the pin ends (its free end, a chamfered tip);
+//   also where the wall goes on over a part of the rim and is open over the rest. The thread
+//   runs out there, through a chamfer as a tap cuts it.
 // - `shoulder`: at an end of the wall where material stands in the way (the bottom of a blind
 //   hole, a narrower bore, the plate a pin stands on, a wider step, a fillet at its foot).
 //   A modelled thread ends flat `threadLift` short of it.
 // - `inside`: within the wall, by `offset` or `length`, or at an end of the wall where the wall
-//   goes on under another name (the face across the rim is a cylinder about the same axis with
-//   the same radius). A modelled thread ends flat there.
+//   goes on under another name along the whole rim (the face across the rim is a cylinder about
+//   the same axis with the same radius). A modelled thread ends flat there.
 export type ThreadEnd = 'open' | 'shoulder' | 'inside';
 
 // One thread on one face, as the evaluation publishes it (`Evaluation.threads`, in the order of
@@ -329,9 +330,11 @@ export type ThreadEnd = 'open' | 'shoulder' | 'inside';
 //   origin `L` from the first one's along the first direction, needs `−φ₁ − turn · 2π · L / lead`
 //   (the first phase with the other sign: each thread turns the same base direction about its
 //   own direction).
-// - `ends`: how each end ends. `runOut`: how far beyond `from` (start) and `to` (end) the thread
-//   runs out through what follows an open end (the axial depth of a chamfer or a countersink
-//   until it is as wide as the major diameter); zero at every other end.
+// - `ends`: how each end ends. `runOut`: how far beyond the end of the wall the thread runs out
+//   through what follows an open end (the axial depth of a chamfer or a countersink until it is
+//   as wide as the major diameter); zero at every other end. It is counted from the end of the
+//   wall, which the tool and the zone take for the end of a thread that ends within the lift of
+//   it (`from` and `to` stay as stated).
 // - `walls`: for each of `bodies`, in their order, the stretch of the axis (from `origin` along
 //   `axis`) that the triangles of the face still cover in that body. The span is the one the
 //   feature gave: a later feature that shortens the wall, or splits the body, does not shorten
@@ -414,17 +417,21 @@ export declare function threadResults(state: StateD75): ThreadResult[];
 //   a mesh holds a sheet without thickness where faces of the two lie flush (a seated head), in
 //   one order of the two bodies and not in the other (spike.md, Q).
 // - Not taken: a zone between two modelled threads about one axis. Their meshes are the truth.
-// - Not taken: a zone between two threads about one axis that do not agree (`threadsAgree`). The
-//   pair is then in `pairs`, with `mismatch` saying what differs.
+// - Not taken: a zone between two threads that meet and do not agree (`threadsAgree`: another
+//   profile, two bores, or axes that are not one line). The pair is then judged whole and is in
+//   `pairs`, with `mismatch` saying what differs.
 // - The other body need not carry a thread: a bought screw is a plain cylinder.
-// - `volume`: what was excused. No depth: it is measured of what is left alone.
+// - `volume`: what was excused: the sum over the zones taken, with the larger of the two for two
+//   agreeing threads about one line (they excuse much the same volume). No depth: it is measured
+//   of what is left alone.
 // - `threads`: the thread of every zone taken (one body in several threaded bores; when both
-//   bodies have agreeing threads there, both).
+//   bodies have agreeing threads there, both, and both zones are cut).
 // - In a pose the cut is made in the frame the body of the thread was modelled in. The two
 //   meshes of an intersection meet as the two bodies of a pair do: the first as modelled, the
 //   second moved by the transform between them (`FramedD75.relative`). Step 2 is made with the
-//   body of the thread first; when both bodies have a taken zone, the rest of the second is
-//   moved by that transform.
+//   body of the thread first: for a zone of the second body the first body is moved by the
+//   inverse of that transform. When both bodies have a taken zone, the rest of the second is
+//   moved by the transform.
 // - What the query keeps: the two parts of a body by its mesh and the published threads of the
 //   zone (one, or the several of a joined zone; each keeps its identity,
 //   `QueryContext.threadsAsModelled`); the intersections by the two meshes, as every pair.
@@ -457,9 +464,11 @@ export type GapD75 = Gap | { a: Id; b: Id; distance: 0; contact: 'threaded' };
 // - The radii: a bore from `radius` to `diameter / 2 + clearance`, a pin from `diameter / 2 −
 //   depth − clearance` to `radius`.
 // - Along the axis: the span cut to `walls` of that body, longer by the run-out at an end the
-//   wall still has.
+//   wall still has (the stretch reaches within the lift of that end of the wall).
 // - Zones of one body about one axis with the same radii whose spans touch or overlap are joined
-//   (`joinedZones`).
+//   (`joinedZones`) when their threads are the same in every field `threadsAgree` compares and
+//   in their clearance: the axes to the angle tolerance, the lines and the radii to the length
+//   tolerance, the spans to the lift. Two different threads on one wall stay two zones.
 export interface ThreadZone {
   origin: Vec3;
   axis: Vec3;
@@ -501,17 +510,21 @@ export const THREAD_AROUND = Math.sin(Math.PI / 3) / (Math.PI / 3);
 // shares with the part in the zone, by sums over its triangles (its volume, its centre, its
 // second moment), to which a sheet without thickness adds nothing.
 export declare function goesAround(piece: Solid, zone: Pick<ThreadZone, 'origin' | 'axis'>): boolean;
-// Whether two threads, as the pose puts them, are about one axis, and what differs between them
-// when they are.
-// - `apart`: the directions are neither parallel nor opposite within the angle tolerance (`axis`
-//   is the direction a thread runs in: a bolt from above meets a hole threaded from above the
-//   other way), the lines lie further apart than the chord tolerance, or the two zones do not
+// Whether two threads, as the pose puts them, concern each other, and what differs between them
+// when they do. "On one line": the directions parallel or opposite within the angle tolerance
+// (`axis` is the direction a thread runs in: a bolt from above meets a hole threaded from above
+// the other way) and the lines no further apart than the chord tolerance.
+// - `apart`: the rings of the two zones do not meet in space. On one line: the zones do not
 //   overlap along the axis or in their radii (`low` to `high`: the external M10 and the internal
-//   M6 of one bushing are apart from each other's mates).
-// - `agree`: one is internal and the other external, and the pitch, the number of starts, the
-//   hand as each lies, the nominal diameter, the flank angle and the depth are the same (lengths
-//   to the length tolerance, the angle to the angle tolerance).
-// - Else `mismatch`, in words.
+//   M6 of one bushing are apart from each other's mates). Off one line: the two rings share no
+//   volume (two tapped holes side by side, each with its screw).
+// - `agree`: on one line, one internal and the other external, and the pitch, the number of
+//   starts, the hand as each lies, the nominal diameter, the flank angle and the depth the same
+//   (lengths to the length tolerance, the angle to the angle tolerance).
+// - Else `mismatch`, in words: the profiles differ, both are bores or both pins, or the rings
+//   meet and the axes are not one line ("the axes are 0.3 apart", "the axes meet at 1.2°").
+//   With such threads counted as apart, each zone was taken alone and a stud off the axis of
+//   its hole was excused (spike.md, T).
 export declare function threadsAgree(a: ThreadResult, b: ThreadResult, chordTolerance: number): 'apart' | 'agree' | { mismatch: string };
 
 // ================================================================ the catalog
@@ -718,7 +731,8 @@ export declare function threadTriangles(profile: ThreadProfile, wall: ThreadWall
 // - The rim of the end: of the loops of edges the wall shares with other faces, the one that
 //   goes around the axis and holds the extreme point of the wall at that end.
 // - The triangle of another face across an edge of the rim decides:
-//   - its face is a cylinder about the same axis with the same radius (`faces`): the wall goes on;
+//   - its face is a cylinder about the same axis with the same radius (`faces`; the directions
+//     to the angle tolerance, the lines and the radii to the length tolerance): the wall goes on;
 //   - else its third vertex lies beyond the radius of the wall (its distance from the axis, to
 //     the precision of the coordinates): the triangle lies outside the cylinder;
 //   - else (within the radius, or on it: a flat cap is triangulated from the vertices of its
@@ -729,9 +743,9 @@ export declare function threadTriangles(profile: ThreadProfile, wall: ThreadWall
 //   1. `shoulder`: one of them lies on the air side;
 //   2. `inside`: otherwise, the wall goes on along the whole rim;
 //   3. `open`: otherwise (also a rim where the wall goes on over a part and is open over the
-//      rest), with `runOut`: the faces across the rim are walked from the rim, triangle by
-//      triangle across their edges, no further than those faces and only through triangles
-//      with a part in the band beyond the end; the largest
+//      rest), with `runOut`: the faces across the rim, other than those where the wall goes
+//      on, are walked from the rim, triangle by triangle across their edges, no further than
+//      those faces and only through triangles with a part in the band beyond the end; the largest
 //      distance beyond the end at which a part of a walked triangle lies in the band of the
 //      thread (a bore: within `major + clearance` of the axis; a pin: beyond `minor −
 //      clearance`). Zero for a mouth in a plane across the axis and for the seat of

@@ -237,7 +237,11 @@ const EQUATIONS: { [T in Constraint['type']]: (c: Of<T>, g0: Geometry, held: Hel
   },
   // Two equations, as the adapter's two primitives: the lines are parallel, and the point `a` of
   // the line a lies at the distance from the line b, on the side where it lies in the solution
-  // (the adapter's distance is unsigned; at 0 it puts the point on the line).
+  // (the adapter's distance is unsigned; at 0 it puts the point on the line). The adapter may
+  // measure from another end of either line (its `measuredEnd`, for the way to the solution): of
+  // parallel lines that is the same equation up to the first one, so the rows span the same space.
+  // Of two lines with a common end the second equation is zero at 0 and counts for nothing, as
+  // the adapter leaves it out.
   distanceLineLine: (c, g0) => {
     const scale = nonZero(Math.max(len(direction(g0, c.a)), len(direction(g0, c.b))));
     const signed = (g: Geometry): number => {

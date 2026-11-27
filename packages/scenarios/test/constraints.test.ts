@@ -423,7 +423,7 @@ describe('a plate with holes a wall from its edges and a slot by distances of li
     }
   });
 
-  it('a dragged centre slides only where the walls let it, and a hole grown by a drag keeps its wall', () => {
+  it('a dragged centre slides only where the walls let it', () => {
     const engine = walled();
     // q3 is held by the middle: nothing moves
     run(engine, { type: 'dragPoint', sketch: 'S1', point: 'q3c', x: 40, y: 20 });
@@ -433,5 +433,25 @@ describe('a plate with holes a wall from its edges and a slot by distances of li
     expect(engine.diagnoseSketch('S1')).toMatchObject({ degreesOfFreedom: 1 });
     run(engine, { type: 'dragPoint', sketch: 'S1', point: 'q1c', x: 21, y: 30 });
     expect(D75_HOLES.map((id) => at(engine, 'S1', `${id}c`))).toEqual([near([21, 9]), near([51, 9]), near([36, 9])]);
+  });
+
+  it('review of D75: a line drawn far from parallel is turned to its distance from an axis of the origin, whichever is named first', () => {
+    for (const degrees of [20, 60, 85, 130]) {
+      for (const [a, b] of [['origin/x', 'l'], ['l', 'origin/x']]) {
+        const engine = newEngine();
+        const angle = (degrees * Math.PI) / 180;
+        const state = run(
+          engine,
+          addSketch('S', XY),
+          batch({ type: 'addPoint', sketch: 'S', id: 'p', x: 5, y: 12 }, { type: 'addPoint', sketch: 'S', id: 'q', x: 5 + 30 * Math.cos(angle), y: 12 + 30 * Math.sin(angle) }, { type: 'addCurve', sketch: 'S', id: 'l', curve: { type: 'line', a: 'p', b: 'q' } }),
+          dimension('S', 'k', { type: 'distanceLineLine', a, b }, 10),
+        );
+        const what = `${degrees}° ${a}`;
+        expect(state.evaluation.features.S.status, what).toBe('ok');
+        expect(sketchOf(engine, 'S'), what).toMatchObject({ degreesOfFreedom: 2, conflicting: [], redundant: [] });
+        expect([at(engine, 'S', 'p')[1], at(engine, 'S', 'q')[1]], what).toEqual([expect.closeTo(10, 6), expect.closeTo(10, 6)]);
+        expect(engine.diagnoseSketch('S'), what).toMatchObject({ status: 'solved', degreesOfFreedom: 2, redundant: [], removable: [] });
+      }
+    }
   });
 });

@@ -208,12 +208,13 @@ export const CONSTRAINTS: Record<Constraint['type'], ConstraintSpec> = {
   },
   distanceLineCircle: {
     title: 'Line to circle distance',
-    summary: 'The gap between the infinite line of the line and a circle or an arc (its whole circle): the distance of the centre from the line less the radius. The circle stays on one side of the line; 0 makes it touch. For the distance to the centre use the point to line distance with the centre.',
+    summary: 'The gap between the infinite line of the line and a circle or an arc (its whole circle): the distance of the centre from the line less the radius, positive. The circle stays on one side of the line. A gap of 0 is a tangency: use tangent. For the distance to the centre use the point to line distance with the centre.',
     operands: [
       { field: 'line', kinds: LINE },
       { field: 'curve', kinds: ROUND },
     ],
-    ...LENGTH,
+    // positive: at 0 it would be a tangency without the forms a tangency has at a common end (D52)
+    ...dimension({ title: 'Distance', unit: 'mm', min: { value: 0, open: true } }),
   },
   horizontalDistance: { title: 'Horizontal distance', summary: 'The oriented difference of the X coordinates: b.x − a.x.', ...pair(POINT), ...ORIENTED },
   verticalDistance: { title: 'Vertical distance', summary: 'The oriented difference of the Y coordinates: b.y − a.y.', ...pair(POINT), ...ORIENTED },

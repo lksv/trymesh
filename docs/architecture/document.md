@@ -97,7 +97,7 @@ type Dimension = { value: number; driving: boolean } & (
   | { type: 'distance';           a: Id; b: Id }      // point–point (length of a line = its end points)
   | { type: 'distancePointLine';  point: Id; line: Id }
   | { type: 'distanceLineLine';   a: Id; b: Id }      // lines held parallel at the distance; 0 puts them on one line (D75)
-  | { type: 'distanceLineCircle'; line: Id; curve: Id }  // the gap between the line and the rim of a circle or arc (D75)
+  | { type: 'distanceLineCircle'; line: Id; curve: Id }  // the gap between the line and the rim of a circle or arc, positive (D75)
   | { type: 'horizontalDistance' | 'verticalDistance'; a: Id; b: Id }   // point, point; signed: b.x − a.x, or b.y − a.y respectively
   | { type: 'angle';              a: Id; b: Id }      // lines; the angle from the direction of `a` to the direction of `b`, counter-clockwise, radians
   | { type: 'radius' | 'diameter'; curve: Id }
@@ -146,7 +146,7 @@ Conventions:
 - **The direction of a line** is from the point `a` to the point `b`. The angle of the dimension `angle` is signed and lies in the interval (−π, π].
 - **Order**, where sorted or canonically ordered IDs and names are spoken of, is the lexicographic order of strings. For comparison a face name is written as `feature/role/curve`.
 - **The base planes** have fixed right-handed coordinate systems (the X axis of the sketch, the Y axis of the sketch, the normal): XY = (+X, +Y, +Z), XZ = (+X, +Z, −Y), YZ = (+Y, +Z, +X).
-- **The sign of dimensions.** `horizontalDistance` and `verticalDistance` are signed (b − a) and may be negative; the UI chooses the order of the points so that the value comes out positive when it is created. The sign keeps a point from flipping to the other side while solving. `distance`, `distancePointLine`, `distanceLineLine` and `distanceLineCircle` are unsigned and non-negative, `radius` and `diameter` positive. An unsigned distance keeps the side its operands were drawn on: a point (a line, the centre of a circle) stays on its side of the line.
+- **The sign of dimensions.** `horizontalDistance` and `verticalDistance` are signed (b − a) and may be negative; the UI chooses the order of the points so that the value comes out positive when it is created. The sign keeps a point from flipping to the other side while solving. `distance`, `distancePointLine` and `distanceLineLine` are unsigned and non-negative; `distanceLineCircle`, `radius` and `diameter` are positive (a gap of 0 is `tangent`). An unsigned distance keeps the side its operands were drawn on: a point (a line, the centre of a circle) stays on its side of the line.
 - **The tolerances of the engine** are fixed constants: a length tolerance of 1e-6 mm (a satisfied `coincident`, curves touching in profile detection) and an angular one of 1e-4 rad (faces in the same plane when the kind of an edge is determined). The tolerances of booleans are the kernel's business; the engine does not know them.
 - **The stamp** `solved.inputs` is computed by the engine as a fingerprint of the canonical form of the inputs (keys sorted by the convention above). The caller does not fill it in: in `addFeature` it sends the sketch with an empty stamp (`inputs: ''`, `external: {}`), or leaves it out (D73), and the engine overwrites it after the first solve.
 - **Extent of an extrusion** is a distance with a start offset, or "through all" for a cut (see Extrude, Extent and targets). A hole dimensioned by a fixed distance stops going through when the body gets thicker; a hole through all keeps going through.

@@ -315,6 +315,42 @@ describe('constraints and dimensions from a selection', () => {
     for (const [id, p] of Object.entries(s.t.result().points)) expect([p.x, p.y], id).toEqual([expect.closeTo(before[id].x, 6), expect.closeTo(before[id].y, 6)]);
   });
 
+  it('findings of the review of D75: an axis selected first, two lines on one line, a circle that touches', () => {
+    const t = setup();
+    t.run([
+      // nearly parallel to the X axis, within the tolerance of the engine: the far end of the axis as drawn is 1e6 away
+      { type: 'addPoint', sketch: 's', id: 'a', x: 0, y: 10 },
+      { type: 'addPoint', sketch: 's', id: 'b', x: 100, y: 10.005 },
+      { type: 'addCurve', sketch: 's', id: 'l', curve: { type: 'line', a: 'a', b: 'b' } },
+      // two pieces of one line
+      { type: 'addPoint', sketch: 's', id: 'c', x: 0, y: 30 },
+      { type: 'addPoint', sketch: 's', id: 'd', x: 20, y: 30 },
+      { type: 'addPoint', sketch: 's', id: 'e', x: 50, y: 30 },
+      { type: 'addPoint', sketch: 's', id: 'f', x: 80, y: 30 },
+      { type: 'addCurve', sketch: 's', id: 'm', curve: { type: 'line', a: 'c', b: 'd' } },
+      { type: 'addCurve', sketch: 's', id: 'n', curve: { type: 'line', a: 'f', b: 'e' } },
+      // a circle that touches the line m's line from above
+      { type: 'addPoint', sketch: 's', id: 'o', x: 60, y: 36 },
+      { type: 'addCurve', sketch: 's', id: 'k', curve: { type: 'circle', center: 'o' }, radius: 6 },
+    ]);
+    const kind = (ids: Id[]) => dimensionFor('auto', t.view(), ids);
+    // the distance is measured from the origin, as the engine measures it, in either order of the selection
+    expect(kind(['origin/x', 'l'])).toEqual({ type: 'distanceLineLine', a: 'origin/x', b: 'l', value: 10, driving: true });
+    expect(kind(['l', 'origin/x'])).toEqual({ type: 'distanceLineLine', a: 'l', b: 'origin/x', value: 10, driving: true });
+    expect(measure({ type: 'distanceLineLine', a: 'origin/y', b: 'l' }, t.view())).toBeCloseTo(10, 6); // from the origin too, not from the end of the axis a million away
+    // two lines on one line get exactly 0, the form in which the engine puts them on one line
+    expect(kind(['m', 'n'])).toEqual({ type: 'distanceLineLine', a: 'm', b: 'n', value: 0, driving: true });
+    // touching is a tangency, not a gap: the engine takes only a positive gap
+    expect(kind(['m', 'k'])).toBeUndefined();
+    expect(kind(['n', 'k'])).toBeUndefined();
+    // the engine takes the offers and the lines stay where they are
+    t.run([{ type: 'addConstraint', sketch: 's', id: 'x1', constraint: kind(['origin/x', 'l'])! }, { type: 'addConstraint', sketch: 's', id: 'x2', constraint: kind(['m', 'n'])! }]);
+    expect(t.result().conflicting).toEqual([]);
+    expect(t.result().points.a.y).toBeCloseTo(10, 6);
+    expect(t.result().points.b.y).toBeCloseTo(10, 6);
+    expect(t.result().points.e.y).toBeCloseTo(t.result().points.c.y, 6);
+  });
+
   it('measuring in the UI uses the same conventions as the reference dimensions of the engine', () => {
     const s = shapes();
     const dimensions: DimensionShape[] = [

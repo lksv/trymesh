@@ -76,7 +76,7 @@ The type of a dimension by the selection:
 | a line | `distance` between its end points (not an axis of the origin: it has no length, D71) |
 | a point and a line | `distancePointLine` |
 | two lines | `distanceLineLine` when they are parallel (within the angle tolerance of the engine, 1e-4 rad), otherwise `angle` (D75) |
-| a line and a circle or an arc | `distanceLineCircle`, the gap to the rim; none when the circle crosses the line (D75) |
+| a line and a circle or an arc | `distanceLineCircle`, the gap to the rim; none when the circle touches or crosses the line (D75; touching is the constraint *Tangent*) |
 | a circle | `diameter` |
 | an arc | `radius` |
 

@@ -80,11 +80,11 @@ describe('the equations of the constraints match the solver', () => {
       { type: 'distanceLineLine', a: 'ab', b: 'cd', value: 12, driving: true },
       { type: 'distanceLineLine', a: 'cd', b: 'ab', value: 0, driving: true },
     ],
-    // a circle and an arc, each on the side it was drawn on, and touching
+    // a circle and an arc, each on the side it was drawn on, and nearly touching
     distanceLineCircle: [
       { type: 'distanceLineCircle', line: 'ab', curve: 'k', value: 5, driving: true },
       { type: 'distanceLineCircle', line: 'cd', curve: 'r', value: 3, driving: true },
-      { type: 'distanceLineCircle', line: 'ab', curve: 'q', value: 0, driving: true },
+      { type: 'distanceLineCircle', line: 'ab', curve: 'q', value: 0.001, driving: true },
     ],
     horizontalDistance: [{ type: 'horizontalDistance', a: 'b', b: 'a', value: -17, driving: true }],
     verticalDistance: [{ type: 'verticalDistance', a: 'a', b: 'd', value: 11, driving: true }],

@@ -675,8 +675,9 @@ export type DimensionShape =
   // lines parallel by itself, so a `parallel` beside it is redundant. 0 puts them on one line.
   | { type: 'distanceLineLine'; a: Id; b: Id }
   // The gap between the infinite line of the line and a circle or arc (its whole circle, D75): the
-  // distance of the centre from the line less the radius. The circle stays on one side of the line;
-  // 0 touches it. The distance to the centre is `distancePointLine` with the centre.
+  // distance of the centre from the line less the radius, positive. The circle stays on one side of
+  // the line; a gap of 0 is `tangent`. The distance to the centre is `distancePointLine` with the
+  // centre.
   | { type: 'distanceLineCircle'; line: Id; curve: Id }
   | { type: 'horizontalDistance' | 'verticalDistance'; a: Id; b: Id } // oriented: b − a
   | { type: 'angle'; a: Id; b: Id } // lines; from the direction of `a` to the direction of `b`, counter-clockwise, radians

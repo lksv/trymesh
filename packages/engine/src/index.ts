@@ -105,7 +105,7 @@ export type { AnyKind, EntryKindName } from './references/spec';
 export { type ContactKind, type ContactPoint, type CurveContacts, type TightPlace, curveContacts, profileOf, profileProblem } from './sketch';
 export { type SketchBase, type SketchWorld, cutInMemory, sketchWorld, stepBase, toolBase } from './references/world';
 export type { Deps } from './evaluate';
-export { ANGLE_TOLERANCE, AXIS_REACH, ORIGIN_AXES, type OriginAxis, isOriginAxis, underOrigin } from './util';
+export { ANGLE_TOLERANCE, AXIS_REACH, LENGTH_TOLERANCE, ORIGIN_AXES, type OriginAxis, isOriginAxis, underOrigin } from './util';
 export { AXIS_CURVES, type SketchCurve, type SketchGeometry, type SolvedCurves, lineExtent, solvedCurves } from './sketch';
 export { DUPLICATE, type ProjectedKind, REGIONS_ON_A_POINT, type SketchMap, UNDER_ORIGIN, degreesText, projectionEntities, sketchMap } from './references/projection';
 export { PROJECT_SKETCH_IDS, type ProjectSketchInput } from './sketch-project';

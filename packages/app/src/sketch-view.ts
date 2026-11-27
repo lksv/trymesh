@@ -257,10 +257,11 @@ export function measure(shape: DimensionShape, view: SketchView): number | undef
       return distanceToLine(p, ends);
     }
     case 'distanceLineLine': {
-      // from the point a of the line a to the line b, as the engine measures it (D75)
+      // from the point a of the line a to the line b, as the engine measures it (D75); the point a
+      // of an axis of the origin is the origin, not the far end the view draws the axis from
       const [first, second] = [endpoints(view, shape.a), endpoints(view, shape.b)];
       if (!first || !second) return undefined;
-      return distanceToLine(first[0], second);
+      return distanceToLine(isOriginAxis(shape.a) ? [0, 0] : first[0], second);
     }
     case 'distanceLineCircle': {
       // the distance of the centre from the line less the radius

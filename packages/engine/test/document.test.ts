@@ -296,13 +296,15 @@ describe('commands of a sketch', () => {
     invalid(doc, add({ type: 'distanceLineLine', a: 'origin/x', b: 'origin/y', value: 5, driving: true }), /only between fixed entities/);
     // the gap of a line and a circle: the line first, a circle or an arc second; a default of driving and an expression as for any dimension
     expect(stored({ type: 'distanceLineCircle', line: 'l1', curve: 'c', value: 11, driving: true })).toEqual({ type: 'distanceLineCircle', line: 'l1', curve: 'c', value: 11, driving: true });
-    expect(stored({ type: 'distanceLineCircle', line: 'origin/y', curve: 'c', value: 0, driving: false })).toMatchObject({ line: 'origin/y', value: 0, driving: false });
+    expect(stored({ type: 'distanceLineCircle', line: 'origin/y', curve: 'c', value: 2, driving: false })).toMatchObject({ line: 'origin/y', value: 2, driving: false });
+    // review of D75: a gap of 0 is a tangency, which has its own forms where the line ends on the circle
+    invalid(doc, add({ type: 'distanceLineCircle', line: 'l1', curve: 'c', value: 0, driving: true }), /must be positive/);
     const loose = run(doc, { type: 'addConstraint', sketch: 'S1', id: 'k', constraint: { type: 'distanceLineCircle', line: 'l1', curve: 'c', value: '2 + 9' } } as Command);
     expect(sketchOf(loose).constraints.k).toMatchObject({ value: 11, driving: true });
     expect(sketchOf(loose).expressions).toEqual({ 'constraints/k/value': '2 + 9' });
     invalid(doc, add({ type: 'distanceLineCircle', line: 'l1', curve: 'l2', value: 5, driving: true }), /expected circle or arc/);
     invalid(doc, add({ type: 'distanceLineCircle', line: 'c', curve: 'c', value: 5, driving: true }), /expected line/);
-    invalid(doc, add({ type: 'distanceLineCircle', line: 'l1', curve: 'c', value: -2, driving: true }), /must not be negative/);
+    invalid(doc, add({ type: 'distanceLineCircle', line: 'l1', curve: 'c', value: -2, driving: true }), /must be positive/);
     // duplicates: the order of the two points and of the two lines does not matter, the middle does; a parallel of the same lines is another constraint
     const twice = run(
       doc,

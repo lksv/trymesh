@@ -4,6 +4,7 @@ import {
   ANGLE_TOLERANCE,
   type AxisRef,
   CONSTRAINTS,
+  LENGTH_TOLERANCE,
   type Command,
   type Constraint,
   type Dimension,
@@ -361,12 +362,16 @@ export function dimensionFor(variant: DimensionVariant, view: SketchView, select
   else if (count === 1 && round.length === 1) shape = { type: roundDimension(kindOf(view, round[0])), curve: round[0] };
   if (!shape) return undefined;
   const value = measure(shape, view);
-  if (value === undefined || (shape.type === 'distanceLineCircle' && value < 0)) return undefined; // a circle across the line has no gap
+  if (value === undefined) return undefined;
+  // a circle that touches or crosses the line has no gap to dimension: the engine takes a positive one (touching is `tangent`)
+  if (shape.type === 'distanceLineCircle' && value <= LENGTH_TOLERANCE) return undefined;
 
   // an angle to whole degrees, lengths to hundredths; zero for a distance, radius and angle the engine does
-  // not want or makes no sense
+  // not want or makes no sense. A horizontal or vertical distance of 0 does, and so does a distance of two
+  // lines of 0 (the two on one line, D75).
   const rounded = shape.type === 'angle' ? normalizeAngle((Math.round((value * 180) / Math.PI) * Math.PI) / 180) : Math.round(value * 100) / 100;
-  return { ...shape, value: rounded === 0 && shape.type !== 'horizontalDistance' && shape.type !== 'verticalDistance' ? value : rounded, driving: true };
+  const zeroMeans = shape.type === 'horizontalDistance' || shape.type === 'verticalDistance' || shape.type === 'distanceLineLine';
+  return { ...shape, value: rounded === 0 && !zeroMeans ? value : rounded, driving: true };
 }
 
 // An angle in the interval (−π, π], which the engine requires for an angle dimension.

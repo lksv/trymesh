@@ -69,7 +69,7 @@ interface FilletFeature  extends FeatureBase { type: 'fillet';  body: Id; edges:
 
 **Faces.** A chamfer of a straight edge is a plane: its origin where it meets face `a` at the end of the edge its projection calls `a` (the smaller parameter along `n_a × n_b` of the outward normals), Y along the edge in that direction, so a sketch on it reads along the edge as a projection of the edge does. A fillet of a straight edge is a cylinder about the line of the centres of its arc, its `along` (D60) the direction in which the chamfer's Y would run. A circular edge gets 4a's surface of the blend's curve: a cone, a plane across the axis or a cylinder for a chamfer; a torus with its major radius signed, or a sphere where the centre lies on the axis, for a fillet; their `along` is the axis of the circle as the analysis of the body gives it (the Y of the frame of the revolve). The edges of the result: a chamfer with its planes `line`; a cone or a torus with its coaxial faces `circle`; a fillet cylinder with the faces it touches `other`, with a plane across it `circle`; the joins of chains and mitres of fillets `other`.
 
-**`normalAt`** (`solid.ts`): the unit normal of a plane, a cylinder, a cone, a sphere and a torus at a point, without a sign; undefined on an axis, at an apex, and for a swept or an imported surface.
+**`normalAt`** (`solid.ts`): the unit normal of a plane, a cylinder, a cone, a sphere and a torus at a point, without a sign; undefined on an axis, at an apex, and for a swept, an imported or a general surface (the flank of a modelled thread, D76, whose helical edges are of the kind `other` and so are refused as an edge to blend).
 
 ## Run-outs past a round face (D67)
 

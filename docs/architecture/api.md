@@ -265,7 +265,7 @@ The steps: the size of the bytes (8 million at most) and the options; the reader
 ```ts
 interface Interference { a: Id; b: Id; volume: number; depth: number }   // `a` is the smaller ID in string order
 interface InterferenceReport {
-  pairs: (Interference & { mismatch?: string })[];     // collisions: above the threshold and not a fit; `mismatch`: two threads that do not agree (D76)
+  pairs: (Interference & { mismatch?: string; seat?: Seat[] })[]; // collisions: above the threshold and not a fit; `mismatch`: two threads that do not agree; `seat`: how to seat two modelled threads that agree (D76)
   fits: Interference[];                                // above the threshold, no deeper than the chord tolerance, with a round face
   failed: { a: Id; b: Id; message: string }[];        // neither colliding nor clear: refused, and not cleared by its second opinion
   cleared?: Cleared[];                                 // refused, and cleared by the intersection as computed (D50); only when it has an entry
@@ -294,7 +294,7 @@ interface Cleared { a: Id; b: Id; kind: 'nothing' | 'fit'; volume: number; depth
   - The cost of a refused pair is one more boolean of the library (milliseconds) and one more measure, what an answered pair of the same size pays: 0.1 to 0.2 s for the pin of the arm along an axis, 0.7 to 2.4 s askew.
 - Bodies whose boxes do not overlap, or only touch, are not sent to the kernel.
 - Computed pairs are remembered by the identity of the two meshes (`context.memo` of the query, `query/interference.ts`), so a repeated query is free and after a change only pairs with a rebuilt body are computed. Bodies replayed after the changed feature are rebuilt even when their shape is the same.
-- **Threads (D76).** A pair with a cosmetic thread is judged on the rests of its bodies after the zones of its threads are cut out where what the other body shares there goes around the axis; it is in `threaded` with the volume excused unless the rest collides (then in `pairs` alone), and two threads that meet and do not agree judge it whole with `mismatch` on its entry. The rule, the zones and the rings are in [thread.md](thread.md), "The check of collisions"; the smallest gap has the contact `threaded`.
+- **Threads (D76).** A pair with a cosmetic thread is judged on the rests of its bodies after the zones of its threads are cut out where what the other body shares there goes around the axis; it is in `threaded` with the volume excused unless the rest collides (then in `pairs` alone), and two threads that meet and do not agree judge it whole with `mismatch` on its entry. Two modelled threads that agree are judged by their meshes; a collision of the two carries `seat` (`{ feature, face, addToPhase }` for each: the angle to add to the phase of either so that the two are one helix). The rule, the zones and the rings are in [thread.md](thread.md), "The check of collisions"; the smallest gap has the contact `threaded`.
 - An unknown body, a threshold that is not a non-negative number and an unknown `at` throw.
 - The query reads the model and changes nothing; it is not a command and has no place in undo.
 

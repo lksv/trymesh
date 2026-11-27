@@ -16,10 +16,12 @@ export const interferenceView: QueryView<'interference'> = {
     // collisions first, then the fits, then the cleared pairs; `picked` counts through the three lists
     // two modelled threads turned against each other: what to add to the phase of either (D76)
     const seatText = (pair: Interference & { seat?: Seat[] }): string => {
-      const turn = pair.seat?.find((entry) => entry.addToPhase !== 0);
       if (!pair.seat) return '';
+      // an entry this document can apply first (one of an inserted document is changed there)
+      const turn = pair.seat.find((entry) => entry.addToPhase !== 0 && !entry.inserted) ?? pair.seat.find((entry) => entry.addToPhase !== 0);
       if (!turn) return '; the threads are seated, the collision has another cause';
-      return `; the threads are turned against each other: add ${fmt((turn.addToPhase * 180) / Math.PI)}° to the phase of ${turn.feature}${pair.seat.length > 1 ? ' (or turn the other)' : ''}`;
+      const other = pair.seat.some((entry) => entry !== turn && !entry.inserted);
+      return `; the threads are turned against each other: add ${fmt((turn.addToPhase * 180) / Math.PI)}° to the phase of ${turn.feature}${turn.inserted ? ' (in its inserted document)' : other ? ' (or turn the other)' : ''}`;
     };
     const row = (pair: Interference & { mismatch?: string; seat?: Seat[] }, index: number, fit: boolean): HTMLElement =>
       h(

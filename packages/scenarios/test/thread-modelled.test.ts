@@ -3,7 +3,10 @@
 // cross, the face `general` through its consumers, a pin with a clearance, a screw in a nut and the
 // seat of two that are turned against each other, the switch between the modes, the notes of an
 // export and the parts list, and the measurements of "Performance".
-import type { Command, EngineState, FaceName, Id } from '@trymesh/engine';
+import { createPakoDeflater } from '@trymesh/deflate-pako';
+import { type Command, type EngineState, type FaceName, type Id, type SolidKernel, createEngine, emptyDocument } from '@trymesh/engine';
+import { createManifoldKernel } from '@trymesh/kernel-manifold';
+import { createPlanegcsSolver } from '@trymesh/solver-planegcs';
 import { describe, expect, it } from 'vitest';
 import { XY, newEngine, run } from './kit';
 import { blindHole, bodyPattern, bore, box, chamfer, combine, hole, messageOf, mirrorIn, rod, rodSide, statusOf, thread, threadsOf, top } from './thread-kit';
@@ -83,6 +86,33 @@ describe('the tool cut into the body', () => {
     expect(t.runOut.start).toBeGreaterThan(0.5);
     expect(names(state, 'pin')).toEqual(expect.arrayContaining(['pt/threadEnd/end', 'ch/chamfer']));
     expect(names(state, 'pin')).not.toContain('pt/threadEnd/start');
+  });
+});
+
+describe('a refused cut: the next mesh of the tool (the review of stage 2)', () => {
+  it('one refusal: the second mesh is taken and the facts say so; four: kernelFailure after the four meshes', async () => {
+    // a kernel that refuses the next `refuse` differences, as the adapter refuses about 1.5 % of the tools
+    const real = await createManifoldKernel();
+    let refuse = 0;
+    const kernel: SolidKernel = { ...real, boolean: (op, a, b) => {
+      if (op === 'difference' && refuse > 0) {
+        refuse--;
+        throw new Error('refused on purpose');
+      }
+      return real.boolean(op, a, b);
+    } };
+    const engine = createEngine({ solver: await createPlanegcsSolver(), kernel, deflater: createPakoDeflater() });
+    run(engine, rod('pin', 0, 0, 5, 0, 20));
+    refuse = 1;
+    const once = run(engine, thread('pt', { body: 'pin', faces: [rodSide('pin')], modelled: true, ...M10 }));
+    expect(statusOf(once, 'pt')).toBe('ok');
+    expect(once.evaluation.features.pt.facts).toMatchObject({ attempt: 2 });
+    expect(refuse).toBe(0);
+    refuse = 4;
+    const always = run(engine, { type: 'updateFeature', id: 'pt', patch: { phase: 0.1 } } as Command);
+    expect(statusOf(always, 'pt')).toBe('error:kernelFailure');
+    expect(messageOf(always, 'pt')).toContain('(after 4 meshes of the tool)');
+    expect(refuse).toBe(0);
   });
 });
 
@@ -188,7 +218,7 @@ describe('a screw in a nut', () => {
     return base;
   };
 
-  it('seated, free of each other; turned by half a pitch, a collision whose entry says how to seat either; seated so, free again', () => {
+  it('seated, free of each other; turned by half a pitch, a collision whose entry says how to seat either; seated so, free again', { timeout: 120_000 }, () => {
     const engine = newEngine();
     const base = studAndNut(engine);
     expect(interference(engine, ['stud', 'nut'])).toMatchObject({ pairs: [], fits: [], failed: [] });
@@ -207,29 +237,58 @@ describe('a screw in a nut', () => {
     }
   });
 
-  it('the seat of a turn of 1 radian, in both hands and with two starts; the nut threaded the other way', () => {
-    for (const [hand, starts] of [['right', 1], ['left', 1], ['right', 2]] as const) {
-      const engine = newEngine();
-      const base = studAndNut(engine, (b) => b + 1, hand, starts);
-      const report = interference(engine, ['stud', 'nut']);
-      const forNut = report.pairs[0]?.seat?.find((s) => s.feature === 'nt');
-      expect(forNut?.addToPhase, `${hand} ${starts}`).toBeCloseTo(-1, 6);
-      const seated = preview(engine, { type: 'updateFeature', id: 'nt', patch: { phase: base } } as Command);
-      expect(interference(engine, ['stud', 'nut'], seated).pairs, `${hand} ${starts}`).toEqual([]);
-    }
-    // the nut threaded from its bottom up: the phase of the other row of the table
+  // The other seats in a document of the chord tolerance 0.05 (the clearance 0.2 is above it), so
+  // that a colliding pair is measured in about a second; the values for the hands, the starts and
+  // the two ways are also tested without meshes (packages/engine/test/seat.test.ts).
+  const coarse = (): Engine => {
     const engine = newEngine();
-    studAndNut(engine);
-    const fromBelow = preview(engine, { type: 'updateFeature', id: 'nt', patch: { direction: 'forward', phase: -(2 * Math.PI * 12) / 1.5 + 0.7 } } as Command);
-    const report = interference(engine, ['stud', 'nut'], fromBelow);
-    const forNut = report.pairs[0]?.seat?.find((s) => s.feature === 'nt');
-    const forStud = report.pairs[0]?.seat?.find((s) => s.feature === 'st');
-    expect(forNut?.addToPhase).toBeCloseTo(-0.7, 6);
-    expect(forStud?.addToPhase).toBeCloseTo(-0.7, 6);
-    for (const [id, phase] of [['nt', -(2 * Math.PI * 12) / 1.5], ['st', -0.7]] as const) {
-      const seated = preview(engine, { type: 'batch', commands: [{ type: 'updateFeature', id: 'nt', patch: { direction: 'forward', phase: -(2 * Math.PI * 12) / 1.5 + 0.7 } }, { type: 'updateFeature', id, patch: { phase } }] } as Command);
-      expect(interference(engine, ['stud', 'nut'], seated).pairs, id).toEqual([]);
+    const loaded = engine.load(JSON.stringify({ ...emptyDocument(), settings: { chordTolerance: 0.05 } }));
+    if (!loaded.ok) throw new Error(loaded.error.message);
+    return engine;
+  };
+  // applying either entry of `seat` frees the pair
+  const eitherFrees = (engine: Engine, a: Id, b: Id, base: Command[]): void => {
+    const report = interference(engine, [a, b], base.length ? preview(engine, { type: 'batch', commands: base } as Command) : undefined);
+    expect(report.pairs).toHaveLength(1);
+    const seat = report.pairs[0].seat ?? [];
+    expect(seat).toHaveLength(2);
+    for (const entry of seat) {
+      const phase = (engine.getState().document.features.find((f) => f.id === entry.feature) as { phase?: number }).phase ?? 0;
+      const patched = base.find((c) => c.type === 'updateFeature' && c.id === entry.feature) as { patch?: { phase?: number } } | undefined;
+      const seated = preview(engine, { type: 'batch', commands: [...base, { type: 'updateFeature', id: entry.feature, patch: { phase: (patched?.patch?.phase ?? phase) + entry.addToPhase } }] } as Command);
+      expect(interference(engine, [a, b], seated).pairs, entry.feature).toEqual([]);
     }
+  };
+
+  it('a turn of 1 radian in both hands and with two starts, and the nut threaded the other way (chord tolerance 0.05)', { timeout: 120_000 }, () => {
+    for (const [hand, starts] of [['right', 1], ['left', 1], ['right', 2]] as const) {
+      const engine = coarse();
+      const base = studAndNut(engine, (b) => b + 1, hand, starts);
+      const forNut = interference(engine, ['stud', 'nut']).pairs[0]?.seat?.find((s) => s.feature === 'nt');
+      expect(forNut?.addToPhase, `${hand} ${starts}`).toBeCloseTo(-1, 6);
+      expect(interference(engine, ['stud', 'nut'], preview(engine, { type: 'updateFeature', id: 'nt', patch: { phase: base } } as Command)).pairs, `${hand} ${starts}`).toEqual([]);
+    }
+    const engine = coarse();
+    studAndNut(engine);
+    eitherFrees(engine, 'nut', 'stud', [{ type: 'updateFeature', id: 'nt', patch: { direction: 'forward', phase: -(2 * Math.PI * 12) / 1.5 + 0.7 } } as Command]);
+  });
+
+  // the review of stage 2: a phase turns a record that went through a mirror the other way
+  it('a stud and a nut both mirrored by patterns of the bodies: the seat of the mirrored pair frees it (chord tolerance 0.05)', { timeout: 120_000 }, () => {
+    const engine = coarse();
+    run(engine, rod('stud', 20, 0, 5, 0, 20), box('nut', 10, -10, 30, 10, 8, 16), hole('nh', [['h', 20, 0]], 10 - 2 * 0.811899 + 0.4, 'nut'), thread('st', { body: 'stud', faces: [rodSide('stud')], modelled: true, ...M10, length: 14 }), thread('nt', { body: 'nut', faces: [bore('nh', 'h')], modelled: true, ...M10, clearance: 0.2, phase: (2 * Math.PI * 4) / 1.5 + 1 }), bodyPattern('ms', 'stud', mirrorIn('YZ')), bodyPattern('mn', 'nut', mirrorIn('YZ')));
+    const mirrored = interference(engine, ['ms/1', 'mn/1']).pairs[0]?.seat;
+    expect(mirrored?.find((s) => s.feature === 'nt')?.addToPhase).toBeCloseTo(-1, 6);
+    eitherFrees(engine, 'mn/1', 'ms/1', []);
+  });
+
+  it('only one of the two went through a mirror: a mirrored stud in a left-hand nut; and a nut threaded through a mirror pattern of features (chord tolerance 0.05)', { timeout: 120_000 }, () => {
+    const engine = coarse();
+    run(engine, rod('stud', 20, 0, 5, 0, 20), thread('st', { body: 'stud', faces: [rodSide('stud')], modelled: true, ...M10, length: 14 }), bodyPattern('ms', 'stud', mirrorIn('YZ')), box('nut', -30, -10, -10, 10, 8, 16), hole('nh', [['h', -20, 0]], 10 - 2 * 0.811899 + 0.4, 'nut'), thread('nt', { body: 'nut', faces: [bore('nh', 'h')], modelled: true, ...M10, hand: 'left', clearance: 0.2, phase: 0.4 }));
+    eitherFrees(engine, 'ms/1', 'nut', []);
+    const copies = coarse();
+    run(copies, rod('stud', -20, 0, 5, 0, 20), thread('st', { body: 'stud', faces: [rodSide('stud')], modelled: true, ...M10, length: 14 }), box('nut', -30, -10, 30, 10, 8, 16), hole('nh', [['h', 20, 0]], 10 - 2 * 0.811899 + 0.4, 'nut'), { type: 'addFeature', feature: { id: 'mf', name: 'mf', suppressed: false, type: 'pattern', source: { type: 'features', features: ['nh'] }, transform: { type: 'mirror', plane: { kind: 'base', plane: 'YZ' } } } } as Command, thread('nt', { body: 'nut', faces: [bore('nh', 'h')], copies: true, modelled: true, ...M10, clearance: 0.2, phase: 0.4 }));
+    eitherFrees(copies, 'nut', 'stud', []);
   });
 
   it('a modelled thread excuses a plain rod and a cosmetic thread; the flag changes the mesh and nothing else', () => {

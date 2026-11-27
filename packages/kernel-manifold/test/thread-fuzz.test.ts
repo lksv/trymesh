@@ -5,7 +5,7 @@
 // none of the hidden faces of the tool is left, and the volume taken is that of the exact grooves
 // over the part of the wall the tool cuts. The number of cases and the first seed:
 //   THREAD_FUZZ_COUNT=300 THREAD_FUZZ_FIRST=1 npx vitest run packages/kernel-manifold/test/thread-fuzz.test.ts
-import { type Solid, type ToolShape, buildThreadTool, threadLift, threadProfile, toolShape, radiusAt } from '@trymesh/engine';
+import { type Solid, THREAD_TOOL_ATTEMPTS, type ToolShape, buildThreadTool, threadLift, threadProfile, toolShape, radiusAt } from '@trymesh/engine';
 import { expect, it } from 'vitest';
 import { type Random, rng } from './fuzz';
 import { type TestFrame, IDENTITY, circle, inspect, kernel, prism, rect, rotation } from './testkit';
@@ -15,6 +15,9 @@ const FIRST = Number(process.env.THREAD_FUZZ_FIRST ?? 1);
 // THREAD_FUZZ_PAST=1: the tool runs this much further past the open end (the second build of
 // "To verify" 7 of the design)
 const PAST = Number(process.env.THREAD_FUZZ_PAST ?? 0);
+// The meshes tried after a refusal, in order: those of the step (`THREAD_TOOL_ATTEMPTS`), or
+// THREAD_FUZZ_VARIANTS='[{"sections":2}]' to measure others ('[]': none)
+const VARIANTS: { sections?: number }[] = process.env.THREAD_FUZZ_VARIANTS ? JSON.parse(process.env.THREAD_FUZZ_VARIANTS) : THREAD_TOOL_ATTEMPTS.slice(1);
 const TOL = 0.01;
 const TAU = 2 * Math.PI;
 const pick = <T>(r: Random, items: readonly T[]): T => items[Math.floor(r() * items.length)];
@@ -56,7 +59,7 @@ const meanOver = (s: ToolShape, f: (r: number) => number, steps = 4000): number 
   return sum / steps;
 };
 
-export function checkThread(seed: number, refused: { count: number; cases: string[] }): string[] {
+export function checkThread(seed: number, refused: { count: number; cases: string[]; attempts?: Map<number, number> }): string[] {
   const c = generateThread(seed);
   const profile = threadProfile({ diameter: c.diameter, pitch: c.pitch, ...(c.depth ? { depth: c.depth } : {}), flankAngle: c.flankAngle, starts: c.starts, hand: c.hand });
   if ('detail' in profile) return [];
@@ -84,13 +87,22 @@ export function checkThread(seed: number, refused: { count: number; cases: strin
   const [z0, z1] = [-lift - PAST, c.kind === 'through' ? c.length + lift + PAST : c.length - lift];
   if (z1 - z0 <= TOL) return [];
   const [guard, first] = [500, 100];
-  const tool = buildThreadTool(s, internal, datum, z0, z1, TOL, lift, first, guard);
-  let result: Solid;
-  try {
-    result = kernel.boolean('difference', body, tool);
-  } catch (error) {
+  let result: Solid | undefined;
+  let message = '';
+  for (const [attempt, variant] of [{}, ...VARIANTS].entries()) {
+    try {
+      result = kernel.boolean('difference', body, buildThreadTool(s, internal, datum, z0, z1, TOL, lift, first, guard, variant));
+      refused.attempts?.set(seed, attempt + 1);
+      if (attempt) refused.cases.push(`seed ${seed}: cleared by the build ${attempt + 1}, ${JSON.stringify(variant)}`);
+      break;
+    } catch (error) {
+      message ||= (error as Error).message;
+    }
+  }
+  if (!result) {
+    refused.attempts?.set(seed, 0);
     refused.count++;
-    refused.cases.push(`seed ${seed}: ${(error as Error).message.slice(0, 120)}\n   ${describeCase(c)}`);
+    refused.cases.push(`seed ${seed}: ${message.slice(0, 120)}\n   ${describeCase(c)}`);
     return [];
   }
   const problems: string[] = [];
@@ -106,21 +118,27 @@ export function checkThread(seed: number, refused: { count: number; cases: strin
   return problems.length ? [`${problems.join('; ')}\n   ${describeCase(c)}`] : [];
 }
 
-// The seeds the adapter refused in a run of 300 (2026-11-27; the design measured 2 of 300 at this
-// tolerance): a refusal is the error kernelFailure of the feature; what is accepted has to be right.
-const REFUSED_SEEDS = [4, 71, 216, 221];
-it('the seeds refused in a run of 300: refused or right', () => {
-  const refused = { count: 0, cases: [] as string[] };
-  expect(REFUSED_SEEDS.flatMap((seed) => checkThread(seed, refused))).toEqual([]);
-  console.log(`the pinned seeds: ${refused.count} of ${REFUSED_SEEDS.length} refused${PAST ? ` with the tool ${PAST} further past the open end` : ''}`);
+// The seeds the adapter refused with the first build in the runs of the seeds 1 to 600
+// (2026-11-27), with the build of THREAD_TOOL_ATTEMPTS that the adapter takes now (0: none, the
+// feature is kernelFailure). What is accepted has to be right.
+const REFUSED_SEEDS: Record<number, number> = { 4: 3, 71: 0, 216: 2, 221: 4, 429: 2, 437: 2, 442: 3, 463: 2, 497: 2 };
+it('the seeds refused with the first build: the build that clears each, and right', { timeout: 120_000 }, () => {
+  const refused = { count: 0, cases: [] as string[], attempts: new Map<number, number>() };
+  const seeds = Object.keys(REFUSED_SEEDS).map(Number);
+  expect(seeds.flatMap((seed) => checkThread(seed, refused))).toEqual([]);
+  if (!process.env.THREAD_FUZZ_VARIANTS && !PAST) expect(Object.fromEntries(refused.attempts)).toEqual(REFUSED_SEEDS);
+  console.log(`the pinned seeds: ${refused.count} of ${seeds.length} refused${PAST ? ` with the tool ${PAST} further past the open end` : ''}`);
 });
 
 it(`random modelled threads on the adapter: ${COUNT} cases from the seed ${FIRST}`, { timeout: 60_000 + COUNT * 3000 }, () => {
   const failures: string[] = [];
   const refused = { count: 0, cases: [] as string[] };
-  for (let seed = FIRST; seed < FIRST + COUNT; seed++) failures.push(...checkThread(seed, refused).map((text) => `seed ${seed}: ${text}`));
+  // THREAD_FUZZ_SEEDS=4,71: only these seeds
+  const seeds = process.env.THREAD_FUZZ_SEEDS ? process.env.THREAD_FUZZ_SEEDS.split(',').map(Number) : Array.from({ length: COUNT }, (_, i) => FIRST + i);
+  for (const seed of seeds) failures.push(...checkThread(seed, refused).map((text) => `seed ${seed}: ${text}`));
   console.log(`modelled threads: ${COUNT} cases, ${failures.length} failed, the adapter refused ${refused.count}${refused.cases.length ? `\n${refused.cases.join('\n')}` : ''}`);
   expect(failures.slice(0, 10)).toEqual([]);
-  // a refusal is an error of the feature (kernelFailure), safe but rare
-  expect(refused.count).toBeLessThanOrEqual(Math.ceil(COUNT / 50));
+  // a refusal is an error of the feature (kernelFailure), safe but rare: 1 of 600 after the builds of
+  // THREAD_TOOL_ATTEMPTS (9 of 600 with the first build alone); the bound is 1 %
+  expect(refused.count).toBeLessThanOrEqual(Math.ceil(COUNT / 100));
 });

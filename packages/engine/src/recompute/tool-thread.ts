@@ -82,7 +82,7 @@ export const meanSquare = (s: ToolShape): number => segmentsOf(s).reduce((sum, {
 const arcStep = (radius: number, tol: number): number => Math.min(2 * Math.acos(1 - Math.min(tol / radius, 1)), Math.PI / 4);
 
 // The angles of the sections of a tool from z0 to z1.
-function anglesOf(s: ToolShape, z0: number, z1: number, tol: number): { angles: number[]; snap: number } {
+function anglesOf(s: ToolShape, z0: number, z1: number, tol: number, more = 0): { angles: number[]; snap: number } {
   const step = arcStep(s.rMax, tol);
   const snap = Math.min((0.05 * s.lead * step) / TAU, tol / 2);
   const wrap = (theta: number) => theta - Math.floor(theta / TAU) * TAU;
@@ -95,7 +95,7 @@ function anglesOf(s: ToolShape, z0: number, z1: number, tol: number): { angles: 
   const angles: number[] = [];
   kept.forEach((theta, i) => {
     const gap = (i + 1 < kept.length ? kept[i + 1] : kept[0] + TAU) - theta;
-    const n = Math.max(1, Math.ceil(gap / step - 1e-9));
+    const n = Math.max(1, Math.ceil(gap / step - 1e-9)) + more;
     for (let k = 0; k < n; k++) angles.push(theta + (gap * k) / n);
   });
   return { angles, snap };
@@ -104,8 +104,8 @@ function anglesOf(s: ToolShape, z0: number, z1: number, tol: number): { angles: 
 // The triangles of the tool of one wall, counted before it is built: two per strip of the profile
 // per section, over the pitches the span crosses, the two ends and the cylinder beside the wall.
 // An upper bound of what the build makes (the strips beyond an end are left out there).
-export function threadTriangles(s: ToolShape, z0: number, z1: number, tol: number): number {
-  const n = anglesOf(s, z0, z1, tol).angles.length;
+export function threadTriangles(s: ToolShape, z0: number, z1: number, tol: number, variant: ToolVariant = {}): number {
+  const n = anglesOf(s, z0, z1, tol, variant.sections ?? 0).angles.length;
   const strips = s.points.length * (Math.ceil((z1 - z0) / s.pitch) + 2 * s.starts + 2);
   return n * (2 * strips + 6);
 }
@@ -121,7 +121,19 @@ type ToolFace = (typeof THREAD_TOOL_FACES)[number] | 'guard';
 // `firstFaceId`; the hidden faces (the cylinder beside the wall, the strips between the grooves)
 // carry `guardFaceId`. The flanks are named by their normals out of the body: on a pin the flank on
 // the side of the end of its ridge faces the end, in a bore the other one.
-export function buildThreadTool(s: ToolShape, internal: boolean, datum: { origin: Vec3; axis: Vec3; zero: Vec3 }, z0: number, z1: number, tol: number, beside: number, firstFaceId: number, guardFaceId: number): Solid {
+// Another mesh of the same tool, for a further build after the kernel refused the first (the
+// surfaces of the thread do not move): `sections`, more sections in every gap between the angles
+// where a helix meets an end plane.
+export interface ToolVariant {
+  sections?: number;
+}
+// The builds a modelled thread tries, in order, while the kernel refuses the cut (the review of
+// stage 2): today's mesh first, so a cut the kernel takes is unchanged, then the same surfaces with
+// one, three and four more sections in every gap. Measured on 600 random threads at the default
+// tolerance (`thread-fuzz.test.ts`): 9 refused with the first build, 1 after all four; another
+// radius of the hidden cylinder cleared none. The same document gives the same attempts.
+export const THREAD_TOOL_ATTEMPTS: readonly ToolVariant[] = [{}, { sections: 1 }, { sections: 3 }, { sections: 4 }];
+export function buildThreadTool(s: ToolShape, internal: boolean, datum: { origin: Vec3; axis: Vec3; zero: Vec3 }, z0: number, z1: number, tol: number, beside: number, firstFaceId: number, guardFaceId: number, variant: ToolVariant = {}): Solid {
   const y = cross3(datum.axis, datum.zero);
   const positions: number[] = [];
   const triangles: number[] = [];
@@ -147,7 +159,7 @@ export function buildThreadTool(s: ToolShape, internal: boolean, datum: { origin
   };
 
   const m = s.points.length;
-  const { angles, snap } = anglesOf(s, z0, z1, tol);
+  const { angles, snap } = anglesOf(s, z0, z1, tol, variant.sections ?? 0);
   const n = angles.length;
   // the helix g: the profile point g mod m, shifted by whole pitches
   const offsetOf = (g: number) => s.points[((g % m) + m) % m].a + Math.floor(g / m) * s.pitch;

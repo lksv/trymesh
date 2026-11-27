@@ -7,7 +7,7 @@ import type { CopyTag, FaceName, Facts, Id, Solid, ThreadEnd, ThreadFeature, Thr
 import { ANGLE_TOLERANCE, LENGTH_TOLERANCE, add3, cross3, dot3, faceKey, len3, mul3, sub3, unit3 } from '../util';
 import { bandOf } from './body-boolean';
 import type { State } from './state';
-import { MAX_THREAD_TRIANGLES, MIN_THREAD_DEPTH_TOLERANCES, THREAD_TOOL_FACES, buildThreadTool, threadToolFaces, threadTriangles, toolShape } from './tool-thread';
+import { MAX_THREAD_TRIANGLES, MIN_THREAD_DEPTH_TOLERANCES, THREAD_TOOL_FACES, type ToolVariant, buildThreadTool, threadToolFaces, threadTriangles, toolShape } from './tool-thread';
 
 const TAU = 2 * Math.PI;
 
@@ -378,11 +378,16 @@ export function turned(v: Vec3, axis: Vec3, angle: number): Vec3 {
 // ---------------------------------------------------------------- the records
 
 // What the state keeps of a thread: the published thread without `bodies` and `walls`, with the
-// number of its face, and `stated`, the hand its feature states (a mirror of a body turns `hand`
-// and the warning `mirroredThread` compares the two).
+// number of its face, `stated`, the hand its feature states (a mirror of a body turns `hand` and
+// the warning `mirroredThread` compares the two), and `sense`, how the `phase` of its feature turns
+// its `zero` about its axis: +1 on a listed face, times −1 for every reflection on the way to it
+// (a copy through a mirror pattern of features, a mirrored copy of the body, an insertion placed
+// with a mirror). Adding x to the phase turns this helix by `sense · x` (the review of stage 2:
+// `seat` reads it).
 export interface ThreadRecord extends Omit<ThreadResult, 'bodies' | 'face' | 'walls'> {
   face: number;
   stated: 'right' | 'left';
+  sense: 1 | -1;
 }
 
 // A record moved with its body (a copy of a pattern of a body, the placement of an insertion, the
@@ -399,6 +404,7 @@ export function movedThread(record: ThreadRecord, transform: RigidTransform, fac
     axis: unit3(transformVector(transform, record.axis)),
     zero: unit3(transformVector(transform, record.zero)),
     hand: flipped ? (record.hand === 'right' ? 'left' : 'right') : record.hand,
+    sense: flipped ? (record.sense === 1 ? -1 : 1) : record.sense,
   };
 }
 
@@ -490,6 +496,7 @@ export function threadRecords(feature: ThreadFeature, state: State, solid: Solid
     // the datum: of a listed face the model's axis turned by the phase; of a copy that of its listed
     // face carried by the transforms of its further tags, turned for where its own wall starts
     let zero: Vec3;
+    let sense: 1 | -1 = 1;
     if (i < listed.length) zero = turned(baseZero(axis), axis, feature.phase ?? 0);
     else {
       const copy = copies[i - listed.length];
@@ -498,6 +505,7 @@ export function threadRecords(feature: ThreadFeature, state: State, solid: Solid
         const t = state.copyTransforms.get(copyKey(tag)) as RigidTransform;
         return sum ? compose(t, sum) : t;
       }, undefined) as RigidTransform;
+      if (mirrors(transform)) sense = -1; // the phase turns the carried datum the other way
       const carriedOrigin = transformPoint(transform, source.origin);
       const carriedZero = transformVector(transform, source.zero);
       const delta = dot3(sub3(origin, carriedOrigin), axis);
@@ -518,6 +526,7 @@ export function threadRecords(feature: ThreadFeature, state: State, solid: Solid
       starts: profile.starts,
       hand: feature.hand,
       stated: feature.hand,
+      sense,
       ...(feature.label !== undefined ? { label: feature.label } : {}),
       radius: wall.radius,
       origin,
@@ -564,9 +573,10 @@ export function threadRecords(feature: ThreadFeature, state: State, solid: Solid
 // model); `guards` is that count of numbers. Refused before the build by the checks that exist
 // because of the mesh (design.md, "The tool and the boolean").
 export interface ThreadToolPlan {
-  build(first: number): { solid: Solid; faces: { name: FaceName; info: FaceInfo }[] };
+  build(first: number, variant?: ToolVariant): { solid: Solid; faces: { name: FaceName; info: FaceInfo }[] };
   walls: number;
   triangles: number;
+  trianglesOf(variant: ToolVariant): number; // the count of a variant, for the cap
 }
 export function threadToolPlan(feature: ThreadFeature, made: Extract<ThreadStepResult, { records: unknown }>, state: Pick<State, 'chordTolerance'>, solid: Solid): ThreadToolPlan | { refs: unknown[]; detail: string } {
   const tol = state.chordTolerance;
@@ -612,12 +622,13 @@ export function threadToolPlan(feature: ThreadFeature, made: Extract<ThreadStepR
   return {
     walls: placed.length,
     triangles,
-    build: (first) => {
+    trianglesOf: (variant) => placed.reduce((sum, p) => sum + threadTriangles(p.shape, p.z0, p.z1, tol, variant), 0),
+    build: (first, variant = {}) => {
       const solids: Solid[] = [];
       const faces: { name: FaceName; info: FaceInfo }[] = [];
       for (const [i, p] of placed.entries()) {
         const datum = { origin: p.record.origin, axis: p.record.axis, zero: p.record.zero };
-        solids.push(buildThreadTool(p.shape, p.wall.internal, datum, p.z0, p.z1, tol, lift, first + THREAD_TOOL_FACES.length * i, first + THREAD_TOOL_FACES.length * placed.length + i));
+        solids.push(buildThreadTool(p.shape, p.wall.internal, datum, p.z0, p.z1, tol, lift, first + THREAD_TOOL_FACES.length * i, first + THREAD_TOOL_FACES.length * placed.length + i, variant));
         faces.push(...threadToolFaces(feature.id, p.listed, p.tags, p.shape, p.wall.internal, datum, p.z0, p.z1, p.wall.axis));
       }
       return { solid: joinedSolids(solids), faces };
@@ -755,6 +766,10 @@ export function threadsOn(state: Pick<State, 'threads' | 'faceInfos' | 'chordTol
 // object published for a record is the same from one evaluation to the next for as long as its
 // face name, its bodies and their stretches are the same.
 const PUBLISHED = new WeakMap<ThreadRecord, { key: string; result: ThreadResult }>();
+// `sense` of the record of a published thread (not published itself: the check of collisions reads
+// it for `seat`); 1 for an object this module did not publish.
+const SENSES = new WeakMap<ThreadResult, 1 | -1>();
+export const phaseSense = (thread: ThreadResult): 1 | -1 => SENSES.get(thread) ?? 1;
 export function threadResults(state: Pick<State, 'threads' | 'bodies' | 'faceNames' | 'faceInfos' | 'chordTolerance'>): ThreadResult[] {
   if (state.threads.length === 0) return [];
   const results: ThreadResult[] = [];
@@ -783,9 +798,10 @@ export function threadResults(state: Pick<State, 'threads' | 'bodies' | 'faceNam
       results.push(kept.result);
       continue;
     }
-    const { feature, face: _face, stated: _stated, ...rest } = record;
+    const { feature, face: _face, stated: _stated, sense, ...rest } = record;
     const result: ThreadResult = { feature, face, bodies, ...rest, walls };
     PUBLISHED.set(record, { key, result });
+    SENSES.set(result, sense);
     results.push(result);
   }
   return results;

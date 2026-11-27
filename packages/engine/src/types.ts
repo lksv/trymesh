@@ -1877,7 +1877,9 @@ export interface Interference {
 //   pair is free afterwards (a clearance below the chord tolerance, a shank or an end may still
 //   meet), it holds for the pose asked about, and both are 0 when the helices are one curve
 //   already and the collision has another cause. A `phase` belongs to a feature: on a thread with
-//   several faces or copies it turns them all.
+//   several faces or copies it turns them all (a copy through a mirror the other way, which the
+//   entry of that copy accounts for). An entry of a thread of an inserted document is marked
+//   `inserted` (change it in that document) and comes after the one this document can apply.
 export interface InterferenceReport {
   pairs: (Interference & { mismatch?: string; seat?: Seat[] })[];
   fits: Interference[];
@@ -1890,6 +1892,7 @@ export interface Seat {
   feature: Id;
   face: FaceName;
   addToPhase: number; // radians
+  inserted?: true; // the feature is of an inserted document: this document cannot change its phase
 }
 // A pair of bodies of which a part of what they share is what a thread accounts for (D76): a screw
 // in a bore with a cosmetic thread, a plain rod of the nominal diameter in it. What is left of the

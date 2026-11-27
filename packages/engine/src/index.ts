@@ -40,7 +40,7 @@ export { EXPORT_FORMATS, exportPathProblem } from './export/index';
 export { meshNotes } from './export/notes';
 export { type ThreadProfile, threadLabel, threadLift, threadProfile } from './recompute/thread';
 // the tool of a modelled thread, for the tests of the kernel adapter (D76)
-export { MAX_THREAD_TRIANGLES, THREAD_TOOL_FACES, type ToolShape, buildThreadTool, meanSquare, radiusAt, threadTriangles, toolShape } from './recompute/tool-thread';
+export { MAX_THREAD_TRIANGLES, THREAD_TOOL_ATTEMPTS, THREAD_TOOL_FACES, type ToolShape, type ToolVariant, buildThreadTool, meanSquare, radiusAt, threadTriangles, toolShape } from './recompute/tool-thread';
 export { IMPORT_FORMATS, type ImportOutcome, type MeshReport, fileNameOf, fileStemOf, idFromFile, importAccept, importFormatOf, importMesh, meshNameOf } from './import/index';
 export { type AnyImportFormat, type ImportCatalog, ImportFailure, type ImportFormat, type ImportFormatSpec, type ImportFormats, type ImportOptions, type ReadTriangles } from './import/spec';
 export { STL_IMPORT_OPTIONS, UNIT_IN_MM } from './import/stl';

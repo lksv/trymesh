@@ -222,11 +222,13 @@ describe('the datum', () => {
   });
 
   it('a record moved by a mirror turns its hand; by an insertion it gets the prefix', () => {
-    const record: ThreadRecord = { feature: 'm6', face: 3, stated: 'right', internal: true, modelled: false, diameter: 6, pitch: 1, depth: 0.54, flankAngle: Math.PI / 3, clearance: 0, starts: 1, hand: 'right', radius: 2.5, origin: [1, 2, 3], axis: [0, 0, 1], zero: [1, 0, 0], from: 0, to: 8, ends: { start: 'open', end: 'open' }, runOut: { start: 0, end: 0 } };
+    const record: ThreadRecord = { feature: 'm6', face: 3, stated: 'right', sense: 1, internal: true, modelled: false, diameter: 6, pitch: 1, depth: 0.54, flankAngle: Math.PI / 3, clearance: 0, starts: 1, hand: 'right', radius: 2.5, origin: [1, 2, 3], axis: [0, 0, 1], zero: [1, 0, 0], from: 0, to: 8, ends: { start: 'open', end: 'open' }, runOut: { start: 0, end: 0 } };
     const mirror = { matrix: [[1, 0, 0], [0, -1, 0], [0, 0, 1]], translation: [0, 0, 0] } as never;
     const m = movedThread(record, mirror, 7);
     expect([m.face, m.hand, m.stated, m.origin, m.zero, m.feature]).toEqual([7, 'left', 'right', [1, -2, 3], [1, 0, 0], 'm6']);
     expect(movedThread(m, mirror, 9).hand).toBe('right');
+    // the phase turns a mirrored record the other way, and a second mirror back (the review of stage 2)
+    expect([m.sense, movedThread(m, mirror, 9).sense]).toEqual([-1, 1]);
     const placed = movedThread(record, { matrix: [[1, 0, 0], [0, 1, 0], [0, 0, 1]], translation: [100, 0, 0] } as never, 11, 'ins/');
     expect([placed.feature, placed.origin, placed.hand]).toEqual(['ins/m6', [101, 2, 3], 'right']);
   });

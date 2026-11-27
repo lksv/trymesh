@@ -2,7 +2,7 @@
 // a thread accounts for (D76).
 import { INTERFERENCE_THRESHOLD, THREAD_PIECE_VOLUME, type SharedVolume, type ThreadJudgement, type ThreadZone, boxesApart, goesAround, interferenceReport, joinedZones, movedZone, onOneLine, ringBox, ringOf, sharedBy, threadZone, threadsAgree } from '../interference';
 import { bandOf } from '../recompute/body-boolean';
-import { precisionOf, threadLift } from '../recompute/thread';
+import { phaseSense, precisionOf, threadLift } from '../recompute/thread';
 import { type RigidTransform, inverse, pieceSolids, transformPoint, transformVector, volumeOf } from '../solid';
 import type { BodyResult, Id, InterferenceReport, Seat, Solid, Threaded, ThreadResult, Vec3 } from '../types';
 import { ANGLE_TOLERANCE, cross3, dot3, sub3 } from '../util';
@@ -123,11 +123,14 @@ function judgeThreaded(context: QueryContext, a: Id, b: Id, pair: { a: BodyResul
 // How to seat two modelled threads that agree (design.md of D76, "The check of collisions"; owner,
 // 2026-11-27): the helix of the first, followed along the line to the origin of the second, crosses
 // there at the angle Δ from the `zero` of the second, about the direction of the second, taken to
-// the nearest of the `starts` positions. The second gets Δ, the first −Δ when the two run the same
-// way and Δ when they run opposite ways. The second is in the frame of the first by `relative`.
-// Exact from the records: the middle of the crest of a pin and of the groove of a bore are one
-// curve whatever the clearances.
-function seatOf(first: ThreadResult, second: ThreadResult, relative: RigidTransform | undefined): Seat[] {
+// the nearest of the `starts` positions. The `zero` of the second has to turn by Δ, that of the
+// first by −Δ when the two run the same way and by Δ when they run opposite ways. Adding x to the
+// `phase` of a feature turns the `zero` of a record by `sense · x` (`phaseSense`: −1 for a record
+// that went through a mirror; the review of stage 2), so each entry is its turn times its sense.
+// The second is in the frame of the first by `relative`. Exact from the records: the middle of the
+// crest of a pin and of the groove of a bore are one curve whatever the clearances. An entry whose
+// feature is of an inserted document (a prefixed ID) is marked `inserted` and comes last.
+export function seatOf(first: ThreadResult, second: ThreadResult, relative: RigidTransform | undefined, senseOf: (thread: ThreadResult) => 1 | -1 = phaseSense): Seat[] {
   const [o2, a2, z2] = relative ? [transformPoint(relative, second.origin), transformVector(relative, second.axis), transformVector(relative, second.zero)] : [second.origin, second.axis, second.zero];
   const [o1, a1, z1] = [first.origin, first.axis, first.zero];
   const turn = first.hand === 'left' ? -1 : 1;
@@ -141,10 +144,9 @@ function seatOf(first: ThreadResult, second: ThreadResult, relative: RigidTransf
   let delta = raw - period * Math.round(raw / period);
   if (Math.abs(delta) <= ANGLE_TOLERANCE) delta = 0;
   const sameWay = dot3(a1, a2) > 0;
-  return [
-    { feature: first.feature, face: first.face, addToPhase: delta === 0 ? 0 : sameWay ? -delta : delta },
-    { feature: second.feature, face: second.face, addToPhase: delta },
-  ];
+  const entry = (thread: ThreadResult, turnBy: number): Seat => ({ feature: thread.feature, face: thread.face, addToPhase: turnBy === 0 ? 0 : senseOf(thread) * turnBy, ...(thread.feature.includes('/') ? { inserted: true as const } : {}) });
+  const entries = [entry(first, sameWay ? -delta : delta), entry(second, delta)];
+  return [...entries.filter((e) => !e.inserted), ...entries.filter((e) => e.inserted)];
 }
 
 // The ring of a zone with the numbers of its body; the `index`-th ring cut out of one body carries
@@ -214,7 +216,7 @@ export const interference: QuerySpec<typeof INTERFERENCE_ARGS, InterferenceRepor
     '`threaded` (only when it has an entry): pairs of which a part of what they share is what a thread accounts for (a screw in a tapped hole, a plain rod of the nominal diameter in it), each `{ a, b, volume, threads }` with the volume excused (mm³) and the thread of every zone taken (`{ feature, face, body }`). ' +
     'What is left of such a pair is judged as every pair: a fit left (a head in its counterbore) puts it in `fits` as well, a collision left (a screw too long for a blind bore) in `pairs` alone, with the volume and depth of what is left; a thread excuses only what goes around its axis within its zone (a body pushed in from one side, a pin through a solid block, a rod thicker than the major diameter still collide). ' +
     'Two threads that meet and do not agree (another pitch, hand, diameter, flank angle or depth, two bores or two pins, axes off one line) make the pair a collision judged whole, its entry of `pairs` with `mismatch` saying what differs. ' +
-    'Two modelled threads are judged by their meshes (nothing is excused); an entry of `pairs` between two that agree carries `seat`: for each of the two threads (`feature`, `face`) `addToPhase`, the angle in radians to add to the `phase` of its feature so that the two are one helix (either one seats the pair, for the pose asked about; zero for both when the helices are one curve already and the collision has another cause).',
+    'Two modelled threads are judged by their meshes (nothing is excused); an entry of `pairs` between two that agree carries `seat`: for each of the two threads (`feature`, `face`) `addToPhase`, the angle in radians to add to the `phase` of its feature so that the two are one helix (either one seats the pair, for the pose asked about; a phase turns every face and copy of its feature; an entry marked `inserted` belongs to an inserted document and comes last; zero for both when the helices are one curve already and the collision has another cause).',
   args: INTERFERENCE_ARGS,
   significant: { volume: 6, depth: 4 },
   units: { volume: 'mm3', depth: 'mm' },

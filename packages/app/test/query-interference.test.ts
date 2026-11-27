@@ -98,5 +98,10 @@ describe('the views of the collisions and of the gap with threads (D76)', () => 
     expect(texts(interferenceView.answer?.(turned, {} as never, panelOf()) ?? [])).toEqual(['body nut × body stud17.8 mm³; the threads are turned against each other: add -90° to the phase of nt (or turn the other)']);
     const seated: InterferenceReport = { ...turned, pairs: [{ ...turned.pairs[0], seat: [{ feature: 'nt', face, addToPhase: 0 }, { feature: 'st', face, addToPhase: 0 }] }] };
     expect(texts(interferenceView.answer?.(seated, {} as never, panelOf()) ?? [])).toEqual(['body nut × body stud17.8 mm³; the threads are seated, the collision has another cause']);
+    // an entry of an inserted document (it comes last) is named only when no entry of this document is there
+    const inserted: InterferenceReport = { ...turned, pairs: [{ ...turned.pairs[0], seat: [{ feature: 'st', face, addToPhase: Math.PI / 2 }, { feature: 'ins/nt', face, addToPhase: -Math.PI / 2, inserted: true }] }] };
+    expect(texts(interferenceView.answer?.(inserted, {} as never, panelOf()) ?? [])).toEqual(['body nut × body stud17.8 mm³; the threads are turned against each other: add 90° to the phase of st']);
+    const bothInserted: InterferenceReport = { ...turned, pairs: [{ ...turned.pairs[0], seat: [{ feature: 'ins/nt', face, addToPhase: -Math.PI / 2, inserted: true }, { feature: 'ins/st', face, addToPhase: Math.PI / 2, inserted: true }] }] };
+    expect(texts(interferenceView.answer?.(bothInserted, {} as never, panelOf()) ?? [])).toEqual(['body nut × body stud17.8 mm³; the threads are turned against each other: add -90° to the phase of ins/nt (in its inserted document)']);
   });
 });

@@ -5,6 +5,7 @@
 import type { NumberSpec } from '../catalog';
 import { applyTool, issue, lookup } from '../recompute/services';
 import { type ThreadRecord, threadRecords, threadToolPlan } from '../recompute/thread';
+import { MAX_THREAD_TRIANGLES, THREAD_TOOL_ATTEMPTS } from '../recompute/tool-thread';
 import type { Step, StepContext } from '../recompute/state';
 import type { FaceName, ThreadFeature } from '../types';
 import { faceKey } from '../util';
@@ -101,15 +102,19 @@ function step(feature: ThreadFeature, context: StepContext): Step {
   const plan = threadToolPlan(feature, made, state, solid);
   if ('detail' in plan) return failed('invalidThread', plan.refs, plan.detail);
   const first = state.faceNames.length;
-  const applied = applyTool({ operation: 'cut', targets: [feature.body], build: (_targets, firstFaceId) => plan.build(firstFaceId) }, state, deps.kernel);
-  if (!applied.ok) return failed(applied.code, applied.refs, applied.code === 'kernelFailure' ? `${applied.detail ?? ''}; a small change of phase or offset gives another mesh` : applied.detail);
-  const facts = { ...made.facts, triangles: plan.triangles };
+  // while the kernel refuses the cut, the same surfaces with another mesh (THREAD_TOOL_ATTEMPTS)
+  const cut = (attempt: number) => applyTool({ operation: 'cut', targets: [feature.body], build: (_targets, firstFaceId) => plan.build(firstFaceId, THREAD_TOOL_ATTEMPTS[attempt]) }, state, deps.kernel);
+  let attempt = 0;
+  let applied = cut(0);
+  while (!applied.ok && applied.code === 'kernelFailure' && attempt + 1 < THREAD_TOOL_ATTEMPTS.length && plan.trianglesOf(THREAD_TOOL_ATTEMPTS[attempt + 1]) <= MAX_THREAD_TRIANGLES) applied = cut(++attempt);
+  if (!applied.ok) return failed(applied.code, applied.refs, applied.code === 'kernelFailure' ? `${applied.detail ?? ''} (after ${attempt + 1} meshes of the tool); a small change of phase or offset gives another mesh` : applied.detail);
+  const facts = { ...made.facts, triangles: plan.triangles, ...(attempt ? { attempt: attempt + 1 } : {}) };
   if (applied.unchanged.length) return { state: done({ status: 'warning', warnings: [...warnings, issue('noEffect', [feature.body])], facts }, { threads }) };
   // a hidden face of a tool left in the body: something crossed it within two lifts of the wall
-  const cut = applied.model.bodies[feature.body];
+  const result = applied.model.bodies[feature.body];
   const guard = first + 5 * plan.walls;
   const crossed = new Set<number>();
-  for (const face of cut.faceIds) if (face >= guard && face < guard + plan.walls) crossed.add(face - guard);
+  for (const face of result.faceIds) if (face >= guard && face < guard + plan.walls) crossed.add(face - guard);
   if (crossed.size) {
     const walls = [...crossed].sort((a, b) => a - b).map((i) => made.walls[i].name);
     return failed('invalidThread', walls, 'something stands in the way of the tool within two lifts of the wall on its air side (a rib or a boss on a pin, a key or a post in a bore): shape the wall for the thread, or make it cosmetic');

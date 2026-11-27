@@ -49,7 +49,7 @@
         button title="Holes for screws, nuts and inserts at points of a sketch": "Hole"
         button title="Chamfer edges of a body by a distance": "Chamfer"
         button title="Round edges of a body by a radius": "Fillet"
-        button title="A thread on bores or pins of a body (cosmetic: drawn as its helix, the mesh stays)": "Thread"
+        button title="A thread on bores or pins of a body (cosmetic: drawn as its helix, the mesh stays; modelled: its grooves cut into the mesh, for printing)": "Thread"
         button title="A plane offset from a plane or a planar face": "Plane"
         button title="Repeat extrusions that add or cut, or a body: around an axis, along a direction, or mirrored in a plane": "Pattern"
         button title="Place a stored mesh (a bought part read from an STL file) as a body": "Mesh"

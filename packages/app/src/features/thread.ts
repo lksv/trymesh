@@ -247,7 +247,7 @@ function sizeOf(feature: ThreadFeature): string | undefined {
 }
 
 export const thread: FeatureUi<ThreadFeature, Extra> = {
-  button: { label: 'Thread', title: 'A thread on bores or pins of a body (cosmetic: drawn as its helix, the mesh stays)' },
+  button: { label: 'Thread', title: 'A thread on bores or pins of a body (cosmetic: drawn as its helix, the mesh stays; modelled: its grooves cut into the mesh, for printing)' },
   create: { run: (host, at) => startDraft(host, form, at) },
   edit: (host, feature) => editDraft(host, form, feature, { size: sizeOf(feature) }),
   summary(host, f, result) {

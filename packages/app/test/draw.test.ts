@@ -1,6 +1,6 @@
 // What a cut of the model leaves of a line, and whether a point lies in a filled region (D38).
 import { describe, expect, it } from 'vitest';
-import { THREAD_POINTS, insideFill, keptSegments, threadLines } from '../src/draw';
+import { THREAD_POINTS, insideFill, keptSegments, threadLines, threadPieces } from '../src/draw';
 
 describe('a cut model', () => {
   const clip = { origin: [0, 0, 5] as [number, number, number], normal: [0, 0, 1] as [number, number, number] };
@@ -58,5 +58,16 @@ describe('the lines of a thread (D76)', () => {
     expect(threadLines({ ...thread, starts: 1, from: 0, to: 10 }).length / 6).toBe(10 * 48);
     expect(threadLines({ ...thread, starts: 1, from: 0, to: 200 }).length / 6).toBe(200 * Math.floor(THREAD_POINTS / 200));
     expect(threadLines({ ...thread, starts: 1, pitch: 0.2, from: 0, to: 1000 }).length / 6).toBe(8 * 5000);
+  });
+  // the review of stage 1: a thread on two bodies is drawn per body over the stretch of each
+  it('the pieces of a thread on two bodies: the span cut to the stretch of each, none where they do not meet', () => {
+    const two = { ...thread, starts: 1, from: 0, to: 8, bodies: ['lower', 'upper', 'far'], walls: [{ from: 0, to: 4 }, { from: 4, to: 16 }, { from: 9, to: 12 }] };
+    const pieces = threadPieces(two);
+    expect(pieces.map((piece) => piece.body)).toEqual(['lower', 'upper']);
+    const span = (segments: number[]) => {
+      const along = segments.filter((_, i) => i % 3 === 2).map((z) => 3 - z);
+      return [Math.min(...along), Math.max(...along)].map((v) => Number(v.toFixed(9)));
+    };
+    expect(pieces.map((piece) => span(piece.segments))).toEqual([[0, 4], [4, 8]]);
   });
 });

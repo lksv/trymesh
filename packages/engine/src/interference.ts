@@ -257,9 +257,12 @@ export function threadZone(thread: ThreadResult, body: Id, lift: number): Thread
   const i = thread.bodies.indexOf(body);
   if (i < 0) return undefined;
   const wall = thread.walls[i];
-  // an end of the thread at an end of the wall the body still has runs out there
-  const startHad = thread.ends.start !== 'inside' && wall.from <= thread.from + lift;
-  const endHad = thread.ends.end !== 'inside' && wall.to >= thread.to - lift;
+  // an end of the thread at an end of the wall the body still has runs out there: the stretch of
+  // the body ends within the lift of it (a stretch that goes on past the end, as the face of
+  // another body or of a union does, has the end no more); elsewhere the zone is the span cut to
+  // the stretch
+  const startHad = thread.ends.start !== 'inside' && Math.abs(wall.from - thread.from) <= lift;
+  const endHad = thread.ends.end !== 'inside' && Math.abs(wall.to - thread.to) <= lift;
   const from = startHad ? wall.from - thread.runOut.start : Math.max(thread.from, wall.from);
   const to = endHad ? wall.to + thread.runOut.end : Math.min(thread.to, wall.to);
   if (!(to > from)) return undefined;
@@ -385,18 +388,26 @@ export function goesAround(piece: Solid, zone: Pick<ThreadZone, 'origin' | 'axis
   return Math.hypot(cx / v, cy / v) < THREAD_AROUND * Math.sqrt(Math.max(0, rr / v));
 }
 
+// Two threads off one line whose directions make a larger angle than this cross each other, and
+// do not concern each other: each zone is judged on its own (a set-screw hole tapped across a
+// threaded bore). Below it, rings that meet are a mate off its line, a mismatch (D76, the review of
+// stage 1; measured: a stud leaning by 1° to 60° in its tapped hole still collides).
+export const CROSSING_ANGLE = Math.PI / 4;
+
 // Whether two zones of threads, in one frame, concern each other, and what differs between their
 // threads when they do. "On one line": the directions parallel or opposite within the angle
 // tolerance and the lines no further apart than the chord tolerance.
 // - `apart`: the rings of the two zones do not meet. On one line: the zones do not overlap along
-//   the axis or in their radii. Off one line: the two rings share no volume (`meet`, which builds
-//   them and asks the kernel).
+//   the axis or in their radii. Off one line: the directions make an angle above `CROSSING_ANGLE`,
+//   or the two rings share no volume (`meet`, which builds them and asks the kernel).
 // - `agree`: on one line, one internal and the other external, and the pitch, the number of starts,
 //   the hand as each lies, the nominal diameter, the flank angle and the depth the same.
 // - Else `mismatch`, in words.
 export function threadsAgree(a: ThreadZone, b: ThreadZone, chordTolerance: number, meet: () => boolean): 'apart' | 'agree' | { mismatch: string } {
   const on = line(a, b, chordTolerance);
   if (!on.one) {
+    // threads that cross (a tapped hole across a threaded bore) are no mates of each other
+    if (on.angle > CROSSING_ANGLE) return 'apart';
     if (!meet()) return 'apart';
     return { mismatch: on.angle > ANGLE_TOLERANCE ? `the axes meet at ${round((on.angle * 180) / Math.PI)}°` : `the axes are ${round(on.apart)} apart` };
   }

@@ -114,3 +114,15 @@ export function threadLines(thread: Pick<ThreadResult, 'origin' | 'axis' | 'zero
   }
   return out;
 }
+
+// The lines of a thread per body it lies on: on each, the span of the thread cut to the stretch
+// that body has of the wall (`walls`), so that the parts of a thread on two bodies (the halves of
+// a split, two links of a mechanism) are drawn each where its body stands.
+export function threadPieces(thread: Pick<ThreadResult, 'origin' | 'axis' | 'zero' | 'radius' | 'internal' | 'pitch' | 'starts' | 'hand' | 'from' | 'to' | 'bodies' | 'walls'>): { body: string; segments: number[] }[] {
+  return thread.bodies.flatMap((body, i) => {
+    const wall = thread.walls[i];
+    const [from, to] = [Math.max(thread.from, wall.from), Math.min(thread.to, wall.to)];
+    return to > from ? [{ body, segments: threadLines({ ...thread, from, to }) }] : [];
+  });
+}
+

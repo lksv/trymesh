@@ -2,7 +2,7 @@
 // edited, and what is highlighted, hovered and selected. The sketch mode and an open form add
 // theirs afterwards (sketch-mode.ts, `overlay` of a form).
 import { type EngineState, type Id, type Vec3, faceKey } from '@trymesh/engine';
-import { COLOR, keptSegments, loopSegments, planeSquare, pushPolyline, threadLines, toWorld } from './draw';
+import { COLOR, keptSegments, loopSegments, planeSquare, pushPolyline, threadPieces, toWorld } from './draw';
 import { uiOf } from './features/index';
 import { type PanelHost, type ViewPick, pickKey } from './host';
 import { type QueryPanel, queryScene } from './panels/query';
@@ -126,14 +126,16 @@ export function modelScene(host: SceneHost, queries: QueryPanel, sketch: { id: I
     if (blockedBy !== undefined) blocked.set(blockedBy, [...(blocked.get(blockedBy) ?? []), id]);
   }
   model.lines.push({ segments: keptSegments(outline, clip), color: COLOR.edge, width: 1.5 });
-  // the helix of every cosmetic thread on a body that is shown (D76), cut as the edges are
+  // the helix of every cosmetic thread on each shown body it lies on (D76), in the pose of that
+  // body and over the stretch it has, cut as the edges are
   const helices: number[] = [];
   for (const thread of evaluation.threads) {
     if (thread.modelled) continue;
-    const body = thread.bodies.find((id) => !host.bodyHidden(id));
-    if (body === undefined) continue;
-    const segments = placedSegments(threadLines(thread), pose(body).transform);
-    for (let i = 0; i < segments.length; i++) helices.push(segments[i]);
+    for (const piece of threadPieces(thread)) {
+      if (host.bodyHidden(piece.body)) continue;
+      const segments = placedSegments(piece.segments, pose(piece.body).transform);
+      for (let i = 0; i < segments.length; i++) helices.push(segments[i]);
+    }
   }
   if (helices.length) model.lines.push({ segments: keptSegments(helices, clip), color: COLOR.thread, width: 1 });
   // a body that is not in its pose is marked at the top of its box, with the joint that blocks it

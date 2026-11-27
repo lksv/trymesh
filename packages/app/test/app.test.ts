@@ -1659,6 +1659,11 @@ describe('the app, driven as a user drives it', () => {
     }
     h.row('Thread 1').click();
     h.record('selected: the summary');
+    // the review of stage 1: an edited thread of a size of the catalog shows that size
+    doubleClick(h, 'Thread 1');
+    h.record('edited: the size M10 in the picker, the walls said against it');
+    expect((h.field('Size (ISO metric)') as HTMLSelectElement).value).toBe('M10');
+    h.press('panel', 'Cancel');
     await matches(h, 'thread');
   });
 

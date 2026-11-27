@@ -518,11 +518,13 @@ export function threadRecords(feature: ThreadFeature, state: State, solid: Solid
     });
   }
 
-  // an earlier thread on a wall over a part of the same length
+  // an earlier thread on a wall of this body over a part of the same length: only one that
+  // applies to the body (the same sense of the face, a stretch of it here; a difference turns the
+  // pin of a threaded tool into a bore its record does not apply to)
   for (const [i, record] of records.entries()) {
     const span = spanAlong(record, walls[i].wall);
     for (const earlier of state.threads) {
-      if (earlier.face !== record.face) continue;
+      if (earlier.face !== record.face || !stretchOf(earlier, solid, state.faceInfos[record.face], state.chordTolerance)) continue;
       const other = spanAlong(earlier, walls[i].wall);
       if (Math.min(span[1], other[1]) - Math.max(span[0], other[0]) > LENGTH_TOLERANCE) {
         return { code: 'invalidThread', refs: [walls[i].name, { feature: earlier.feature }], detail: `the face has a thread of "${earlier.feature}" over a part of this length already` };
@@ -605,20 +607,38 @@ function faceSide(solid: Solid, face: number, info: FaceInfo | undefined): FaceS
   return found;
 }
 
-// The records of a state on the faces of a body, where the face has the sense of the thread: what
-// a pattern of the body carries to its copies.
-export function threadsOn(state: Pick<State, 'threads' | 'faceInfos'>, solid: Solid): ThreadRecord[] {
-  if (state.threads.length === 0) return [];
-  const faces = new Set(solid.faceIds);
-  return state.threads.filter((record) => faces.has(record.face) && faceSide(solid, record.face, state.faceInfos[record.face]).side === (record.internal ? -1 : 1));
+// The stretch of the axis of a record (from its origin along its axis) that a body has of its
+// face, when the record applies to the body: the body has the face with the material on the side
+// `internal` says, and that stretch overlaps the span `from`–`to` of the thread by more than the
+// lift of the body. A face two bodies share when the thread is made (a hole through a stack, a
+// split before the thread) is threaded only on the body whose stretch the span lies on.
+export function stretchOf(record: ThreadRecord, solid: Solid, info: FaceInfo | undefined, chordTolerance: number): { from: number; to: number } | undefined {
+  const side = faceSide(solid, record.face, info);
+  if (side.side !== (record.internal ? -1 : 1)) return undefined;
+  let [from, to] = [Infinity, -Infinity];
+  for (const v of side.vertices) {
+    const s = dot3(sub3(vertex(solid, v), record.origin), record.axis);
+    from = Math.min(from, s);
+    to = Math.max(to, s);
+  }
+  const overlap = Math.min(to, record.to) - Math.max(from, record.from);
+  return overlap > threadLift(chordTolerance, bandOf(solid)) ? { from, to } : undefined;
 }
 
-// The published list: for every record, the bodies of the state that have its face with the
-// material on the side `internal` says, and the stretch of the axis the face covers in each; a
-// record with no such body is left out. The object published for a record is the same from one
-// evaluation to the next for as long as its face name, its bodies and their stretches are the same.
+// The records of a state that apply to a body (`stretchOf`): what a pattern of the body carries to
+// its copies.
+export function threadsOn(state: Pick<State, 'threads' | 'faceInfos' | 'chordTolerance'>, solid: Solid): ThreadRecord[] {
+  if (state.threads.length === 0) return [];
+  const faces = new Set(solid.faceIds);
+  return state.threads.filter((record) => faces.has(record.face) && stretchOf(record, solid, state.faceInfos[record.face], state.chordTolerance) !== undefined);
+}
+
+// The published list: for every record, the bodies of the state it applies to (`stretchOf`), and
+// the stretch of the axis the face covers in each; a record with no such body is left out. The
+// object published for a record is the same from one evaluation to the next for as long as its
+// face name, its bodies and their stretches are the same.
 const PUBLISHED = new WeakMap<ThreadRecord, { key: string; result: ThreadResult }>();
-export function threadResults(state: Pick<State, 'threads' | 'bodies' | 'faceNames' | 'faceInfos'>): ThreadResult[] {
+export function threadResults(state: Pick<State, 'threads' | 'bodies' | 'faceNames' | 'faceInfos' | 'chordTolerance'>): ThreadResult[] {
   if (state.threads.length === 0) return [];
   const results: ThreadResult[] = [];
   const bodyIds = Object.keys(state.bodies);
@@ -633,17 +653,10 @@ export function threadResults(state: Pick<State, 'threads' | 'bodies' | 'faceNam
     const walls: { from: number; to: number }[] = [];
     for (const id of bodyIds) {
       if (!facesOf(id).has(record.face)) continue;
-      const solid = state.bodies[id];
-      const side = faceSide(solid, record.face, state.faceInfos[record.face]);
-      if (side.side !== (record.internal ? -1 : 1)) continue;
-      let [from, to] = [Infinity, -Infinity];
-      for (const v of side.vertices) {
-        const s = dot3(sub3(vertex(solid, v), record.origin), record.axis);
-        from = Math.min(from, s);
-        to = Math.max(to, s);
-      }
+      const stretch = stretchOf(record, state.bodies[id], state.faceInfos[record.face], state.chordTolerance);
+      if (!stretch) continue;
       bodies.push(id);
-      walls.push({ from, to });
+      walls.push(stretch);
     }
     if (bodies.length === 0) continue;
     const face = state.faceNames[record.face];

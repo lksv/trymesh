@@ -4,7 +4,7 @@
 // edges, each body in its own colour, optionally cut; no selection, sketches, planes or labels.
 import type { EngineState, Id, SectionResult } from '@trymesh/engine';
 import { type ImageRequest, type RenderedImage, type ViewCapability, cutOf } from '@trymesh/mcp/view-image';
-import { COLOR, keptSegments, loopSegments, threadLines } from './draw';
+import { COLOR, keptSegments, loopSegments, threadPieces } from './draw';
 import { type Pose, placedCorners, placedSegments, poseOf } from './pose';
 import type { PictureModel, View } from './viewport';
 
@@ -98,13 +98,16 @@ export function pictureModel(request: ImageRequest, pose: Pose = poseOf(request.
       for (let i = 0; i < segments.length; i++) edges.push(segments[i]);
     }
   }
-  // the helix of every cosmetic thread on a body drawn (D76), so that a picture shows which holes are threaded
+  // the helix of every cosmetic thread on each body drawn (D76), in its pose and over the stretch
+  // it has, so that a picture shows which holes are threaded
   const helices: number[] = [];
   for (const thread of request.state.evaluation.threads ?? []) {
-    const body = thread.modelled ? undefined : thread.bodies.find((id) => drawn.includes(id));
-    if (body === undefined) continue;
-    const segments = placedSegments(threadLines(thread), pose(body).transform);
-    for (let i = 0; i < segments.length; i++) helices.push(segments[i]);
+    if (thread.modelled) continue;
+    for (const piece of threadPieces(thread)) {
+      if (!drawn.includes(piece.body)) continue;
+      const segments = placedSegments(piece.segments, pose(piece.body).transform);
+      for (let i = 0; i < segments.length; i++) helices.push(segments[i]);
+    }
   }
   const regions = request.cut?.regions ?? [];
   const frame = request.cut?.frame;

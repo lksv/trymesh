@@ -239,10 +239,17 @@ function threadsFace(feature: ThreadFeature, name: FaceName): boolean {
   });
 }
 
+// The row of the catalog a thread was made from: its key is the label, and the diameter and the
+// pitch are the row's (an edited thread shows the size it has in the picker).
+function sizeOf(feature: ThreadFeature): string | undefined {
+  const row = feature.label !== undefined && Object.hasOwn(ROWS, feature.label) ? ROWS[feature.label] : undefined;
+  return row && row.diameter === feature.diameter && row.pitch === feature.pitch ? feature.label : undefined;
+}
+
 export const thread: FeatureUi<ThreadFeature, Extra> = {
   button: { label: 'Thread', title: 'A thread on bores or pins of a body (cosmetic: drawn as its helix, the mesh stays)' },
   create: { run: (host, at) => startDraft(host, form, at) },
-  edit: (host, feature) => editDraft(host, form, feature, {}),
+  edit: (host, feature) => editDraft(host, form, feature, { size: sizeOf(feature) }),
   summary(host, f, result) {
     const size = f.label ?? `${shownValue(f, 'diameter', f.diameter)} x ${shownValue(f, 'pitch', f.pitch)}`;
     const count = typeof result?.facts?.threads === 'number' ? result.facts.threads : f.faces.length;

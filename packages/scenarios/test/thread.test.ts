@@ -509,3 +509,38 @@ describe('a takeover of a projected circle', () => {
     expect(threadsOf(after, 't')).toHaveLength(1);
   });
 });
+
+// The review of stage 1 (D76).
+describe('the review of stage 1', () => {
+  // finding 2 (P1): the record of a threaded rod cut out of a block blocked a thread on the bore
+  it('a bore made by cutting a threaded rod out of a block takes a thread', () => {
+    const state = run(
+      newEngine(),
+      rod('r', 0, 0, 2.5, -1, 11),
+      thread('m5', { body: 'r', faces: [rodSide('r')], modelled: false, diameter: 5, pitch: 0.8, hand: 'right', direction: 'forward' }),
+      box('block', -10, -10, 10, 10, 0, 10),
+      combine('cut', 'difference', 'block', ['r']),
+      thread('m6in', { body: 'block', faces: [rodSide('r')], modelled: false, diameter: 6, pitch: 1, hand: 'right', direction: 'forward' }),
+    );
+    expect(statusOf(state, 'm6in')).toBe('ok');
+    expect(state.evaluation.threads.map((t) => [t.feature, t.bodies, t.internal])).toEqual([['m6in', ['block'], true]]);
+    // the earlier thread of the same body and sense is still found
+    const again = run(newEngine(), box('plate', 0, 0, 20, 20, 0, 8), hole('h', [['p', 10, 10]], 5, 'plate'), thread('a', m6('plate', [bore('h', 'p')])), thread('b', m6('plate', [bore('h', 'p')])));
+    expect(statusOf(again, 'b')).toBe('error:invalidThread');
+  });
+
+  // finding 1: a pattern of a body copies only the threads made on it
+  it('a pattern of the untapped one of two plates a hole goes through copies no thread', () => {
+    const engine = newEngine();
+    const state = run(
+      engine,
+      box('A', -10, -10, 10, 10, 0, 8),
+      box('B', -10, -10, 10, 10, 8, 16),
+      batch(addSketch('tapsS', XY), { type: 'addPoint', sketch: 'tapsS', id: 'h', x: 0, y: 0 }, constrain('tapsS', 'hf', { type: 'fixed', point: 'h', x: 0, y: 0 }), { type: 'addFeature', feature: { id: 'taps', name: 'taps', suppressed: false, type: 'hole', sketch: 'tapsS', points: ['h'], shape: { type: 'plain', diameter: 5 }, extent: { type: 'throughAll', side: 'forward' }, targets: ['A', 'B'] } }),
+      thread('t', m6('A', [bore('taps', 'h')], { direction: 'forward' })),
+      bodyPattern('copyB', 'B', along('X', 2, 40)),
+      bodyPattern('copyA', 'A', along('Y', 2, 40)),
+    );
+    expect(threadsOf(state, 't').map((t) => t.bodies)).toEqual([['A'], ['copyA/1']]);
+  });
+});

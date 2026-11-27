@@ -1159,18 +1159,17 @@ describe('two points level or plumb, the midpoint of two points, the distance of
     const clash = solver.solve(lines({ k, other }, solved.points));
     expect(clash.status).toBe('conflict');
     expect(clash.conflicting).toEqual(['k', 'other']);
-    // From a freehand estimate the library does not see the dependence: the same written by a
-    // parallel and a distance of a point only fails, with nothing named, also against a
-    // perpendicular, with which there is no solution at all. The second try of the adapter (the
-    // distance measured from the other line, review of D75) ends where the library does see it,
-    // and the conflict names the constraint added against the distance.
+    // From a freehand estimate the library does not see the dependence and only fails, with
+    // nothing named, as it does with the same written by a parallel and a distance of a point;
+    // against a perpendicular there is no solution at all. The second try of the adapter (the
+    // distance measured from the other line) "solves" both by shrinking a line to a point, which
+    // is not taken (second review of D75: the conflict found from there named `h`).
     const spelled: Record<Id, Constraint> = { par: { type: 'parallel', a: 'ab', b: 'ce' }, d: dim({ type: 'distancePointLine', point: 'a', line: 'ce', value: 15 }) };
     const perpendicular: Constraint = { type: 'perpendicular', a: 'ab', b: 'ce' };
     for (const against of [other, perpendicular]) {
       expect(solver.solve(lines({ ...spelled, against }))).toMatchObject({ status: 'failed', conflicting: [] });
       const one = solver.solve(lines({ k, against }));
-      expect(one.status).toBe('conflict');
-      expect(one.conflicting).toContain('against');
+      expect(one).toMatchObject({ status: 'failed', conflicting: [] });
       expect(one.points).toEqual(lines({}).points); // the input comes back
     }
     const fixedLine = input({
@@ -1310,11 +1309,13 @@ describe('findings of the review of D75', () => {
     }
   });
 
-  it('two lines with a common end: at 0 they lie on one line and nothing is redundant; at a distance there is no solution', () => {
+  it('two lines with a common end: at 0 they lie on one line and nothing is redundant; at a distance the conflict is the constraint', () => {
     // the common end is the first point of both, and the last of one and the first of the other
     for (const [l1, l2] of [
       [{ a: 'p', b: 'q' }, { a: 'p', b: 'r' }],
       [{ a: 'q', b: 'p' }, { a: 'p', b: 'r' }],
+      [{ a: 'p', b: 'q' }, { a: 'r', b: 'p' }],
+      [{ a: 'q', b: 'p' }, { a: 'r', b: 'p' }],
     ]) {
       for (const [a, b] of [['l1', 'l2'], ['l2', 'l1']]) {
         const source = (value: number): SolveInput =>
@@ -1327,7 +1328,8 @@ describe('findings of the review of D75', () => {
         const r = solver.solve(source(0));
         expect(r).toMatchObject({ status: 'solved', redundant: [], degreesOfFreedom: 3 });
         expect(turn(r.points.p, r.points.q, r.points.p, r.points.r)).toBeCloseTo(0, 8);
-        expect(solver.solve(source(5)).status).not.toBe('solved');
+        // second review: measured from a far end, a line shrank to a point and the conflict named `anchor`
+        expect(solver.solve(source(5))).toMatchObject({ status: 'conflict', conflicting: ['k'] });
       }
     }
   });

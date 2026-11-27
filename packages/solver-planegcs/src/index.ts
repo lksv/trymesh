@@ -94,11 +94,13 @@ export async function createPlanegcsSolver(options: PlanegcsOptions = {}): Promi
         // The default algorithm (DogLeg) sometimes does not get there where another one does; FreeCAD does the same.
         if (first && !pass.ok && pass.conflicting.length === 0) pass = run(from, { ...extra, collapsed, algorithm: Algorithm.LevenbergMarquardt });
         // A distance of two lines measured from the other line (D75, `measuredEnd`): the same
-        // constraint, which the library may reach where it did not reach the first form.
+        // constraint, which the library may reach where it did not reach the first form. A pass
+        // that got there by shrinking one of the lines to a point is not taken: the failure stays
+        // a failure, without a conflict found in a state the sketch never had.
         if (first && !pass.ok && pass.conflicting.length === 0 && Object.values(from.constraints).some((c) => c.type === 'distanceLineLine' && c.driving)) {
           for (const algorithm of [undefined, Algorithm.LevenbergMarquardt]) {
             const turned = run(from, { ...extra, collapsed, flipped: true, algorithm });
-            if (turned.ok) return turned;
+            if (turned.ok && !collapsedLine(from, turned.points)) return turned;
           }
         }
         if (pass.ok) return pass;
@@ -303,10 +305,13 @@ function buildPrimitives(input: SolveInput, drag?: SolveInput['drag'], without?:
       if (!without?.has(id)) out.push({ id, type: 'parallel', l1_id: constraint.a, l2_id: constraint.b });
       // Two lines with a common end that are parallel lie on one line already: at 0 the second
       // primitive would say nothing (the library would call the constraint redundant), so it is
-      // left out; at another value it stays and is the conflict it should be.
-      const joined = a.a === b.a || a.a === b.b || a.b === b.a || a.b === b.b;
-      if (!without?.has(`${SECOND}${id}`) && !(joined && constraint.value === 0)) {
-        const from = measuredEnd(constraint, a, b, fixed, flipped === true);
+      // left out. At another value there is no solution, and the distance is measured from the
+      // common end itself, an end of the line it is measured to: the library then names this
+      // constraint as the conflict in its first pass. Measured from a far end, it shrank a line
+      // to a point and named another constraint (second review of D75).
+      const common = [a.a, a.b].find((end) => end === b.a || end === b.b);
+      if (!without?.has(`${SECOND}${id}`) && !(common !== undefined && constraint.value === 0)) {
+        const from = common !== undefined ? { point: common, line: constraint.b } : measuredEnd(constraint, a, b, fixed, flipped === true);
         out.push(constraint.value === 0 ? { id: `${SECOND}${id}`, type: 'point_on_line_pl', p_id: from.point, l_id: from.line } : { id: `${SECOND}${id}`, type: 'p2l_distance', p_id: from.point, l_id: from.line, distance: constraint.value });
       }
       continue;
@@ -348,19 +353,37 @@ const neverASpline = (id: Id): never => {
 // meaning; it decides whether the library gets there from a freehand estimate. A fixed end
 // measured to a free line makes that line turn and move at once (an axis of the origin as the
 // first line failed from 45°); an end of the free line measured to the held one only moves it.
-// So: an end that is not an end of the other line too, before a fixed one, in the order a.a, a.b,
-// b.a, b.b. `other` takes the first end of the other line by the same rule: the second try of a
-// solve that failed, since two free lines of which constraints hold one look alike here.
+// So: an end that is not fixed before a fixed one, in the order a.a, a.b, b.a, b.b. `other` takes
+// the first end of the other line by the same rule: the second try of a solve that failed, since
+// two free lines of which constraints hold one look alike here. (Lines with a common end do not
+// come here: the caller measures from that end.)
 type LineCurve = Extract<Curve, { type: 'line' }>;
 function measuredEnd(c: { a: Id; b: Id }, a: LineCurve, b: LineCurve, fixed: ReadonlySet<Id>, other: boolean): { point: Id; line: Id } {
   const ends = [
-    { point: a.a, line: c.b, across: b },
-    { point: a.b, line: c.b, across: b },
-    { point: b.a, line: c.a, across: a },
-    { point: b.b, line: c.a, across: a },
-  ].map((end, index) => ({ ...end, rank: (end.point === end.across.a || end.point === end.across.b ? 2 : 0) + (fixed.has(end.point) ? 1 : 0), index }));
-  ends.sort((p, q) => p.rank - q.rank || p.index - q.index);
+    { point: a.a, line: c.b },
+    { point: a.b, line: c.b },
+    { point: b.a, line: c.a },
+    { point: b.b, line: c.a },
+  ].map((end, index) => ({ ...end, held: fixed.has(end.point) ? 1 : 0, index }));
+  ends.sort((p, q) => p.held - q.held || p.index - q.index);
   return (other ? ends.find((end) => end.line !== ends[0].line) : undefined) ?? ends[0];
+}
+
+// Did a pass shrink a line of a driving distance of two lines to a point? Such a "solution" meets
+// the parallelism by having no direction, with anything else the sketch asks; the second try of a
+// solve must not be taken for one (second review of D75).
+const COLLAPSED = 1e-6; // of the length the line had in the input
+function collapsedLine(input: SolveInput, points: Record<Id, Point2>): boolean {
+  const length = (at: Record<Id, Point2>, line: LineCurve): number => Math.hypot(at[line.b].x - at[line.a].x, at[line.b].y - at[line.a].y);
+  return Object.values(input.constraints).some(
+    (c) =>
+      c.type === 'distanceLineLine' &&
+      c.driving &&
+      [c.a, c.b].some((id) => {
+        const line = input.curves[id];
+        return line?.type === 'line' && length(points, line) <= COLLAPSED * length(input.points, line);
+      }),
+  );
 }
 
 // The line a constraint names, or an error of the adapter.

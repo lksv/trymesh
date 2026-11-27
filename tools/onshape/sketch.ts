@@ -308,7 +308,11 @@ export function convertSketch(engine: Engine, report: Report, id: Id, name: stri
   const livePairs = pairs.filter((x) => x.record.fate === 'written' && x.record.ids.includes(x.command.id));
   if (livePairs.length) {
     const notChanged = new Set(promises.notChanged);
-    const p = probeSketch(engine, id, sketchChanges(engine, id, notChanged), [], livePairs);
+    // asked again after every pair that is helped: the distance of two lines of one pair may be
+    // what holds the next one parallel (a ∥ c with the distances a–b and b–c), and a second one
+    // there would be the redundant set, in a driving dimension that nothing removes as implied
+    const probe = () => probeSketch(engine, id, sketchChanges(engine, id, notChanged), [], livePairs);
+    let p = probe();
     const sketchNow = (): any => engine.getState().document.features.find((f) => f.id === id);
     // the next number after the last one written
     let next = 1 + Math.max(-1, ...Object.keys(sketchNow().constraints).map((k) => Number(/\.c(\d+)$/.exec(k)?.[1] ?? -1)));
@@ -322,15 +326,17 @@ export function convertSketch(engine: Engine, report: Report, id: Id, name: stri
       if (stored?.type === 'distancePointLine' && exec(engine, report, swap, `${name}: the distance of two lines for ${x.label}`)) {
         const after = engine.getState().evaluation.features[id];
         if (after?.status === 'ok' && !after.sketch?.conflicting.length) {
-          x.command.constraint = constraint;
+          // the command of the unit as it is now (a fall back to numbers makes copies of them)
+          ((x.record.commands as any[]).find((c) => c.id === cid) ?? x.command).constraint = constraint;
           x.record.detail = 'as `distanceLineLine`: the pair parted in the probe';
+          p = probe();
           continue;
         }
         engine.undo(); // the sketch did not take it: back to the distance of a point, and `parallel` below
       }
       const pid = `${id}.c${String(next++).padStart(3, '0')}`;
       const cmd: any = { type: 'addConstraint', sketch: id, id: pid, constraint: { type: 'parallel', a: x.a, b: x.b }, record: x.record };
-      if (exec(engine, report, strip(cmd), `${name}: parallel for ${x.label}`)) { x.record.commands.push(cmd); x.record.ids.push(pid); x.record.detail = 'with `parallel`: the pair parted in the probe'; }
+      if (exec(engine, report, strip(cmd), `${name}: parallel for ${x.label}`)) { x.record.commands.push(cmd); x.record.ids.push(pid); x.record.detail = 'with `parallel`: the pair parted in the probe'; p = probe(); }
     }
     for (const x of livePairs) promises.pairs.push({ sketch: id, a: x.a, b: x.b, constraint: x.record.key });
   }

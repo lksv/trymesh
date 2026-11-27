@@ -53,7 +53,7 @@ export function whatOf(c: any, entityType: Map<string, string>): string {
   if (t === 'DISTANCE' && p.direction?.value && p.direction.value !== 'MINIMUM') return `DISTANCE (${String(p.direction.value).toLowerCase()})`;
   if (t === 'DISTANCE' && k(p.localFirst) === 'line' && k(p.localSecond) === 'line') return 'DISTANCE of two lines';
   if ((t === 'HORIZONTAL' || t === 'VERTICAL') && k(p.localFirst) === 'point' && k(p.localSecond) === 'point') return `${t} of two points`;
-  if (t === 'MIDPOINT' && (p.localMidpoint || (k(p.localEntity1) === 'point' && k(p.localEntity2) === 'point'))) return 'MIDPOINT of two points';
+  if (t === 'MIDPOINT' && (p.localMidpoint || p.externalMidpoint || (k(p.localEntity1) === 'point' && k(p.localEntity2) === 'point'))) return 'MIDPOINT of two points';
   return t;
 }
 
@@ -170,8 +170,8 @@ export function mapConstraints(ctx: MapContext, list: any[]): { records: Constra
     }
     // the operands, local first, then the external ones resolved against them
     // `beside`: the operands an external one is fitted against, in the order the fit of `use`
-    // reads them (the constraint's type unless given): local ones by the names of their
-    // parameters, or operands resolved already
+    // reads them (the constraint's type unless given): by the names of their parameters the local
+    // ones and the external ones known without a search (the origin), or operands resolved already
     const slot = (name: string, beside: (string | Operand | undefined)[] = ['First', 'Second'], use: string = t): Operand | undefined | { lost: Cause; detail: string } => {
       const q = p[`local${name}`];
       if (typeof q?.value === 'string') return local(q.value);
@@ -179,7 +179,13 @@ export function mapConstraints(ctx: MapContext, list: any[]): { records: Constra
       const id = x?.queries?.flatMap((y: any) => y.deterministicIds ?? [])[0];
       if (id === undefined) return undefined;
       const op = rec.operands.find((o) => o.external && o.id === id && o.param === `external${name}`)!;
-      const locals = beside.map((other) => (typeof other !== 'string' ? other : typeof p[`local${other}`]?.value === 'string' ? local(p[`local${other}`].value) : undefined)).filter(Boolean) as Operand[];
+      const named = (other: string): Operand | undefined => {
+        if (typeof p[`local${other}`]?.value === 'string') return local(p[`local${other}`].value);
+        const outside = p[`external${other}`]?.queries?.flatMap((y: any) => y.deterministicIds ?? [])[0];
+        const known = outside === undefined ? undefined : knownOperand(outside, ctx.frame);
+        return known && 'k' in known ? known : undefined;
+      };
+      const locals = beside.map((other) => (typeof other === 'string' ? named(other) : other)).filter(Boolean) as Operand[];
       const r = ctx.resolve(id, op, locals, use);
       if ('lost' in r) { op.note = r.detail; return r; }
       op.resolved = r.id;

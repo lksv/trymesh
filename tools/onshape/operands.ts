@@ -266,7 +266,8 @@ export function edgeCandidates(engine: any, toBase: (w: V3) => V2, normal: V3, k
 // gives one candidate and the second end is then fitted as the image of the first.
 export function fitting(cands: Candidate[], type: string, locals: { k: string; at?: V2; ends?: [V2, V2]; radius?: number }[]): Candidate[] {
   const points = locals.filter((l) => l.k === 'point' && l.at).map((l) => l.at as V2);
-  const near = (a: V2, b: V2) => Math.hypot(a[0] - b[0], a[1] - b[1]) <= 1e-6;
+  // an image about the middle carries the error of the middle twice
+  const near = (a: V2, b: V2, tolerance = 1e-6) => Math.hypot(a[0] - b[0], a[1] - b[1]) <= tolerance;
   const pt = locals.find((l) => l.k === 'point')?.at;
   const round = locals.find((l) => l.k === 'circle' || l.k === 'arc');
   const line = locals.find((l) => l.k === 'line')?.ends;
@@ -290,8 +291,8 @@ export function fitting(cands: Candidate[], type: string, locals: { k: string; a
     else if (type === 'MIDPOINT_END' && points.length >= 1) {
       const image: V2 | undefined = c.kind === 'point' ? [2 * points[0][0] - c.at![0], 2 * points[0][1] - c.at![1]] : undefined;
       if (!image) ok = false;
-      else if (points.length === 2) ok = near(image, points[1]);
-      else ok = (c.at![0] < image[0] - 1e-6 || (Math.abs(c.at![0] - image[0]) <= 1e-6 && c.at![1] < image[1] - 1e-6)) && cands.some((o) => o.kind === 'point' && near(o.at!, image));
+      else if (points.length === 2) ok = near(image, points[1], 3e-6);
+      else ok = (c.at![0] < image[0] - 1e-6 || (Math.abs(c.at![0] - image[0]) <= 1e-6 && c.at![1] < image[1] - 1e-6)) && cands.some((o) => o.kind === 'point' && near(o.at!, image, 3e-6));
     } else if (type === 'EQUAL' && round) ok = (c.kind === 'circle' || c.kind === 'arc') && Math.abs(c.radius! - round.radius!) <= 1e-6;
     else if (type === 'EQUAL' && line) ok = c.kind === 'line' && Math.abs(Math.hypot(c.ends![1][0] - c.ends![0][0], c.ends![1][1] - c.ends![0][1]) - Math.hypot(line[1][0] - line[0][0], line[1][1] - line[0][1])) <= 1e-6;
     else if ((type === 'PARALLEL' || type === 'PERPENDICULAR') && line) {

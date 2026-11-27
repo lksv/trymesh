@@ -2,7 +2,7 @@
 // expression): the origin, the default planes, the angle, horizontal of two points, the distance of
 // two lines. Fixtures only.
 import { describe, expect, test } from 'vitest';
-import { expression, newEngine } from './common';
+import { engineNow, expression, newEngine } from './common';
 import { knownOperand } from './constraints';
 import { SketchKit, StudioKit, writeDump } from './kit';
 import { sketchFrame } from './sketch';
@@ -20,7 +20,7 @@ const convert = async (s: SketchKit, variables: { name: string; expression: stri
   const result = await convertStudio(input, studio.eid, report);
   const sketch = result.document.features.find((f: any) => f.type === 'sketch');
   const written = (i: number) => report.records[i].ids.map((id) => sketch.constraints[id]);
-  return { report, records: report.records, sketch, written };
+  return { report, result, records: report.records, sketch, written };
 };
 
 describe('the origin and the default planes', () => {
@@ -193,6 +193,23 @@ describe('horizontal of two points, the distance of two lines', () => {
     expect(written(0)).toMatchObject([{ type: 'verticalPoints' }]);
   });
 
+  test('review: a pair that the distance of two lines of another pair holds parallel keeps its distance of a point', async () => {
+    // a ∥ c, the distances a–b and b–c: b is free to turn, so both pairs part; the first one helped holds the second
+    const s = new SketchKit('Sketch 1', 'F1', XY);
+    const [a, b, c] = [s.line([0, 0], [10, 0]), s.line([0, 4], [10, 4]), s.line([0, 9], [10, 9])];
+    s.constrain('PARALLEL', { localFirst: a.id, localSecond: c.id });
+    s.constrain('DISTANCE', { localFirst: a.id, localSecond: b.id, direction: 'MINIMUM', length: { q: '4 mm' } });
+    s.constrain('DISTANCE', { localFirst: b.id, localSecond: c.id, direction: 'MINIMUM', length: { q: '5 mm' } });
+    const { written, records, report, result } = await convert(s);
+    expect(records.map((r) => r.fate)).toEqual(['written', 'written', 'written']);
+    expect([written(1), written(2)].map((w) => w.map((k: any) => k.type))).toEqual([['distanceLineLine'], ['distancePointLine']]);
+    expect(report.promises.S.pairs).toHaveLength(2);
+    // nothing redundant: a second distance of two lines would follow from the first and the parallel
+    const engine = engineNow();
+    expect(engine.load(JSON.stringify(result.document)).ok).toBe(true);
+    expect(engine.diagnoseSketch('Sketch_1')).toMatchObject({ status: 'solved', redundant: [], removable: [] });
+  });
+
   test('parallel through other constraints: one point–line distance; free to turn: the distance of two lines (D75); not parallel: lost', async () => {
     const s = new SketchKit('Sketch 1', 'F1', XY);
     const a = s.line([0, 0], [10, 0]);
@@ -215,6 +232,15 @@ describe('horizontal of two points, the distance of two lines', () => {
     expect(free.records[0]).toMatchObject({ fate: 'written', detail: 'as `distanceLineLine`: the pair parted in the probe' });
     expect(free.report.promises.S.pairs).toHaveLength(1);
     expect(free.sketch.constraints[free.records[1].ids[0]]).toMatchObject({ type: 'distance', value: 10 });
+
+    // the expression of the dimension goes with it
+    const x = new SketchKit('Sketch 1', 'F1', XY);
+    const [x1, x2] = [x.line([0, 0], [10, 0]), x.line([0, 4], [10, 4])];
+    x.constrain('DISTANCE', { localFirst: x1.id, localSecond: x2.id, direction: 'MINIMUM', length: { q: '#D' } });
+    const named = await convert(x, [{ name: 'D', expression: '4 mm' }]);
+    const did = named.records[0].ids[0];
+    expect(named.sketch.constraints[did]).toMatchObject({ type: 'distanceLineLine', value: 4 });
+    expect(named.sketch.expressions[`constraints/${did}/value`]).toBe('D');
 
     const n = new SketchKit('Sketch 1', 'F1', XY);
     const e = n.line([0, 0], [10, 0]);

@@ -1,6 +1,6 @@
 # Architecture: threads
 
-Part of [architecture.md](../architecture.md), the design as implemented. The feature type `thread` (D76), stage 1: the cosmetic thread, which records a thread on cylindrical faces of a body and leaves the mesh as it is; the catalog `metricThreads`; a thread in the check of collisions and in the smallest gap. The design with its alternatives, measurements, reviews and the stage of modelled threads is [d36/7a-thread/design.md](../d36/7a-thread/design.md); what changed at the implementation is its section "As implemented".
+Part of [architecture.md](../architecture.md), the design as implemented. The feature type `thread` (D76), stage 1: the cosmetic thread, which records a thread on cylindrical faces of a body and leaves the mesh as it is; the catalog `metricThreads`; a thread in the check of collisions and in the smallest gap; and the point between the stages, which says what the meshes leave out (the notes of an export, the print check, the rows of the parts list). The design with its alternatives, measurements, reviews and the stage of modelled threads is [d36/7a-thread/design.md](../d36/7a-thread/design.md); what changed at the implementation is its section "As implemented".
 
 ## The feature (D76)
 
@@ -57,6 +57,15 @@ interface ThreadFeature extends FeatureBase {
 - `hardwareHole` with the use `tapped` ([hole.md](hole.md)): a plain hole at the tap drill (plus the allowance), no label, and `thread` (`diameter`, `pitch`, `label`, with an allowance `clearance: '(allowance) / 2'`) for a thread feature on its bores.
 - The parts list leaves a hole whose bore carries a thread out of `unlabelled` (the screw is counted at the hole it comes through); a hole with one threaded bore of two counts one.
 
+## Between the stages: what the meshes leave out
+
+A cosmetic thread is not in the mesh, which is the point of it; the answers that hand the mesh on say so (owner, 2026-11-27, answers 50 and 56 of the design).
+
+- **The notes of an export** (`export/notes.ts`): `Exported.notes`, a line per written body with cosmetic threads, `body "plate": 6 cosmetic threads (M6), not in the mesh: tap or cut them after printing` (`cosmeticThreadNote`; the labels of its threads, else `diameter x pitch`, `threadLabel` of `recompute/thread.ts`). Each format that writes the mesh of a body adds the lines of the bodies it wrote (`cosmeticThreadNotes(bodies, context.threadsAsModelled)`): `stl` and `3mf` the chosen bodies, `urdf` and `mjcf` the bodies of their links. `dxf`, `svg` and `partsCsv` write no mesh and have none, and neither has a body without a cosmetic thread. A modelled thread (stage 2) is in the mesh and gets no line.
+- **MCP**: the tools `export` and `export_stl` answer `notes` beside the files the writer wrote; the hidden `_export` passes them on in its `ToolAnswer` of files, `_export_stl` computes them from `Evaluation.threads`.
+- **The print check**: `cosmeticThreads` of `PrintReport`, `{ body, threads }` for each judged body that has some.
+- **The parts list**: the threads of a body are part of the key of a row, compared by what does not depend on where the body stands: the feature, the face without its copy tags, `internal`, `modelled`, the profile (`diameter`, `pitch`, `depth`, `flankAngle`, `clearance`, `starts`), the hand, `from`, `to` and the label, as a sorted list. The state keeps no transform from a copy to its source, so a datum cannot be compared in one frame; this is the frame-free part of it. A pattern of a body carries the records of its source, so a body and its copies stay one row; a copy made before the thread of its source has none and is a row of its own; a mirrored copy is a row by its mesh, and its threads are those of the source with the hand turned. `threads` of a row: the threads of each body by kind, `{ label, internal, modelled, count }`; the file of the parts list writes them into the column *Note*.
+
 ## The app and MCP
 
 - MCP needs no tool of its own: the feature through `execute`, the catalog through `query`. `get_model` gives a body with threads a line per thread ("M6, internal, cosmetic, on taps/holeBore/h (m6)"); `get_body` the line and the published thread, rounded; `check_interference` passes `threaded` on with the volume rounded. `api.ts` has a line of how a thread is made among its conventions.
@@ -64,7 +73,8 @@ interface ThreadFeature extends FeatureBase {
 
 ## Known limits (stage 1)
 
-- Only cosmetic threads; `modelled: true` is refused. The point between the stages (the notes of an export, `cosmeticThreads` of the print check, the threads of a row of the parts list) is not done.
+- Only cosmetic threads; `modelled: true` is refused. That a modelled thread gets no note and is `modelled: true` in a row of the parts list is written and not tested until stage 2.
+- Two bodies of one mesh whose threads are on the same face of one feature but at different copies of a pattern of features are one row of the parts list, as their meshes are (the copy tags are left out of the key).
 - A later feature does not move the ends or shorten the span; `walls` says what is left. A wall cut away in its middle and filled again keeps its zone there.
 - The check of a threaded pair costs three to four booleans more than a plain pair; with a flush face (a seated head, a rod on a blind bottom) the measure of the rest dominates (about 0.2 s of 0.3 s a pair, measured in "As implemented" of the design).
 - A body a later cut leaves with no more than the lift of the span loses the thread.

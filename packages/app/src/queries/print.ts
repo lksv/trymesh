@@ -78,6 +78,8 @@ export const printView: QueryView<'print'> = {
       ...(result.bodies.length === 0 ? [h('p', { className: 'hint' }, 'The model has no body to print.')] : []),
       ...rowsOf(result).flatMap(row),
       ...(result.truncated ? [h('p', { className: 'hint' }, `Listed: ${result.truncated.shown} of ${count(result.truncated.total, 'face')} on the bed or overhanging by the smallest area listed or more. Raise "Most faces" to see the rest.`)] : []),
+      // the threads the meshes do not carry (D76)
+      ...(result.cosmeticThreads ? [h('p', { className: 'hint' }, `Cosmetic threads, not in the mesh and not judged here: ${result.cosmeticThreads.map((entry) => `${panel.bodyName(entry.body)} (${entry.threads})`).join(', ')}. Tap or cut them after printing.`)] : []),
     ];
   },
   scene(result, _args, panel) {

@@ -1,12 +1,12 @@
 // The view of the query `partsList` (D57): what to print and what to buy. Asked as soon as its form
 // opens. Three groups under their headings, *To print*, *To buy* and *Hardware*, a row per row of
 // the answer ("M3x6 screw × 4", with the material, a patch of the colour, the mass of one and of
-// all, and what the row comes from); then the sums, the hole features without a label and the
-// auxiliary bodies, each only when there is something to say. A picked row of bodies draws its
-// bodies in the colour of a selection; a picked row of hardware paints the bores and heads of its
-// hole features in the bodies that are parts, the faces the count was taken from (looked up in the
-// state the answer is of, not computed).
-import type { HardwareRow, PartRow, PartsList } from '@trymesh/engine';
+// all, what the row comes from, and the threads of each body, D76); then the sums, the hole
+// features without a label and the auxiliary bodies, each only when there is something to say.
+// A picked row of bodies draws its bodies in the colour of a selection; a picked row of hardware
+// paints the bores and heads of its hole features in the bodies that are parts, the faces the count
+// was taken from (looked up in the state the answer is of, not computed).
+import { type HardwareRow, type PartRow, type PartsList, threadsText } from '@trymesh/engine';
 import { h } from '../dom';
 import { featureNameIn } from '../issue-text';
 import { COLOR } from '../draw';
@@ -49,7 +49,7 @@ export const partsListView: QueryView<'partsList'> = {
         ? []
         : [
             h('h3', {}, heading),
-            ...rows.map((r) => line(index++, `Highlight the bodies: ${r.bodies.map((body) => panel.bodyName(body)).join(', ')}`, `${r.name} × ${r.count}`, [r.material, weighs(r), source(r)].filter((part) => part !== undefined).join(' · '), r.color)),
+            ...rows.map((r) => line(index++, `Highlight the bodies: ${r.bodies.map((body) => panel.bodyName(body)).join(', ')}`, `${r.name} × ${r.count}`, [r.material, weighs(r), source(r), r.threads ? `threads of each: ${threadsText(r.threads)}` : undefined].filter((part) => part !== undefined).join(' · '), r.color)),
           ];
     const out = [...bodies('To print', result.printed), ...bodies('To buy', result.bought)];
     if (result.hardware.length) out.push(h('h3', {}, 'Hardware'), ...result.hardware.map((r) => line(index++, 'Paint the holes the count was taken from', `${r.label} × ${r.count}`, holesText(r.holes, panel))));

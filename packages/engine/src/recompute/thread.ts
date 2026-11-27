@@ -578,6 +578,10 @@ function fitProblem(profile: ThreadProfile, wall: ThreadWall, clearance: number)
 
 // ---------------------------------------------------------------- what the evaluation publishes
 
+// The label of a published thread for people (D76, the notes of an export and the rows of the
+// parts list): its own label, else `diameter x pitch`.
+export const threadLabel = (thread: Pick<ThreadResult, 'label' | 'diameter' | 'pitch'>): string => thread.label ?? `${Number(thread.diameter.toPrecision(6))} x ${Number(thread.pitch.toPrecision(6))}`;
+
 // The side of the material of a face in a body and its vertices, kept by the mesh: +1 for a pin
 // (the normals point away from the axis), −1 for a bore, 0 for neither.
 interface FaceSide {

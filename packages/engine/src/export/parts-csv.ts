@@ -22,7 +22,9 @@
 // Mass total (g) | `totalMass`, or empty                                  | empty
 // Note           | with `copyOf`: "copy of <copyOf>", "mirror image of    | empty
 //                | <copyOf>" (`mirrored`) or "differs from <copyOf>"      |
-//                | (`differs`); else empty                                |
+//                | (`differs`); with `threads` (D76), after a "; ", the   |
+//                | threads of each body ("threads: 6 × M6 internal,       |
+//                | cosmetic"); else empty                                 |
 // IDs            | the bodies, separated by a space                       | the hole features, separated by a space
 //
 // `IDs` is for a reader who looks for the bodies in the model: an ID may itself hold a space, so
@@ -66,7 +68,10 @@ export type PartsCsvAbout = {
 export const grams = (value: number | undefined): string => (value === undefined ? '' : plain(Number(value.toPrecision(6))));
 
 // The note of a row of bodies: what the row comes from, when it says.
-export const partNote = (row: PartRow): string => (row.copyOf === undefined ? '' : `${row.differs ? PARTS_CSV.differs : row.mirrored ? PARTS_CSV.mirror : PARTS_CSV.copy}${row.copyOf}`);
+export const partNote = (row: PartRow): string =>
+  [row.copyOf === undefined ? '' : `${row.differs ? PARTS_CSV.differs : row.mirrored ? PARTS_CSV.mirror : PARTS_CSV.copy}${row.copyOf}`, row.threads ? `threads: ${threadsText(row.threads)}` : ''].filter((part) => part !== '').join('; ');
+// The threads of a row for people: "6 × M6 internal, cosmetic; 1 × M10 external, cosmetic".
+export const threadsText = (threads: NonNullable<PartRow['threads']>): string => threads.map((t) => `${t.count} × ${t.label} ${t.internal ? 'internal' : 'external'}, ${t.modelled ? 'modelled' : 'cosmetic'}`).join('; ');
 
 // The text of the file for an answer of the query.
 export function partsCsvText(list: PartsList): string {

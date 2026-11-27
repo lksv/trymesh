@@ -36,6 +36,7 @@ import {
   type BodyPropertiesResult,
   QueryFailure,
   bodyFileName,
+  cosmeticThreadNotes,
   bodyPropertiesWithoutBody,
   constraintOperands,
   constraintPath,
@@ -115,7 +116,9 @@ export interface FileEnvelope {
   base64: string;
   about?: Record<string, unknown>;
 }
-export type ToolAnswer = { kind: 'data'; data: Json } | { kind: 'files'; layout: 'file' | 'directory'; files: FileEnvelope[] } | { kind: 'image'; mediaType: 'image/png'; base64: string; about?: { [key: string]: Json } };
+// `notes` of files: lines for people about what the files leave out (D76: cosmetic threads), which
+// the server prints with the files it wrote.
+export type ToolAnswer = { kind: 'data'; data: Json } | { kind: 'files'; layout: 'file' | 'directory'; files: FileEnvelope[]; notes?: string[] } | { kind: 'image'; mediaType: 'image/png'; base64: string; about?: { [key: string]: Json } };
 
 // An error of a call: a wrong argument, an unknown sketch. It goes back to the caller as text.
 export class ToolError extends Error {}
@@ -1558,7 +1561,9 @@ export function tools(): Tool[] {
         if (args.perBody !== undefined && typeof args.perBody !== 'boolean') throw new ToolError('argument "perBody": true or false is expected');
         const file = (bodies: string[]) => ({ bodies, triangles: bodies.reduce((sum, id) => sum + all[id].solid.triangles.length / 3, 0), base64: base64(engine.exportMesh('stl', bodies)) });
         const unique = [...new Set(chosen)];
-        return { files: args.perBody === true ? unique.map((id) => ({ name: bodyFileName(id), ...file([id]) })) : [file(unique)] };
+        // the bodies with cosmetic threads, which the mesh does not carry (D76)
+        const notes = cosmeticThreadNotes(unique, () => engine.getState().evaluation.threads);
+        return { files: args.perBody === true ? unique.map((id) => ({ name: bodyFileName(id), ...file([id]) })) : [file(unique)], ...(notes.length ? { notes } : {}) };
       },
     },
     {
@@ -1574,7 +1579,7 @@ export function tools(): Tool[] {
         const answer = engine.export(format as ExportFormat, named(args.options) as never, askedState(engine, args));
         if (!answer.ok) throw new ToolError(`${answer.error.code}: ${answer.error.message}`);
         if (answer.result.empty !== undefined) throw new ToolError(answer.result.empty);
-        return { kind: 'files', layout: answer.result.layout, files: answer.result.files.map((file) => ({ path: file.path, mediaType: file.mediaType, base64: base64(file.bytes), ...(file.about ? { about: file.about } : {}) })) };
+        return { kind: 'files', layout: answer.result.layout, files: answer.result.files.map((file) => ({ path: file.path, mediaType: file.mediaType, base64: base64(file.bytes), ...(file.about ? { about: file.about } : {}) })), ...(answer.result.notes ? { notes: answer.result.notes } : {}) };
       },
     },
   ];

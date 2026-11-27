@@ -33,4 +33,13 @@ The view draws the helix of every cosmetic thread as a thin line (one line per s
 
 The query view of collisions shows the threaded pairs in a group of their own ("threaded, 68.9 mm³ excused"), and a pair whose two threads do not agree says what differs; the gap view has the contact `threaded` ([queries.md](queries.md)). The hole form has the use *tapped* among the sizes from the catalogs ([hole.md](hole.md)).
 
-**Implementation status**: stage 1 implemented (D76, branch `d36/7a`), covered by `packages/app/test/app.test.ts` (snapshot `thread.txt`), `draw.test.ts` (the lines of a thread) and `hover.test.ts` (the rows of a face with a thread). Not done: the toggle *Modelled* (stage 2); a size proposed from the radius of the picked face; checked in a browser only as far as "As implemented" of the design says.
+Between the stages (D76): what the meshes leave out is said where the app hands a mesh on or judges one.
+
+| Where | What it shows | Reads |
+|---|---|---|
+| The status bar after an export of the form *Export* | "Exported model.stl (… bytes). body "plate": 6 cosmetic threads (M6), not in the mesh: tap or cut them after printing." | `notes` of `Engine.export` |
+| The status bar after *Export STL* of the toolbar or of the line of a body | "Exported model.stl. body "plate": …"; nothing when no exported body has a cosmetic thread | `cosmeticThreadNotes` over `Evaluation.threads` |
+| The view of the print check | a hint after the rows: "Cosmetic threads, not in the mesh and not judged here: Plate (6). Tap or cut them after printing." | `cosmeticThreads` of `print` |
+| The view of the parts list | the detail of a row ends "threads of each: 6 × M6 internal, cosmetic"; a body with a cosmetic thread and its copy without one are two rows | `threads` of a row of `partsList` |
+
+**Implementation status**: stage 1 and the point between the stages implemented (D76, branch `d36/7a`), covered by `packages/app/test/app.test.ts` (snapshot `thread.txt`), `draw.test.ts` (the lines of a thread), `hover.test.ts` (the rows of a face with a thread), and for the point between the stages `export-form.test.ts`, `query-print.test.ts` and `query-parts-list.test.ts` (the detail of a row, the two buttons *Export STL*). Not done: the toggle *Modelled* (stage 2); a size proposed from the radius of the picked face; checked in a browser only as far as "As implemented" of the design says.

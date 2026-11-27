@@ -17,6 +17,7 @@ import type { ArgSpecs } from '../query/args';
 import { QueryFailure } from '../query/spec';
 import type { ExportFile } from '../types';
 import { NO_MECHANISM, ROBOT_FILES, ROBOT_OPTIONS, ROBOT_REFUSALS, type RobotAbout, type RobotJoint, type RobotTree, XML_HEAD, colorsOf, fileEffort, fileLength, fileVelocity, metres, rgba, robotTree, writtenOptions } from './robot';
+import { cosmeticThreadNotes, notesOf } from './notes';
 import type { ExportFormatSpec } from './spec';
 import { plain, significant, xmlText } from './text';
 
@@ -111,6 +112,6 @@ export const urdf: ExportFormatSpec<typeof URDF_OPTIONS> = {
     const about: RobotAbout = { ...tree.about, ...(notWritten.length ? { notWritten } : {}) };
     const text = urdfText(tree, { name: options.name ?? 'robot', collision, meshPrefix: options.meshPrefix ?? '' });
     const description: ExportFile = { path: ROBOT_FILES.urdf.path, mediaType: ROBOT_FILES.urdf.mediaType, bytes: new TextEncoder().encode(text), about };
-    return { layout: 'directory', files: [description, ...tree.meshes] };
+    return { layout: 'directory', files: [description, ...tree.meshes], ...notesOf(cosmeticThreadNotes(tree.links.flatMap((link) => link.bodies.map((written) => written.body)), context.threadsAsModelled)) };
   },
 };

@@ -1,8 +1,9 @@
 // Validation scenario 18 (D76, threads), the parts of stage 1 (cosmetic threads): a, the catalog;
 // b, a plate of tapped holes with a bolt in it, a flange with a circle and a mirror of tapped
 // holes, a printed tapped hole; e, the refusals. Built from the calls of
-// docs/d36/7a-thread/calls.ts against the real adapters. The point between the stages and stage 2
-// (c, a stud in a collar; d, a jar and its lid) are not part of this build.
+// docs/d36/7a-thread/calls.ts against the real adapters, and the point between the stages (the
+// notes of an export, the print check and the parts list, `betweenTheStages`). Stage 2 (c, a stud
+// in a collar; d, a jar and its lid) is not part of this build.
 import type { Command, EngineState, FaceName, HardwareHole, Id, InterferenceReport, ThreadResult } from '@trymesh/engine';
 import { DATA_CATALOGS } from '@trymesh/engine';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -93,6 +94,17 @@ describe('scenario 18, b: a plate of tapped holes', () => {
     const parts = unwrap(engine.query('partsList', {}));
     expect(parts.hardware.every((row) => !row.label.startsWith('M6'))).toBe(true);
     expect(parts.unlabelled?.some((hole) => hole.feature === 'taps') ?? false).toBe(false);
+  });
+
+  it('the point between the stages: the export says the threads of the plate are not in its mesh, the print check names it, its row of the parts list says them', () => {
+    const exported = unwrap(engine.export('stl', { bodies: ['plate'] }));
+    expect(exported.notes).toHaveLength(1);
+    expect(exported.notes![0]).toContain('plate');
+    expect(exported.notes![0]).toContain('6 cosmetic threads (M6)');
+    const print = unwrap(engine.query('print', { bodies: ['plate'], orientations: [{ by: { up: [0, 0, 1] } }] }));
+    expect(print.cosmeticThreads).toEqual([{ body: 'plate', threads: 6 }]);
+    const row = unwrap(engine.query('partsList', {})).printed.find((part) => part.bodies.includes('plate'));
+    expect(row?.threads).toEqual([{ label: 'M6', internal: true, modelled: false, count: 6 }]);
   });
 
   it('four in the row: eight threads, the thread feature untouched', () => {

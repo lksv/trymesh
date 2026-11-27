@@ -1,7 +1,7 @@
 // The properties of a body in the model panel (D48): the line of a body with what its properties
 // say, the form of a selected body (every change is one command), and the entries of properties
 // whose body is gone.
-import { type BodyPropertiesPatch, type BodyUse, DATA_CATALOGS, DENSITY, type Expr, type Id, MASS, type NumberSpec, bodyFileName, bodyPropertiesWithoutBody } from '@trymesh/engine';
+import { type BodyPropertiesPatch, type BodyUse, DATA_CATALOGS, DENSITY, type Expr, type Id, MASS, type NumberSpec, bodyFileName, bodyPropertiesWithoutBody, cosmeticThreadNote } from '@trymesh/engine';
 import { download, fmt, h, markProblem } from '../dom';
 import { expressionProblem, fieldText, parseField, valueText } from '../fields';
 import type { PanelHost } from '../host';
@@ -29,7 +29,12 @@ export function bodyRows(host: PanelHost, ids: Id[]): HTMLElement[] {
         'p',
         { className: 'hint body' },
         `${host.bodyName(id)}${USE_MARK[properties?.use ?? 'part']}: ${material}${mass}${fmt(volume)} mm³, ${size} mm `,
-        h('button', { className: 'link', textContent: 'Export STL', disabled: !exportable, title: 'This body alone, whatever its use, as it is at the end of the timeline', onclick: () => download(`${bodyFileName(id)}.stl`, new Uint8Array(host.engine.exportMesh('stl', [id])), 'model/stl') }),
+        h('button', { className: 'link', textContent: 'Export STL', disabled: !exportable, title: 'This body alone, whatever its use, as it is at the end of the timeline', onclick: () => {
+            download(`${bodyFileName(id)}.stl`, new Uint8Array(host.engine.exportMesh('stl', [id])), 'model/stl');
+            // a body with cosmetic threads: the mesh does not carry them (D76)
+            const note = cosmeticThreadNote(id, host.engine.getState().evaluation.threads);
+            if (note) host.say(`Exported ${bodyFileName(id)}.stl. ${note}.`);
+          } }),
       );
       return hoverRow(row, [`body:${id}`]); // marked while the body is under the pointer in the view
     });

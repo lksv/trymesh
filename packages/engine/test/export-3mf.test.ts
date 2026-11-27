@@ -26,6 +26,7 @@ const contextOf = (bodies: Record<Id, { solid: Solid; properties: Properties }>,
     state: { evaluation: { bodyProperties: Object.fromEntries(Object.entries(bodies).map(([id, body]) => [id, { use: 'part', ...body.properties }])) } },
     bodies: Object.fromEntries(Object.entries(bodies).map(([id, body]) => [id, { solid: body.solid }])),
     ...(deflater ? { deflater } : {}),
+    threadsAsModelled: () => [], // no body here has a thread (D76)
   }) as unknown as QueryContext;
 const sha256 = (data: Uint8Array) => createHash('sha256').update(data).digest('hex');
 // The package of the small model of the first test as the engine of master (8367ccc) wrote it,

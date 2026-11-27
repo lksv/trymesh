@@ -19,6 +19,7 @@ Part of [ui.md](../ui.md); how to read the tables is said there. Collisions, vol
 - **In the pose (D49).** The collisions are asked about the state shown, so in the pose of the mechanism, and a picked pair is highlighted where the pose puts its two bodies. *As modelled* in the form asks about the model as modelled. A body whose link is blocked makes the query fail with the message of the engine ([mechanism.md](mechanism.md)).
 - **Body lines.** A selected feature that created bodies (an extrusion with a new body, a pattern of a body) lists them in the model panel, one line each: name, volume, the size of its box and the link *Export STL*, which saves that body alone under the name `bodyFileName(id).stl` (`planets%2F1.stl`). A selected face or edge shows the same line for its body. The export takes the body as it is at the end of the timeline; a body that exists only in a preview cannot be exported.
 - *Export STL* on the toolbar saves the printed bodies into one file (D48: the bodies with the use *Printed part*); it is disabled when the model has none. A reference or auxiliary body is exported by the link of its line.
+- After either *Export STL*, the status line names the exported bodies that have cosmetic threads, which the mesh does not carry (D76: *Exported model.stl. body "plate": 6 cosmetic threads (M6), not in the mesh: tap or cut them after printing.*); it says nothing when none has.
 
 ## The properties of a body (D48)
 
@@ -49,13 +50,13 @@ Implemented on the branch `d36/3a`; the form is driven by `packages/app/test/app
 | The menu *Export…* | | `EXPORT_FORMATS`: the title and the summary of every format |
 | The form of a format | | `EXPORT_FORMATS[format].options` (`ArgSpecs`), the controls of the query form |
 | A plane or a face picked into the armed option | UI state | the pick of the view, as in the query form |
-| *Export* | `engine.export(format, options, marker ? { at: marker } : {})` | `Exported`: `layout`, `files`, `empty` |
+| *Export* | `engine.export(format, options, marker ? { at: marker } : {})` | `Exported`: `layout`, `files`, `empty`, `notes` |
 | Save one file | download under `files[0].path` with its `mediaType` | |
 | Save a set | `zip(files)`, stored (no compressor: D54, deflate.md, the second question), downloaded as `<format>.zip` (`application/zip`) | |
 
 - **The menu.** In the model mode the toolbar has the menu *Export…* beside *Queries…*, with every format of the catalog of the engine by its title (`STL`, `3MF`, `DXF (outline)`, `SVG (outline)`; the summary is the tooltip). A format needs nothing in the app to be there. The button *Export STL* and the link of a body line stay as they are.
 - **The form** *Export: <title>* takes the place of the query form in the model panel: one of the two is open at a time, and opening one closes the other. It is the generic form of a query over the options of the format (`panels/args.ts`, shared with `panels/query.ts`): the same control per kind of option, the first option that takes a pick armed (the plane of an outline), a plane or a planar face clicked in the view goes to it and not to the selection. *Export* and *Close*.
-- ***Export*** exports the state the view shows: with `at` when the insertion marker is after a feature, without it at the end of the timeline. One file is saved under its suggested name (`outline.dxf`, `model.3mf`, whose items the engine deflated with the compressor `main.ts` gives it, D54); a set (`stl` with *A file per body*) is saved as one ZIP `<format>.zip` of the files under their paths, because a browser cannot write a folder. The status line says `Exported <name> (<size> bytes).`
+- ***Export*** exports the state the view shows: with `at` when the insertion marker is after a feature, without it at the end of the timeline. One file is saved under its suggested name (`outline.dxf`, `model.3mf`, whose items the engine deflated with the compressor `main.ts` gives it, D54); a set (`stl` with *A file per body*) is saved as one ZIP `<format>.zip` of the files under their paths, because a browser cannot write a folder. The status line says `Exported <name> (<size> bytes).`, followed by the notes of the export (D76: the written bodies with cosmetic threads), joined by `; `.
 - **What is not saved.** A refusal of the engine, the text of an export with nothing in it (`the plane cuts none of the bodies`, `the model has no printed body …`), and a set the ZIP cannot hold (a path over 65 489 bytes, possible because a body ID has no limit of length) stay in the form under the buttons and in the status line, as an error; the row of the option a refusal names is marked with the message as its tooltip. They stay until the next *Export*.
 
 ### Implementation status

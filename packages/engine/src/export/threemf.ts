@@ -24,6 +24,7 @@ import type { ArgSpecs } from '../query/args';
 import { QueryFailure } from '../query/spec';
 import type { Deflater, Id, Solid } from '../types';
 import { chosenBodies } from './bodies';
+import { cosmeticThreadNotes, notesOf } from './notes';
 import type { ExportFormatSpec } from './spec';
 import { float32Text, xmlText } from './text';
 import { zip } from './zip';
@@ -159,6 +160,6 @@ export const threeMf: ExportFormatSpec<typeof THREE_MF_OPTIONS> = {
       return { body, name, ...(color === undefined ? {} : { color }), ...(material === undefined ? {} : { material }), solid: context.bodies[body].solid };
     });
     const about: MeshAbout = { bodies: chosen, triangles: objects.reduce((sum, object) => sum + object.solid.triangles.length / 3, 0) };
-    return { layout: 'file', files: [{ path: 'model.3mf', mediaType: 'model/3mf', bytes: threeMfPackage(objects, context.deflater), about }], ...(empty === undefined ? {} : { empty }) };
+    return { layout: 'file', files: [{ path: 'model.3mf', mediaType: 'model/3mf', bytes: threeMfPackage(objects, context.deflater), about }], ...(empty === undefined ? {} : { empty }), ...notesOf(cosmeticThreadNotes(chosen, context.threadsAsModelled)) };
   },
 };

@@ -2517,6 +2517,10 @@ export interface Exported {
   // still returns its files (STL of no bodies is a file without triangles); a tool that writes
   // them refuses instead.
   empty?: string;
+  // Lines for people about what the files leave out (D76): a format that writes the mesh of
+  // a body adds one per written body with cosmetic threads ("body "plate": 6 cosmetic threads
+  // (M6), not in the mesh: tap or cut them after printing"). Only when there are some.
+  notes?: string[];
 }
 export interface ExportFile {
   // Relative, with forward slashes: `meshes/arm.stl`. Every segment is non-empty and is not `.` or

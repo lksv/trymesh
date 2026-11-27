@@ -60,7 +60,8 @@ export function runExportForm(panel: QueryPanel, host: PanelHost, save: SaveFile
       // a ZIP) is caught here and shown like any other
       const file = saved(open.format, outcome.result);
       save(file.name, file.bytes, file.mediaType);
-      host.say(`Exported ${file.name} (${file.bytes.length} bytes).`);
+      // what the files leave out (D76: cosmetic threads), after the file
+      host.say(`Exported ${file.name} (${file.bytes.length} bytes).${outcome.result.notes ? ` ${outcome.result.notes.join('; ')}.` : ''}`);
     } catch (error) {
       if (!(error instanceof QueryFailure)) throw error;
       open.problem = { message: error.message };

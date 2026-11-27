@@ -18,6 +18,7 @@ import {
   type Vec2,
   type Vec3,
   bodyOwner,
+  cosmeticThreadNotes,
   emptyDocument,
   faceKey,
   insertedFeature,
@@ -264,6 +265,14 @@ export class App implements SketchHost, SceneHost {
     });
   }
 
+  // The printed bodies into model.stl (D48); the bodies with cosmetic threads, which the mesh does
+  // not carry, are said in the status bar (D76).
+  private exportStl(bodies: Id[]): void {
+    download('model.stl', new Uint8Array(this.engine.exportMesh('stl')), 'model/stl');
+    const notes = cosmeticThreadNotes(bodies, () => this.engine.getState().evaluation.threads);
+    if (notes.length) this.say(`Exported model.stl. ${notes.join('; ')}.`);
+  }
+
   say(text: string, error = false): void {
     this.note = { text, error };
     this.renderStatus();
@@ -395,7 +404,7 @@ export class App implements SketchHost, SceneHost {
         button('Open', () => file.click()),
         button('Save', () => download('model.trymesh.json', this.engine.save(), 'application/json')),
         // the printed bodies into one file (D48); a reference or auxiliary body by the link of its line
-        button('Export STL', () => download('model.stl', new Uint8Array(this.engine.exportMesh('stl')), 'model/stl'), { disabled: printedBodies(state.evaluation.bodyProperties).length === 0 }),
+        button('Export STL', () => this.exportStl(printedBodies(state.evaluation.bodyProperties)), { disabled: printedBodies(state.evaluation.bodyProperties).length === 0 }),
         file,
       ),
       group(

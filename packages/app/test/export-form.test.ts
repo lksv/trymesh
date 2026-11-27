@@ -37,6 +37,11 @@ describe('the export of the form', () => {
     expect(atEnd.said).toEqual(['Exported model.stl (3 bytes).']);
   });
 
+  it('the notes of the export follow the file in the status bar (D76)', () => {
+    const noted = harness({ ok: true, result: { layout: 'file', files: [stl('model.stl')], notes: ['body "a": 2 cosmetic threads (M6), not in the mesh: tap or cut them after printing', 'body "b": 1 cosmetic thread (M3), not in the mesh: tap or cut it after printing'] } }, null);
+    expect(noted.said).toEqual(['Exported model.stl (3 bytes). body "a": 2 cosmetic threads (M6), not in the mesh: tap or cut them after printing; body "b": 1 cosmetic thread (M3), not in the mesh: tap or cut it after printing.']);
+  });
+
   it('a set is saved as one ZIP of the files under their paths', () => {
     const { saved } = harness({ ok: true, result: { layout: 'directory', files: [stl('a.stl'), stl('meshes/b.stl')] } }, null);
     expect(saved.map(([name, , mediaType]) => [name, mediaType])).toEqual([['stl.zip', 'application/zip']]);

@@ -274,7 +274,7 @@ function contextOf(parts: Record<string, Part>): { context: QueryContext; name: 
     return { origin: [0, 0, 0], x, y: cross3(normal, x), normal };
   };
   const bodyProperties = Object.fromEntries(Object.keys(bodies).map((id) => [id, { name: id, use: 'part' }]));
-  const context = { state: { evaluation: { faceNames, bodyProperties } }, bodies, frame, face: (name: FaceName) => owner.get(name)?.face } as unknown as QueryContext;
+  const context = { state: { evaluation: { faceNames, bodyProperties } }, bodies, frame, face: (name: FaceName) => owner.get(name)?.face, threadsAsModelled: () => [] } as unknown as QueryContext;
   return { context, name: (face) => faceNames[face] };
 }
 type Args = Parameters<typeof print.run>[1];

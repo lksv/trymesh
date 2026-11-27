@@ -377,6 +377,20 @@ describe('MCP server: bodies', () => {
     await Promise.all([session.close(), other.close()]);
   });
 
+  it('export and export_stl print the notes of the export beside the files: a body with cosmetic threads (D76)', async () => {
+    const session = await connect();
+    await build(session);
+    expect((await session.call('execute', { command: { type: 'addFeature', feature: { id: 'm10', name: 'm10', suppressed: false, type: 'thread', body: 'base', faces: [{ feature: 'base', role: 'side', curve: 'k' }], modelled: false, diameter: 10, pitch: 1.5, hand: 'right', direction: 'backward', label: 'M10' } } })).ok).toBe(true);
+    const note = 'body "base": 1 cosmetic thread (M10), not in the mesh: tap or cut it after printing';
+    const all = await session.call('export', { format: 'stl', path: join(dir, 'notes', 'all.stl') });
+    expect(all.files).toHaveLength(1);
+    expect(all.notes).toEqual([note]);
+    expect((await session.call('export', { format: '3mf', path: join(dir, 'notes', 'all.3mf'), options: { bodies: ['Wheel'] } })).notes).toBeUndefined();
+    expect((await session.call('export_stl', { path: join(dir, 'notes', 'parts'), perBody: true })).notes).toEqual([note]);
+    expect((await session.call('export_stl', { path: join(dir, 'notes', 'wheel.stl'), bodies: ['Wheel'] })).notes).toBeUndefined();
+    await session.close();
+  });
+
   it('export: a 3MF and the outline as DXF written to disk (D54)', async () => {
     const session = await connect();
     await build(session);

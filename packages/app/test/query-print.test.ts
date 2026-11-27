@@ -74,6 +74,12 @@ describe('the view of the query print', () => {
     expect(printView.scene?.(result, args, panelOf())).toEqual({});
   });
 
+  it('the bodies with cosmetic threads are said after the rows (D76)', async () => {
+    harness = await startApp();
+    const result: PrintReport = { angle: Math.PI / 4, bodies: [{ body: 'a', orientations: [way({})] }], cosmeticThreads: [{ body: 'a', threads: 6 }] };
+    expect(texts(printView.answer?.(result, { orientations: [{ by: { up: [0, 0, 1] } }] }, panelOf()) ?? []).slice(2)).toEqual(['Cosmetic threads, not in the mesh and not judged here: body a (6). Tap or cut them after printing.']);
+  });
+
   it('an answer without bodies says so, and its note does not offer a row to pick', async () => {
     harness = await startApp();
     const result: PrintReport = { angle: Math.PI / 4, bodies: [] };

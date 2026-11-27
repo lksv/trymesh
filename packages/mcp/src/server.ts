@@ -31,6 +31,10 @@ interface FileTool {
   run(args: Record<string, unknown>): Promise<Json>;
 }
 
+// What the writer answers, with the notes of the export beside the files (D76: the bodies with
+// cosmetic threads, which the mesh does not carry), only when there are some.
+const withNotes = (written: { files: unknown[]; note?: string }, notes: string[] | undefined): Json => ({ ...written, ...(notes?.length ? { notes } : {}) }) as Json;
+
 // The messages of the writer that speak of what the files hold: bodies for `export_stl` (its file
 // names come from body IDs), the files themselves for `export`.
 const STL_WORDING: Wording = {
@@ -419,7 +423,7 @@ export function createTrymeshServer(options: TrymeshServerOptions): Server {
     {
       name: 'export_stl',
       description:
-        'Saves bodies of the model as binary STL. By default the printed bodies (use `part` of the body properties; not the reference and auxiliary bodies) go into the one file `path`, which is overwritten. `bodies` chooses the bodies, whatever their use. With `perBody` every body gets its own file in the directory `path` (one printable part per file); the file name is the body ID with every character other than letters, digits, dot, dash and underscore written as %XX, so `planets/1` is `planets%2F1.stl`. Per body nothing is written when a file already exists (unless `overwrite` allows replacing it), when two names differ only in the case of letters or when a name is too long for a file; the files appear only after all of them were written.',
+        'Saves bodies of the model as binary STL. By default the printed bodies (use `part` of the body properties; not the reference and auxiliary bodies) go into the one file `path`, which is overwritten. `bodies` chooses the bodies, whatever their use. With `perBody` every body gets its own file in the directory `path` (one printable part per file); the file name is the body ID with every character other than letters, digits, dot, dash and underscore written as %XX, so `planets/1` is `planets%2F1.stl`. Per body nothing is written when a file already exists (unless `overwrite` allows replacing it), when two names differ only in the case of letters or when a name is too long for a file; the files appear only after all of them were written. `notes` in the answer names the bodies with cosmetic threads, which the mesh does not carry.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -436,18 +440,19 @@ export function createTrymeshServer(options: TrymeshServerOptions): Server {
         const target = path(args, true) as string;
         for (const flag of ['perBody', 'overwrite']) if (args[flag] !== undefined && args[flag] !== null && typeof args[flag] !== 'boolean') throw new Failure(`argument "${flag}": true or false is expected`);
         const perBody = args.perBody === true;
-        const exported = (await must(session, '_export_stl', { ...(args.bodies === undefined ? {} : { bodies: args.bodies }), perBody })) as { files: { name?: string; bodies: string[]; triangles: number; base64: string }[] };
+        const exported = (await must(session, '_export_stl', { ...(args.bodies === undefined ? {} : { bodies: args.bodies }), perBody })) as { files: { name?: string; bodies: string[]; triangles: number; base64: string }[]; notes?: string[] };
         const files = exported.files.filter((file) => file.bodies.length > 0);
         if (files.length === 0) throw new Failure('the model has no body to export');
         const out = files.map((file): OutFile => ({ name: perBody ? `${file.name}.stl` : '', subject: file.bodies[0], base64: file.base64, about: { bodies: file.bodies, triangles: file.triangles } }));
-        return (await writeExport(target, perBody ? 'directory' : 'file', out, args.overwrite === true, STL_WORDING)) as Json;
+        return withNotes(await writeExport(target, perBody ? 'directory' : 'file', out, args.overwrite === true, STL_WORDING), exported.notes);
       }),
     },
     {
       name: 'export',
       description:
         `Exports the model in a format of the engine's catalog: ${Object.keys(EXPORT_FORMATS).join(', ')}. The options of each format are in describe_api, section Export formats. A format writes one file, and then \`path\` is that file and is overwritten, ` +
-        'or a set of files, and then `path` is a directory: nothing is written unless every file can be, and a file that already exists is replaced only with `overwrite`. `at` exports the state after that feature; `after` is a command to preview first, and what is exported is the model after it, with nothing written to the document.',
+        'or a set of files, and then `path` is a directory: nothing is written unless every file can be, and a file that already exists is replaced only with `overwrite`. `at` exports the state after that feature; `after` is a command to preview first, and what is exported is the model after it, with nothing written to the document. ' +
+        '`notes` in the answer says what the files leave out: a format that writes the mesh of a body (stl, 3mf, urdf, mjcf) names each written body with cosmetic threads, which its mesh does not carry.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -477,7 +482,7 @@ export function createTrymeshServer(options: TrymeshServerOptions): Server {
         const nested = answer.files.filter((file) => file.path.includes('/'));
         if (nested.length) throw new Failure(`nothing was written, this server cannot write an export with folders yet: ${nested.map((file) => file.path).join(', ')}`);
         const out = answer.files.map((file): OutFile => ({ name: file.path, subject: file.path, base64: file.base64, about: file.about ?? {} }));
-        return (await writeExport(target, answer.layout, out, args.overwrite === true, FILE_WORDING)) as Json;
+        return withNotes(await writeExport(target, answer.layout, out, args.overwrite === true, FILE_WORDING), answer.notes);
       }),
     },
   ];

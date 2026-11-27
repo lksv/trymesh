@@ -57,6 +57,9 @@ const OPTIONS: { [F in ExportFormat]: { [K in keyof Required<ExportOptions<F>>]:
   urdf: { name: 'optional', root: 'optional', collision: 'optional', meshPrefix: 'optional' },
   mjcf: { name: 'optional', root: 'optional', collision: 'optional' },
 };
+// Whether a format writes the mesh of a body, and so names in `notes` the written bodies with
+// cosmetic threads, which the mesh does not carry (D76, the point between the stages).
+const WRITES_MESHES: { [F in ExportFormat]: boolean } = { stl: true, '3mf': true, dxf: false, svg: false, partsCsv: false, urdf: true, mjcf: true };
 const ENTRIES = Object.entries(EXPORT_FORMATS as Record<string, AnyExportFormat>);
 
 describe('the catalog of export formats', () => {
@@ -107,6 +110,34 @@ describe('the catalog of export formats', () => {
     expect(text).toContain('setJoint keeps a drive field it is not given');
     expect(text).toContain('  - at (optional): a feature ID. The model as it was after this feature.');
     expect(text).toContain('  - after (optional): a command (as for execute) to preview first;');
+  });
+});
+
+describe('the notes of an export (D76)', () => {
+  // `model()` with a cosmetic M10 thread on the side of the disc `low`
+  const threaded = (): Engine => {
+    const engine = model();
+    const outcome = callTool(engine, 'execute', { command: { type: 'addFeature', feature: { id: 'm10', name: 'm10', suppressed: false, type: 'thread', body: 'low', faces: [{ feature: 'low', role: 'side', curve: 'k' }], modelled: false, diameter: 10, pitch: 1.5, hand: 'right', direction: 'backward' } } });
+    if (!outcome.ok) throw new Error(outcome.error);
+    return engine;
+  };
+  const NOTE = 'body "low": 1 cosmetic thread (10 x 1.5), not in the mesh: tap or cut it after printing';
+
+  it.each(ENTRIES)('%s: a format that writes meshes names the written bodies with cosmetic threads', (name) => {
+    const answer = exported(threaded(), { format: name, options: FIXTURES[name as ExportFormat] });
+    expect(answer.error).toBeUndefined();
+    expect(answer.notes).toEqual(WRITES_MESHES[name as ExportFormat] ? [NOTE] : undefined);
+    // without a thread no format has a note
+    expect(exported(model(), { format: name, options: FIXTURES[name as ExportFormat] }).notes).toBeUndefined();
+  });
+
+  it('a body without a thread has none; the old tool of STL says the same', () => {
+    const engine = threaded();
+    expect(exported(engine, { format: 'stl', options: { bodies: ['high'] } }).notes).toBeUndefined();
+    const stl = callTool(engine, '_export_stl', { perBody: true });
+    expect(stl.ok && (stl.result as { notes?: string[] }).notes).toEqual([NOTE]);
+    const high = callTool(engine, '_export_stl', { bodies: ['high'] });
+    expect(high.ok && (high.result as { notes?: string[] }).notes).toBeUndefined();
   });
 });
 

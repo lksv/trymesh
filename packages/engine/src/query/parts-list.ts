@@ -4,7 +4,9 @@
 import { featuresWithInserted, sourceRoot } from '../features/index';
 import { partName } from '../sections/body-properties';
 import { shapeOrigin } from '../solid';
-import type { BodyPropertiesResult, Document, FaceName, Id, Solid, Surface, Vec3 } from '../types';
+import { threadLabel } from '../recompute/thread';
+import { faceKey } from '../face-roles';
+import type { BodyPropertiesResult, Document, FaceName, Id, Solid, Surface, ThreadResult, Vec3 } from '../types';
 import { ANGLE_TOLERANCE, LENGTH_TOLERANCE, cross3, dot3, len3, sub3 } from '../util';
 import type { ArgSpecs } from './args';
 import type { QueryContext, QuerySpec } from './spec';
@@ -35,6 +37,8 @@ export const PARTS_LIST_ARGS = {} as const satisfies ArgSpecs;
 //   - `mirrored`: the row is the mesh of that body, mirrored;
 //   - `differs`: the row is not that body's mesh any more: a feature changed the row's bodies, or
 //     that body, after the copy. A changed row says no hand: its shape is its own.
+// - `threads` (D76): the threads of each body of the row, by kind: `label` (its own, or
+//   `diameter x pitch`), `internal`, `modelled`, and `count` per body; only when it has some.
 export interface PartRow {
   name: string;
   count: number;
@@ -50,6 +54,7 @@ export interface PartRow {
   copyOf?: Id;
   mirrored?: true;
   differs?: true;
+  threads?: { label: string; internal: boolean; modelled: boolean; count: number }[];
 }
 // A hole feature and the holes of it that the model has.
 export interface HoleCount {
@@ -298,6 +303,27 @@ export function holeCounts(doc: Document, bodies: Readonly<Record<Id, { solid: S
 
 // ---------------------------------------------------------------- the rows of bodies
 
+// The threads of a body for the key of a row: each by what does not depend on where the body
+// stands (rule 4 below), sorted.
+function threadsKey(threads: readonly ThreadResult[]): string {
+  return JSON.stringify(
+    threads
+      .map((t) => JSON.stringify([t.feature, faceKey({ ...t.face, copy: undefined } as FaceName), t.internal, t.modelled, t.diameter, t.pitch, t.depth, t.flankAngle, t.clearance, t.starts, t.hand, t.from, t.to, t.label ?? null]))
+      .sort(),
+  );
+}
+// `threads` of a row: the threads of one body by kind, in the order they first come.
+function threadsOf(threads: readonly ThreadResult[]): { threads?: PartRow['threads'] } {
+  const kinds: NonNullable<PartRow['threads']> = [];
+  for (const thread of threads) {
+    const label = threadLabel(thread);
+    const kind = kinds.find((k) => k.label === label && k.internal === thread.internal && k.modelled === thread.modelled);
+    if (kind) kind.count++;
+    else kinds.push({ label, internal: thread.internal, modelled: thread.modelled, count: 1 });
+  }
+  return kinds.length ? { threads: kinds } : {};
+}
+
 // What a body weighs by, for the key of a row: the mass the properties resolved, by its source and
 // its number; without one, whether a field is in error or nothing is stated. (A mass that is stated
 // beside a density in error is a mass.)
@@ -307,7 +333,13 @@ const weighsBy = (p: BodyPropertiesResult): string => (p.mass !== undefined ? (p
 // 1. their solids have the same origin (`shapeOrigin`: one mesh, moved) and the same hand; a body
 //    whose volume is not above zero (a copy float32 could not hold) is taken for no copy;
 // 2. their properties say the same: `use`, `material`, `color`, `density`, and what they weigh by;
-// 3. they have the same name (`partName`).
+// 3. they have the same name (`partName`);
+// 4. they have the same threads (D76): a cosmetic thread is not in the mesh, so a body with one
+//    and its copy without one are two rows. A thread is compared by what does not depend on where
+//    its body stands: its feature, its face without the copy tags, its profile, its hand where it
+//    lies, its span and whether it is internal or modelled. A copy made by a pattern of the body
+//    carries the threads of its source and stays in its row; a mirrored copy is another row by
+//    rule 1, and its hand is turned with it.
 // The rows are in the order of their first bodies in the model. Nothing is measured.
 function partsListOf(context: QueryContext): PartsList {
   const { document: doc, evaluation } = context.state;
@@ -329,7 +361,7 @@ function partsListOf(context: QueryContext): PartsList {
       continue;
     }
     const origin = originOf(id);
-    const key = JSON.stringify([numberOf(origin.solid), origin.mirrored, result.use, result.material ?? null, result.color ?? null, result.density ?? null, weighsBy(result), partName(doc, id)]);
+    const key = JSON.stringify([numberOf(origin.solid), origin.mirrored, result.use, result.material ?? null, result.color ?? null, result.density ?? null, weighsBy(result), partName(doc, id), threadsKey(context.threadsAsModelled(id))]);
     const group = groups.get(key);
     if (group) group.push(id);
     else groups.set(key, [id]);
@@ -357,6 +389,7 @@ function partsListOf(context: QueryContext): PartsList {
       ...(source === undefined ? {} : { copyOf: root }),
       ...(same && source.mirrored !== origin.mirrored ? { mirrored: true as const } : {}),
       ...(source !== undefined && !same ? { differs: true as const } : {}),
+      ...threadsOf(context.threadsAsModelled(bodies[0])),
     };
   };
   const rowsOf = (use: 'part' | 'reference'): PartRow[] => [...groups.values()].filter((bodies) => properties[bodies[0]].use === use).map(row);
@@ -416,7 +449,7 @@ export const partsList: QuerySpec<typeof PARTS_LIST_ARGS, PartsList> = {
     'Hardware is counted from the labels of the hole features: one piece per hole the model has, by where the holes are (a hole through several bodies is one hole, and so are holes that continue one another on one line; a copy of a body at another place has its holes too, also one further along the same line; a hole that missed or was cut away is not counted). ' +
     'So the label of a hole should name the piece that goes into it, with what the catalog does not know ("M3x10 countersunk screw"), and a hole that takes no piece of its own should have none. Every copy counts, also one laid out for printing. The answer is for the model as modelled, whatever the pose.',
   returns:
-    '`printed` and `bought` (rows: `name`, `count`, `bodies`, `material`, `color`, `volume` in mm3 of one, `density` in g/cm3, `mass` in g of one with `massFrom` (`mass` or `density`), or `noMass` (`notStated`, `inError`), `totalMass` in g, `copyOf` (the body the chain of sources starts at, when it is a body of the model and not in this row), `mirrored` (the mesh of that body, mirrored), `differs` (no longer the mesh of that body)), ' +
+    '`printed` and `bought` (rows: `name`, `count`, `bodies`, `material`, `color`, `volume` in mm3 of one, `density` in g/cm3, `mass` in g of one with `massFrom` (`mass` or `density`), or `noMass` (`notStated`, `inError`), `totalMass` in g, `copyOf` (the body the chain of sources starts at, when it is a body of the model and not in this row), `mirrored` (the mesh of that body, mirrored), `differs` (no longer the mesh of that body), `threads` (the threads of each body of the row by kind: `label`, `internal`, `modelled`, `count` per body; a body with a cosmetic thread and its copy without one are two rows)), ' +
     '`hardware` (rows: `label`, `count`, `holes`: the hole features with the label and the holes of each), `unlabelled` (hole features without a label, with their holes; a hole whose bore carries a thread is not counted there), `auxiliary` (bodies that are no parts), ' +
     '`totals` (`printed` and `bought`: `count` of bodies, `mass` in g of those that have one, `withoutMass`: how many have none; `hardware.count`). Hardware has no mass.',
   args: PARTS_LIST_ARGS,

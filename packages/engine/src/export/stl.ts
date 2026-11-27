@@ -4,6 +4,7 @@ import type { ArgSpecs } from '../query/args';
 import { toStl } from '../solid';
 import type { ExportFile, Id } from '../types';
 import { chosenBodies } from './bodies';
+import { cosmeticThreadNotes, notesOf } from './notes';
 import type { ExportFormatSpec } from './spec';
 
 export const STL_OPTIONS = {
@@ -30,7 +31,7 @@ export const stl: ExportFormatSpec<typeof STL_OPTIONS> = {
       bytes: toStl(ids.map((id) => context.bodies[id].solid)),
       about: { bodies: ids, triangles: ids.reduce((sum, id) => sum + context.bodies[id].solid.triangles.length / 3, 0) },
     });
-    const said = empty === undefined ? {} : { empty };
+    const said = { ...(empty === undefined ? {} : { empty }), ...notesOf(cosmeticThreadNotes(chosen, context.threadsAsModelled)) };
     return perBody ? { layout: 'directory', files: chosen.map((id) => file(`${bodyFileName(id)}.stl`, [id])), ...said } : { layout: 'file', files: [file('model.stl', chosen)], ...said };
   },
 };

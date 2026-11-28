@@ -2,7 +2,7 @@
 
 A living document. It records what was decided, why, and what was considered. Decisions are not immutable; when one changes, its record is rewritten and the original state is given in a note.
 
-Last change: 2026-11-27
+Last change: 2026-11-28
 
 ## Overview
 
@@ -103,6 +103,8 @@ Approved on 2026-11-15: a DOM for the tests of the app in Vitest, `happy-dom` or
 Taken on 2026-11-15: `happy-dom` 21.0.4. The first test (`packages/app/test/app.test.ts`) needs pointer events with capture, keyboard events, handlers set as properties (`onclick`, `oninput`, `onchange`) and the form controls of the app; all of them work in it, so `jsdom` was not tried. The test makes the window itself (`new Window()`) and does not use the test environment of Vitest, because the WASM adapters have to load as in Node before a `window` exists.
 
 Approved on 2026-11-17: a library that compresses the parts of a 3MF package, chosen by the session (owner: "use a compressed one, choose and use an existing library"; D54, [d36/2g-export/deflate.md](d36/2g-export/deflate.md)). Taken: `pako` 2.1.0 (`github.com/nodeca/pako`, November 2022; licences MIT and Zlib; no dependencies), a port of zlib's deflate, through its entry for deflate alone, with its default options at level 6. The design measured 3.0.3 and proposed it; 2.1.0 was taken instead because it gives the same streams (those of zlib, byte for byte, measured by the design) and has been in wide use for four years (about 18 million downloads a week, against half a million for 3.0.3, released three weeks before). It has no types of its own: the adapter declares the one function it calls, so no second package is added. It sits behind the port `Deflater` of the engine (`deflate(bytes)`: a raw DEFLATE stream) and is imported by the adapter package `packages/deflate-pako` alone; the engine has no dependency and works without a compressor (its files are then stored).
+
+Approved on 2026-11-28: a default font shipped with the tool, for text in a sketch (owner: "I agree with the solution of the text (shipped, with a licence)"; [backlog.md](backlog.md), "Text"). A font is a file of a third party, not a library, and is approved the same way. No font is taken yet: the session that builds the text chooses one whose licence allows it to be shipped with the tool and records here which one, its version and its licence, as for `pako`. The font is read by a reader of the engine written by hand, as DXF and SVG are, so no library comes with it; a font of the user's own is read by the same reader.
 
 ## D3 Document model: a log of operations
 

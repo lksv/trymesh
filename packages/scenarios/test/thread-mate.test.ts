@@ -7,7 +7,7 @@ import { type Command, type EngineState, type Id, emptyDocument } from '@trymesh
 import { describe, expect, it } from 'vitest';
 import { phaseSense, withPhaseSense } from '../../engine/src/recompute/thread';
 import { newEngine, run } from './kit';
-import { M10, aTurn, blindHole, bodyPattern, bore, box, hole, mirrorIn, preview, rod, rodSide, statusOf, thread, threadsOf } from './thread-kit';
+import { M10, aTurn, blindHole, bodyPattern, bore, box, chamfer, hole, mirrorIn, preview, rod, rodSide, statusOf, thread, threadsOf } from './thread-kit';
 
 type Engine = ReturnType<typeof newEngine>;
 const interference = (engine: Engine, bodies: Id[], state?: EngineState) => {
@@ -136,17 +136,28 @@ describe('a screw in a nut', () => {
   // The cause named in the report (2026-11-28): an M10 pin 15 high standing on a base plate, threaded
   // from its top down to the base (a shoulder), and a nut 8 high seated on the base. The groove of
   // the pin stops the lift short of the base; the wall of the nut stands in the ring that leaves.
-  const pinAndNut = (engine: Engine, nutLift: number) =>
-    run(
+  // `chamfer`: on the bottom of the bore of the nut, before its thread; `turn`: radians added to the
+  // phase that seats the nut; `nutAt`: the bottom of the nut as modelled, posed onto `nutLift` by
+  // a prismatic joint when it is given.
+  const pinAndNut = (engine: Engine, nutLift: number, more: { chamfer?: number; turn?: number; nutAt?: number; split?: boolean } = {}) => {
+    const bottom = more.nutAt ?? 5 + nutLift;
+    const phase = (2 * Math.PI * (7 - nutLift)) / 1.5 + (more.turn ?? 0);
+    return run(
       engine,
       box('base', -10, -10, 10, 10, 0, 5),
       rod('pin', 0, 0, 5, 5, 20, 'add', 'base'),
-      box('nut', -8, -8, 8, 8, 5 + nutLift, 13 + nutLift),
+      box('nut', -8, -8, 8, 8, bottom, bottom + 8),
       hole('nh', [['h', 0, 0]], 10 - 2 * 0.811899 + 0.4, 'nut'),
+      ...(more.chamfer ? [chamfer('ch', 'nut', [{ a: { feature: 'nut', role: 'startCap' }, b: bore('nh', 'h') }], more.chamfer)] : []),
       thread('pt', { body: 'base', faces: [rodSide('pin')], modelled: true, ...M10 }),
-      // the helix of the nut starts 7 − nutLift below the pin's: one curve
-      thread('nt', { body: 'nut', faces: [bore('nh', 'h')], modelled: true, ...M10, clearance: 0.2, phase: (2 * Math.PI * (7 - nutLift)) / 1.5 }),
+      // the helix of the nut starts 7 − nutLift below the pin's where it is seated: one curve; `split`
+      // threads the bore by two features of 4 each
+      ...(more.split
+        ? [thread('nt', { body: 'nut', faces: [bore('nh', 'h')], modelled: true, ...M10, clearance: 0.2, phase, length: 4 }), thread('nt2', { body: 'nut', faces: [bore('nh', 'h')], modelled: true, ...M10, clearance: 0.2, phase, offset: 4 })]
+        : [thread('nt', { body: 'nut', faces: [bore('nh', 'h')], modelled: true, ...M10, clearance: 0.2, phase })]),
     );
+  };
+  const pinRing = (mate = 'nt') => [{ feature: 'pt', face: rodSide('pin'), end: 'end', height: 0.05, mate: { feature: mate, face: bore('nh', 'h') } }];
 
   it('a nut seated on the base of a threaded pin meets the ring under the shoulder of the pin: the entry names it; lifted off the base by more than the lift, the nut is free', { timeout: 120_000 }, async () => {
     await aTurn();
@@ -157,10 +168,64 @@ describe('a screw in a nut', () => {
     expect(report.pairs).toHaveLength(1);
     expect(report.pairs[0].depth).toBeLessThan(0.06);
     expect(report.pairs[0].seat?.map((entry) => Math.abs(entry.addToPhase) < 1e-6)).toEqual([true, true]);
-    expect(report.pairs[0].shortOfShoulder).toEqual([{ feature: 'pt', face: rodSide('pin'), end: 'end', height: 0.05, mate: { feature: 'nt', face: bore('nh', 'h') } }]);
+    expect(report.pairs[0].shortOfShoulder).toEqual(pinRing());
     const lifted = newEngine();
     pinAndNut(lifted, 0.2);
     expect(interference(lifted, ['base', 'nut'])).toMatchObject({ pairs: [], fits: [], failed: [] });
+  });
+
+  // the review of the cause named in the report: what follows an open end of the mate reaches into
+  // the ring until it is as wide as the major diameter (its run-out); a ring met less deep than the
+  // chord tolerance is named too
+  it('a chamfer of the nut shallower than the profile still meets the ring, and is named; a deeper one frees the nut; lifted by 0.045 the nut meets the ring 0.005 deep, named', { timeout: 120_000 }, async () => {
+    await aTurn();
+    const shallow = newEngine();
+    pinAndNut(shallow, 0, { chamfer: 0.5 });
+    const report = interference(shallow, ['base', 'nut']);
+    expect(report.pairs).toHaveLength(1);
+    expect(report.pairs[0].depth).toBeLessThan(0.06);
+    expect(report.pairs[0].shortOfShoulder).toEqual(pinRing());
+    const deep = newEngine();
+    pinAndNut(deep, 0, { chamfer: 1 });
+    expect(interference(deep, ['base', 'nut'])).toMatchObject({ pairs: [], fits: [], failed: [] });
+    const nearly = newEngine();
+    pinAndNut(nearly, 0.045);
+    const near = interference(nearly, ['base', 'nut']);
+    expect(near.pairs[0].depth).toBeLessThan(0.01);
+    expect(near.pairs[0].shortOfShoulder).toEqual(pinRing());
+  });
+
+  it('two threads of the nut stand in the ring: the first names it', { timeout: 120_000 }, async () => {
+    await aTurn();
+    const engine = newEngine();
+    const state = pinAndNut(engine, 0, { split: true });
+    // both stand on the whole bore: the wall of each reaches the base
+    expect(['nt', 'nt2'].map((id) => [statusOf(state, id), Math.round(threadsOf(state, id)[0].walls[0].to)])).toEqual([['ok', 8], ['ok', 8]]);
+    expect(interference(engine, ['base', 'nut']).pairs[0]?.shortOfShoulder).toEqual(pinRing('nt'));
+  });
+
+  it('posed by a prismatic joint onto the base, with the nut as the child and with the base as the child: named; posed 0.2 higher: free', { timeout: 120_000 }, async () => {
+    await aTurn();
+    for (const [parent, child, value, nutLift] of [['base', 'nut', -10, 0], ['nut', 'base', 10, 0], ['base', 'nut', -9.8, 0.2]] as const) {
+      const engine = newEngine();
+      pinAndNut(engine, nutLift, { nutAt: 15 });
+      run(engine, { type: 'setLink', id: 'base', bodies: ['base'] } as Command, { type: 'setLink', id: 'nut', bodies: ['nut'] } as Command, { type: 'setJoint', id: 'k', joint: { type: 'prismatic', parent, child, axis: { kind: 'base', axis: 'Z' }, lower: -50, upper: 50, value: 0 } } as Command);
+      const report = interference(engine, ['base', 'nut'], preview(engine, { type: 'setPose', values: { k: value } } as Command));
+      if (nutLift > 0) expect(report, `${child} ${value}`).toMatchObject({ pairs: [], fits: [], failed: [] });
+      else expect(report.pairs[0]?.shortOfShoulder, `${child} ${value}`).toEqual(pinRing());
+    }
+  });
+
+  // a mate whose wall ends at the far edge of the ring, on a pair that collides for another reason
+  // (turned by 1 radian), gets no entry; chord tolerance 0.05, so the lift is 0.1
+  it('the nut lifted by the lift exactly and turned: a collision with no ring named (chord tolerance 0.05)', { timeout: 120_000 }, async () => {
+    await aTurn();
+    const engine = coarse();
+    pinAndNut(engine, 0.1, { turn: 1 });
+    const report = interference(engine, ['base', 'nut']);
+    expect(report.pairs).toHaveLength(1);
+    expect(report.pairs[0].seat?.some((entry) => Math.abs(entry.addToPhase) > 0.5)).toBe(true);
+    expect(report.pairs[0].shortOfShoulder).toBeUndefined();
   });
 });
 

@@ -253,18 +253,22 @@ export interface ThreadZone {
   to: number;
   threads: ThreadResult[];
 }
+// The ends of a thread at an end of its wall that a body still has, by its stretch `wall` (of
+// `walls`): an end that is not `inside` whose stretch ends within `lift` (of the body, `threadLift`)
+// of the span there. A stretch that goes on past the end, as the face of another body or of a union
+// does, has the end no more.
+export function endsHad(thread: ThreadResult, wall: { from: number; to: number }, lift: number): { start: boolean; end: boolean } {
+  return { start: thread.ends.start !== 'inside' && Math.abs(wall.from - thread.from) <= lift, end: thread.ends.end !== 'inside' && Math.abs(wall.to - thread.to) <= lift };
+}
 // `lift`: of the body (`threadLift`), the distance within which the stretch of a body still has an
 // end of the wall as the thread was made on it. Undefined: the body has no part of the span.
 export function threadZone(thread: ThreadResult, body: Id, lift: number): ThreadZone | undefined {
   const i = thread.bodies.indexOf(body);
   if (i < 0) return undefined;
   const wall = thread.walls[i];
-  // an end of the thread at an end of the wall the body still has runs out there: the stretch of
-  // the body ends within the lift of it (a stretch that goes on past the end, as the face of
-  // another body or of a union does, has the end no more); elsewhere the zone is the span cut to
-  // the stretch
-  const startHad = thread.ends.start !== 'inside' && Math.abs(wall.from - thread.from) <= lift;
-  const endHad = thread.ends.end !== 'inside' && Math.abs(wall.to - thread.to) <= lift;
+  // an end of the thread at an end of the wall the body still has runs out there; elsewhere the
+  // zone is the span cut to the stretch
+  const { start: startHad, end: endHad } = endsHad(thread, wall, lift);
   const from = startHad ? wall.from - thread.runOut.start : Math.max(thread.from, wall.from);
   const to = endHad ? wall.to + thread.runOut.end : Math.min(thread.to, wall.to);
   if (!(to > from)) return undefined;

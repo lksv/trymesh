@@ -15,7 +15,7 @@ afterEach(() => {
 });
 
 const panelOf = <Q extends 'interference' | 'gap'>(picked?: number): ViewPanel<Q> =>
-  ({ bodyName: (body: string) => `body ${body}`, faceLabel: (name: FaceName) => `${name.feature}/${name.role}`, number: (value: number, unit: string) => `${value} ${unit}`, picked, pick: () => undefined, ask: () => undefined }) as unknown as ViewPanel<Q>;
+  ({ state: { document: { settings: { chordTolerance: 0.01 } } }, bodyName: (body: string) => `body ${body}`, faceLabel: (name: FaceName) => `${name.feature}/${name.role}`, number: (value: number, unit: string) => `${value} ${unit}`, picked, pick: () => undefined, ask: () => undefined }) as unknown as ViewPanel<Q>;
 const texts = (elements: HTMLElement[]): string[] => elements.map((element) => element.textContent ?? '');
 
 describe('the views of the collisions and of the gap with cleared pairs (D50)', () => {
@@ -111,8 +111,13 @@ describe('the views of the collisions and of the gap with threads (D76)', () => 
     const bowlFace = { feature: 'bowl', role: 'side', curve: 'c' } as const;
     const ring = { feature: 'lidThread', face: lidFace, end: 'start', height: 0.05, mate: { feature: 'bowlThread', face: bowlFace } } as const;
     const seated: InterferenceReport = { pairs: [{ a: 'bowl', b: 'lid', volume: 2.68, depth: 0.05, seat: [{ feature: 'bowlThread', face: bowlFace, addToPhase: 0 }, { feature: 'lidThread', face: lidFace, addToPhase: 0 }], shortOfShoulder: [ring] }], fits: [], failed: [], checked: 1 };
-    const named = 'the groove of lidThread stops 0.05 mm short of its shoulder, where bowlThread still stands: chamfer the end of the mate before its thread, or let the mate stop more than that short of the shoulder (a deeper socket)';
+    const named = 'the groove of lidThread stops 0.05 mm short of its shoulder, where bowlThread still stands: chamfer the end of the mate before its thread, or let the mate stop more than that short of the shoulder (a deeper socket, a mate seated higher)';
     expect(texts(interferenceView.answer?.(seated, {} as never, panelOf()) ?? [])).toEqual([`body bowl × body lid2.68 mm³; ${named}`]);
+    // deeper than the ring by more than the chord tolerance (0.01): the ring is not all of it
+    const pushed: InterferenceReport = { ...seated, pairs: [{ ...seated.pairs[0], volume: 185.6, depth: 1.173 }] };
+    expect(texts(interferenceView.answer?.(pushed, {} as never, panelOf()) ?? [])).toEqual([`body bowl × body lid185.6 mm³; ${named}; the pair collides 1.173 mm deep, deeper than that: the collision has another cause as well`]);
+    const withinTolerance: InterferenceReport = { ...seated, pairs: [{ ...seated.pairs[0], depth: 0.055 }] };
+    expect(texts(interferenceView.answer?.(withinTolerance, {} as never, panelOf()) ?? [])).toEqual([`body bowl × body lid2.68 mm³; ${named}`]);
     const turned: InterferenceReport = { ...seated, pairs: [{ ...seated.pairs[0], seat: [{ feature: 'bowlThread', face: bowlFace, addToPhase: Math.PI / 2 }, { feature: 'lidThread', face: lidFace, addToPhase: Math.PI / 2 }] }] };
     expect(texts(interferenceView.answer?.(turned, {} as never, panelOf()) ?? [])).toEqual([`body bowl × body lid2.68 mm³; the threads are turned against each other: add 90° to the phase of bowlThread (or turn the other); ${named}`]);
     const inserted: InterferenceReport = { ...seated, pairs: [{ ...seated.pairs[0], shortOfShoulder: [{ ...ring, feature: 'ins/lidThread', inserted: true }] }] };

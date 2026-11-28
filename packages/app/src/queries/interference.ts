@@ -18,15 +18,21 @@ export const interferenceView: QueryView<'interference'> = {
     // collisions first, then the fits, then the cleared pairs; `picked` counts through the three lists
     // two modelled threads turned against each other: what to add to the phase of either (D76); the
     // ring a groove leaves under a shoulder that the wall of the mate stands in, named instead of
-    // "another cause" (and beside a turn)
+    // "another cause" (and beside a turn); a pair deeper than its rings by more than the chord
+    // tolerance collides by something else as well (the review of the cause named in the report)
     const ringText = (entry: ShortOfShoulder): string =>
-      `; the groove of ${entry.feature}${entry.inserted ? ' (in its inserted document)' : ''} stops ${fmt(entry.height)} mm short of its shoulder, where ${entry.mate.feature} still stands: chamfer the end of the mate before its thread, or let the mate stop more than that short of the shoulder (a deeper socket)`;
+      `; the groove of ${entry.feature}${entry.inserted ? ' (in its inserted document)' : ''} stops ${fmt(entry.height)} mm short of its shoulder, where ${entry.mate.feature} still stands: chamfer the end of the mate before its thread, or let the mate stop more than that short of the shoulder (a deeper socket, a mate seated higher)`;
     const seatText = (pair: Interference & { seat?: Seat[]; shortOfShoulder?: ShortOfShoulder[] }): string => {
       if (!pair.seat) return '';
       const rings = (pair.shortOfShoulder ?? []).map(ringText).join('');
       // an entry this document can apply first (one of an inserted document is changed there)
       const turn = pair.seat.find((entry) => entry.addToPhase !== 0 && !entry.inserted) ?? pair.seat.find((entry) => entry.addToPhase !== 0);
-      if (!turn) return rings || '; the threads are seated, the collision has another cause';
+      if (!turn && rings) {
+        const deepest = Math.max(...(pair.shortOfShoulder ?? []).map((entry) => entry.height));
+        const deeper = pair.depth > deepest + panel.state.document.settings.chordTolerance;
+        return deeper ? `${rings}; the pair collides ${fmt(pair.depth)} mm deep, deeper than that: the collision has another cause as well` : rings;
+      }
+      if (!turn) return '; the threads are seated, the collision has another cause';
       const other = pair.seat.some((entry) => entry !== turn && !entry.inserted);
       return `; the threads are turned against each other: add ${fmt((turn.addToPhase * 180) / Math.PI)}° to the phase of ${turn.feature}${turn.inserted ? ' (in its inserted document)' : other ? ' (or turn the other)' : ''}${rings}`;
     };

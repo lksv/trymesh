@@ -1,6 +1,6 @@
 // The query `interference`: which bodies share a volume (D35, point 5), and which pairs share what
 // a thread accounts for (D76).
-import { INTERFERENCE_THRESHOLD, THREAD_PIECE_VOLUME, type SharedVolume, type ThreadJudgement, type ThreadZone, boxesApart, goesAround, interferenceReport, joinedZones, movedZone, onOneLine, ringBox, ringOf, sharedBy, threadZone, threadsAgree } from '../interference';
+import { INTERFERENCE_THRESHOLD, THREAD_PIECE_VOLUME, type SharedVolume, type ThreadJudgement, type ThreadZone, boxesApart, endsHad, goesAround, interferenceReport, joinedZones, movedZone, onOneLine, ringBox, ringOf, sharedBy, threadZone, threadsAgree } from '../interference';
 import { bandOf } from '../recompute/body-boolean';
 import { phaseSense, precisionOf, threadLift } from '../recompute/thread';
 import { type RigidTransform, inverse, pieceSolids, transformPoint, transformVector, volumeOf } from '../solid';
@@ -80,6 +80,8 @@ function judgeThreaded(context: QueryContext, a: Id, b: Id, pair: { a: BodyResul
   const notTaken = { a: new Set<number>(), b: new Set<number>() };
   let seat: Seat[] | undefined;
   const rings = new Map<string, ShortOfShoulder>();
+  // the precision of the coordinates of the pair, as it stands in the frame of the first body
+  let precision: number | undefined;
   for (const [i, j] of agreeing) {
     if (za.zones[i].threads.every((t) => t.modelled) && zb.zones[j].threads.every((t) => t.modelled)) {
       notTaken.a.add(i);
@@ -87,7 +89,8 @@ function judgeThreaded(context: QueryContext, a: Id, b: Id, pair: { a: BodyResul
       seat ??= seatOf(za.zones[i].threads[0], zb.zones[j].threads[0], relative);
       for (const t of za.zones[i].threads) {
         for (const u of zb.zones[j].threads) {
-          for (const entry of shortOfShoulderOf({ thread: t, body: a, lift: za.lift }, { thread: u, body: b, lift: zb.lift }, relative, tolerance)) {
+          precision ??= Math.max(precisionOf(A.solid), precisionOf(pair.b.solid));
+          for (const entry of shortOfShoulderOf({ thread: t, body: a, lift: za.lift }, { thread: u, body: b, lift: zb.lift }, relative, { across: tolerance, along: precision })) {
             const key = JSON.stringify([entry.feature, entry.face, entry.end]);
             if (!rings.has(key)) rings.set(key, entry); // the first mate of a ring names it
           }
@@ -169,19 +172,24 @@ export interface ThreadOnBody {
   lift: number;
 }
 // The rings two modelled threads that agree leave under a shoulder the wall of the other stands in
-// (design.md of D76, "The cause named in the report"; owner, 2026-11-28). The tool of a modelled
-// thread stops the lift short of an end of the kind `shoulder` (`threadToolPlan`), so the wall keeps
-// a ring that high there: along the axis of the thread from the end of its wall on its body
-// (`walls`; the end still had, as `threadZone` reads it: within the lift of the span) to one lift
-// from it. A thread R gets an entry for such an end when the wall of the other thread M on its body,
-// mapped onto the axis of R (the second by `relative` into the frame of the first, as `seatOf`
-// poses it), overlaps that stretch by more than `tolerance` (the chord tolerance), and M's wall
-// reaches past R's across the axis by more than it (R internal: M's radius the larger; external:
-// the smaller). The two have to agree (on one line, one internal and one external). Exact from the
-// records with no boolean; no phase or hand is read, so a copy moved by a pose or a mirror is
-// judged as its source is. An entry of an inserted document (a prefixed ID) is marked and comes
-// last; the entries of the first come before those of the second.
-export function shortOfShoulderOf(first: ThreadOnBody, second: ThreadOnBody, relative: RigidTransform | undefined, tolerance: number): ShortOfShoulder[] {
+// (design.md of D76, "The cause named in the report" and its review; owner, 2026-11-28). The tool of
+// a modelled thread stops the lift short of an end of the kind `shoulder` (`threadToolPlan`), so
+// the wall keeps a ring that high there. For an end the body still has (`endsHad`, as `threadZone`
+// reads it), the ring is, along the axis of the thread, at the start from the origin of the record
+// (the end of the wall the tool saw) one lift into the wall, at the end from the end of the span or
+// of the stretch, whichever is further, one lift back; each cut to the stretch the body still has
+// (`walls`). A thread R gets an entry for such an end when the stretch of the wall of the other
+// thread M on its body, longer by the run-out at an open end it still has (what follows that end
+// reaches into the wall of R until it is as wide as the major diameter), mapped onto the axis of R
+// (the second by `relative` into the frame of the first, as `seatOf` poses it), overlaps the ring
+// by more than `tolerance.along` (the precision of the coordinates), and M's wall reaches past
+// R's across the axis by more than `tolerance.across` (the chord tolerance: round faces within it
+// are a fit; R internal: M's radius the larger, external: the smaller). The two have to agree (on
+// one line, one internal and one external). `height` is the lift of R's body. From the records
+// with no boolean; no phase or hand is read, so a copy moved by a pose or a mirror is judged as its
+// source is. An entry of an inserted document (a prefixed ID) is marked and comes last; the entries
+// of the first come before those of the second.
+export function shortOfShoulderOf(first: ThreadOnBody, second: ThreadOnBody, relative: RigidTransform | undefined, tolerance: { across: number; along: number }): ShortOfShoulder[] {
   const placed = (side: ThreadOnBody, moved: boolean) => {
     const { thread } = side;
     const i = thread.bodies.indexOf(side.body);
@@ -193,16 +201,17 @@ export function shortOfShoulderOf(first: ThreadOnBody, second: ThreadOnBody, rel
   for (const [r, m] of [[one, two], [two, one]]) {
     const [rt, mt] = [r.thread, m.thread];
     if (!r.wall || !m.wall || !rt.modelled || rt.internal === mt.internal) continue;
-    if ((rt.internal ? mt.radius - rt.radius : rt.radius - mt.radius) <= tolerance) continue;
-    // the wall of M on its body along the axis of R
-    const [x, y] = [m.wall.from, m.wall.to].map((s) => dot3(sub3(add3(m.origin, mul3(m.axis, s)), r.origin), r.axis));
+    if ((rt.internal ? mt.radius - rt.radius : rt.radius - mt.radius) <= tolerance.across) continue;
+    // the wall of M on its body with its run-outs, along the axis of R
+    const mHad = endsHad(mt, m.wall, m.lift);
+    const [from, to] = [m.wall.from - (mHad.start ? mt.runOut.start : 0), m.wall.to + (mHad.end ? mt.runOut.end : 0)];
+    const [x, y] = [from, to].map((s) => dot3(sub3(add3(m.origin, mul3(m.axis, s)), r.origin), r.axis));
     const [low, high] = x < y ? [x, y] : [y, x];
+    const rHad = endsHad(rt, r.wall, r.lift);
     for (const end of ['start', 'end'] as const) {
-      if (rt.ends[end] !== 'shoulder') continue;
-      const at = end === 'start' ? r.wall.from : r.wall.to;
-      if (Math.abs(at - (end === 'start' ? rt.from : rt.to)) > r.lift) continue;
-      const [ringLow, ringHigh] = end === 'start' ? [at, at + r.lift] : [at - r.lift, at];
-      if (Math.min(high, ringHigh) - Math.max(low, ringLow) <= tolerance) continue;
+      if (rt.ends[end] !== 'shoulder' || !rHad[end]) continue;
+      const [ringLow, ringHigh] = end === 'start' ? [Math.max(0, r.wall.from), Math.min(r.lift, r.wall.to)] : [Math.max(rt.to, r.wall.to) - r.lift, r.wall.to];
+      if (Math.min(high, ringHigh) - Math.max(low, ringLow) <= tolerance.along) continue;
       entries.push({ feature: rt.feature, face: rt.face, end, height: r.lift, mate: { feature: mt.feature, face: mt.face }, ...(rt.feature.includes('/') ? { inserted: true as const } : {}) });
     }
   }
@@ -277,9 +286,9 @@ export const interference: QuerySpec<typeof INTERFERENCE_ARGS, InterferenceRepor
     'What is left of such a pair is judged as every pair: a fit left (a head in its counterbore) puts it in `fits` as well, a collision left (a screw too long for a blind bore) in `pairs` alone, with the volume and depth of what is left; a thread excuses only what goes around its axis within its zone (a body pushed in from one side, a pin through a solid block, a rod thicker than the major diameter still collide). ' +
     'Two threads that meet and do not agree (another pitch, hand, diameter, flank angle or depth, two bores or two pins, axes off one line) make the pair a collision judged whole, its entry of `pairs` with `mismatch` saying what differs. ' +
     'Two modelled threads are judged by their meshes (nothing is excused); an entry of `pairs` between two that agree carries `seat`: for each of the two threads (`feature`, `face`) `addToPhase`, the angle in radians to add to the `phase` of its feature so that the two are one helix (either one seats the pair, for the pose asked about; a phase turns every face and copy of its feature; an entry marked `inserted` belongs to an inserted document and comes last; zero for both when the helices are one curve already and the collision has another cause). ' +
-    'Such an entry carries `shortOfShoulder` (only when it has an entry) when a modelled thread of the pair ends at a shoulder and the wall of the other thread stands in the ring its groove leaves there, one lift high (`height`, mm): `{ feature, face, end, height, mate }`; a pair about that deep collides by the ring alone, which a chamfer of the end of the mate deeper than the profile (placed before its thread) or a socket deeper than the mate reaches by more than the lift frees.',
+    'Such an entry carries `shortOfShoulder` (only when it has an entry) when a modelled thread of the pair ends at a shoulder and the wall of the other thread stands in the ring its groove leaves there, one lift high (`height`, mm): `{ feature, face, end, height, mate }`; a pair about that deep with a `seat` of 0 collides by the ring alone, which a chamfer of the end of the mate deeper than the profile (placed before its thread) frees, or a mate that stops more than the lift short of the shoulder (a deeper socket, a mate seated higher).',
   args: INTERFERENCE_ARGS,
-  significant: { volume: 6, depth: 4 },
+  significant: { volume: 6, depth: 4, height: 4 },
   units: { volume: 'mm3', depth: 'mm' },
   // What a pair shares is kept by its two meshes: after a change of the model only the pairs with
   // a changed body go to the kernel again. In a pose a pair is computed in the frame of its first

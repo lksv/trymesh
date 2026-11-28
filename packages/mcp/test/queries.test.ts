@@ -137,6 +137,13 @@ describe('the tool query', () => {
     // what check_interference prints for the same pair
     const tool = callTool(engine, 'check_interference', { threshold: 0 });
     expect(tool.ok && (tool.result as { pairs: unknown[] }).pairs).toEqual(answer.pairs);
+    // the height of a ring under a shoulder (D76) as the depth, four significant digits (the review of
+    // the cause named in the report: a body far from the origin gave 0.12000000000000001)
+    const face = { feature: 'f', role: 'side', curve: 'c' } as const;
+    const ringed = { ...raw, pairs: [{ ...raw.pairs[0], seat: [{ feature: 't', face, addToPhase: 0 }], shortOfShoulder: [{ feature: 't', face, end: 'end', height: 0.12000000000000001, mate: { feature: 'u', face } }] }] };
+    const faked = Object.assign(Object.create(engine) as Engine, { interference: () => ringed });
+    const ringTool = callTool(faked, 'check_interference', { threshold: 0 });
+    expect(ringTool.ok && (ringTool.result as unknown as typeof ringed).pairs[0].shortOfShoulder[0].height).toBe(0.12);
     expect(call(engine, { query: 'sketchDiagnosis', args: { sketch: 's' } })).toMatchObject({ status: 'solved', degreesOfFreedom: 0 });
     expect(call(engine, { query: 'constraintExplanation', args: { sketch: 's', constraint: 'd' } })).toEqual(engine.explainConstraint('s', 'd'));
     expect(call(engine, { query: 'interference' })).toMatchObject({ checked: 1 }); // no arguments at all

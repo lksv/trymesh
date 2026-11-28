@@ -132,6 +132,36 @@ describe('a screw in a nut', () => {
     expect(cosmeticStud.evaluation.bodies.stud.volume).toBe(engine.getState('nh').evaluation.bodies.stud.volume);
     expect(threadsOf(cosmeticStud, 'st')[0].modelled).toBe(false);
   });
+
+  // The cause named in the report (2026-11-28): an M10 pin 15 high standing on a base plate, threaded
+  // from its top down to the base (a shoulder), and a nut 8 high seated on the base. The groove of
+  // the pin stops the lift short of the base; the wall of the nut stands in the ring that leaves.
+  const pinAndNut = (engine: Engine, nutLift: number) =>
+    run(
+      engine,
+      box('base', -10, -10, 10, 10, 0, 5),
+      rod('pin', 0, 0, 5, 5, 20, 'add', 'base'),
+      box('nut', -8, -8, 8, 8, 5 + nutLift, 13 + nutLift),
+      hole('nh', [['h', 0, 0]], 10 - 2 * 0.811899 + 0.4, 'nut'),
+      thread('pt', { body: 'base', faces: [rodSide('pin')], modelled: true, ...M10 }),
+      // the helix of the nut starts 7 − nutLift below the pin's: one curve
+      thread('nt', { body: 'nut', faces: [bore('nh', 'h')], modelled: true, ...M10, clearance: 0.2, phase: (2 * Math.PI * (7 - nutLift)) / 1.5 }),
+    );
+
+  it('a nut seated on the base of a threaded pin meets the ring under the shoulder of the pin: the entry names it; lifted off the base by more than the lift, the nut is free', { timeout: 120_000 }, async () => {
+    await aTurn();
+    const engine = newEngine();
+    const state = pinAndNut(engine, 0);
+    expect(threadsOf(state, 'pt')[0].ends).toEqual({ start: 'open', end: 'shoulder' });
+    const report = interference(engine, ['base', 'nut']);
+    expect(report.pairs).toHaveLength(1);
+    expect(report.pairs[0].depth).toBeLessThan(0.06);
+    expect(report.pairs[0].seat?.map((entry) => Math.abs(entry.addToPhase) < 1e-6)).toEqual([true, true]);
+    expect(report.pairs[0].shortOfShoulder).toEqual([{ feature: 'pt', face: rodSide('pin'), end: 'end', height: 0.05, mate: { feature: 'nt', face: bore('nh', 'h') } }]);
+    const lifted = newEngine();
+    pinAndNut(lifted, 0.2);
+    expect(interference(lifted, ['base', 'nut'])).toMatchObject({ pairs: [], fits: [], failed: [] });
+  });
 });
 
 describe('measured (design.md, "Performance")', () => {

@@ -104,4 +104,18 @@ describe('the views of the collisions and of the gap with threads (D76)', () => 
     const bothInserted: InterferenceReport = { ...turned, pairs: [{ ...turned.pairs[0], seat: [{ feature: 'ins/nt', face, addToPhase: -Math.PI / 2, inserted: true }, { feature: 'ins/st', face, addToPhase: Math.PI / 2, inserted: true }] }] };
     expect(texts(interferenceView.answer?.(bothInserted, {} as never, panelOf()) ?? [])).toEqual(['body nut × body stud17.8 mm³; the threads are turned against each other: add -90° to the phase of ins/nt (in its inserted document)']);
   });
+
+  it('a collision by the ring a groove leaves under a shoulder names it, instead of another cause and beside a turn', async () => {
+    harness = await startApp();
+    const lidFace = { feature: 'socket', role: 'side', curve: 'c' } as const;
+    const bowlFace = { feature: 'bowl', role: 'side', curve: 'c' } as const;
+    const ring = { feature: 'lidThread', face: lidFace, end: 'start', height: 0.05, mate: { feature: 'bowlThread', face: bowlFace } } as const;
+    const seated: InterferenceReport = { pairs: [{ a: 'bowl', b: 'lid', volume: 2.68, depth: 0.05, seat: [{ feature: 'bowlThread', face: bowlFace, addToPhase: 0 }, { feature: 'lidThread', face: lidFace, addToPhase: 0 }], shortOfShoulder: [ring] }], fits: [], failed: [], checked: 1 };
+    const named = 'the groove of lidThread stops 0.05 mm short of its shoulder, where bowlThread still stands: chamfer the end of the mate before its thread, or let the mate stop more than that short of the shoulder (a deeper socket)';
+    expect(texts(interferenceView.answer?.(seated, {} as never, panelOf()) ?? [])).toEqual([`body bowl × body lid2.68 mm³; ${named}`]);
+    const turned: InterferenceReport = { ...seated, pairs: [{ ...seated.pairs[0], seat: [{ feature: 'bowlThread', face: bowlFace, addToPhase: Math.PI / 2 }, { feature: 'lidThread', face: lidFace, addToPhase: Math.PI / 2 }] }] };
+    expect(texts(interferenceView.answer?.(turned, {} as never, panelOf()) ?? [])).toEqual([`body bowl × body lid2.68 mm³; the threads are turned against each other: add 90° to the phase of bowlThread (or turn the other); ${named}`]);
+    const inserted: InterferenceReport = { ...seated, pairs: [{ ...seated.pairs[0], shortOfShoulder: [{ ...ring, feature: 'ins/lidThread', inserted: true }] }] };
+    expect(texts(interferenceView.answer?.(inserted, {} as never, panelOf()) ?? [])[0]).toContain('the groove of ins/lidThread (in its inserted document) stops 0.05 mm short');
+  });
 });

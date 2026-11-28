@@ -4,8 +4,8 @@ import { INTERFERENCE_THRESHOLD, THREAD_PIECE_VOLUME, type SharedVolume, type Th
 import { bandOf } from '../recompute/body-boolean';
 import { phaseSense, precisionOf, threadLift } from '../recompute/thread';
 import { type RigidTransform, inverse, pieceSolids, transformPoint, transformVector, volumeOf } from '../solid';
-import type { BodyResult, Id, InterferenceReport, Seat, Solid, Threaded, ThreadResult, Vec3 } from '../types';
-import { ANGLE_TOLERANCE, cross3, dot3, sub3 } from '../util';
+import type { BodyResult, Id, InterferenceReport, Seat, ShortOfShoulder, Solid, Threaded, ThreadResult, Vec3 } from '../types';
+import { ANGLE_TOLERANCE, add3, cross3, dot3, mul3, sub3, unit3 } from '../util';
 import type { ArgSpecs } from './args';
 import { boxOf, framed, keepOf, movedBody, movedBox } from './pose';
 import type { QueryContext, QuerySpec } from './spec';
@@ -75,23 +75,35 @@ function judgeThreaded(context: QueryContext, a: Id, b: Id, pair: { a: BodyResul
   const mismatch = mismatches.find((m) => !(m.offLine && mated(m.i, m.j)));
   if (mismatch) return { mismatch: mismatch.mismatch };
   // two modelled threads that agree: their meshes are the truth, neither zone is taken; should the
-  // pair collide, its entry says how to seat them (`seat`, of the first such two)
+  // pair collide, its entry says how to seat them (`seat`, of the first such two) and names the
+  // rings under a shoulder the wall of the mate stands in (`shortOfShoulder`, of every such two)
   const notTaken = { a: new Set<number>(), b: new Set<number>() };
   let seat: Seat[] | undefined;
+  const rings = new Map<string, ShortOfShoulder>();
   for (const [i, j] of agreeing) {
     if (za.zones[i].threads.every((t) => t.modelled) && zb.zones[j].threads.every((t) => t.modelled)) {
       notTaken.a.add(i);
       notTaken.b.add(j);
       seat ??= seatOf(za.zones[i].threads[0], zb.zones[j].threads[0], relative);
+      for (const t of za.zones[i].threads) {
+        for (const u of zb.zones[j].threads) {
+          for (const entry of shortOfShoulderOf({ thread: t, body: a, lift: za.lift }, { thread: u, body: b, lift: zb.lift }, relative, tolerance)) {
+            const key = JSON.stringify([entry.feature, entry.face, entry.end]);
+            if (!rings.has(key)) rings.set(key, entry); // the first mate of a ring names it
+          }
+        }
+      }
     }
   }
+  const shortOfShoulder = [...rings.values()].filter((entry) => !entry.inserted).concat([...rings.values()].filter((entry) => entry.inserted));
+  const modelledPair = { ...(seat ? { seat } : {}), ...(shortOfShoulder.length ? { shortOfShoulder } : {}) };
   // the zones whose ring meets the box of the other body, each judged with its body first
   const keep = keepOf(context.bodies[a], context.bodies[b]);
   const inverseRelative = relative ? inverse(relative) : undefined;
   const aInB = inverseRelative ? movedBody(A, inverseRelative, keep) : A;
   const takeA = za.zones.map((zone, i): ZoneTake => (notTaken.a.has(i) || boxesApart(ringBox(zone, za.slack, za.lift), pair.b.bounds) ? undefined : zoneTake(context, A.solid, zone, pair.b.solid, za, tolerance)));
   const takeB = zb.zones.map((zone, j): ZoneTake => (notTaken.b.has(j) || boxesApart(ringBox(zone, zb.slack, zb.lift), movedBox(A.bounds, inverseRelative)) ? undefined : zoneTake(context, B.solid, zone, aInB.solid, zb, tolerance)));
-  if (!takeA.some(Boolean) && !takeB.some(Boolean)) return seat ? { seat } : undefined;
+  if (!takeA.some(Boolean) && !takeB.some(Boolean)) return seat ? modelledPair : undefined;
   // the volume excused: the larger of two agreeing zones about one line, the others added
   let volume = 0;
   const counted = { a: new Set<number>(), b: new Set<number>() };
@@ -117,7 +129,7 @@ function judgeThreaded(context: QueryContext, a: Id, b: Id, pair: { a: BodyResul
   const restBModelled = restOf(context, B, zb.zones.filter((_, j) => takeB[j]), zb, tolerance);
   const restB = relative ? movedBody(restBModelled, relative, keep) : restBModelled;
   const shared = context.memo([restA.solid, restB.solid], 'shared', (): SharedVolume => sharedBy(context.kernel, restA, restB, tolerance));
-  return { shared, taken: { volume, threads }, ...(seat ? { seat } : {}) };
+  return { shared, taken: { volume, threads }, ...modelledPair };
 }
 
 // How to seat two modelled threads that agree (design.md of D76, "The check of collisions"; owner,
@@ -146,6 +158,54 @@ export function seatOf(first: ThreadResult, second: ThreadResult, relative: Rigi
   const sameWay = dot3(a1, a2) > 0;
   const entry = (thread: ThreadResult, turnBy: number): Seat => ({ feature: thread.feature, face: thread.face, addToPhase: turnBy === 0 ? 0 : senseOf(thread) * turnBy, ...(thread.feature.includes('/') ? { inserted: true as const } : {}) });
   const entries = [entry(first, sameWay ? -delta : delta), entry(second, delta)];
+  return [...entries.filter((e) => !e.inserted), ...entries.filter((e) => e.inserted)];
+}
+
+// A modelled thread on one body of a pair: its published record, the body and the lift of that
+// body (`threadLift`, as `judgeThreaded` reads it for the zones of the body).
+export interface ThreadOnBody {
+  thread: ThreadResult;
+  body: Id;
+  lift: number;
+}
+// The rings two modelled threads that agree leave under a shoulder the wall of the other stands in
+// (design.md of D76, "The cause named in the report"; owner, 2026-11-28). The tool of a modelled
+// thread stops the lift short of an end of the kind `shoulder` (`threadToolPlan`), so the wall keeps
+// a ring that high there: along the axis of the thread from the end of its wall on its body
+// (`walls`; the end still had, as `threadZone` reads it: within the lift of the span) to one lift
+// from it. A thread R gets an entry for such an end when the wall of the other thread M on its body,
+// mapped onto the axis of R (the second by `relative` into the frame of the first, as `seatOf`
+// poses it), overlaps that stretch by more than `tolerance` (the chord tolerance), and M's wall
+// reaches past R's across the axis by more than it (R internal: M's radius the larger; external:
+// the smaller). The two have to agree (on one line, one internal and one external). Exact from the
+// records with no boolean; no phase or hand is read, so a copy moved by a pose or a mirror is
+// judged as its source is. An entry of an inserted document (a prefixed ID) is marked and comes
+// last; the entries of the first come before those of the second.
+export function shortOfShoulderOf(first: ThreadOnBody, second: ThreadOnBody, relative: RigidTransform | undefined, tolerance: number): ShortOfShoulder[] {
+  const placed = (side: ThreadOnBody, moved: boolean) => {
+    const { thread } = side;
+    const i = thread.bodies.indexOf(side.body);
+    const [origin, axis] = moved && relative ? [transformPoint(relative, thread.origin), unit3(transformVector(relative, thread.axis))] : [thread.origin, thread.axis];
+    return { ...side, origin, axis, wall: i < 0 ? undefined : thread.walls[i] };
+  };
+  const [one, two] = [placed(first, false), placed(second, true)];
+  const entries: ShortOfShoulder[] = [];
+  for (const [r, m] of [[one, two], [two, one]]) {
+    const [rt, mt] = [r.thread, m.thread];
+    if (!r.wall || !m.wall || !rt.modelled || rt.internal === mt.internal) continue;
+    if ((rt.internal ? mt.radius - rt.radius : rt.radius - mt.radius) <= tolerance) continue;
+    // the wall of M on its body along the axis of R
+    const [x, y] = [m.wall.from, m.wall.to].map((s) => dot3(sub3(add3(m.origin, mul3(m.axis, s)), r.origin), r.axis));
+    const [low, high] = x < y ? [x, y] : [y, x];
+    for (const end of ['start', 'end'] as const) {
+      if (rt.ends[end] !== 'shoulder') continue;
+      const at = end === 'start' ? r.wall.from : r.wall.to;
+      if (Math.abs(at - (end === 'start' ? rt.from : rt.to)) > r.lift) continue;
+      const [ringLow, ringHigh] = end === 'start' ? [at, at + r.lift] : [at - r.lift, at];
+      if (Math.min(high, ringHigh) - Math.max(low, ringLow) <= tolerance) continue;
+      entries.push({ feature: rt.feature, face: rt.face, end, height: r.lift, mate: { feature: mt.feature, face: mt.face }, ...(rt.feature.includes('/') ? { inserted: true as const } : {}) });
+    }
+  }
   return [...entries.filter((e) => !e.inserted), ...entries.filter((e) => e.inserted)];
 }
 
@@ -216,7 +276,8 @@ export const interference: QuerySpec<typeof INTERFERENCE_ARGS, InterferenceRepor
     '`threaded` (only when it has an entry): pairs of which a part of what they share is what a thread accounts for (a screw in a tapped hole, a plain rod of the nominal diameter in it), each `{ a, b, volume, threads }` with the volume excused (mm³) and the thread of every zone taken (`{ feature, face, body }`). ' +
     'What is left of such a pair is judged as every pair: a fit left (a head in its counterbore) puts it in `fits` as well, a collision left (a screw too long for a blind bore) in `pairs` alone, with the volume and depth of what is left; a thread excuses only what goes around its axis within its zone (a body pushed in from one side, a pin through a solid block, a rod thicker than the major diameter still collide). ' +
     'Two threads that meet and do not agree (another pitch, hand, diameter, flank angle or depth, two bores or two pins, axes off one line) make the pair a collision judged whole, its entry of `pairs` with `mismatch` saying what differs. ' +
-    'Two modelled threads are judged by their meshes (nothing is excused); an entry of `pairs` between two that agree carries `seat`: for each of the two threads (`feature`, `face`) `addToPhase`, the angle in radians to add to the `phase` of its feature so that the two are one helix (either one seats the pair, for the pose asked about; a phase turns every face and copy of its feature; an entry marked `inserted` belongs to an inserted document and comes last; zero for both when the helices are one curve already and the collision has another cause).',
+    'Two modelled threads are judged by their meshes (nothing is excused); an entry of `pairs` between two that agree carries `seat`: for each of the two threads (`feature`, `face`) `addToPhase`, the angle in radians to add to the `phase` of its feature so that the two are one helix (either one seats the pair, for the pose asked about; a phase turns every face and copy of its feature; an entry marked `inserted` belongs to an inserted document and comes last; zero for both when the helices are one curve already and the collision has another cause). ' +
+    'Such an entry carries `shortOfShoulder` (only when it has an entry) when a modelled thread of the pair ends at a shoulder and the wall of the other thread stands in the ring its groove leaves there, one lift high (`height`, mm): `{ feature, face, end, height, mate }`; a pair about that deep collides by the ring alone, which a chamfer of the end of the mate deeper than the profile (placed before its thread) or a socket deeper than the mate reaches by more than the lift frees.',
   args: INTERFERENCE_ARGS,
   significant: { volume: 6, depth: 4 },
   units: { volume: 'mm3', depth: 'mm' },

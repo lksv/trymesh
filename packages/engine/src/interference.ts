@@ -1,7 +1,7 @@
 // Interference of bodies: the volume two bodies share, pair by pair (D35, point 5).
 import { coordinatePrecision } from './mesh-distance';
 import { type Reach, type RigidTransform, penetration, thickestPiece, transformPoint, transformVector, volumeOf, volumeOfPieces } from './solid';
-import type { BodyResult, Id, InterferenceReport, Seat, Solid, SolidKernel, Threaded, ThreadResult, Vec3 } from './types';
+import type { BodyResult, Id, InterferenceReport, Seat, ShortOfShoulder, Solid, SolidKernel, Threaded, ThreadResult, Vec3 } from './types';
 import { ANGLE_TOLERANCE, LENGTH_TOLERANCE, add3, cross3, dot3, has, len3, mul3, sub3, unit3 } from './util';
 
 // Volumes up to this are noise, not a collision. In the spike flush faces, a pin in the hole cut
@@ -182,6 +182,7 @@ export interface ThreadJudgement {
   taken?: { volume: number; threads: Threaded['threads'] };
   mismatch?: string;
   seat?: Seat[]; // two modelled threads that agree: how to seat them, should the pair collide
+  shortOfShoulder?: ShortOfShoulder[]; // of the same: the rings under a shoulder the wall of the mate stands in
 }
 export function interferenceReport(
   bodies: Readonly<Record<Id, unknown>>,
@@ -203,7 +204,7 @@ export function interferenceReport(
       const apart = !computed || boxesApart(computed.a.bounds, computed.b.bounds);
       const judged = apart || !threaded ? undefined : threaded(a, b, computed);
       const result = apart ? NOTHING : (judged?.shared ?? shared(computed.a, computed.b));
-      const mismatch = { ...(judged?.mismatch === undefined ? {} : { mismatch: judged.mismatch }), ...(judged?.seat === undefined ? {} : { seat: judged.seat }) };
+      const mismatch = { ...(judged?.mismatch === undefined ? {} : { mismatch: judged.mismatch }), ...(judged?.seat === undefined ? {} : { seat: judged.seat }), ...(judged?.shortOfShoulder === undefined ? {} : { shortOfShoulder: judged.shortOfShoulder }) };
       const verdict = 'message' in result ? undefined : verdictOf(result, threshold, tolerance);
       if (judged?.taken && verdict !== 'collision') (report.threaded ??= []).push({ a, b, volume: judged.taken.volume, threads: judged.taken.threads });
       if (!('message' in result)) {

@@ -4,8 +4,10 @@
 // the reason (and, since D50, what it computed); a picked row draws its two bodies in two colours; the note counts the fits and the
 // failures. The pairs the kernel refused and its intersection as computed cleared (D50) are rows
 // of their own after the fits, and the note counts them. The pairs a thread accounts for (D76) are
-// a third group after those, and a collision of two threads that do not agree says what differs.
-import type { Cleared, Interference, Seat, Threaded } from '@trymesh/engine';
+// a third group after those, and a collision of two threads that do not agree says what differs;
+// one of two modelled threads that agree says how to seat them, or names the ring a groove leaves
+// under a shoulder that the mate stands in.
+import type { Cleared, Interference, Seat, ShortOfShoulder, Threaded } from '@trymesh/engine';
 import { fmt, h } from '../dom';
 import { COLOR } from '../draw';
 import type { QueryView } from './index';
@@ -14,16 +16,21 @@ export const interferenceView: QueryView<'interference'> = {
   immediate: true,
   answer(result, _args, panel) {
     // collisions first, then the fits, then the cleared pairs; `picked` counts through the three lists
-    // two modelled threads turned against each other: what to add to the phase of either (D76)
-    const seatText = (pair: Interference & { seat?: Seat[] }): string => {
+    // two modelled threads turned against each other: what to add to the phase of either (D76); the
+    // ring a groove leaves under a shoulder that the wall of the mate stands in, named instead of
+    // "another cause" (and beside a turn)
+    const ringText = (entry: ShortOfShoulder): string =>
+      `; the groove of ${entry.feature}${entry.inserted ? ' (in its inserted document)' : ''} stops ${fmt(entry.height)} mm short of its shoulder, where ${entry.mate.feature} still stands: chamfer the end of the mate before its thread, or let the mate stop more than that short of the shoulder (a deeper socket)`;
+    const seatText = (pair: Interference & { seat?: Seat[]; shortOfShoulder?: ShortOfShoulder[] }): string => {
       if (!pair.seat) return '';
+      const rings = (pair.shortOfShoulder ?? []).map(ringText).join('');
       // an entry this document can apply first (one of an inserted document is changed there)
       const turn = pair.seat.find((entry) => entry.addToPhase !== 0 && !entry.inserted) ?? pair.seat.find((entry) => entry.addToPhase !== 0);
-      if (!turn) return '; the threads are seated, the collision has another cause';
+      if (!turn) return rings || '; the threads are seated, the collision has another cause';
       const other = pair.seat.some((entry) => entry !== turn && !entry.inserted);
-      return `; the threads are turned against each other: add ${fmt((turn.addToPhase * 180) / Math.PI)}° to the phase of ${turn.feature}${turn.inserted ? ' (in its inserted document)' : other ? ' (or turn the other)' : ''}`;
+      return `; the threads are turned against each other: add ${fmt((turn.addToPhase * 180) / Math.PI)}° to the phase of ${turn.feature}${turn.inserted ? ' (in its inserted document)' : other ? ' (or turn the other)' : ''}${rings}`;
     };
-    const row = (pair: Interference & { mismatch?: string; seat?: Seat[] }, index: number, fit: boolean): HTMLElement =>
+    const row = (pair: Interference & { mismatch?: string; seat?: Seat[]; shortOfShoulder?: ShortOfShoulder[] }, index: number, fit: boolean): HTMLElement =>
       h(
         'div',
         { className: `row ${panel.picked === index ? 'selected' : ''}`, title: `Highlight the two bodies. One reaches ${fmt(pair.depth)} mm into the other`, onclick: () => panel.pick(panel.picked === index ? undefined : index) },

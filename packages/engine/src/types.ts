@@ -1019,7 +1019,8 @@ export interface FilletFeature extends FeatureBase {
 //   lift short of a shoulder (the bottom of a blind socket), which leaves a ring of the wall one
 //   lift high under the shoulder. A mate whose thread runs to its own end and that seats on that
 //   shoulder (a lid on the rim of a jar) meets that ring: the check of collisions lists the pair
-//   about the lift deep, with a `seat` of 0. A chamfer of the end of the mate deeper than the
+//   about the lift deep, with a `seat` of 0, and its entry `shortOfShoulder` names the thread,
+//   the shoulder and the mate. A chamfer of the end of the mate deeper than the
 //   profile, placed before its thread, frees it, as does a socket deeper than the mate reaches.
 //   The tool has thousands of triangles (`triangles` in `facts`): put a modelled thread late.
 // - The basic profile, in the axial plane: a trapezoid ridge per pitch.
@@ -1896,8 +1897,23 @@ export interface Interference {
 //   several faces or copies it turns them all (a copy through a mirror the other way, which the
 //   entry of that copy accounts for). An entry of a thread of an inserted document is marked
 //   `inserted` (change it in that document) and comes after the one this document can apply.
+// - Such an entry also carries `shortOfShoulder` when a modelled thread of the pair ends at a
+//   shoulder (`ThreadResult.ends`: the bottom of a blind socket, the base a pin stands on) and the
+//   wall of the other thread stands in the ring its groove leaves there. The groove of a modelled
+//   thread stops `height` (the lift) short of a shoulder, so a ring of its wall that high stays
+//   under the shoulder; a mate whose ridges run to its own end and that is seated on the shoulder
+//   (a lid on the plain rim of a bowl, a nut on the base of a pin) meets it. An entry names that
+//   thread (`feature`, `face`), the `end` that is the shoulder and the thread of the other body
+//   (`mate`). When `depth` of the pair is about `height`, the ring is all the pair collides by
+//   (the `seat` is then 0). Two remedies: a chamfer of the end of the mate deeper than the profile,
+//   placed before its thread (the helix of the mate then starts where the chamfer ends: its phase
+//   needs that distance, which `seat` gives); or a socket deeper than the mate reaches by more
+//   than the lift (the mate stops short of the shoulder). Exact from the published threads: the
+//   stretch of the wall of the mate on its body (`walls`) overlaps the ring along the axis, and
+//   its wall reaches past the wall of the thread across the axis, each by more than the chord
+//   tolerance. Ordered as `seat` (an entry `inserted` last); present only when it has an entry.
 export interface InterferenceReport {
-  pairs: (Interference & { mismatch?: string; seat?: Seat[] })[];
+  pairs: (Interference & { mismatch?: string; seat?: Seat[]; shortOfShoulder?: ShortOfShoulder[] })[];
   fits: Interference[];
   failed: { a: Id; b: Id; message: string }[];
   cleared?: Cleared[];
@@ -1909,6 +1925,14 @@ export interface Seat {
   face: FaceName;
   addToPhase: number; // radians
   inserted?: true; // the feature is of an inserted document: this document cannot change its phase
+}
+export interface ShortOfShoulder {
+  feature: Id; // the modelled thread whose groove stops short of a shoulder
+  face: FaceName; // its face
+  end: 'start' | 'end'; // the end of that thread that is the shoulder
+  height: number; // mm: how high the ring of its wall left under the shoulder is (the lift)
+  mate: { feature: Id; face: FaceName }; // the thread of the other body, whose wall stands in the ring
+  inserted?: true; // the feature is of an inserted document, as in `Seat`
 }
 // A pair of bodies of which a part of what they share is what a thread accounts for (D76): a screw
 // in a bore with a cosmetic thread, a plain rod of the nominal diameter in it. What is left of the

@@ -1012,8 +1012,16 @@ export interface FilletFeature extends FeatureBase {
 //   no copy has the warning `noCopies`. Absent: false.
 // - `modelled`: false is a cosmetic thread: the geometry does not change (a bore stays at its
 //   tap-drill diameter, a pin at the diameter it was made with) and the evaluation records the
-//   thread (`Evaluation.threads`). True would cut the helix into the mesh; this build makes
-//   cosmetic threads only, and a command or a document with `modelled: true` is invalid.
+//   thread (`Evaluation.threads`). True cuts the grooves into the mesh as well, by one boolean of
+//   the body with a tool of all the walls of the feature, for printing: the faces `threadFlank`,
+//   `threadRoot` and `threadEnd` are added (see `FaceName`) and the wall stays as the crest. The
+//   groove runs out past an open end, ends where the thread ends inside the wall, and stops the
+//   lift short of a shoulder (the bottom of a blind socket), which leaves a ring of the wall one
+//   lift high under the shoulder. A mate whose thread runs to its own end and that seats on that
+//   shoulder (a lid on the rim of a jar) meets that ring: the check of collisions lists the pair
+//   about the lift deep, with a `seat` of 0. A chamfer of the end of the mate deeper than the
+//   profile, placed before its thread, frees it, as does a socket deeper than the mate reaches.
+//   The tool has thousands of triangles (`triangles` in `facts`): put a modelled thread late.
 // - The basic profile, in the axial plane: a trapezoid ridge per pitch.
 //   - `diameter`: the nominal diameter, which is the major diameter of the basic profile (8 for
 //     M8), mm.
@@ -1056,7 +1064,11 @@ export interface FilletFeature extends FeatureBase {
 //   end is `invalidThread`. An end nearer to an end of the face than the lift (0.05 mm at the
 //   least, twice the chord tolerance) is taken to be at that end.
 // - `phase`: turns the thread about its axis, radians by the right-hand rule about the direction
-//   of the thread; absent: 0. See `ThreadResult` for where the helix lies.
+//   of the thread; absent: 0. See `ThreadResult` for where the helix lies. It is anchored at the
+//   end of the face, so a chamfer or a fillet of that end placed before the thread moves the helix
+//   along the axis by what it takes of the face: a mate anchored elsewhere then needs that
+//   distance in its `phase` (the formula of `ThreadResult`; for two modelled threads the entry
+//   `seat` of the check of collisions gives the number).
 // - `label`: free text for people ("M8", "M8x1", "lid 40 x 4"), at most 200 characters; the
 //   engine reads nothing out of it.
 // - The face the thread is on keeps its name and its surface. The feature creates no body and
@@ -1065,10 +1077,14 @@ export interface FilletFeature extends FeatureBase {
 // - The result tells in `facts`: `depth` (of the basic profile used), `minorDiameter`
 //   (`diameter − 2 · depth`), `lead`, `crestFlat` and `rootFlat` (the flats of the basic profile at
 //   the major and the minor diameter), `threads` (how many were made: the listed faces and their
-//   copies) and with `copies` also `copies` (how many copies were found).
+//   copies) and with `copies` also `copies` (how many copies were found). Modelled also
+//   `triangles` (of the tool) and, when the kernel refused the first mesh of the tool and took
+//   a later one, `attempt` (which one, from 2).
 // - Errors: `brokenReference` (the body, or a face it does not have, in `refs`), `invalidThread`
-//   (see ErrorCode), `invalidExpression` (a field). Warning: `noCopies`. A feature in error changes
-//   nothing and records no thread.
+//   (see ErrorCode), `invalidExpression` (a field); modelled also `importedTarget`, `emptyResult`
+//   and `kernelFailure` (the kernel refused every mesh of the tool: a small change of `phase` or
+//   `offset` gives another). Warning: `noCopies`. A feature in error changes nothing and records
+//   no thread.
 export interface ThreadFeature extends FeatureBase {
   type: 'thread';
   body: Id;
@@ -1615,7 +1631,7 @@ export type ThreadEnd = 'open' | 'shoulder' | 'inside';
 //   on two (a split) or remove it; a difference leaves the face in its target with the other
 //   sense (the bore of a tool becomes a pin), and the thread is not listed there. A thread on no
 //   body is not listed.
-// - `internal`: on a bore. `modelled`: cut into the mesh (always false in this build).
+// - `internal`: on a bore. `modelled`: cut into the mesh.
 // - `diameter`, `pitch`, `depth`, `flankAngle`, `clearance`, `starts`, `label`: as the feature
 //   gives them, with the defaults filled in. `radius`: of the wall.
 // - `hand`: the hand the thread has where it lies: the stated one on the faces of the feature and
